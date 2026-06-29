@@ -1,0 +1,18 @@
+@import "@vscode/codicons/dist/codicon.css";
+
+.codicon {
+  font-size: var(--ds-icon);
+  line-height: 1;
+  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.codicon[data-size="sm"] {
+  font-size: var(--ds-icon-sm);
+}
+
+.codicon[data-size="lg"] {
+  font-size: var(--ds-icon-lg);
+}

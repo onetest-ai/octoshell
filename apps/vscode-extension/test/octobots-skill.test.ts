@@ -1,0 +1,112 @@
+import { readFileSync, mkdtempSync, existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { describe, it, expect } from "vitest";
+import {
+  parseVersion,
+  requiredSkillsForAgent,
+  OCTOBOTS_PACK_VERSION,
+  OCTOBOTS_AGENTS,
+  installPack,
+  packStatus,
+} from "../src/host/octobots-skill.js";
+import { registerClaudeHook } from "../src/host/octobots-hooks.js";
+
+const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
+
+describe("octobots-skill helpers", () => {
+  it("parses the version: frontmatter field, or null when absent", () => {
+    expect(parseVersion("---\nname: octobots\nversion: 3\n---\nbody")).toBe(3);
+    expect(parseVersion("---\nname: octobots\n---\nbody")).toBeNull();
+    expect(parseVersion("no frontmatter")).toBeNull();
+  });
+
+  it("every managed agent requires the octobots skill", () => {
+    expect(requiredSkillsForAgent("scout")).toContain("octobots");
+    expect(requiredSkillsForAgent("any-agent")).toContain("octobots");
+  });
+
+  it("bundles no dedicated planning agents — planning lives in the octobots skill", () => {
+    expect(OCTOBOTS_AGENTS).toEqual([]);
+  });
+});
+
+describe("bundled pack payloads", () => {
+  it("the skill carries a version matching the pack constant", () => {
+    const skill = readFileSync(join(PACK_SRC, "skill", "octobots", "SKILL.md"), "utf8");
+    expect(skill).toMatch(/^name:\s*octobots\s*$/m);
+    expect(parseVersion(skill)).toBe(OCTOBOTS_PACK_VERSION);
+  });
+});
+
+describe("installPack + packStatus (real payload → temp repo)", () => {
+  it("reports not-installed before install, up-to-date after", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    expect(packStatus(repo).installed).toBe(false);
+
+    const res = installPack(PACK_SRC, repo);
+    expect(res.written).toBeGreaterThanOrEqual(8); // SKILL.md + 6 scripts + package.json (skill only)
+
+    expect(existsSync(join(repo, ".claude", "skills", "octobots", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(repo, ".claude", "skills", "octobots", "scripts", "validate.js"))).toBe(true);
+
+    const st = packStatus(repo);
+    expect(st.installed).toBe(true);
+    expect(st.upToDate).toBe(true);
+  });
+
+  it("reports not-installed when the skill payload has no version field", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    // Corrupt the skill payload by stripping its frontmatter version.
+    writeFileSync(join(repo, ".claude", "skills", "octobots", "SKILL.md"), "---\nname: octobots\n---\nbody");
+    const st = packStatus(repo);
+    expect(st.installed).toBe(false);
+    expect(st.upToDate).toBe(false);
+  });
+
+  it("reports not-up-to-date when an installed payload is older", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    expect(packStatus(repo, 999).upToDate).toBe(false);
+  });
+
+  it("installs the primer + Claude hook, and reports up-to-date only when both are current", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    expect(existsSync(join(repo, ".octobots", "hooks", "primer.mjs"))).toBe(true);
+    const settings = JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8"));
+    expect(settings.hooks.SessionStart.some((e: any) => e._octobots === OCTOBOTS_PACK_VERSION)).toBe(true);
+
+    const st = packStatus(repo);
+    expect(st.installed).toBe(true);
+    expect(st.upToDate).toBe(true);
+  });
+
+  it("reports not-installed when the Claude hook registration is missing", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    writeFileSync(join(repo, ".claude", "settings.json"), JSON.stringify({ hooks: {} }));
+    const st = packStatus(repo);
+    expect(st.installed).toBe(false);
+    expect(st.upToDate).toBe(false);
+  });
+
+  it("reports installed but not-up-to-date when the Claude hook is a stale version", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    registerClaudeHook(repo, OCTOBOTS_PACK_VERSION - 1); // downgrade our hook entry in place
+    const st = packStatus(repo);
+    expect(st.installed).toBe(true);
+    expect(st.upToDate).toBe(false);
+  });
+
+  it("does not throw when .claude/settings.json is malformed (returns not-up-to-date)", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    writeFileSync(join(repo, ".claude", "settings.json"), "{ bad json ,, }");
+    expect(() => packStatus(repo)).not.toThrow();
+    expect(packStatus(repo).upToDate).toBe(false);
+  });
+
+});

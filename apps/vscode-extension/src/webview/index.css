@@ -1,0 +1,8 @@
+@import "./styles/tokens.css";
+@import "./styles/codicons.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; margin: 0; }

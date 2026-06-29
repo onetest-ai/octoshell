@@ -1,0 +1,297 @@
+{
+  "name": "@octoshell/vscode-extension",
+  "displayName": "Octobots",
+  "description": "Plan and track AI coding work as markdown boards — campaigns, missions, tasks and bugs — right inside VS Code, and install a workflow pack that teaches CLI coding agents (Claude Code, Codex, Copilot) to drive them.",
+  "version": "0.0.30",
+  "private": true,
+  "license": "Apache-2.0",
+  "publisher": "onetest-ai",
+  "author": "OneTest AI",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/onetest-ai/octoshell.git",
+    "directory": "apps/vscode-extension"
+  },
+  "bugs": {
+    "url": "https://github.com/onetest-ai/octoshell/issues"
+  },
+  "homepage": "https://github.com/onetest-ai/octoshell#readme",
+  "categories": [
+    "AI",
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "octobots",
+    "ai agents",
+    "claude code",
+    "project management",
+    "markdown"
+  ],
+  "icon": "media/octoshell.png",
+  "type": "commonjs",
+  "main": "./dist/extension.js",
+  "engines": {
+    "vscode": "^1.122.0",
+    "node": ">=22.5"
+  },
+  "activationEvents": [],
+  "contributes": {
+    "colors": [
+      {
+        "id": "octoshell.mission.draft",
+        "description": "Mission/task status: draft (not started)",
+        "defaults": {
+          "dark": "#9D9D9D",
+          "light": "#61656E",
+          "highContrast": "#9D9D9D",
+          "highContrastLight": "#61656E"
+        }
+      },
+      {
+        "id": "octoshell.mission.executing",
+        "description": "Mission/task status: in progress",
+        "defaults": {
+          "dark": "#4EC9B0",
+          "light": "#1A8870",
+          "highContrast": "#4EC9B0",
+          "highContrastLight": "#1A8870"
+        }
+      },
+      {
+        "id": "octoshell.mission.awaiting",
+        "description": "Mission/task status: awaiting approval (needs attention)",
+        "defaults": {
+          "dark": "#E0823D",
+          "light": "#BC5C1E",
+          "highContrast": "#E0823D",
+          "highContrastLight": "#BC5C1E"
+        }
+      },
+      {
+        "id": "octoshell.mission.done",
+        "description": "Mission/task status: done",
+        "defaults": {
+          "dark": "#89D185",
+          "light": "#1A7F37",
+          "highContrast": "#89D185",
+          "highContrastLight": "#1A7F37"
+        }
+      },
+      {
+        "id": "octoshell.mission.failed",
+        "description": "Mission/task status: failed",
+        "defaults": {
+          "dark": "#F14C4C",
+          "light": "#E51400",
+          "highContrast": "#F14C4C",
+          "highContrastLight": "#E51400"
+        }
+      },
+      {
+        "id": "octoshell.mission.cancelled",
+        "description": "Mission/task status: cancelled",
+        "defaults": {
+          "dark": "#6E7681",
+          "light": "#6E7681",
+          "highContrast": "#6E7681",
+          "highContrastLight": "#6E7681"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "octoshell.addCustomization",
+        "title": "Octobots: Add Customization",
+        "icon": "$(add)"
+      },
+      {
+        "command": "octoshell.openSettings",
+        "title": "Octobots: Open Settings",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "octoshell.newMissionInCampaign",
+        "title": "Octobots: New Mission in this Campaign",
+        "icon": "$(add)"
+      },
+      {
+        "command": "octoshell.newCampaign",
+        "title": "Octobots: New Campaign",
+        "icon": "$(add)"
+      },
+      {
+        "command": "octoshell.refreshCampaigns",
+        "title": "Octobots: Refresh Campaigns",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "octoshell.addFileToCampaign",
+        "title": "Octobots: Add File to Campaign"
+      },
+      {
+        "command": "octoshell.deleteCampaign",
+        "title": "Octobots: Delete Campaign",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "octoshell.deleteMission",
+        "title": "Octobots: Delete Mission",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "octoshell.deleteTask",
+        "title": "Octobots: Delete Task",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "octoshell.deleteBug",
+        "title": "Octobots: Delete Bug",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "octoshell.installOctobotsWorkflowSkill",
+        "title": "Octobots: Install Workflow Pack"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "octoshell",
+          "title": "Octobots",
+          "icon": "media/octoshell.svg"
+        }
+      ]
+    },
+    "views": {
+      "octoshell": [
+        {
+          "id": "octoshell.campaigns",
+          "name": "Campaigns",
+          "visibility": "visible"
+        },
+        {
+          "id": "octoshell.customizations",
+          "name": "Customizations",
+          "visibility": "collapsed"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "octoshell.addCustomization",
+          "when": "view == octoshell.customizations",
+          "group": "navigation"
+        },
+        {
+          "command": "octoshell.newCampaign",
+          "when": "view == octoshell.campaigns",
+          "group": "navigation@1"
+        },
+        {
+          "command": "octoshell.refreshCampaigns",
+          "when": "view == octoshell.campaigns",
+          "group": "navigation@0"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "octoshell.addFileToCampaign",
+          "when": "!explorerResourceIsFolder",
+          "group": "octoshell@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "octoshell.newMissionInCampaign",
+          "when": "view == octoshell.campaigns && viewItem == octoshell.campaign",
+          "group": "inline"
+        },
+        {
+          "command": "octoshell.deleteCampaign",
+          "when": "view == octoshell.campaigns && viewItem == octoshell.campaign",
+          "group": "9_delete"
+        },
+        {
+          "command": "octoshell.deleteMission",
+          "when": "view == octoshell.campaigns && viewItem == octoshell.mission",
+          "group": "9_delete"
+        },
+        {
+          "command": "octoshell.deleteTask",
+          "when": "view == octoshell.campaigns && viewItem == octoshell.task",
+          "group": "9_delete"
+        },
+        {
+          "command": "octoshell.deleteBug",
+          "when": "view == octoshell.campaigns && viewItem == octoshell.bug",
+          "group": "9_delete"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Octobots",
+      "properties": {
+        "octoshell.providers.claude-acp.agentSelector": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "Show the per-chat persona (sub-agent) selector for Claude Code chats."
+        },
+        "octoshell.providers.github-copilot-cli.agentSelector": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Show the persona (sub-agent) selector for GitHub Copilot CLI chats. Off by default \u2014 Copilot exposes its own custom agents through its native agent config option."
+        },
+        "octoshell.providers.codex-acp.agentSelector": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Show the persona (sub-agent) selector for OpenAI Codex chats. Off by default \u2014 Codex has no custom-agent concept."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs && vite build",
+    "build:host": "node esbuild.mjs",
+    "build:webview": "vite build",
+    "watch:host": "node esbuild.mjs --watch",
+    "watch:webview": "vite build --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests",
+    "gen:config": "node scripts/gen-config.mjs",
+    "package": "node scripts/package-vsix.mjs"
+  },
+  "dependencies": {
+    "@octoshell/customizations": "workspace:*",
+    "@octoshell/board": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.23.0",
+    "@testing-library/react": "16.3.0",
+    "@types/node": "^22.9.0",
+    "@types/vscode": "^1.120.0",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "@vitejs/plugin-react": "4.3.1",
+    "@vscode-elements/elements": "1.16.0",
+    "@vscode/codicons": "0.0.36",
+    "autoprefixer": "10.4.19",
+    "happy-dom": "15.11.7",
+    "postcss": "8.4.40",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-markdown": "9.0.1",
+    "rehype-sanitize": "6.0.0",
+    "remark-gfm": "4.0.0",
+    "tailwindcss": "3.4.7",
+    "vite": "5.3.5",
+    "vitest": "2.0.5",
+    "zustand": "4.5.4"
+  }
+}

@@ -1,0 +1,12 @@
+src/**
+test/**
+scripts/**
+tsconfig*.json
+**/*.config.ts
+**/*.config.mjs
+**/*.config.js
+**/*.map
+**/*.tsbuildinfo
+.turbo/**
+.vscode/**
+*.vsix

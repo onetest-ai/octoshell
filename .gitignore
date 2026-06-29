@@ -1,0 +1,28 @@
+node_modules/
+dist/
+out/
+.turbo/
+coverage/
+*.log
+.DS_Store
+release/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.claude/
+.agents/
+.remember/
+.env
+.env.*
+!.env.example
+.mcp.json
+registry-cache.json
+
+# Packaged VS Code extension artifacts
+*.vsix
+
+# Agent/process scaffolding — this repo is dogfooded with the Octobots board and
+# the superpowers workflow; their working state is local-only, never committed.
+/.octobots/
+/.superpowers/
+/docs/superpowers/

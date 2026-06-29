@@ -1,0 +1,269 @@
+// apps/vscode-extension/src/protocol/rpc-contract.ts
+import { z } from "zod";
+import type { Campaign, Mission, Task, Bug } from "@octoshell/board";
+import type { CustomizationItem } from "@octoshell/customizations";
+import type { Appearance } from "../host/appearance-store.js";
+
+/**
+ * A team entry from the on-disk teams/*.json directory (no execution concepts).
+ * Matches `BoardHost.listTeams()`.
+ */
+export interface TeamEntry {
+  id: string;
+  title: string;
+  roster: string[];
+}
+
+/**
+ * A board-only team binding — which team is assigned to a campaign or mission.
+ * Simplified from the daemon's TeamBinding (drops entrypoint/members which are execution concepts).
+ */
+export interface TeamBinding {
+  scope: "campaign" | "mission";
+  scopeId: string;
+  teamId: string | null;
+}
+
+/**
+ * A team-type assignment stored in globalState (not the board).
+ * Maps a work-type (mission/bug/campaign) within a scope entity to a team.
+ */
+export interface TeamTypeAssignment {
+  scope: "project" | "campaign" | "mission";
+  scopeId: string;
+  workType: "mission" | "bug" | "campaign";
+  teamId: string | null;
+}
+
+/** Disk-synthesised doc link or attached file — returned by the board-backed doc routes. */
+export interface DocLink {
+  id: string;
+  kind: "link" | "file";
+  target: string;
+  label: string;
+  createdAt: number;
+}
+
+/** On-disk file entry in a campaign/mission folder. */
+export interface DocFile {
+  name: string;
+  kind: "file" | "dir";
+  size: number;
+  mtime: number;
+}
+
+/** Docs payload returned by campaign:docs and mission:docs. */
+export interface DocsResult {
+  files: DocFile[];
+  links: DocLink[];
+  attachedFiles: DocLink[];
+}
+
+/**
+ * A board-line mission proposal — a `## Missions` bullet that may or may not have a folder yet.
+ * Returned by campaign:missions:sync so the UI can show what can be created.
+ */
+export interface MissionProposal {
+  title: string;
+  description: string;
+  exists: boolean;
+}
+
+/**
+ * Campaign summary returned by campaign:get — board-backed, no DB.
+ * Matches the daemon's CampaignSummary shape exactly so the webview can treat both identically.
+ */
+export interface CampaignSummary {
+  campaignId: string;
+  name: string;
+  isDefault: boolean;
+  /** Per-exact-status counts (e.g. "executing", "awaitingApproval", "done", "draft", "failed", "cancelled"). */
+  counts: Record<string, number>;
+  rollupStatus: "draft" | "active" | "failed" | "completed" | "cancelled";
+  total: number;
+  active: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+  draft: number;
+}
+
+// ── Argument schemas (validated at the host boundary). projectId omitted unless the
+//    handler actually reads it (project:open). Unknown keys (e.g. an injected projectId)
+//    are stripped by z.object by default and harmlessly ignored. ──
+export const rpcArgs = {
+  // project / appRuntime
+  "project:list": z.object({}),
+  "project:open": z.object({ projectId: z.string() }),
+  // dialogs
+  "dialog:openFiles": z.object({}),
+  "dialog:openFolder": z.object({}),
+  // customizations
+  "customizations:list": z.object({}),
+  "customizations:readFile": z.object({ path: z.string() }),
+  "customizations:writeFile": z.object({ path: z.string(), content: z.string() }),
+  "customizations:add": z.object({ input: z.unknown() }),
+  // settings (minimal: appearance backed; providers/permissions canned)
+  "settings:getAppearance": z.object({}),
+  "settings:setAppearance": z.object({ value: z.unknown() }),
+  "settings:listProviders": z.object({}),
+  "settings:getPermissions": z.object({}),
+  "settings:agentSelectorFlags": z.object({}),
+  // campaigns
+  "campaign:list": z.object({}),
+  "campaign:create": z.object({ name: z.string() }),
+  "campaign:get": z.object({ campaignId: z.string() }),
+  "campaign:update": z.object({
+    campaignId: z.string(),
+    description: z.string().optional(), acceptanceCriteria: z.string().optional(), target: z.string().optional(),
+  }),
+  "campaign:setStatus": z.object({ campaignId: z.string(), status: z.string() }),
+  "campaign:docs": z.object({ campaignId: z.string() }),
+  "campaign:docs:createFile": z.object({ campaignId: z.string(), name: z.string() }),
+  "campaign:docs:addLink": z.object({ campaignId: z.string(), url: z.string(), title: z.string().optional() }),
+  "campaign:docs:removeLink": z.object({ campaignId: z.string(), target: z.string() }),
+  "campaign:docs:addFile": z.object({ campaignId: z.string(), path: z.string(), label: z.string().optional() }),
+  "campaign:delete": z.object({ campaignId: z.string() }),
+  "campaign:missions:sync": z.object({ campaignId: z.string() }),
+  "campaign:missions:create": z.object({
+    campaignId: z.string(),
+    missions: z.array(z.object({ title: z.string(), description: z.string().optional() })),
+  }),
+  // missions
+  "mission:delete": z.object({ missionId: z.string() }),
+  "mission:list": z.object({ campaignId: z.string() }),
+  "mission:get": z.object({ missionId: z.string() }),
+  "mission:update": z.object({
+    missionId: z.string(), description: z.string().optional(), acceptanceCriteria: z.string().optional(),
+  }),
+  "mission:setStatus": z.object({ missionId: z.string(), status: z.string() }),
+  "mission:syncTasks": z.object({ missionId: z.string() }),
+  "mission:docs": z.object({ missionId: z.string() }),
+  "mission:docs:addLink": z.object({ missionId: z.string(), url: z.string(), title: z.string().optional() }),
+  "mission:docs:removeLink": z.object({ missionId: z.string(), target: z.string() }),
+  "mission:docs:addFile": z.object({ missionId: z.string(), path: z.string(), label: z.string().optional() }),
+  // tasks
+  "task:get": z.object({ taskId: z.string() }),
+  "task:list": z.object({ missionId: z.string() }),
+  "task:create": z.object({ missionId: z.string(), name: z.string() }),
+  "task:update": z.object({
+    taskId: z.string(), description: z.string().optional(), acceptanceCriteria: z.string().optional(),
+  }),
+  "task:setStatus": z.object({ taskId: z.string(), status: z.string() }),
+  "task:delete": z.object({ taskId: z.string() }),
+  // bugs
+  "bug:get": z.object({ bugId: z.string() }),
+  "bug:list": z.object({ campaignId: z.string().optional(), missionId: z.string().optional() }),
+  "bug:create": z.object({
+    title: z.string(),
+    severity: z.enum(["blocker", "critical", "major", "minor", "trivial"]).optional(),
+    campaignId: z.string().optional(), missionId: z.string().optional(),
+  }),
+  "bug:update": z.object({
+    bugId: z.string(),
+    title: z.string().optional(),
+    severity: z.enum(["blocker", "critical", "major", "minor", "trivial"]).optional(),
+    description: z.string().optional(), stepsToReproduce: z.string().optional(),
+    expected: z.string().optional(), actual: z.string().optional(),
+    rca: z.string().optional(), environment: z.string().optional(),
+  }),
+  "bug:setStatus": z.object({ bugId: z.string(), status: z.string() }),
+  "bug:delete": z.object({ bugId: z.string() }),
+  "bug:sync": z.object({ campaignId: z.string().optional(), missionId: z.string().optional() }),
+  // teams
+  "teams:list": z.object({}),
+  "campaign:setTeam": z.object({ campaignId: z.string(), teamId: z.string().nullable() }),
+  "mission:setTeam": z.object({ missionId: z.string(), teamId: z.string().nullable() }),
+  "team:getBinding": z.object({ scope: z.enum(["campaign", "mission"]), scopeId: z.string() }),
+  "team:setBinding": z.object({ binding: z.object({
+    scope: z.enum(["campaign", "mission"]), scopeId: z.string(), teamId: z.string().nullable(),
+  }) }),
+  "team:assign": z.object({
+    scope: z.enum(["project", "campaign", "mission"]), scopeId: z.string(),
+    workType: z.enum(["mission", "bug", "campaign"]), teamId: z.string().nullable(),
+  }),
+  "team:assignments": z.object({}),
+} satisfies Record<string, z.ZodType>;
+
+/** A single project entry returned by project:list (workspace = the open folder). */
+export interface ProjectRecord {
+  id: string;
+  name: string;
+}
+
+// ── Result types (compile-time only; sourced from our own daemon) ──
+export interface RpcResults {
+  "project:list": ProjectRecord[];
+  "project:open": { ok: true };
+  "dialog:openFiles": string[];
+  "dialog:openFolder": string | null;
+  "customizations:list": CustomizationItem[];
+  "customizations:readFile": { text: string; editable: boolean };
+  "customizations:writeFile": { ok: true };
+  "customizations:add": { path: string };
+  "settings:getAppearance": Appearance;
+  "settings:setAppearance": { ok: true };
+  "settings:listProviders": { rows: never[]; registryStale: boolean };
+  "settings:getPermissions": { defaultApprovalMode: string | null };
+  "settings:agentSelectorFlags": Record<string, boolean>;
+  "campaign:list": Campaign[];
+  "campaign:create": Campaign;
+  "campaign:get": { campaign: Campaign | null; summary: CampaignSummary | null };
+  "campaign:update": { ok: true };
+  "campaign:setStatus": { ok: true };
+  "campaign:docs": DocsResult;
+  "campaign:docs:createFile": { path: string };
+  "campaign:docs:addLink": DocLink;
+  "campaign:docs:removeLink": { ok: true };
+  "campaign:docs:addFile": DocLink;
+  "campaign:delete": { ok: true };
+  "campaign:missions:sync": { proposals: MissionProposal[] };
+  "campaign:missions:create": { created: number };
+  "mission:delete": { ok: true };
+  "mission:list": Mission[];
+  "mission:get": Mission | null;
+  "mission:update": { ok: true };
+  "mission:setStatus": { ok: true };
+  "mission:syncTasks": { created: number };
+  "mission:docs": DocsResult;
+  "mission:docs:addLink": DocLink;
+  "mission:docs:removeLink": { ok: true };
+  "mission:docs:addFile": DocLink;
+  "task:get": Task | null;
+  "task:list": Task[];
+  "task:create": Task;
+  "task:update": { ok: true };
+  "task:setStatus": { ok: true };
+  "task:delete": { ok: true };
+  "bug:get": Bug | null;
+  "bug:list": Bug[];
+  "bug:create": Bug;
+  "bug:update": { ok: true };
+  "bug:setStatus": { ok: true };
+  "bug:delete": { ok: true };
+  "bug:sync": { created: number };
+  // teams — board-backed (no execution concepts)
+  "teams:list": TeamEntry[];
+  "campaign:setTeam": { ok: true };
+  "mission:setTeam": { ok: true };
+  "team:getBinding": TeamBinding | null;
+  "team:setBinding": { ok: true };
+  "team:assign": { ok: true };
+  "team:assignments": TeamTypeAssignment[];
+}
+
+export type RpcMethod = keyof typeof rpcArgs & keyof RpcResults;
+export type RpcArgsOf<M extends keyof typeof rpcArgs> = z.infer<(typeof rpcArgs)[M]>;
+export type RpcResultOf<M extends keyof RpcResults> = RpcResults[M];
+
+// Compile-time drift guard: the two key sets must be identical. If a method is added to one
+// but not the other, one of these conditional types resolves to `never` and assigning `true`
+// fails to compile.
+type ArgKeys = keyof typeof rpcArgs;
+type ResKeys = keyof RpcResults;
+type _ArgsSubsetOfResults = [ArgKeys] extends [ResKeys] ? true : never;
+type _ResultsSubsetOfArgs = [ResKeys] extends [ArgKeys] ? true : never;
+const _assertArgsSubset: _ArgsSubsetOfResults = true;
+const _assertResultsSubset: _ResultsSubsetOfArgs = true;
+void _assertArgsSubset;
+void _assertResultsSubset;

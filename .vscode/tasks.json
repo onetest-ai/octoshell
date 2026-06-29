@@ -1,0 +1,39 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "octoshell: build extension",
+      "detail": "Build all packages + the VS Code extension (host + webview) before launching.",
+      "type": "shell",
+      "command": "pnpm build",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    },
+    {
+      "label": "octoshell: watch extension",
+      "detail": "Rebuild the extension host + webview on change (run this, then F5 with no preLaunchTask, and Cmd+R the dev host to reload).",
+      "dependsOn": ["octoshell: watch host", "octoshell: watch webview"],
+      "problemMatcher": []
+    },
+    {
+      "label": "octoshell: watch host",
+      "type": "shell",
+      "command": "pnpm --filter @octoshell/vscode-extension watch:host",
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "group": "octoshell-watch" }
+    },
+    {
+      "label": "octoshell: watch webview",
+      "type": "shell",
+      "command": "pnpm --filter @octoshell/vscode-extension watch:webview",
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "group": "octoshell-watch" }
+    }
+  ]
+}

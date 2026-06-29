@@ -1,0 +1,174 @@
+/*
+ * VSCode-faithful design tokens.
+ * Names follow the pattern --ds-<role>-<element>[-<state>].
+ * Color values mirror VSCode's "Dark Modern" and "Light Modern" themes.
+ */
+
+:root,
+[data-theme="dark"] {
+  --ds-bg-app: #1F1F1F;
+  --ds-bg-sidebar: #181818;
+  --ds-bg-panel: #181818;
+  --ds-bg-statusbar: #181818;
+  --ds-bg-titlebar: #181818;
+  --ds-bg-list-hover: #2A2D2E;
+  --ds-bg-list-active: #04395E;
+  --ds-bg-list-active-inactive: #37373D;
+  --ds-bg-input: #313131;
+  --ds-bg-input-disabled: #292929;
+  --ds-bg-badge: #1F1F1F;
+  --ds-bg-button: #0E639C;
+  --ds-bg-button-hover: #1177BB;
+  --ds-bg-button-secondary: #313131;
+  --ds-bg-button-secondary-hover: #3C3C3C;
+  --ds-bg-tooltip: #1F1F1F;
+  --ds-bg-canvas: #1F1F1F;
+  --ds-bg-codeblock: #1B1B1B;
+
+  --ds-fg-app: #CCCCCC;
+  --ds-fg-sidebar: #CCCCCC;
+  --ds-fg-list-active: #FFFFFF;
+  --ds-fg-muted: #9D9D9D;
+  --ds-fg-disabled: #555555;
+  --ds-fg-link: #4DAAFC;
+  --ds-fg-button: #FFFFFF;
+  --ds-fg-badge: #CCCCCC;
+  --ds-fg-input: #CCCCCC;
+  --ds-fg-tooltip: #CCCCCC;
+
+  --ds-border: #2B2B2B;
+  --ds-border-input: #3C3C3C;
+  --ds-border-panel: #2B2B2B;
+  --ds-focus: #0078D4;
+
+  --ds-status-info: #3794FF;
+  --ds-status-warning: #CCA700;
+  --ds-status-error: #F14C4C;
+  --ds-status-success: #89D185;
+
+  --ds-mission-draft: #9D9D9D;
+  --ds-mission-executing: #4EC9B0; /* lively teal-green; pulses while running (see StatusPill) */
+  --ds-mission-awaiting: #E0823D; /* orange — needs user attention */
+  --ds-mission-done: #89D185;
+  --ds-mission-failed: #F14C4C;
+  --ds-mission-cancelled: #6E7681;
+
+  /* Git decorations (VSCode SCM colours) */
+  --ds-git-added: #73C991;
+  --ds-git-modified: #E2C08D;
+  --ds-git-deleted: #C74E39;
+}
+
+[data-theme="light"] {
+  --ds-bg-app: #FFFFFF;
+  --ds-bg-sidebar: #F8F8F8;
+  --ds-bg-panel: #F8F8F8;
+  --ds-bg-statusbar: #F8F8F8;
+  --ds-bg-titlebar: #F8F8F8;
+  --ds-bg-list-hover: #E8E8E8;
+  --ds-bg-list-active: #0060C0;
+  --ds-bg-list-active-inactive: #E4E6F1;
+  --ds-bg-input: #FFFFFF;
+  --ds-bg-input-disabled: #F1F1F1;
+  --ds-bg-badge: #CCCEDB;
+  --ds-bg-button: #005FB8;
+  --ds-bg-button-hover: #0258A8;
+  --ds-bg-button-secondary: #E5E5E5;
+  --ds-bg-button-secondary-hover: #CCCEDB;
+  --ds-bg-tooltip: #F8F8F8;
+  --ds-bg-canvas: #FFFFFF;
+  --ds-bg-codeblock: #F3F3F3;
+
+  --ds-fg-app: #3B3B3B;
+  --ds-fg-sidebar: #3B3B3B;
+  --ds-fg-list-active: #FFFFFF;
+  --ds-fg-muted: #61656E;
+  --ds-fg-disabled: #ACACAC;
+  --ds-fg-link: #005FB8;
+  --ds-fg-button: #FFFFFF;
+  --ds-fg-badge: #3B3B3B;
+  --ds-fg-input: #3B3B3B;
+  --ds-fg-tooltip: #3B3B3B;
+
+  --ds-border: #E5E5E5;
+  --ds-border-input: #CECECE;
+  --ds-border-panel: #E5E5E5;
+  --ds-focus: #005FB8;
+
+  --ds-status-info: #005FB8;
+  --ds-status-warning: #BF8803;
+  --ds-status-error: #E51400;
+  --ds-status-success: #1A7F37;
+
+  --ds-mission-draft: #61656E;
+  --ds-mission-executing: #1A8870; /* lively teal-green; pulses while running (see StatusPill) */
+  --ds-mission-awaiting: #BC5C1E; /* orange — needs user attention */
+  --ds-mission-done: #1A7F37;
+  --ds-mission-failed: #E51400;
+  --ds-mission-cancelled: #6E7681;
+
+  /* Git decorations (VSCode SCM colours, light) */
+  --ds-git-added: #587C0C;
+  --ds-git-modified: #895503;
+  --ds-git-deleted: #AD0707;
+}
+
+:root {
+  /* Type */
+  --ds-font-family-ui: "-apple-system", BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Ubuntu", "Droid Sans", sans-serif;
+  --ds-font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --ds-font-size-base: 13px;
+  --ds-font-size-sm: 12px;
+  --ds-font-size-xs: 11px;
+  --ds-font-size-code: 12px;
+  --ds-line-height-base: 1.4;
+
+  /* Space (compact, VSCode density) */
+  --ds-space-0: 0;
+  --ds-space-1: 2px;
+  --ds-space-2: 4px;
+  --ds-space-3: 6px;
+  --ds-space-4: 8px;
+  --ds-space-5: 10px;
+  --ds-space-6: 12px;
+  --ds-space-8: 16px;
+  --ds-space-10: 20px;
+  --ds-space-12: 24px;
+
+  /* Density */
+  --ds-row-h: 22px;
+  --ds-row-h-compact: 20px;
+  --ds-icon-sm: 14px;
+  --ds-icon: 16px;
+  --ds-icon-lg: 20px;
+
+  /* Motion */
+  --ds-dur-fast: 80ms;
+  --ds-dur-base: 160ms;
+  --ds-dur-slow: 240ms;
+  --ds-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ds-ease-emphasized: cubic-bezier(0.3, 0, 0.8, 0.15);
+
+  /* Radii */
+  --ds-radius-sm: 2px;
+  --ds-radius: 3px;
+  --ds-radius-lg: 4px;
+
+  /* Z-index */
+  --ds-z-base: 1;
+  --ds-z-dropdown: 100;
+  --ds-z-tooltip: 200;
+  --ds-z-context-menu: 300;
+  --ds-z-modal: 400;
+  --ds-z-toast: 500;
+}
+
+html, body {
+  background: var(--ds-bg-app);
+  color: var(--ds-fg-app);
+  font-family: var(--ds-font-family-ui);
+  font-size: var(--ds-font-size-base);
+  line-height: var(--ds-line-height-base);
+  margin: 0;
+  padding: 0;
+}

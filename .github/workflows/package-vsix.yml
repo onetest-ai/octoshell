@@ -1,0 +1,23 @@
+name: Package VSIX
+# Manual-only: build an installable .vsix (NOT publishing) and upload it as a downloadable
+# artifact. Run it from the Actions tab -> "Package VSIX" -> "Run workflow".
+on:
+  workflow_dispatch:
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.7.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: "pnpm" }
+      - run: pnpm install --frozen-lockfile
+      # Build all workspace packages' dist/ (the extension esbuild bundle resolves @octoshell/* from them).
+      - run: pnpm build
+      - run: pnpm --filter @octoshell/vscode-extension package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: octoshell-vsix
+          path: apps/vscode-extension/*.vsix
+          if-no-files-found: error

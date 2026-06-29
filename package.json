@@ -1,0 +1,35 @@
+{
+  "name": "octoshell",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/onetest-ai/octoshell.git"
+  },
+  "bugs": {
+    "url": "https://github.com/onetest-ai/octoshell/issues"
+  },
+  "homepage": "https://github.com/onetest-ai/octoshell#readme",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "packageManager": "pnpm@9.7.0",
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.8.0",
+    "@vitest/coverage-v8": "2.0.5",
+    "eslint": "9.8.0",
+    "prettier": "3.3.3",
+    "turbo": "2.0.6",
+    "typescript": "5.5.4",
+    "typescript-eslint": "^8.60.0",
+    "vitest": "2.0.5"
+  }
+}
