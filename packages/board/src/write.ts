@@ -330,7 +330,7 @@ export function removeDocument(root: string, kind: EntityKind, id: string, targe
  * Folder-trash is the authoritative signal for "entity removed": the delete functions
  * (deleteTask, deleteBug, deleteMission, deleteCampaign) return this value directly.
  *
- * Ported from `.claude/skills/octobots/scripts/delete-task.js:77-91`; the walk-up is replaced
+ * Ported from `.claude/skills/mission-planner/scripts/delete-task.js:77-91`; the walk-up is replaced
  * by the explicit `octobots` root since the library already has it as a parameter.
  */
 export function trashFolder(folder: string, octobots?: string): boolean {

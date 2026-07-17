@@ -17,8 +17,8 @@ import { BoardModel } from "../src/board-model.js";
 // Absolute path to the canonical (in-repo) skill scripts — the source of truth the extension
 // installs into a workspace's .claude/. Resolve against the repo so the test is hermetic and does
 // not depend on the pack being installed on the machine.
-// From packages/board/test → ../../../apps/vscode-extension/resources/octobots-pack/skill/octobots/scripts
-const SCRIPTS = resolve(__dirname, "../../../apps/vscode-extension/resources/octobots-pack/skill/octobots/scripts");
+// From packages/board/test → ../../../apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts
+const SCRIPTS = resolve(__dirname, "../../../apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts");
 
 function runScript(name: string, args: string[], cwd: string): string {
   return execFileSync("node", [join(SCRIPTS, name), ...args], {

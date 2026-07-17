@@ -1,4 +1,4 @@
-import { readFileSync, mkdtempSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, existsSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, it, expect } from "vitest";
@@ -7,6 +7,7 @@ import {
   requiredSkillsForAgent,
   OCTOBOTS_PACK_VERSION,
   OCTOBOTS_AGENTS,
+  OCTOBOTS_SKILLS,
   installPack,
   packStatus,
 } from "../src/host/octobots-skill.js";
@@ -21,21 +22,28 @@ describe("octobots-skill helpers", () => {
     expect(parseVersion("no frontmatter")).toBeNull();
   });
 
-  it("every managed agent requires the octobots skill", () => {
-    expect(requiredSkillsForAgent("scout")).toContain("octobots");
-    expect(requiredSkillsForAgent("any-agent")).toContain("octobots");
+  it("every managed agent requires both pack skills", () => {
+    for (const agent of ["scout", "any-agent"]) {
+      expect(requiredSkillsForAgent(agent)).toContain("mission-planner");
+      expect(requiredSkillsForAgent(agent)).toContain("mission-execution");
+    }
   });
 
-  it("bundles no dedicated planning agents — planning lives in the octobots skill", () => {
+  it("bundles no dedicated planning agents — planning lives in the mission-planner skill", () => {
     expect(OCTOBOTS_AGENTS).toEqual([]);
   });
 });
 
 describe("bundled pack payloads", () => {
-  it("the skill carries a version matching the pack constant", () => {
-    const skill = readFileSync(join(PACK_SRC, "skill", "octobots", "SKILL.md"), "utf8");
-    expect(skill).toMatch(/^name:\s*octobots\s*$/m);
+  it.each(OCTOBOTS_SKILLS)("%s carries a matching name + pack version", (name) => {
+    const skill = readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
+    expect(skill).toMatch(new RegExp(`^name:\\s*${name}\\s*$`, "m"));
     expect(parseVersion(skill)).toBe(OCTOBOTS_PACK_VERSION);
+  });
+
+  it.each(OCTOBOTS_SKILLS)("%s describes when to use it, not what it does", (name) => {
+    const skill = readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
+    expect(skill).toMatch(/^description: Use when /m);
   });
 });
 
@@ -45,24 +53,45 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
     expect(packStatus(repo).installed).toBe(false);
 
     const res = installPack(PACK_SRC, repo);
-    expect(res.written).toBeGreaterThanOrEqual(8); // SKILL.md + 6 scripts + package.json (skill only)
+    expect(res.written).toBeGreaterThanOrEqual(9); // 2 SKILL.md + 6 scripts + package.json
 
-    expect(existsSync(join(repo, ".claude", "skills", "octobots", "SKILL.md"))).toBe(true);
-    expect(existsSync(join(repo, ".claude", "skills", "octobots", "scripts", "validate.js"))).toBe(true);
+    for (const name of OCTOBOTS_SKILLS) {
+      expect(existsSync(join(repo, ".claude", "skills", name, "SKILL.md"))).toBe(true);
+    }
+    expect(existsSync(join(repo, ".claude", "skills", "mission-planner", "scripts", "validate.js"))).toBe(true);
 
     const st = packStatus(repo);
     expect(st.installed).toBe(true);
     expect(st.upToDate).toBe(true);
   });
 
-  it("reports not-installed when the skill payload has no version field", () => {
+  it("removes the retired `octobots` skill dir a pre-rename pack left behind", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const stale = join(repo, ".claude", "skills", "octobots");
+    mkdirSync(join(stale, "scripts"), { recursive: true });
+    writeFileSync(join(stale, "SKILL.md"), "---\nname: octobots\nversion: 18\n---\nold");
+
+    installPack(PACK_SRC, repo);
+
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(join(repo, ".claude", "skills", "mission-planner", "SKILL.md"))).toBe(true);
+  });
+
+  it.each(OCTOBOTS_SKILLS)("reports not-installed when %s has no version field", (name) => {
     const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
     installPack(PACK_SRC, repo);
-    // Corrupt the skill payload by stripping its frontmatter version.
-    writeFileSync(join(repo, ".claude", "skills", "octobots", "SKILL.md"), "---\nname: octobots\n---\nbody");
+    // Corrupt one skill payload by stripping its frontmatter version.
+    writeFileSync(join(repo, ".claude", "skills", name, "SKILL.md"), `---\nname: ${name}\n---\nbody`);
     const st = packStatus(repo);
     expect(st.installed).toBe(false);
     expect(st.upToDate).toBe(false);
+  });
+
+  it.each(OCTOBOTS_SKILLS)("reports not-installed when %s is missing entirely", (name) => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    rmSync(join(repo, ".claude", "skills", name), { recursive: true, force: true });
+    expect(packStatus(repo).installed).toBe(false);
   });
 
   it("reports not-up-to-date when an installed payload is older", () => {

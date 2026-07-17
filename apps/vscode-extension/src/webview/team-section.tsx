@@ -117,8 +117,8 @@ export function TeamSection({ scope, scopeId, rpc, campaignId }: Props): JSX.Ele
       <section>
         <h2 className="text-sm uppercase text-fg-muted mb-2">Team</h2>
         <div className="text-sm text-fg-muted">
-          No teams installed — ask the <code>octobots</code> skill to create a team (see its Teams section in{" "}
-          <code>.claude/skills/octobots/SKILL.md</code>).
+          No teams installed — ask the <code>mission-planner</code> skill to create a team (see its Teams
+          section in <code>.claude/skills/mission-planner/SKILL.md</code>).
         </div>
       </section>
     );
