@@ -16,6 +16,22 @@ only on green — with a live E2E at the end that catches defects the green unit
 **Use this when:** executing a mission's tasks (plan exists, criteria set). **Don't** use it for a
 trivial one-off edit — that's just an edit.
 
+## Branch topology
+
+Branches nest the way the board does (campaign → mission → task), so integration happens in stages
+and `main` only ever sees a whole, verified campaign:
+
+- **Campaign → a feature branch** off `main` (`campaign/<slug>`) — the integration point for its
+  missions; nothing reaches `main` until the campaign is done.
+- **Mission → a branch off the campaign branch** (`mission/<slug>`) — its tasks integrate here, the
+  **mission-level E2E runs here**, and it merges (PR) into the campaign branch only when green.
+- **Task → a branch off the mission branch** — the per-task loop below builds it and merges its PR
+  back into the **mission branch**, never straight to `main`.
+
+So throughout the loop the **base is the mission branch**: cut each task branch off it, diff/review
+against it, merge back to it, and sit the tree on it between tasks. The campaign branch merges to
+`main` once, at the end, after every mission has landed and the campaign-level criteria re-verify.
+
 ## The per-task loop (one dynamic Workflow per task)
 
 Run **one `Workflow` per task**, structured as phases with structured-output (`schema`) handoffs:
@@ -26,8 +42,9 @@ Run **one `Workflow` per task**, structured as phases with structured-output (`s
    **sequentially in one branch** (backend → frontend), never two workflows on the shared tree.
 3. **QA** — `qa-engineer` (Sage) runs the real suites + lint and checks each acceptance criterion.
    Bounded **fix loop** (≤2 Sage→dev→Sage retries) until `passed:true`.
-4. **Review** — `tech-lead` reviews the full `git diff main...HEAD` with a **security lens** on anything
-   touching untrusted input / auth; returns blocking vs nits; one fix round if blocking.
+4. **Review** — `tech-lead` reviews the full task diff against the base (`git diff <mission-branch>...HEAD`)
+   with a **security lens** on anything touching untrusted input / auth; returns blocking vs nits; one
+   fix round if blocking.
 5. **PR** — open the PR; **scoped staging only** (`git add <your paths>`, NEVER `git add -A`/`.`);
    check off the satisfied acceptance criteria on the task board; do NOT merge here.
 6. **Review gate + merge** — the gate is the in-house **tech-lead whole-branch review** (step 4's
@@ -49,14 +66,15 @@ template for the next (Plan/Implement/QA/Review/PR/merge).
   concurrent `git checkout -b` in one working tree corrupts state. For genuinely parallel work, a
   separate **git worktree** — not a second workflow in the same tree.
 - **Board git only between tasks.** Only touch `.octobots/` (status flips, criteria) when the tree is
-  on `main` with **no workflow running** — never mid-workflow (it lands on the task branch).
+  on the mission branch (the task base) with **no workflow running** — never mid-workflow (it lands on
+  the task branch).
 - **Acceptance-criteria-driven.** Every task carries ≥1 checkable criterion (set at plan time); the
   workflow checks them off; the live E2E re-verifies the mission-level criteria.
 - **Extensive testing.** TDD; full suites + the project's linters + type-checks green before PR; **a
   regression test for every bug and every review-gate finding** (the test that would have caught it).
 - **Trust-but-verify the merge.** The gate auto-merges on green, but for **substantive** review-gate
-  findings, verify the fix in the **merged `main` code** afterward — a green QA proves the tests pass,
-  not that the specific concern was actually addressed.
+  findings, verify the fix in the **merged mission-branch code** afterward — a green QA proves the tests
+  pass, not that the specific concern was actually addressed.
 - **Reuse-first; don't overcomplicate.** Prefer parameterizing/extending existing machinery over
   standing up a parallel system.
 - **Design-first for non-trivial work.** A short design note (tech-lead, as its own gating task/PR —
@@ -82,8 +100,8 @@ template for the next (Plan/Implement/QA/Review/PR/merge).
   hand (and risk deleting real files while cleaning up).
 - **Push the plan/board baseline before cutting the first task branch.** A locally-committed-but-unpushed
   plan gets absorbed into the first task's squash-merge, forcing a divergence-reconciliation dance. Push
-  it (and push each between-task board status flip) so task branches cut cleanly off `origin/main` and
-  local `main` fast-forwards trivially.
+  it (and push each between-task board status flip) so task branches cut cleanly off the pushed mission
+  branch and it fast-forwards trivially.
 - **Scoped staging, always.** `git add <exact paths>` / `git commit -- <paths>`, never `git add -A`/`.` —
   the shared tree may hold unrelated pre-existing edits (or another agent's work) that a bare add sweeps in.
 
@@ -98,6 +116,11 @@ template for the next (Plan/Implement/QA/Review/PR/merge).
   inspected. Prefer the static gate when a mission has many build tasks that would each otherwise need the
   full stack stood up. In live QA, QA verifies against the **spec (BA + tech-lead), black-box — not by
   reading the implementation** (see the `qa-engineer` verification modes).
+- **Model tiering (cost/latency):** run the mechanical phases — implementation/TDD and the PR/merge
+  step — on a cheaper, faster model (e.g. `sonnet`), and keep the stronger model (e.g. `opus`) for the
+  phases where judgment pays off: the tactical **plan** and the **review gate** (with its security lens).
+  The review gate stays strong, so correctness is unaffected — this is the biggest lever when tasks slow
+  down as the codebase + test suite grow. Set it per `agent()` via the `model:` override in the script.
 
 Default that works: auto-merge-on-green + roll-straight-through + branches-in-tree + a design-gate
 checkpoint. Stop only on a blocker or a genuine product decision (use AskUserQuestion for those).
