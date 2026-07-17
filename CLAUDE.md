@@ -111,9 +111,12 @@ operations) and triggers the same reconcile.
 
 `apps/vscode-extension/resources/octobots-pack/` is shipped inside the extension and copied into a
 target workspace's `.claude/` on demand (the *Octobots: Install Workflow Pack* command, or the
-prompt on activation). It contains the `octobots` skill, planning agents (`octobots-planner`,
+prompt on activation). It contains the `mission-planner` skill (board anatomy, planning rules, and
+the `scripts/` that edit boards — named `octobots` before pack v19), the `mission-execution` skill
+(driving a planned task to a merged, verified PR), planning agents (`octobots-planner`,
 `octobots-orchestrator`), and a `hooks/primer.mjs` session hook that teaches a CLI agent how to read
-and drive the `.octobots/` board. This is product payload — keep it in sync with the board model in
+and drive the `.octobots/` board. `installPack` deletes skill dirs retired by a rename, so an
+upgraded workspace never ends up with two copies. This is product payload — keep it in sync with the board model in
 `packages/board`.
 
 ## Testing

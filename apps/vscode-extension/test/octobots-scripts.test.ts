@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const SCRIPTS = join(__dirname, "..", "resources", "octobots-pack", "skill", "octobots", "scripts");
+const SCRIPTS = join(__dirname, "..", "resources", "octobots-pack", "skill", "mission-planner", "scripts");
 function run(script: string, args: string[], cwd: string): { out: string; code: number } {
   const result = spawnSync("node", [join(SCRIPTS, script), ...args], { cwd, encoding: "utf8" });
   const out = `${result.stdout ?? ""}${result.stderr ?? ""}`;

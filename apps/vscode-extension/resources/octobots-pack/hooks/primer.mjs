@@ -1,4 +1,4 @@
-// octobots-pack-version: 18
+// octobots-pack-version: 19
 // Shared Octobots session primer. Registered as a SessionStart/compaction hook in each backend
 // (Claude/Copilot/Codex). Emits the routing primer as additionalContext in the calling backend's
 // JSON shape, but ONLY in an Octobots repo. Self-gates on .octobots/ so it is inert elsewhere.
@@ -8,7 +8,7 @@ import { join } from "node:path";
 const PRIMER = [
   "This repository is driven by **Octobots**. Work is organized as campaigns -> missions -> tasks,",
   "plus bugs - each a markdown board under `.octobots/`. Editing those boards (via the scripts in",
-  "`.claude/skills/octobots/scripts/`) is how you drive the app; there is no API.",
+  "`.claude/skills/mission-planner/scripts/`) is how you drive the app; there is no API.",
   "- Create work and **file bugs on the board**, not only in GitHub/TMS or another external tracker.",
   "- External **Epic/Story/Task/Defect** map to **campaign/mission/task/bug** - import them onto the",
   "  board, and offer to mirror board items back out.",
@@ -19,7 +19,8 @@ const PRIMER = [
   "  and FIX every problem before you finish.",
   "- **Keep statuses current** with set-status.js as you work: mark a task/bug `active` the moment you",
   "  start it and `done` as soon as its acceptance criteria pass - don't leave finished work in `draft`.",
-  "- For the full workflow, board anatomy, planning rules, and scripts, use the **octobots** skill.",
+  "- For the full workflow, board anatomy, planning rules, and scripts, use the **mission-planner**",
+  "  skill. To build a planned task through to a merged, verified PR, use **mission-execution**.",
 ].join("\n");
 
 function arg(name) {
