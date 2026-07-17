@@ -19,8 +19,16 @@ for (let i = start + 1; i < end; i++) if (/^\s*[-*]\s*\[[ xX]\]/.test(lines[i]))
 if (op === "add") {
   const text = (arg ?? "").trim();
   if (!text) { console.error("set-criterion add: missing text"); process.exit(2); }
-  const insertAt = itemIdx.length ? itemIdx[itemIdx.length - 1] + 1 : start + 1;
-  lines.splice(insertAt, 0, `- [ ] ${text}`);
+  if (itemIdx.length) {
+    lines.splice(itemIdx[itemIdx.length - 1] + 1, 0, `- [ ] ${text}`);
+  } else {
+    // First real criterion: strip a lone italic placeholder (e.g. `_(not set)_`) in the
+    // section so it doesn't linger above the item, then insert right after the heading.
+    for (let i = end - 1; i > start; i--) {
+      if (/^[ \t]*_\(.*?\)_[ \t]*$/.test(lines[i])) lines.splice(i, 1);
+    }
+    lines.splice(start + 1, 0, `- [ ] ${text}`);
+  }
 } else if (op === "check" || op === "uncheck") {
   const n = Number(arg);
   if (!Number.isInteger(n) || n < 1 || n > itemIdx.length) { console.error(`set-criterion: index out of range (1..${itemIdx.length})`); process.exit(2); }
