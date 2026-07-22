@@ -31,21 +31,41 @@ function writeJson(path: string, value: unknown): void {
 type HookEntry = { matcher?: string; hooks: { type: string; command: string; async?: boolean }[]; _octobots?: number };
 
 const CLAUDE_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/primer.mjs" --backend claude`;
+const WORK_LOG_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/work-log.mjs"`;
+const MISSION_GATE_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/mission-gate.mjs"`;
 
-function claudeEntry(event: "SessionStart" | "PreCompact", version: number): HookEntry {
+/** The Claude hook events we own. Every entry we write carries `_octobots`. */
+const CLAUDE_EVENTS = ["SessionStart", "PreCompact", "PostToolUse"] as const;
+type ClaudeEvent = (typeof CLAUDE_EVENTS)[number];
+
+function claudeEntries(event: ClaudeEvent, version: number): HookEntry[] {
+  if (event === "PostToolUse") {
+    return [
+      // The work log records which session did which task, so tokenomics
+      // attribution is a recorded fact rather than an inference from branch
+      // names. Async: nothing downstream waits on it, and it must never delay
+      // or fail the tool call.
+      { matcher: "Bash", hooks: [{ type: "command", command: WORK_LOG_CMD, async: true }], _octobots: version },
+      // The mission gate steers the agent into the blocking completion gate
+      // when a mission flips to `done`. Synchronous *by design* — it injects a
+      // directive the orchestrator must act on before proceeding, which an
+      // async hook could not do.
+      { matcher: "Bash", hooks: [{ type: "command", command: MISSION_GATE_CMD, async: false }], _octobots: version },
+    ];
+  }
   const entry: HookEntry = { hooks: [{ type: "command", command: CLAUDE_CMD, async: false }], _octobots: version };
   if (event === "SessionStart") entry.matcher = "startup|clear|compact|resume";
-  return entry;
+  return [entry];
 }
 
-/** Idempotently merge our SessionStart + PreCompact entries into <repo>/.claude/settings.json. */
+/** Idempotently merge our SessionStart + PreCompact + PostToolUse entries into <repo>/.claude/settings.json. */
 export function registerClaudeHook(repoRoot: string, version: number): void {
   const path = join(repoRoot, ".claude", "settings.json");
   const settings = readJson(path);
   const hooks = (settings.hooks ??= {}) as Record<string, HookEntry[]>;
-  for (const event of ["SessionStart", "PreCompact"] as const) {
+  for (const event of CLAUDE_EVENTS) {
     const arr = (hooks[event] ?? []).filter((e) => e._octobots === undefined); // drop our prior entries
-    arr.push(claudeEntry(event, version));
+    arr.push(...claudeEntries(event, version));
     hooks[event] = arr;
   }
   writeJson(path, settings);
@@ -56,9 +76,12 @@ export function claudeHookStatus(repoRoot: string, version: number): { present: 
   const settings = readJson(join(repoRoot, ".claude", "settings.json"));
   const hooks = (settings.hooks ?? {}) as Record<string, HookEntry[]>;
   const ours = (event: string) => (hooks[event] ?? []).filter((e) => e._octobots !== undefined);
-  const ss = ours("SessionStart"), pc = ours("PreCompact");
-  const present = ss.length > 0 && pc.length > 0;
-  const current = present && [...ss, ...pc].every((e) => e._octobots === version);
+  const mine = CLAUDE_EVENTS.map(ours);
+  // Every event we own must be present. An install predating an added event
+  // reports `present: false`, so re-running the installer repairs it rather
+  // than reporting a partial install as healthy.
+  const present = mine.every((entries) => entries.length > 0);
+  const current = present && mine.flat().every((e) => e._octobots === version);
   return { present, current };
 }
 

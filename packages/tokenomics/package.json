@@ -1,0 +1,32 @@
+{
+  "name": "@octoshell/tokenomics",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "prices": "node scripts/update-prices.mjs",
+    "prices:check": "node scripts/update-prices.mjs --check"
+  },
+  "dependencies": {
+    "@octoshell/board": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "typescript": "^5.5.0",
+    "eslint": "^9.0.0"
+  }
+}

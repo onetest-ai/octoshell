@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Campaign, Mission, Task, Bug } from "@octoshell/board";
 import type { CustomizationItem } from "@octoshell/customizations";
 import type { Appearance } from "../host/appearance-store.js";
+import type { Report as TokenomicsReport } from "@octoshell/tokenomics";
 
 /**
  * A team entry from the on-disk teams/*.json directory (no execution concepts).
@@ -109,6 +110,8 @@ export const rpcArgs = {
   "settings:listProviders": z.object({}),
   "settings:getPermissions": z.object({}),
   "settings:agentSelectorFlags": z.object({}),
+
+  "tokenomics:report": z.object({}),
   // campaigns
   "campaign:list": z.object({}),
   "campaign:create": z.object({ name: z.string() }),
@@ -194,6 +197,9 @@ export interface ProjectRecord {
 // ── Result types (compile-time only; sourced from our own daemon) ──
 export interface RpcResults {
   "project:list": ProjectRecord[];
+
+  /** Measured cost/effort per mission and task, collected from agent transcripts. */
+  "tokenomics:report": TokenomicsReport;
   "project:open": { ok: true };
   "dialog:openFiles": string[];
   "dialog:openFolder": string | null;

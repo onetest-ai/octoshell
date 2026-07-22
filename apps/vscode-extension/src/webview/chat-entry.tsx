@@ -9,6 +9,7 @@ import { CampaignView } from "./campaign-view.js";
 import { MissionView } from "./mission-view.js";
 import { TaskView } from "./task-view.js";
 import { BugView } from "./bug-view.js";
+import { TokenomicsView } from "./tokenomics-view.js";
 
 declare global {
   interface Window {
@@ -27,6 +28,7 @@ type Bound =
   | { kind: "mission"; id: string }
   | { kind: "task"; id: string }
   | { kind: "bug"; id: string }
+  | { kind: "tokenomics" }
   | { kind: "none" };
 
 export function resolveBound(
@@ -36,6 +38,8 @@ export function resolveBound(
   if (m?.kind === "mission" && m.id) return { kind: "mission", id: m.id };
   if (m?.kind === "task" && m.id) return { kind: "task", id: m.id };
   if (m?.kind === "bug" && m.id) return { kind: "bug", id: m.id };
+  // Workspace-wide, so it carries no entity id.
+  if (m?.kind === "tokenomics") return { kind: "tokenomics" };
   return { kind: "none" };
 }
 
@@ -49,13 +53,16 @@ function Root(): JSX.Element {
       if (m?.type !== "bind") return;
       const next = resolveBound(m);
       setBound(next);
-      if (next.kind !== "none") vscodeApi.setState({ kind: next.kind, id: next.id });
+      if (next.kind !== "none") {
+        vscodeApi.setState({ kind: next.kind, id: "id" in next ? next.id : undefined });
+      }
     };
     window.addEventListener("message", onMsg);
     vscodeApi.postMessage({ type: "webview-ready" });
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
+  if (bound.kind === "tokenomics") return <TokenomicsView rpc={rpc} />;
   if (bound.kind === "campaign") {
     return (
       <CampaignView

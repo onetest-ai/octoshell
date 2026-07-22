@@ -6,3 +6,37 @@
 @tailwind utilities;
 
 html, body, #root { height: 100%; margin: 0; }
+
+
+/* ---- tokenomics panel ---------------------------------------------------- */
+.tok-root { padding: 16px 20px 40px; font-size: 13px; }
+.tok-root h1 { font-size: 1.35rem; margin: 0 0 4px; }
+.tok-root h2 { font-size: 1rem; margin: 28px 0 8px; }
+.tok-sub { color: var(--vscode-descriptionForeground); margin: 0 0 16px; max-width: 70ch; }
+
+.tok-tiles { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.tok-tile {
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px; padding: 10px 14px; min-width: 120px;
+}
+.tok-tile-value { font-size: 1.4rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tok-tile-label { color: var(--vscode-descriptionForeground); font-size: 0.78rem; }
+
+.tok-table { border-collapse: collapse; width: 100%; }
+.tok-table th, .tok-table td {
+  text-align: right; padding: 5px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.tok-table th {
+  color: var(--vscode-descriptionForeground);
+  font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.tok-table th.l, .tok-table td.l { text-align: left; white-space: normal; }
+.tok-clickable { cursor: pointer; }
+.tok-clickable:hover { background: var(--vscode-list-hoverBackground); }
+/* Declared but never measured: present at zero, visibly de-emphasised. */
+.tok-dim td { opacity: 0.55; }
+.tok-nested { padding: 0 0 10px 18px; }
+.tok-findings { margin: 0; padding-left: 18px; color: var(--vscode-descriptionForeground); }
+.tok-findings li { margin-bottom: 6px; }

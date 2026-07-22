@@ -1,7 +1,7 @@
 {
   "name": "@octoshell/vscode-extension",
   "displayName": "Octobots",
-  "description": "Plan and track AI coding work as markdown boards — campaigns, missions, tasks and bugs — right inside VS Code, and install a workflow pack that teaches CLI coding agents (Claude Code, Codex, Copilot) to drive them.",
+  "description": "Plan and track AI coding work as markdown boards \u2014 campaigns, missions, tasks and bugs \u2014 right inside VS Code, and install a workflow pack that teaches CLI coding agents (Claude Code, Codex, Copilot) to drive them.",
   "version": "0.0.33",
   "private": true,
   "license": "Apache-2.0",
@@ -152,6 +152,16 @@
       {
         "command": "octoshell.installOctobotsWorkflowSkill",
         "title": "Octobots: Install Workflow Pack"
+      },
+      {
+        "command": "octoshell.openTokenomics",
+        "title": "Octobots: Tokenomics",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "octoshell.exportTokenomicsReport",
+        "title": "Octobots: Export Tokenomics Report",
+        "icon": "$(export)"
       }
     ],
     "viewsContainers": {
@@ -267,8 +277,9 @@
     "package": "node scripts/package-vsix.mjs"
   },
   "dependencies": {
-    "@octoshell/customizations": "workspace:*",
     "@octoshell/board": "workspace:*",
+    "@octoshell/customizations": "workspace:*",
+    "@octoshell/tokenomics": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

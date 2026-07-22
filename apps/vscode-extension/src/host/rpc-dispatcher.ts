@@ -4,6 +4,7 @@ import type { CustomizationsIo } from "./customizations-io.js";
 import type { AppearanceStore } from "./appearance-store.js";
 import { readAgentSelectorFlags } from "./agent-selector-flags.js";
 import { basename } from "node:path";
+import { ClaudeTranscriptSource, rollup } from "@octoshell/tokenomics";
 import { rpcArgs, type RpcMethod, type RpcArgsOf, type RpcResultOf } from "../protocol/index.js";
 
 export interface DispatchCtx {
@@ -38,6 +39,17 @@ function okStatus(ok: boolean, status: string): { ok: true } {
 
 const handlers: { [M in RpcMethod]: RpcHandler<M> } = {
   "project:list": (_a, c) => [{ id: "workspace", name: basename(c.workspaceFolderPath) }],
+
+  // Reads transcripts off disk and prices them. Deliberately computed on demand
+  // rather than cached: the board and the transcripts both move underneath us,
+  // and a stale cost number is worse than a slightly slow one.
+  "tokenomics:report": (_a, c) =>
+    rollup({
+      repoRoot: c.workspaceFolderPath,
+      artifactsRoot: c.board.artifactsRoot,
+      board: c.board.boardModel,
+      source: new ClaudeTranscriptSource(c.workspaceFolderPath),
+    }),
   "project:open": (_a, _c) => ({ ok: true }),
   "dialog:openFiles": (_a, c) => c.dialog.openFiles(),
   "dialog:openFolder": (_a, c) => (c.dialog.openFolder ? c.dialog.openFolder() : null),
