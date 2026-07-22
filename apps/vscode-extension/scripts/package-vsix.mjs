@@ -16,14 +16,20 @@ import { dirname, join } from "node:path";
 const extDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const run = (cmd, args) => execFileSync(cmd, args, { cwd: extDir, stdio: "inherit" });
 
-// 1. Clean stale webview assets (vite does not empty media/ between builds) so the vsix only
+// 1. Refresh the cached model prices so every release ships current rates. The
+//    table is compiled into the bundle (never fetched at runtime), so this is
+//    the only point at which it can be updated. Non-fatal by design: a network
+//    failure leaves the cached table in place rather than breaking packaging.
+run("node", [join(extDir, "..", "..", "packages", "tokenomics", "scripts", "update-prices.mjs")]);
+
+// 2. Clean stale webview assets (vite does not empty media/ between builds) so the vsix only
 //    contains the current bundle, then rebuild fresh.
 rmSync(join(extDir, "media", "assets"), { recursive: true, force: true });
 rmSync(join(extDir, "media", "index.html"), { force: true });
 run("node", ["esbuild.mjs"]);
 run("npx", ["--yes", "vite", "build"]);
 
-// 2. Package with a temporary, vsce-valid manifest overlay.
+// 3. Package with a temporary, vsce-valid manifest overlay.
 const pkgPath = join(extDir, "package.json");
 const original = readFileSync(pkgPath, "utf8");
 const pkg = JSON.parse(original);

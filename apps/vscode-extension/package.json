@@ -157,6 +157,11 @@
         "command": "octoshell.openTokenomics",
         "title": "Octobots: Tokenomics",
         "icon": "$(graph)"
+      },
+      {
+        "command": "octoshell.exportTokenomicsReport",
+        "title": "Octobots: Export Tokenomics Report",
+        "icon": "$(export)"
       }
     ],
     "viewsContainers": {

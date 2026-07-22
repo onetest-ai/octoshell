@@ -6,6 +6,7 @@ import { CustomizationsIo } from "./host/customizations-io.js";
 import { AppearanceStore } from "./host/appearance-store.js";
 import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE } from "./host/entity-panel-manager.js";
 import { TokenomicsPanel } from "./host/tokenomics-panel.js";
+import { renderReportHtml, type Report as TokenomicsReport } from "@octoshell/tokenomics";
 import { CustomizationsTree } from "./host/customizations-tree.js";
 import { CampaignsTree } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
@@ -146,6 +147,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     campaignsView,
     vscode.commands.registerCommand("octoshell.openTokenomics", () => tokenomicsPanel.open()),
+    vscode.commands.registerCommand("octoshell.exportTokenomicsReport", async () => {
+      // The export is the artefact a cost submission attaches, so it is written
+      // where the user chooses rather than buried in the workspace.
+      const report = (await dispatch("tokenomics:report", {}, dispatchCtx)) as TokenomicsReport;
+      if (report.runs.length === 0) {
+        void vscode.window.showWarningMessage(
+          "Octobots: nothing measured yet — no missions have attributable agent transcripts.",
+        );
+        return;
+      }
+      const target = await vscode.window.showSaveDialog({
+        title: "Export tokenomics report",
+        defaultUri: vscode.Uri.file(join(fsPath, "tokenomics-report.html")),
+        filters: { HTML: ["html"] },
+      });
+      if (!target) return;
+      await vscode.workspace.fs.writeFile(target, Buffer.from(renderReportHtml(report), "utf8"));
+      const open = await vscode.window.showInformationMessage(
+        `Octobots: wrote ${report.runs.length} missions to ${basename(target.fsPath)}.`,
+        "Open",
+      );
+      if (open === "Open") await vscode.env.openExternal(target);
+    }),
     vscode.commands.registerCommand("octoshell.refreshCampaigns", () => {
       board.reconcile();
       campaignsTree.refresh();
