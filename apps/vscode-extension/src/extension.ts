@@ -5,6 +5,7 @@ import { TeamAssignments } from "./host/team-assignments.js";
 import { CustomizationsIo } from "./host/customizations-io.js";
 import { AppearanceStore } from "./host/appearance-store.js";
 import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE } from "./host/entity-panel-manager.js";
+import { TokenomicsPanel } from "./host/tokenomics-panel.js";
 import { CustomizationsTree } from "./host/customizations-tree.js";
 import { CampaignsTree } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
@@ -78,6 +79,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
   };
   const entityPanels = new EntityPanelManager(context, dispatchCtx);
+  const tokenomicsPanel = new TokenomicsPanel(context, dispatchCtx);
 
   // Disk is the single source of truth. One debounced, git-quiescence-gated watcher over the whole
   // `.octobots` board tree does ONE disk re-parse after the tree settles — handling every
@@ -143,6 +145,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     campaignsView,
+    vscode.commands.registerCommand("octoshell.openTokenomics", () => tokenomicsPanel.open()),
     vscode.commands.registerCommand("octoshell.refreshCampaigns", () => {
       board.reconcile();
       campaignsTree.refresh();

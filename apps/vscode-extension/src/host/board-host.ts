@@ -66,6 +66,20 @@ export class BoardHost {
    * would re-trigger every open panel's `load()`, which calls back into sync → reconcile → emit,
    * a tight feedback loop that re-parses the whole board several times a second.
    */
+  /**
+   * The parsed board. Exposed so read-only consumers (e.g. tokenomics) can use
+   * the already-parsed tree instead of re-walking or re-parsing the disk.
+   * Callers must not mutate it — writes go through this host, which rebuilds.
+   */
+  get boardModel(): BoardModel {
+    return this.model;
+  }
+
+  /** The `.octobots` directory this board was built from — `folderPath` is relative to it. */
+  get artifactsRoot(): string {
+    return this.octobotsDir;
+  }
+
   private rebuildModel(): void {
     this.model = new BoardModel(this.octobotsDir);
     this.model.rebuild();

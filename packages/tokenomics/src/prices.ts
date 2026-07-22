@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { PRICES, PRICES_FETCHED_AT, PRICES_SOURCE } from "./prices.data.js";
 import type { TokenTotals } from "./types.js";
 
 /**
@@ -27,9 +26,14 @@ export interface PriceTable {
   models: Record<string, PriceEntry>;
 }
 
+/**
+ * The cached table. Pass `path` only to price against a different snapshot (a
+ * historical table, or a fixture) — the default is compiled in, so it works
+ * identically in the bundled extension and under test.
+ */
 export function loadPrices(path?: string): PriceTable {
-  const file = path ?? join(dirname(fileURLToPath(import.meta.url)), "prices.json");
-  return JSON.parse(readFileSync(file, "utf8")) as PriceTable;
+  if (path) return JSON.parse(readFileSync(path, "utf8")) as PriceTable;
+  return { _source: PRICES_SOURCE, fetched_at: PRICES_FETCHED_AT ?? undefined, models: PRICES };
 }
 
 /** Look up a model, tolerating variant suffixes (`…[1m]`) and dated ids. */

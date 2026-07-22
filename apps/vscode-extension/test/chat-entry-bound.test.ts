@@ -8,6 +8,9 @@ describe("resolveBound", () => {
     expect(resolveBound({ type: "bind", kind: "mission", id: "y" })).toEqual({ kind: "mission", id: "y" });
     expect(resolveBound({ type: "bind", kind: "task", id: "z" })).toEqual({ kind: "task", id: "z" });
   });
+  it("binds the workspace-wide tokenomics view, which carries no entity id", () => {
+    expect(resolveBound({ type: "bind", kind: "tokenomics" })).toEqual({ kind: "tokenomics" });
+  });
   it("maps a bug bind", () => {
     expect(resolveBound({ type: "bind", kind: "bug", id: "bug1" })).toEqual({ kind: "bug", id: "bug1" });
   });

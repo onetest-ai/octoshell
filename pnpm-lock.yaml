@@ -41,6 +41,9 @@ importers:
       '@octoshell/customizations':
         specifier: workspace:*
         version: link:../../packages/customizations
+      '@octoshell/tokenomics':
+        specifier: workspace:*
+        version: link:../../packages/tokenomics
       zod:
         specifier: ^4.4.3
         version: 4.4.3
