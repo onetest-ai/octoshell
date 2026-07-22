@@ -17,6 +17,12 @@ describe("octobots-hooks: primer copy", () => {
     expect(existsSync(join(repo, ".octobots", "hooks", "primer.mjs"))).toBe(true);
     expect(existsSync(join(repo, ".octobots", "hooks", "package.json"))).toBe(true);
   });
+
+  it("ships the work log alongside the primer, so attribution works out of the box", () => {
+    const repo = freshRepo();
+    installPrimer(PACK_SRC, repo);
+    expect(existsSync(join(repo, ".octobots", "hooks", "work-log.mjs"))).toBe(true);
+  });
 });
 
 describe("octobots-hooks: Claude registration", () => {
@@ -29,6 +35,35 @@ describe("octobots-hooks: Claude registration", () => {
     expect(ss.hooks[0].command).toContain("primer.mjs");
     expect(ss.hooks[0].command).toContain("--backend claude");
     expect(s.hooks.PreCompact.some((e: any) => e._octobots === 9)).toBe(true);
+    expect(claudeHookStatus(repo, 9)).toEqual({ present: true, current: true });
+  });
+
+  it("registers the work log on PostToolUse(Bash), async so it cannot delay a tool call", () => {
+    const repo = freshRepo();
+    registerClaudeHook(repo, 9);
+    const s = JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8"));
+    const ptu = s.hooks.PostToolUse.find((e: any) => e._octobots === 9);
+    expect(ptu).toBeTruthy();
+    expect(ptu.matcher).toBe("Bash");
+    expect(ptu.hooks[0].command).toContain("work-log.mjs");
+    expect(ptu.hooks[0].async).toBe(true);
+  });
+
+  it("reports an install predating PostToolUse as not present, so re-running repairs it", () => {
+    const repo = freshRepo();
+    mkdirSync(join(repo, ".claude"), { recursive: true });
+    // An older pack registered SessionStart + PreCompact only.
+    writeFileSync(
+      join(repo, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          SessionStart: [{ _octobots: 9, hooks: [{ type: "command", command: "primer.mjs" }] }],
+          PreCompact: [{ _octobots: 9, hooks: [{ type: "command", command: "primer.mjs" }] }],
+        },
+      }),
+    );
+    expect(claudeHookStatus(repo, 9).present).toBe(false);
+    registerClaudeHook(repo, 9);
     expect(claudeHookStatus(repo, 9)).toEqual({ present: true, current: true });
   });
 
