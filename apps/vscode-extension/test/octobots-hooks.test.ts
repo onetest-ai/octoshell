@@ -49,6 +49,18 @@ describe("octobots-hooks: Claude registration", () => {
     expect(ptu.hooks[0].async).toBe(true);
   });
 
+  it("registers the mission gate on PostToolUse, synchronously so it can steer the agent", () => {
+    const repo = freshRepo();
+    registerClaudeHook(repo, 9);
+    const s = JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8"));
+    const gate = s.hooks.PostToolUse.find((e: any) => e.hooks[0].command.includes("mission-gate.mjs"));
+    expect(gate).toBeTruthy();
+    expect(gate.matcher).toBe("Bash");
+    // Must NOT be async: it injects a directive the orchestrator has to act on.
+    expect(gate.hooks[0].async).toBe(false);
+    expect(s.hooks.PostToolUse.filter((e: any) => e._octobots === 9)).toHaveLength(2);
+  });
+
   it("reports an install predating PostToolUse as not present, so re-running repairs it", () => {
     const repo = freshRepo();
     mkdirSync(join(repo, ".claude"), { recursive: true });

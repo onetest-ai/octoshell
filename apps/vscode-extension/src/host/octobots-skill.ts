@@ -6,7 +6,7 @@ import { installPrimer, registerClaudeHook, claudeHookStatus } from "./octobots-
 export const OCTOBOTS_PACK_VERSION = 21;
 
 /** The skills the pack ships, by directory name under `skill/` and `.claude/skills/`. */
-export const OCTOBOTS_SKILLS = ["mission-planner", "mission-execution"] as const;
+export const OCTOBOTS_SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate"] as const;
 
 /**
  * Skill dirs earlier pack versions installed that no longer exist. Removed on install so an

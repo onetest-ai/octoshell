@@ -32,26 +32,30 @@ type HookEntry = { matcher?: string; hooks: { type: string; command: string; asy
 
 const CLAUDE_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/primer.mjs" --backend claude`;
 const WORK_LOG_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/work-log.mjs"`;
+const MISSION_GATE_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/mission-gate.mjs"`;
 
 /** The Claude hook events we own. Every entry we write carries `_octobots`. */
 const CLAUDE_EVENTS = ["SessionStart", "PreCompact", "PostToolUse"] as const;
 type ClaudeEvent = (typeof CLAUDE_EVENTS)[number];
 
-function claudeEntry(event: ClaudeEvent, version: number): HookEntry {
-  // PostToolUse runs the work log: it records which session did which task, so
-  // tokenomics attribution is a recorded fact rather than an inference from
-  // branch names. Async because nothing downstream waits on it, and it must
-  // never delay or fail the tool call.
+function claudeEntries(event: ClaudeEvent, version: number): HookEntry[] {
   if (event === "PostToolUse") {
-    return {
-      matcher: "Bash",
-      hooks: [{ type: "command", command: WORK_LOG_CMD, async: true }],
-      _octobots: version,
-    };
+    return [
+      // The work log records which session did which task, so tokenomics
+      // attribution is a recorded fact rather than an inference from branch
+      // names. Async: nothing downstream waits on it, and it must never delay
+      // or fail the tool call.
+      { matcher: "Bash", hooks: [{ type: "command", command: WORK_LOG_CMD, async: true }], _octobots: version },
+      // The mission gate steers the agent into the blocking completion gate
+      // when a mission flips to `done`. Synchronous *by design* — it injects a
+      // directive the orchestrator must act on before proceeding, which an
+      // async hook could not do.
+      { matcher: "Bash", hooks: [{ type: "command", command: MISSION_GATE_CMD, async: false }], _octobots: version },
+    ];
   }
   const entry: HookEntry = { hooks: [{ type: "command", command: CLAUDE_CMD, async: false }], _octobots: version };
   if (event === "SessionStart") entry.matcher = "startup|clear|compact|resume";
-  return entry;
+  return [entry];
 }
 
 /** Idempotently merge our SessionStart + PreCompact + PostToolUse entries into <repo>/.claude/settings.json. */
@@ -61,7 +65,7 @@ export function registerClaudeHook(repoRoot: string, version: number): void {
   const hooks = (settings.hooks ??= {}) as Record<string, HookEntry[]>;
   for (const event of CLAUDE_EVENTS) {
     const arr = (hooks[event] ?? []).filter((e) => e._octobots === undefined); // drop our prior entries
-    arr.push(claudeEntry(event, version));
+    arr.push(...claudeEntries(event, version));
     hooks[event] = arr;
   }
   writeJson(path, settings);
