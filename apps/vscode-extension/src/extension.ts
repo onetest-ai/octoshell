@@ -9,6 +9,7 @@ import { CampaignsTree } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
 import { packStatus, installPack } from "./host/octobots-skill.js";
+import { launchSdlcBundleInstall } from "./host/sdlc-bundles-command.js";
 
 // Explicit-only install of the bundled octobots pack (skill + planning agents) into <workspace>/.claude.
 function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: string): void {
@@ -31,6 +32,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("octoshell.installOctobotsWorkflowSkill", () => {
       installOctobotsPack(context, repoRoot);
     }),
+    vscode.commands.registerCommand("octoshell.installSdlcBundle", () =>
+      launchSdlcBundleInstall(repoRoot, false),
+    ),
+    vscode.commands.registerCommand("octoshell.updateSdlcBundle", () =>
+      launchSdlcBundleInstall(repoRoot, true),
+    ),
   );
 
   // Explicit-only: on open, if the pack (skill + planning agents) is missing/outdated, PROMPT —

@@ -18,6 +18,27 @@ export const Uri = {
   },
 };
 
+// Minimal `window` surface for command-handler tests. Methods are plain object properties so tests
+// can `vi.spyOn(window, ...)` them; defaults are inert (no-op / resolve undefined).
+export interface StubTerminal {
+  sendText(text: string): void;
+  show(): void;
+}
+export const window = {
+  showErrorMessage(..._args: unknown[]): Thenable<undefined> {
+    return Promise.resolve(undefined);
+  },
+  showInformationMessage(..._args: unknown[]): Thenable<undefined> {
+    return Promise.resolve(undefined);
+  },
+  showQuickPick(..._args: unknown[]): Thenable<unknown> {
+    return Promise.resolve(undefined);
+  },
+  createTerminal(_opts: unknown): StubTerminal {
+    return { sendText() {}, show() {} };
+  },
+};
+
 // Minimal TreeDataProvider surface for tree unit tests.
 export class EventEmitter<T> {
   private listeners = new Set<(e: T) => void>();
