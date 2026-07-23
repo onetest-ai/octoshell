@@ -1,5 +1,0 @@
-[
-  { "id": "claude-acp", "label": "Claude Code (ACP)", "defaultEnabled": true },
-  { "id": "github-copilot-cli", "label": "GitHub Copilot CLI", "defaultEnabled": false },
-  { "id": "codex-acp", "label": "OpenAI Codex (ACP)", "defaultEnabled": false }
-]

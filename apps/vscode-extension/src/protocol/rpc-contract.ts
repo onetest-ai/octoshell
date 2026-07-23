@@ -70,9 +70,6 @@ export const rpcArgs = {
   // settings (minimal: appearance backed; providers/permissions canned)
   "settings:getAppearance": z.object({}),
   "settings:setAppearance": z.object({ value: z.unknown() }),
-  "settings:listProviders": z.object({}),
-  "settings:getPermissions": z.object({}),
-  "settings:agentSelectorFlags": z.object({}),
 
   "tokenomics:report": z.object({}),
   // campaigns
@@ -191,9 +188,6 @@ export interface RpcResults {
   "dialog:openFolder": string | null;
   "settings:getAppearance": Appearance;
   "settings:setAppearance": { ok: true };
-  "settings:listProviders": { rows: never[]; registryStale: boolean };
-  "settings:getPermissions": { defaultApprovalMode: string | null };
-  "settings:agentSelectorFlags": Record<string, boolean>;
   "campaign:list": Campaign[];
   "campaign:create": Campaign;
   "campaign:get": { campaign: Campaign | null; summary: CampaignSummary | null };

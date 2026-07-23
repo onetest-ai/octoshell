@@ -1,6 +1,5 @@
 import type { BoardHost } from "./board-host.js";
 import type { AppearanceStore } from "./appearance-store.js";
-import { readAgentSelectorFlags } from "./agent-selector-flags.js";
 import { basename } from "node:path";
 import { ClaudeTranscriptSource, rollup } from "@octoshell/tokenomics";
 import { rpcArgs, type RpcMethod, type RpcArgsOf, type RpcResultOf } from "../protocol/index.js";
@@ -52,9 +51,6 @@ const handlers: { [M in RpcMethod]: RpcHandler<M> } = {
   "dialog:openFolder": (_a, c) => (c.dialog.openFolder ? c.dialog.openFolder() : null),
   "settings:getAppearance": (_a, c) => c.appearanceStore.get(),
   "settings:setAppearance": (a, c) => { c.appearanceStore.set(a.value as never); return { ok: true }; },
-  "settings:listProviders": () => ({ rows: [], registryStale: false }),
-  "settings:getPermissions": () => ({ defaultApprovalMode: null }),
-  "settings:agentSelectorFlags": () => readAgentSelectorFlags(),
   "campaign:list": (_a, c) => c.board.listCampaigns(),
   "campaign:create": (a, c) => c.board.createCampaign({ name: a.name }),
   "campaign:get": (a, c) => ({ campaign: c.board.getCampaign(a.campaignId), summary: c.board.campaignSummary(a.campaignId) }),
