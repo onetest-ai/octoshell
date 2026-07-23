@@ -149,6 +149,14 @@
         "title": "Octobots: Install Workflow Pack"
       },
       {
+        "command": "octoshell.installSdlcBundle",
+        "title": "Octobots: Install SDLC Team Bundle"
+      },
+      {
+        "command": "octoshell.updateSdlcBundle",
+        "title": "Octobots: Update SDLC Team Bundle"
+      },
+      {
         "command": "octoshell.openTokenomics",
         "title": "Octobots: Tokenomics",
         "icon": "$(graph)"
