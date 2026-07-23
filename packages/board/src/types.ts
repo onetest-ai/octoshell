@@ -7,7 +7,6 @@ export interface Campaign {
   target: string;
   status: string;
   folderPath: string;
-  teamId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -20,7 +19,6 @@ export interface Mission {
   description: string;
   acceptanceCriteria: string;
   folderPath: string;
-  teamId: string | null;
   createdAt: number;
   updatedAt: number;
 }

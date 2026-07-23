@@ -26,12 +26,6 @@ export interface OctoshellExtApi {
     getPermissions: () => Promise<{ defaultApprovalMode: string | null }>;
     agentSelectorFlags: () => Promise<Record<string, boolean>>;
   };
-  customizations: {
-    list: () => Promise<unknown[]>;
-    readFile: (path: string) => Promise<unknown>;
-    writeFile: (path: string, content: string) => Promise<{ ok: true }>;
-    add: (input: unknown) => Promise<unknown>;
-  };
 }
 
 export function createOctoshellShim(rpc: RpcClient): OctoshellExtApi {
@@ -60,12 +54,6 @@ export function createOctoshellShim(rpc: RpcClient): OctoshellExtApi {
       listProviders: () => c("settings:listProviders", {}) as never,
       getPermissions: () => c("settings:getPermissions", {}) as never,
       agentSelectorFlags: () => c("settings:agentSelectorFlags", {}) as never,
-    },
-    customizations: {
-      list: () => c("customizations:list", {}) as never,
-      readFile: (path) => c("customizations:readFile", { path }) as never,
-      writeFile: (path, content) => c("customizations:writeFile", { path, content }) as never,
-      add: (input) => c("customizations:add", { input }) as never,
     },
   };
 }

@@ -94,7 +94,6 @@ export class BoardModel {
         target: cf.target ?? "",
         status: (cf.status ? (mapBoardStatus(cf.status) ?? "draft") : "draft"),
         folderPath: cFolder,
-        teamId: null,
         createdAt: cMtime,
         updatedAt: cMtime,
       };
@@ -171,7 +170,6 @@ export class BoardModel {
           description: mf.description ?? "",
           acceptanceCriteria: mf.acceptanceCriteria ?? "",
           folderPath: mFolder,
-          teamId: null,
           createdAt: mMtime,
           updatedAt: mMtime,
         };

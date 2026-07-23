@@ -1,40 +1,8 @@
 // apps/vscode-extension/src/protocol/rpc-contract.ts
 import { z } from "zod";
 import type { Campaign, Mission, Task, Bug } from "@octoshell/board";
-import type { CustomizationItem } from "@octoshell/customizations";
 import type { Appearance } from "../host/appearance-store.js";
 import type { Report as TokenomicsReport } from "@octoshell/tokenomics";
-
-/**
- * A team entry from the on-disk teams/*.json directory (no execution concepts).
- * Matches `BoardHost.listTeams()`.
- */
-export interface TeamEntry {
-  id: string;
-  title: string;
-  roster: string[];
-}
-
-/**
- * A board-only team binding — which team is assigned to a campaign or mission.
- * Simplified from the daemon's TeamBinding (drops entrypoint/members which are execution concepts).
- */
-export interface TeamBinding {
-  scope: "campaign" | "mission";
-  scopeId: string;
-  teamId: string | null;
-}
-
-/**
- * A team-type assignment stored in globalState (not the board).
- * Maps a work-type (mission/bug/campaign) within a scope entity to a team.
- */
-export interface TeamTypeAssignment {
-  scope: "project" | "campaign" | "mission";
-  scopeId: string;
-  workType: "mission" | "bug" | "campaign";
-  teamId: string | null;
-}
 
 /** Disk-synthesised doc link or attached file — returned by the board-backed doc routes. */
 export interface DocLink {
@@ -99,11 +67,6 @@ export const rpcArgs = {
   // dialogs
   "dialog:openFiles": z.object({}),
   "dialog:openFolder": z.object({}),
-  // customizations
-  "customizations:list": z.object({}),
-  "customizations:readFile": z.object({ path: z.string() }),
-  "customizations:writeFile": z.object({ path: z.string(), content: z.string() }),
-  "customizations:add": z.object({ input: z.unknown() }),
   // settings (minimal: appearance backed; providers/permissions canned)
   "settings:getAppearance": z.object({}),
   "settings:setAppearance": z.object({ value: z.unknown() }),
@@ -173,19 +136,6 @@ export const rpcArgs = {
   "bug:setStatus": z.object({ bugId: z.string(), status: z.string() }),
   "bug:delete": z.object({ bugId: z.string() }),
   "bug:sync": z.object({ campaignId: z.string().optional(), missionId: z.string().optional() }),
-  // teams
-  "teams:list": z.object({}),
-  "campaign:setTeam": z.object({ campaignId: z.string(), teamId: z.string().nullable() }),
-  "mission:setTeam": z.object({ missionId: z.string(), teamId: z.string().nullable() }),
-  "team:getBinding": z.object({ scope: z.enum(["campaign", "mission"]), scopeId: z.string() }),
-  "team:setBinding": z.object({ binding: z.object({
-    scope: z.enum(["campaign", "mission"]), scopeId: z.string(), teamId: z.string().nullable(),
-  }) }),
-  "team:assign": z.object({
-    scope: z.enum(["project", "campaign", "mission"]), scopeId: z.string(),
-    workType: z.enum(["mission", "bug", "campaign"]), teamId: z.string().nullable(),
-  }),
-  "team:assignments": z.object({}),
 } satisfies Record<string, z.ZodType>;
 
 /** A single project entry returned by project:list (workspace = the open folder). */
@@ -203,10 +153,6 @@ export interface RpcResults {
   "project:open": { ok: true };
   "dialog:openFiles": string[];
   "dialog:openFolder": string | null;
-  "customizations:list": CustomizationItem[];
-  "customizations:readFile": { text: string; editable: boolean };
-  "customizations:writeFile": { ok: true };
-  "customizations:add": { path: string };
   "settings:getAppearance": Appearance;
   "settings:setAppearance": { ok: true };
   "settings:listProviders": { rows: never[]; registryStale: boolean };
@@ -248,14 +194,6 @@ export interface RpcResults {
   "bug:setStatus": { ok: true };
   "bug:delete": { ok: true };
   "bug:sync": { created: number };
-  // teams — board-backed (no execution concepts)
-  "teams:list": TeamEntry[];
-  "campaign:setTeam": { ok: true };
-  "mission:setTeam": { ok: true };
-  "team:getBinding": TeamBinding | null;
-  "team:setBinding": { ok: true };
-  "team:assign": { ok: true };
-  "team:assignments": TeamTypeAssignment[];
 }
 
 export type RpcMethod = keyof typeof rpcArgs & keyof RpcResults;

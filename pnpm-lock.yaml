@@ -38,9 +38,6 @@ importers:
       '@octoshell/board':
         specifier: workspace:*
         version: link:../../packages/board
-      '@octoshell/customizations':
-        specifier: workspace:*
-        version: link:../../packages/customizations
       '@octoshell/tokenomics':
         specifier: workspace:*
         version: link:../../packages/tokenomics

@@ -1,13 +1,10 @@
 import { join, basename } from "node:path";
 import * as vscode from "vscode";
 import { BoardHost } from "./host/board-host.js";
-import { TeamAssignments } from "./host/team-assignments.js";
-import { CustomizationsIo } from "./host/customizations-io.js";
 import { AppearanceStore } from "./host/appearance-store.js";
 import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE } from "./host/entity-panel-manager.js";
 import { TokenomicsPanel } from "./host/tokenomics-panel.js";
 import { renderReportHtml, type Report as TokenomicsReport } from "@octoshell/tokenomics";
-import { CustomizationsTree } from "./host/customizations-tree.js";
 import { CampaignsTree } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
@@ -53,13 +50,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const board = new BoardHost(join(fsPath, ".octobots"));
   board.reconcile(); // initial load: stamps missing task/bug id-markers and emits entities:changed
-  const teamAssignments = new TeamAssignments(context.globalState);
-  const customizationsIo = new CustomizationsIo(fsPath);
   const appearanceStore = new AppearanceStore(context.globalState);
   const dispatchCtx: DispatchCtx = {
     board,
-    teamAssignments,
-    customizationsIo,
     appearanceStore,
     workspaceFolderPath: fsPath,
     dialog: {
@@ -126,13 +119,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   const campaignsTree = new CampaignsTree(board);
-  const tree = new CustomizationsTree(board, context.extensionPath);
-
-  // Refresh ONLY the campaigns tree when the board changes on disk. The customizations tree
-  // must NOT refresh here: its `listCustomizations()` recursively walks the whole workspace
-  // (agents/skills/CLAUDE.md/settings live outside `.octobots/`), and the board churns
-  // constantly while agents edit files — re-walking the workspace on every board event was the
-  // source of the long refreshes. Customizations refresh lazily instead (view visibility / add).
+  // Refresh the campaigns tree when the board changes on disk. The only disk watcher stays
+  // scoped to `.octobots/`.
   const boardRefreshHandler = (): void => {
     campaignsTree.refresh();
   };
@@ -288,31 +276,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showInformationMessage(`Octobots: added ${basename(uri.fsPath)} to the campaign.`);
       } catch (err) {
         vscode.window.showErrorMessage(`Octobots: could not add file — ${(err as Error).message}`);
-      }
-    }),
-  );
-
-  const customizationsView = vscode.window.createTreeView("octoshell.customizations", { treeDataProvider: tree });
-  // Re-scan the workspace for customizations only when the panel actually becomes visible —
-  // not on board activity. This keeps the only disk watcher scoped to `.octobots/`.
-  customizationsView.onDidChangeVisibility((e) => {
-    if (e.visible) tree.refresh();
-  });
-  context.subscriptions.push(
-    customizationsView,
-    vscode.commands.registerCommand("octoshell.addCustomization", async () => {
-      const kind = await vscode.window.showQuickPick(["agent", "skill", "instruction", "hook", "mcp"], {
-        placeHolder: "Customization kind",
-      });
-      if (!kind) return;
-      // agent/skill/instruction require a name; hook/mcp don't.
-      const name = await vscode.window.showInputBox({ prompt: "Name" });
-      try {
-        const { path } = customizationsIo.addCustomization({ provider: "claude-acp", kind: kind as never, name: name || undefined });
-        await vscode.window.showTextDocument(vscode.Uri.file(path));
-        tree.refresh();
-      } catch (err) {
-        vscode.window.showErrorMessage(`Octobots: could not add ${kind} — ${(err as Error).message}`);
       }
     }),
   );

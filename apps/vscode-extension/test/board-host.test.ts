@@ -257,41 +257,4 @@ describe("BoardHost", () => {
     expect(r1).toEqual({ created: 0 });
     expect(r2).toEqual({ created: 0 });
   });
-
-  // ── Team binding ─────────────────────────────────────────────────────────────
-
-  it("getTeamBinding returns null when no team is set", () => {
-    const { board } = host();
-    const c = board.createCampaign({ name: "C" });
-    expect(board.getTeamBinding("campaign", c.id)).toBeNull();
-  });
-
-  it("setTeamBinding then getTeamBinding round-trips the teamId", () => {
-    const { board } = host();
-    const c = board.createCampaign({ name: "C" });
-    const m = board.createMission({ title: "M", campaignId: c.id });
-
-    const result = board.setTeamBinding({ scope: "campaign", scopeId: c.id, teamId: "team-eng" });
-    expect(result).toEqual({ ok: true });
-    const binding = board.getTeamBinding("campaign", c.id);
-    expect(binding).not.toBeNull();
-    expect(binding!.scope).toBe("campaign");
-    expect(binding!.scopeId).toBe(c.id);
-    expect(binding!.teamId).toBe("team-eng");
-
-    // mission binding independently settable
-    board.setTeamBinding({ scope: "mission", scopeId: m.id, teamId: "team-cop" });
-    const mb = board.getTeamBinding("mission", m.id);
-    expect(mb!.teamId).toBe("team-cop");
-  });
-
-  it("clearing teamId via setTeamBinding returns null on next getTeamBinding", () => {
-    const { board } = host();
-    const c = board.createCampaign({ name: "C" });
-    board.setTeamBinding({ scope: "campaign", scopeId: c.id, teamId: "team-eng" });
-    expect(board.getTeamBinding("campaign", c.id)?.teamId).toBe("team-eng");
-
-    board.setTeamBinding({ scope: "campaign", scopeId: c.id, teamId: null });
-    expect(board.getTeamBinding("campaign", c.id)).toBeNull();
-  });
 });
