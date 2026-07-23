@@ -1,6 +1,7 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EntityKind } from "./managed-block.js";
+import { parseWorkflowMeta } from "./workflow-meta.js";
 
 export interface BoardFinding {
   mdPath: string;
@@ -141,6 +142,78 @@ function validateFile(filePath: string, kind: EntityKind): BoardFinding[] {
  *   campaigns/<id>/missions/<id>/bugs/<id>/bug.md
  *   campaigns/<id>/bugs/<id>/bug.md
  */
+/**
+ * Validate one workflow folder. `mdPath` is used as the finding location because it is the file a
+ * human opens; script problems are reported against it too so every finding has one anchor.
+ */
+export function validateWorkflow(mdPath: string, jsPath: string, folderSlug: string): BoardFinding[] {
+  const out: BoardFinding[] = [];
+  const err = (message: string): void => {
+    out.push({ mdPath, kind: "workflow", severity: "error", message });
+  };
+
+  if (!existsSync(jsPath)) {
+    err("workflow.js is missing");
+    return out;
+  }
+
+  let meta;
+  try {
+    meta = parseWorkflowMeta(readFileSync(jsPath, "utf8"));
+  } catch (e) {
+    err((e as Error).message);
+    return out;
+  }
+
+  if (meta.name !== folderSlug) {
+    err(`meta.name "${meta.name}" does not match its folder "${folderSlug}"`);
+  }
+  if (meta.phases.length === 0) {
+    err("workflow has no phases");
+    return out;
+  }
+
+  const stepPhase = new Map<string, number>();     // step id → phase index
+  const parallelPhase = new Map<string, number>(); // parallel group → phase index
+
+  meta.phases.forEach((phase, pi) => {
+    if (phase.steps.length === 0) err(`phase "${phase.title}" has no steps`);
+    for (const step of phase.steps) {
+      if (stepPhase.has(step.id)) err(`duplicate step id "${step.id}"`);
+      else stepPhase.set(step.id, pi);
+
+      if (step.parallel !== undefined) {
+        const seen = parallelPhase.get(step.parallel);
+        if (seen !== undefined && seen !== pi) {
+          err(`parallel group "${step.parallel}" spans more than one phase`);
+        } else if (seen === undefined) {
+          parallelPhase.set(step.parallel, pi);
+        }
+      }
+    }
+  });
+
+  for (const phase of meta.phases) {
+    for (const step of phase.steps) {
+      for (const dep of step.dependsOn ?? []) {
+        if (!stepPhase.has(dep)) err(`step "${step.id}" dependsOn "${dep}", which is not a step`);
+      }
+    }
+  }
+
+  return out;
+}
+
+/** Validate every workflow folder under an entity, returning the count found. */
+function validateWorkflowsUnder(entityDir: string, findings: BoardFinding[]): number {
+  const dir = join(entityDir, "workflows");
+  const slugs = safeReaddir(dir);
+  for (const slug of slugs) {
+    findings.push(...validateWorkflow(join(dir, slug, "workflow.md"), join(dir, slug, "workflow.js"), slug));
+  }
+  return slugs.length;
+}
+
 export function validateBoard(root: string): BoardFinding[] {
   const findings: BoardFinding[] = [];
   const octobots = join(root, ".octobots");
@@ -151,6 +224,7 @@ export function validateBoard(root: string): BoardFinding[] {
 
     // campaign.md
     findings.push(...validateFile(join(campaignDir, "campaign.md"), "campaign"));
+    validateWorkflowsUnder(campaignDir, findings);
 
     // campaign-level bugs
     const campaignBugs = join(campaignDir, "bugs");
@@ -165,6 +239,15 @@ export function validateBoard(root: string): BoardFinding[] {
 
       // mission.md
       findings.push(...validateFile(join(missionDir, "mission.md"), "mission"));
+      const missionWorkflows = validateWorkflowsUnder(missionDir, findings);
+      if (missionWorkflows > 1) {
+        findings.push({
+          mdPath: join(missionDir, "mission.md"),
+          kind: "mission",
+          severity: "error",
+          message: `mission has more than one workflow (${missionWorkflows}); a mission may have at most one`,
+        });
+      }
 
       // mission tasks
       const tasksDir = join(missionDir, "tasks");

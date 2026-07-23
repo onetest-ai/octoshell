@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { validateBriefText, isPlaceholderName } from "../src/validate.js";
+import { validateBriefText, isPlaceholderName, validateBoard } from "../src/validate.js";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
 import { renderManagedBlock } from "../src/managed-block.js";
 
 it("flags a mission with no acceptance criteria", () => {
@@ -132,5 +135,98 @@ describe("validateBriefText", () => {
       expect(f.severity).toBe("error");
       expect(f.kind).toBe("task");
     }
+  });
+});
+
+describe("workflow validation", () => {
+  function wfBoard(files: Record<string, string>): string {
+    const root = mkdtempSync(join(tmpdir(), "wf-val-"));
+    for (const [rel, body] of Object.entries(files)) {
+      const abs = join(root, ".octobots", rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, body, "utf8");
+    }
+    return root;
+  }
+
+  const CAMPAIGN = "# Alpha\n\n## Description\nA real description here.\n\n## Acceptance Criteria\n- [ ] ships\n";
+  const MISSION = "# M1 - Auth\n\n## Description\nA real description here.\n\n## Acceptance Criteria\n- [ ] ships\n";
+  const WF_MD = "# w\n\n## Description\nA workflow.\n";
+
+  it("reports a missing meta export", () => {
+    const root = wfBoard({
+      "campaigns/alpha/campaign.md": CAMPAIGN,
+      "campaigns/alpha/workflows/w/workflow.md": WF_MD,
+      "campaigns/alpha/workflows/w/workflow.js": "const x = 1\n",
+    });
+    const messages = validateBoard(root).map((f) => f.message);
+    expect(messages.some((m) => /export const meta/.test(m))).toBe(true);
+  });
+
+  it("reports a missing workflow.js", () => {
+    const root = wfBoard({
+      "campaigns/alpha/campaign.md": CAMPAIGN,
+      "campaigns/alpha/workflows/w/workflow.md": WF_MD,
+    });
+    expect(validateBoard(root).some((f) => /workflow\.js is missing/.test(f.message))).toBe(true);
+  });
+
+  it("reports a name that does not match the folder slug", () => {
+    const root = wfBoard({
+      "campaigns/alpha/campaign.md": CAMPAIGN,
+      "campaigns/alpha/workflows/w/workflow.md": WF_MD,
+      "campaigns/alpha/workflows/w/workflow.js":
+        "export const meta = { name: 'other', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l' }] }] }\n",
+    });
+    expect(validateBoard(root).some((f) => /does not match its folder/.test(f.message))).toBe(true);
+  });
+
+  it("reports no phases, empty phases, duplicate ids, unknown dependsOn and split parallel groups", () => {
+    const root = wfBoard({
+      "campaigns/alpha/campaign.md": CAMPAIGN,
+      "campaigns/alpha/workflows/none/workflow.md": WF_MD,
+      "campaigns/alpha/workflows/none/workflow.js": "export const meta = { name: 'none', phases: [] }\n",
+      "campaigns/alpha/workflows/empty/workflow.md": WF_MD,
+      "campaigns/alpha/workflows/empty/workflow.js":
+        "export const meta = { name: 'empty', phases: [{ title: 'P', steps: [] }] }\n",
+      "campaigns/alpha/workflows/dup/workflow.md": WF_MD,
+      "campaigns/alpha/workflows/dup/workflow.js":
+        "export const meta = { name: 'dup', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l' }, { id: 's1', agent: 'b', label: 'm' }] }] }\n",
+      "campaigns/alpha/workflows/dep/workflow.md": WF_MD,
+      "campaigns/alpha/workflows/dep/workflow.js":
+        "export const meta = { name: 'dep', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l', dependsOn: ['nope'] }] }] }\n",
+      "campaigns/alpha/workflows/par/workflow.md": WF_MD,
+      "campaigns/alpha/workflows/par/workflow.js":
+        "export const meta = { name: 'par', phases: [{ title: 'A', steps: [{ id: 's1', agent: 'a', label: 'l', parallel: 'g' }] }, { title: 'B', steps: [{ id: 's2', agent: 'b', label: 'm', parallel: 'g' }] }] }\n",
+    });
+    const messages = validateBoard(root).map((f) => f.message).join("\n");
+    expect(messages).toMatch(/has no phases/);
+    expect(messages).toMatch(/phase "P" has no steps/);
+    expect(messages).toMatch(/duplicate step id "s1"/);
+    expect(messages).toMatch(/dependsOn "nope"/);
+    expect(messages).toMatch(/parallel group "g" spans more than one phase/);
+  });
+
+  it("reports a mission with more than one workflow", () => {
+    const good = "export const meta = { name: 'NAME', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l' }] }] }\n";
+    const root = wfBoard({
+      "campaigns/alpha/campaign.md": CAMPAIGN,
+      "campaigns/alpha/missions/m1/mission.md": MISSION,
+      "campaigns/alpha/missions/m1/workflows/a/workflow.md": WF_MD,
+      "campaigns/alpha/missions/m1/workflows/a/workflow.js": good.replace("NAME", "a"),
+      "campaigns/alpha/missions/m1/workflows/b/workflow.md": WF_MD,
+      "campaigns/alpha/missions/m1/workflows/b/workflow.js": good.replace("NAME", "b"),
+    });
+    expect(validateBoard(root).some((f) => /more than one workflow/.test(f.message))).toBe(true);
+  });
+
+  it("passes a well-formed workflow", () => {
+    const root = wfBoard({
+      "campaigns/alpha/campaign.md": CAMPAIGN,
+      "campaigns/alpha/workflows/ok/workflow.md": WF_MD,
+      "campaigns/alpha/workflows/ok/workflow.js":
+        "export const meta = { name: 'ok', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l' }] }] }\nphase('P')\n",
+    });
+    expect(validateBoard(root).filter((f) => f.kind === "workflow")).toEqual([]);
   });
 });
