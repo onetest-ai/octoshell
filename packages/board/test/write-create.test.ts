@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
 import { BoardModel } from "../src/board-model.js";
 import { parseManagedBlock } from "../src/managed-block.js";
+import { validateBoard } from "../src/validate.js";
 
 let root: string;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), "board-w-")); });
@@ -83,6 +84,25 @@ describe("addBoardLine multi-section insertion (I1)", () => {
     const missions = board.listMissions(c.id);
     expect(missions.map((m) => m.id)).toContain(m1.id);
     expect(missions.map((m) => m.id)).toContain(m2.id);
+  });
+});
+
+describe("created entities carry an agent-owned section (validate parity with the scripts)", () => {
+  it("createCampaign scaffolds a `## Missions` section, so a mission-less campaign is well-formed", () => {
+    const c = createCampaign(root, { name: "Q3 Rollout" });
+    const md = readFileSync(join(root, c.folderPath, "campaign.md"), "utf8");
+    expect(md).toContain("## Missions");
+    expect(validateBoard(root)).toEqual([]);
+  });
+
+  it("createTask scaffolds a `## Tasks` section, so a fresh task with a criterion is well-formed", () => {
+    const c = createCampaign(root, { name: "Q3" });
+    const m = createMission(root, c.id, { title: "M1 - Skills", acceptanceCriteria: "- [ ] ac" });
+    const t = createTask(root, m.id, { name: "T1.1 - JWT", acceptanceCriteria: "- [ ] ac" });
+    const taskMd = readFileSync(join(root, t.folderPath, "task.md"), "utf8");
+    expect(taskMd).toContain("## Tasks");
+    // The whole tree (campaign + mission + criterion'd task) is well-formed — no missing-section findings.
+    expect(validateBoard(root)).toEqual([]);
   });
 });
 

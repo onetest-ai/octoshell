@@ -40,7 +40,7 @@ export function createCampaign(
     acceptanceCriteria: input.acceptanceCriteria ?? "",
     status: "draft",
     target: input.target ?? "",
-  }, "");
+  }, "## Missions\n_(none yet — the orchestrator proposes missions here)_\n");
   return { id: `folder:${folderPath}`, folderPath };
 }
 
@@ -150,7 +150,7 @@ export function createTask(
     name: input.name,
     description: input.description ?? "",
     acceptanceCriteria: input.acceptanceCriteria ?? "",
-  }, "");
+  }, "## Tasks\n_(no sub-tasks — atomic task)_\n");
   const marker = input.role ? `[role:${input.role}] ` : "";
   addBoardLine(p.parentMd, "## Tasks", `- ${marker}${input.name}`);
   return { id: `folder:${folderPath}`, folderPath };

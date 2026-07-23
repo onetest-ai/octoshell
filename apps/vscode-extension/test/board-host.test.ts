@@ -184,7 +184,9 @@ describe("BoardHost", () => {
     const cFolder = c.folderPath;
     const briefPath = join(octo, cFolder, "campaign.md");
     const existing = readFileSync(briefPath, "utf8");
-    writeFileSync(briefPath, existing + "\n## Missions\n- Pending Mission\n", "utf8");
+    // createCampaign ships a `## Missions` section with a placeholder; append the bullet into it
+    // (as addBoardLine would) rather than starting a duplicate section.
+    writeFileSync(briefPath, existing + "- Pending Mission\n", "utf8");
     const result = board.syncCampaignMissions(c.id);
     expect(result.proposals).toHaveLength(1);
     expect(result.proposals[0]!.title).toBe("Pending Mission");
@@ -209,7 +211,8 @@ describe("BoardHost", () => {
     // Append a ## Missions board line manually
     const briefPath = join(octo, c.folderPath, "campaign.md");
     const existing = readFileSync(briefPath, "utf8");
-    writeFileSync(briefPath, existing + "\n## Missions\n- New Mission — do the work\n", "utf8");
+    // Append the bullet into the `## Missions` section createCampaign already ships (placeholder-only).
+    writeFileSync(briefPath, existing + "- New Mission — do the work\n", "utf8");
 
     // Before creating: shows as exists:false
     const before = board.syncCampaignMissions(c.id);
