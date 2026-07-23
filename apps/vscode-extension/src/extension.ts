@@ -9,34 +9,13 @@ import { CampaignsTree } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
 import { packStatus, installPack } from "./host/octobots-skill.js";
-import { fetchBundleCatalog, bundleInstallCommand } from "./host/sdlc-bundles.js";
+import { launchSdlcBundleInstall } from "./host/sdlc-bundles-command.js";
 
 // Explicit-only install of the bundled octobots pack (skill + planning agents) into <workspace>/.claude.
 function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: string): void {
   const src = vscode.Uri.joinPath(context.extensionUri, "resources", "octobots-pack").fsPath;
   const res = installPack(src, repoRoot);
   void vscode.window.showInformationMessage(`Octobots: workflow pack installed (${res.written} files).`);
-}
-
-/**
- * Thin launcher for the sdlc-skills team-bundle installer. Picks a bundle (from the hybrid catalog)
- * and opens an integrated terminal running the installer, which owns the guided, interactive flow —
- * Octobots never captures output or verifies the result. `update` appends `--update`.
- */
-async function launchSdlcBundleInstall(repoRoot: string | undefined, update: boolean): Promise<void> {
-  if (!repoRoot) {
-    void vscode.window.showErrorMessage("Octobots: open a workspace folder first.");
-    return;
-  }
-  const bundles = await fetchBundleCatalog();
-  const pick = await vscode.window.showQuickPick(
-    bundles.map((b) => ({ label: b.label, description: b.id, detail: b.description, id: b.id })),
-    { placeHolder: update ? "Update which SDLC team bundle?" : "Install which SDLC team bundle?" },
-  );
-  if (!pick) return;
-  const terminal = vscode.window.createTerminal({ cwd: repoRoot, name: "SDLC Bundle Install" });
-  terminal.sendText(bundleInstallCommand(pick.id, { update }));
-  terminal.show();
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
