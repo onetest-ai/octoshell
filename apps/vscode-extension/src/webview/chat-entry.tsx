@@ -9,6 +9,7 @@ import { CampaignView } from "./campaign-view.js";
 import { MissionView } from "./mission-view.js";
 import { TaskView } from "./task-view.js";
 import { BugView } from "./bug-view.js";
+import { WorkflowView } from "./workflow-view.js";
 import { TokenomicsView } from "./tokenomics-view.js";
 
 declare global {
@@ -28,6 +29,7 @@ type Bound =
   | { kind: "mission"; id: string }
   | { kind: "task"; id: string }
   | { kind: "bug"; id: string }
+  | { kind: "workflow"; id: string }
   | { kind: "tokenomics" }
   | { kind: "none" };
 
@@ -38,6 +40,7 @@ export function resolveBound(
   if (m?.kind === "mission" && m.id) return { kind: "mission", id: m.id };
   if (m?.kind === "task" && m.id) return { kind: "task", id: m.id };
   if (m?.kind === "bug" && m.id) return { kind: "bug", id: m.id };
+  if (m?.kind === "workflow" && m.id) return { kind: "workflow", id: m.id };
   // Workspace-wide, so it carries no entity id.
   if (m?.kind === "tokenomics") return { kind: "tokenomics" };
   return { kind: "none" };
@@ -100,6 +103,9 @@ function Root(): JSX.Element {
   }
   if (bound.kind === "bug") {
     return <BugView id={bound.id} rpc={rpc} />;
+  }
+  if (bound.kind === "workflow") {
+    return <WorkflowView id={bound.id} rpc={rpc} />;
   }
   return <div className="p-4 text-fg-muted">No board entity bound.</div>;
 }
