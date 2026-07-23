@@ -1,4 +1,4 @@
-// octobots-pack-version: 26
+// octobots-pack-version: 27
 // Shared Octobots session primer. Registered as a SessionStart/compaction hook in each backend
 // (Claude/Copilot/Codex). Emits the routing primer as additionalContext in the calling backend's
 // JSON shape, but ONLY in an Octobots repo. Self-gates on .octobots/ so it is inert elsewhere.
@@ -19,6 +19,10 @@ const PRIMER = [
   "  and FIX every problem before you finish.",
   "- **Keep statuses current** with set-status.js as you work: mark a task/bug `active` the moment you",
   "  start it and `done` as soon as its acceptance criteria pass - don't leave finished work in `draft`.",
+  "- **Work in THIS repo checkout - never a git worktree or a second clone.** A worktree carries only",
+  "  tracked files: no `.octobots/` board, no `.claude/` skills, no node_modules. Isolation comes from",
+  "  **branches**: a mission is a feature branch, each task is a small PR into it, and the mission PR",
+  "  goes feature-branch -> main once green. One tree, one branch at a time - never two writers at once.",
   "- For the full workflow, board anatomy, planning rules, and scripts, use the **mission-planner**",
   "  skill. To build a planned task through to a merged, verified PR, use **mission-execution**.",
 ].join("\n");
