@@ -52,8 +52,11 @@ if (head < 0) {
   const rest = text.slice(head);
   const nextHeading = rest.search(/\n(?=##\s+|<!--)/);
   const insertAt = nextHeading >= 0 ? head + nextHeading : text.length;
-  const before = text.slice(0, insertAt).replace(/\n?_\(not set\)_\n?/, "\n");
-  text = `${before.endsWith("\n") ? before : before + "\n"}${line}\n${text.slice(insertAt)}`;
+  // Drop the placeholder from the Runs section ONLY. Replacing across text.slice(0, insertAt)
+  // would hit the first `_(not set)_` in the file — Description's — leaving Runs' in place.
+  const section = text.slice(head, insertAt).replace(/\n?_\(not set\)_\n?/, "\n");
+  const body = section.endsWith("\n") ? section : `${section}\n`;
+  text = `${text.slice(0, head)}${body}${line}\n${text.slice(insertAt)}`;
 }
 
 writeFileSync(mdPath, text, "utf8");

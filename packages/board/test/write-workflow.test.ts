@@ -104,6 +104,19 @@ describe("appendWorkflowRun", () => {
     board.rebuild();
     expect(board.getWorkflow(id)!.lastRunStatus).toBe("failed");
   });
+
+  it("clears the Runs placeholder and leaves the Description placeholder alone", () => {
+    const { root, campaignId } = fixture();
+    const { id } = createWorkflow(root, { campaignId }, { name: "w" });
+    appendWorkflowRun(root, id, { status: "done", summary: "ok", at: "2026-07-23" });
+
+    const md = read(root, id, "workflow.md");
+    const runsBody = md.slice(md.indexOf("## Runs"));
+    // The placeholder inside Runs is what the entry replaces...
+    expect(runsBody).not.toContain("_(not set)_");
+    // ...and Description's placeholder, which the run log has no business touching, survives.
+    expect(md.slice(md.indexOf("## Description"), md.indexOf("## Runs"))).toContain("_(not set)_");
+  });
 });
 
 describe("deleteWorkflow", () => {
