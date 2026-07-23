@@ -13,8 +13,12 @@ GitHub Copilot CLI — how to read and drive the very same board.
 
 - **Board editor in the sidebar.** Browse campaigns, missions, tasks, and bugs from the Octobots
   activity‑bar view; open any item in its own editor tab.
-- **Status, acceptance criteria, teams, and docs.** Set statuses from dropdowns, manage a task's
+- **Status, acceptance criteria, and docs.** Set statuses from dropdowns, manage a task's
   acceptance‑criteria checklist, and attach documents.
+- **Workflows.** Plan how the work runs: a workflow is a folder holding a `workflow.md` brief and a
+  `workflow.js` Claude Code dynamic‑workflow script. The extension draws its phases, agents and
+  parallel branches as a diagram and lets you edit the steps; Claude Code runs the script. A
+  campaign's workflows orchestrate its missions; a mission's single workflow orchestrates its tasks.
 - **Disk is authoritative.** Every change is written to markdown and the board is rebuilt from
   disk. A single debounced, git‑aware watcher keeps the UI in sync through
   `git checkout` / `stash` / `rebase` without churn.
@@ -47,6 +51,8 @@ up in normal git diffs.
 
 - **Octobots: New Campaign**
 - **Octobots: New Mission in this Campaign**
+- **Octobots: New Workflow**
+- **Octobots: Delete Workflow**
 - **Octobots: Install Workflow Pack**
 - … plus per‑item status and delete actions in the tree context menus.
 

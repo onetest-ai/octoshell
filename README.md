@@ -19,6 +19,11 @@ how to read and drive the same board.
   the Octobots activity‑bar view; open any entity in its own editor tab.
 - **Status and acceptance criteria** — set statuses from dropdowns, manage a task's
   acceptance‑criteria checklist, and attach documents.
+- **Workflows** — plan *how* the work runs, not just what it is. A workflow is a folder holding a
+  `workflow.md` brief and a `workflow.js` Claude Code dynamic‑workflow script; the extension draws its
+  phases, agents and parallel branches as a diagram and lets you edit the steps, while Claude Code
+  runs the script. A campaign's workflows orchestrate its missions; a mission's single workflow
+  orchestrates its tasks.
 - **Disk is authoritative** — every change is written to markdown and the board is rebuilt from
   disk; a single debounced, git‑quiescence‑gated watcher keeps the UI in sync through
   `git checkout` / `stash` / `rebase` without churn.
