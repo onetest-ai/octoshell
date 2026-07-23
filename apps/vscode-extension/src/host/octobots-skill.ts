@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { installPrimer, registerClaudeHook, claudeHookStatus } from "./octobots-hooks.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
-export const OCTOBOTS_PACK_VERSION = 24;
+export const OCTOBOTS_PACK_VERSION = 25;
 
 /** The skills the pack ships, by directory name under `skill/` and `.claude/skills/`. */
 export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate"] as const;
