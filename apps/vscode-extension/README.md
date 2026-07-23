@@ -14,12 +14,10 @@ GitHub Copilot CLI — how to read and drive the very same board.
 - **Board editor in the sidebar.** Browse campaigns, missions, tasks, and bugs from the Octobots
   activity‑bar view; open any item in its own editor tab.
 - **Status, acceptance criteria, teams, and docs.** Set statuses from dropdowns, manage a task's
-  acceptance‑criteria checklist, attach documents, and assign teams.
+  acceptance‑criteria checklist, and attach documents.
 - **Disk is authoritative.** Every change is written to markdown and the board is rebuilt from
   disk. A single debounced, git‑aware watcher keeps the UI in sync through
   `git checkout` / `stash` / `rebase` without churn.
-- **Customizations browser.** Discovers agent customizations (Claude Code, GitHub Copilot) present
-  in your workspace.
 - **Workflow pack installer.** One command drops the Octobots skill and planning agents into
   `<workspace>/.claude` so your CLI agents understand the board model.
 
@@ -50,7 +48,6 @@ up in normal git diffs.
 - **Octobots: New Campaign**
 - **Octobots: New Mission in this Campaign**
 - **Octobots: Install Workflow Pack**
-- **Octobots: Add Customization**
 - … plus per‑item status and delete actions in the tree context menus.
 
 ## Requirements

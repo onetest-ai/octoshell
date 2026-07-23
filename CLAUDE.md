@@ -13,7 +13,7 @@ a session hook) into a workspace so CLI coding agents (Claude Code, Codex, Copil
 same board.
 
 It is a **pnpm + turborepo** monorepo: one app (`apps/vscode-extension`) and two small libraries
-(`packages/board`, `packages/customizations`).
+(`packages/board`, `packages/tokenomics`).
 
 > History: earlier revisions brokered chat to ACP agents across many backend packages (acp, domain,
 > runtime, missions, taskbox, coordinator, scheduler, chat-ui) and a standalone Electron app
@@ -39,7 +39,6 @@ Per‑package (faster while iterating):
 ```bash
 pnpm --filter @octoshell/board test
 pnpm --filter @octoshell/board test -- validate              # filter by test file/name substring
-pnpm --filter @octoshell/customizations test
 pnpm --filter @octoshell/vscode-extension typecheck
 pnpm --filter @octoshell/vscode-extension lint
 pnpm --filter @octoshell/vscode-extension build              # esbuild (host) + vite (webview) → dist/ + media/
@@ -49,7 +48,7 @@ pnpm --filter @octoshell/vscode-extension watch:webview      # rebuild webview b
 
 **Important: changing a package's public types?** Downstream consumers read the built `dist/`, not
 source. Run `pnpm --filter @octoshell/<pkg> build` (or `pnpm build`) before `typecheck`/`test` in
-dependents, or they'll see stale `.d.ts`. Dependency order: `board`/`customizations` →
+dependents, or they'll see stale `.d.ts`. Dependency order: `board`/`tokenomics` →
 `vscode-extension`.
 
 ## Conventions
@@ -71,8 +70,7 @@ dependents, or they'll see stale `.d.ts`. Dependency order: `board`/`customizati
   creates/edits/deletes entities and writes status markers; `validate.ts` enforces the board rules
   (every task needs an acceptance criterion, id/name shape, etc.); `slug.ts` and `types.ts` round
   out the model. **Disk is authoritative**: reads are a pure rebuild, never a cascade‑mutate.
-- **`customizations`** — discovers agent‑customization files in a workspace. `readCustomizations`
-  aggregates `ProviderReader`s (`claudeCodeReader`, `copilotReader`) into `CustomizationItem[]`.
+- **`tokenomics`** — prices agent transcripts and rolls the cost up per mission and task.
 
 ### VS Code extension (`apps/vscode-extension`) — host + webview
 
@@ -81,19 +79,18 @@ Two sides, talking over the webview `postMessage` channel:
 - **`src/host`** — the extension‑host (Node) side. `extension.ts` activates: opens the workspace
   folder, constructs a **`BoardHost`** (`board-host.ts`, the façade over `@octoshell/board` — every
   mutation writes markdown then reconciles a fresh `BoardModel` and emits `entities:changed`),
-  registers the sidebar `TreeDataProvider`s (`CampaignsTree`, `CustomizationsTree`), the
+  registers the sidebar `TreeDataProvider` (`CampaignsTree`), the
   `EntityPanelManager` (one read‑mostly webview tab per campaign / mission / task / bug), and a
   single debounced, git‑quiescence‑gated `board-watcher` that re‑parses the whole `.octobots` tree
   after it settles. `rpc-dispatcher.ts` is the canonical RPC table — each webview `rpc` call routes
-  to a `BoardHost` / `CustomizationsIo` / `TeamAssignments` / `AppearanceStore` method.
+  to a `BoardHost` / `AppearanceStore` method.
   `octobots-skill.ts` / `octobots-hooks.ts` install the bundled `resources/octobots-pack` (skill +
   planning agents + session hook) into `<workspace>/.claude`.
 - **`src/webview`** — a **single vite bundle** (React + Tailwind on CSS‑variable VS Code theme
   tokens; never hardcode colors — use tokens like `bg-list-active`, `text-fg-muted`).
   `chat-entry.tsx` is the entry (a legacy name — there is no chat); it routes on the host's `bind`
   message (`{kind, id}`) to `CampaignView`, `MissionView`, `TaskView`, or `BugView` — the entity
-  detail editors with status dropdowns, acceptance‑criteria checklists, document links, and team
-  sections. `rpc-client.ts` wraps `postMessage` as request/response (`rpc` → `rpc:result`);
+  detail editors with status dropdowns, acceptance‑criteria checklists, and document links. `rpc-client.ts` wraps `postMessage` as request/response (`rpc` → `rpc:result`);
   `octoshell-shim.ts` exposes the `window.octoshell` API the views consume.
 
 The host↔webview protocol: host → webview posts `bind` (which entity this panel shows) and
@@ -123,5 +120,5 @@ upgraded workspace never ends up with two copies. This is product payload — ke
 
 Vitest across the board. Renderer tests use happy‑dom + `@testing-library/react` (plus an
 `attachInternals` polyfill for `@vscode-elements` web components in `test-setup.ts`). The `board`
-and `customizations` packages test their pure functions directly against fixture trees; host‑side
+and `tokenomics` packages test their pure functions directly against fixture trees; host‑side
 tests write to temp directories rather than the repo's own `.octobots/`.

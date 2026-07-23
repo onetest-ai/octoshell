@@ -17,13 +17,11 @@ how to read and drive the same board.
 
 - **Board editor in the sidebar** — browse and edit campaigns, missions, tasks, and bugs from
   the Octobots activity‑bar view; open any entity in its own editor tab.
-- **Status, acceptance criteria, and teams** — set statuses from dropdowns, manage a task's
-  acceptance‑criteria checklist, attach documents, and assign teams.
+- **Status and acceptance criteria** — set statuses from dropdowns, manage a task's
+  acceptance‑criteria checklist, and attach documents.
 - **Disk is authoritative** — every change is written to markdown and the board is rebuilt from
   disk; a single debounced, git‑quiescence‑gated watcher keeps the UI in sync through
   `git checkout` / `stash` / `rebase` without churn.
-- **Customizations browser** — discovers agent customizations (Claude Code, GitHub Copilot)
-  present in the workspace.
 - **Workflow pack installer** — one click drops the Octobots skill and planning agents into
   `<workspace>/.claude` so your CLI agents understand the board model.
 
@@ -35,7 +33,6 @@ This is a **pnpm + turborepo** monorepo.
 | --- | --- |
 | `apps/vscode-extension` | The VS Code extension (host + React webview), the only app. |
 | `packages/board` | File‑based library: parse, validate, and write the markdown board model. No DB. |
-| `packages/customizations` | Discovers agent‑customization files (Claude Code / Copilot readers). |
 | `docs/` | Product brief, PRD, and tech‑stack notes. |
 
 ## Getting started
