@@ -36,9 +36,10 @@ plan a first‑class, in‑repo, markdown artifact that both the editor UI and t
   checklist, attached documents, and team assignments. Every change is written straight to
   markdown; the board is rebuilt from disk and a debounced, git‑quiescence‑gated watcher keeps the
   UI honest through `git checkout` / `stash` / `rebase`.
-- **For agents.** Installing the workflow pack drops the `octobots` skill, planning agents
-  (`octobots-planner`, `octobots-orchestrator`), and a session‑primer hook into
-  `<workspace>/.claude`. Agents create and update board entities through small scripts
+- **For agents.** Installing the workflow pack drops the Octobots skills (`mission-planner`,
+  `workflow-designer`, `mission-execution`, `mission-completion-gate`) and a session‑primer hook into
+  `<workspace>/.claude`. It installs **no agents** — planning and execution run under whatever agent
+  the user is already in, and agent rosters belong to the repo. Agents create and update board entities through small scripts
   (`add-task.js`, `set-status.js`, `set-criterion.js`, `validate.js`, …) and the same files the
   editor renders.
 

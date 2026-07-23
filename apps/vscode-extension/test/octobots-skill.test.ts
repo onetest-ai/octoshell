@@ -6,7 +6,6 @@ import {
   parseVersion,
   requiredSkillsForAgent,
   OCTOBOTS_PACK_VERSION,
-  OCTOBOTS_AGENTS,
   OCTOBOTS_SKILLS,
   installPack,
   packStatus,
@@ -29,8 +28,10 @@ describe("octobots-skill helpers", () => {
     }
   });
 
-  it("bundles no dedicated planning agents — planning lives in the mission-planner skill", () => {
-    expect(OCTOBOTS_AGENTS).toEqual([]);
+  it("ships no agents at all — planning lives in the skills, agent rosters belong to the repo", () => {
+    // Guards the payload, not just a constant: an `agents/` dir would ride along in every VSIX and
+    // reintroduce the names workflow-designer tells agents never to invent.
+    expect(existsSync(join(PACK_SRC, "agents"))).toBe(false);
   });
 });
 

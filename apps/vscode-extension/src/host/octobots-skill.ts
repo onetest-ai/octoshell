@@ -14,12 +14,6 @@ export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission
  */
 const RETIRED_SKILLS = ["octobots"] as const;
 
-/**
- * The planning agents Octoshell owns and bundles in the pack. Now empty: campaign/mission
- * planning runs under the default ACP agent + the octobots skill, so the pack ships the skill only.
- */
-export const OCTOBOTS_AGENTS = [] as const;
-
 /** Skill ids an agent needs to drive Octobots. Today every agent needs the whole pack. */
 export function requiredSkillsForAgent(_agent: string): string[] {
   return [...OCTOBOTS_SKILLS];
@@ -81,8 +75,11 @@ function copyTree(from: string, to: string): number {
 
 /**
  * Install the pack from `srcRoot` (the resources/octobots-pack dir) into <repoRoot>:
- * each skill → .claude/skills/<name>, each agent → .claude/agents/<name>. Skill dirs retired
- * by a rename are removed first, so an upgrade never leaves two copies on disk.
+ * each skill → .claude/skills/<name>, plus the session primer and its Claude hook. Skill dirs
+ * retired by a rename are removed first, so an upgrade never leaves two copies on disk.
+ *
+ * The pack installs **no agents**. Planning and execution run under whatever agent the user is
+ * already in, driven by the skills; agent rosters belong to the repo, not to us.
  */
 export function installPack(srcRoot: string, repoRoot: string): { written: number } {
   let written = 0;
@@ -97,11 +94,5 @@ export function installPack(srcRoot: string, repoRoot: string): { written: numbe
   }
   written += installPrimer(srcRoot, repoRoot);
   registerClaudeHook(repoRoot, OCTOBOTS_PACK_VERSION);
-  for (const name of OCTOBOTS_AGENTS) {
-    written += copyTree(
-      join(srcRoot, "agents", name),
-      join(repoRoot, ".claude", "agents", name),
-    );
-  }
   return { written };
 }

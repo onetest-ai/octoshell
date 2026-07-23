@@ -60,9 +60,11 @@ it, and rebuilds its in‑memory model from disk on every change.
 
 Shipped inside the extension and copied into a workspace on demand:
 
-- the **`octobots` skill** with command scripts (`add-task.js`, `add-bug.js`, `set-status.js`,
-  `set-criterion.js`, `validate.js`, `list.js`, `show.js`, `add-doc.js`, `create-team.js`, …);
-- **planning agents** (`octobots-planner`, `octobots-orchestrator`);
+- the **`mission-planner` skill** with command scripts (`add-task.js`, `add-bug.js`, `set-status.js`,
+  `set-criterion.js`, `validate.js`, `list.js`, `show.js`, `add-doc.js`, `add-workflow.js`,
+  `set-step.js`, `add-run.js`, …);
+- the **`workflow-designer`**, **`mission-execution`** and **`mission-completion-gate`** skills;
+- **no agents** — the pack ships skills and a hook only;
 - a **session hook** (`hooks/primer.mjs`) that primes a CLI agent with the board model and is
   inert outside an `.octobots/` repo.
 

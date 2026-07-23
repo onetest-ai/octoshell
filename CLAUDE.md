@@ -118,8 +118,8 @@ prompt on activation). It contains the `mission-planner` skill (board anatomy, p
 the `scripts/` that edit boards — named `octobots` before pack v19), the `workflow-designer` skill
 (deciding how a planned mission runs — phases, agents, parallelism — and authoring `workflow.js`),
 the `mission-execution` skill
-(driving a planned task to a merged, verified PR), planning agents (`octobots-planner`,
-`octobots-orchestrator`), and a `hooks/primer.mjs` session hook that teaches a CLI agent how to read
+(driving a planned task to a merged, verified PR), the `mission-completion-gate` skill, and a
+`hooks/primer.mjs` session hook that teaches a CLI agent how to read
 and drive the `.octobots/` board. `scripts/add-workflow.js`, `set-step.js` and `add-run.js` author
 the workflows the app draws; `mission-execution` hands a mission's `workflow.js` to Claude Code's
 `Workflow` tool — the extension never runs it. `installPack` deletes skill dirs retired by a rename, so an

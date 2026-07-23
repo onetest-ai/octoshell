@@ -75,9 +75,10 @@ Each entity has a **status**: `draft → executing → awaitingApproval → done
   edits. Light host state (appearance) lives in VS Code `globalState`.
 - **Monorepo:** `packages/board` (parse/validate/write), `packages/tokenomics` (transcript pricing),
   `apps/vscode-extension` (host + React/Vite webview on VS Code theme tokens).
-- **Workflow pack** (`resources/octobots-pack`): the `octobots` skill + command scripts, planning
-  agents (`octobots-planner`, `octobots-orchestrator`), and a `hooks/primer.mjs` session hook,
-  installed into `<workspace>/.claude` on demand.
+- **Workflow pack** (`resources/octobots-pack`): the `mission-planner` skill + command scripts,
+  the `workflow-designer` / `mission-execution` / `mission-completion-gate` skills, and a
+  `hooks/primer.mjs` session hook, installed into `<workspace>/.claude` on demand. No agents — agent
+  rosters belong to the repo.
 - See `docs/tech-stack.md` for the full stack and `CLAUDE.md` for the architecture tour.
 
 ## Out of scope
