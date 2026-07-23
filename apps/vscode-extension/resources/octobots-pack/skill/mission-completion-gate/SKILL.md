@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 27
+version: 28
 ---
 
 # mission-completion-gate
@@ -36,8 +36,10 @@ done until this gate is green.
 
 ## The gate (one Workflow, phases with structured handoffs)
 
-Run this as a single `Workflow`. Pass the mission id + its acceptance criteria
-(from the board) as `args`. Phases:
+Run this as a single `Workflow`. Pass the mission id, its acceptance criteria
+(from the board) and the mission's **base branch** as `args` — the base is the branch
+the mission was cut from (a campaign branch, else `main`); it defaults to `main` when
+omitted. Phases:
 
 1. **Tests + coverage** — Py/Jay run the project's mechanical gate: linters,
    type-checks and full suites green **and** new-code coverage at or above the
@@ -47,7 +49,9 @@ Run this as a single `Workflow`. Pass the mission id + its acceptance criteria
    + the BA spec. Sage checks each criterion as pass/fail with observable
    evidence (behavior, endpoints, artifacts), **without reading code**. Ambiguity
    → Sage asks **Alex**. Output: per-criterion verdict → handed to **Rio**.
-3. **Critical review (Rio)** — Rio reviews `git diff main...HEAD` with a security
+3. **Critical review (Rio)** — Rio reviews `git diff <base>...HEAD` — where `<base>` is the
+   branch the mission was cut from (the campaign branch when it lands atomically, else `main`),
+   the **same base the coverage step measures against** — with a security
    lens, then interrogates Py/Jay against the criteria. Returns
    `{blocking:[…], nits:[…]}`. Each blocking finding → dev addresses it **+ adds
    the regression test that would have caught it** → Sage re-verifies the affected
@@ -76,7 +80,10 @@ export const meta = {
     { title: 'Tokenomics' }, { title: 'Complete' },
   ],
 }
-const { missionId, criteria } = args   // criteria: [{id, text}]
+// baseBranch = the branch this mission was cut from: the campaign branch when the
+// campaign lands atomically, else `main`. The review diffs against it (three-dot from
+// `main` would sweep in prior missions already merged into the campaign branch).
+const { missionId, criteria, baseBranch = 'main' } = args   // criteria: [{id, text}]
 
 phase('Tests+Coverage')
 const tests = await agent(
@@ -96,7 +103,7 @@ if (qa.criteria.some(c => !c.pass)) return { blocked: 'qa', qa }
 
 phase('Review')
 const review = await agent(
-  `You are Rio (tech-lead). Review \`git diff main...HEAD\` for ${missionId} with a ` +
+  `You are Rio (tech-lead). Review \`git diff ${baseBranch}...HEAD\` for ${missionId} with a ` +
   `security lens, then challenge Py/Jay's decisions against each acceptance criterion. ` +
   `Return blocking vs nits.`,
   { agentType: 'tech-lead', phase: 'Review', schema: REVIEW_SCHEMA })
