@@ -323,6 +323,36 @@ Rules:
 To **execute** a workflow, use the **mission-execution** skill: it hands `workflow.js` to Claude
 Code's `Workflow` tool and logs the outcome. Nothing in Octoshell runs the script.
 
+### Naming the agent on a task — `[role:<name>]`
+
+A task can name the agent that should pick it up, with a `[role:<name>]` marker at the start of its
+`## Tasks` board line:
+
+```markdown
+## Tasks
+- [role:implementer] T1.1 - Add JWT validation to /login
+- [role:tester] T1.2 - Cover the refresh-token path
+```
+
+`<name>` is an **agent name** — the same vocabulary a workflow step's `agent` field uses, and
+normally a `.claude/agents/<name>` directory. Run `ls .claude/agents` to see what the repo has.
+
+Write it with `add-task.js "<title>" --role <name>`; the marker is stripped from the task's title,
+so the task is still named `T1.1 - Add JWT validation to /login`. `set-status.js` and title edits
+preserve it, so a task keeps its agent as it moves through the board.
+
+This works **with or without a workflow**, and the two answer different questions:
+
+- `[role:]` says **who** should do this one task.
+- A workflow says **in what order** the steps run and **which agent** each one calls.
+
+Use `[role:]` when the assignment is per-task and situational; use a workflow when the whole
+sequence is worth writing down and running. A mission can sensibly have both — the workflow drives
+the run, and `[role:]` records who owns an individual task.
+
+> The marker is board text: it is preserved on disk and read by agents, but Octoshell does not
+> currently surface it in the task panel.
+
 ## External systems (Epics, Stories, Tasks)
 
 Octobots work often mirrors an external planning system — Jira, GitHub Projects/Issues, Azure DevOps,
@@ -382,7 +412,7 @@ Run from the repo root:
 
 - `node .claude/skills/mission-planner/scripts/list.js` — print the campaign → mission → task tree.
 - `node .claude/skills/mission-planner/scripts/show.js <board.md|entity-dir>` — print a board or a compact digest.
-- `node .claude/skills/mission-planner/scripts/add-task.js <mission.md|mission-dir> "<title>"` — append a task safely.
+- `node .claude/skills/mission-planner/scripts/add-task.js <mission.md|mission-dir> "<title>" [--role <agent>]` — append a task safely; `--role` writes the `[role:<agent>]` marker naming the agent that should take it.
 - `node .claude/skills/mission-planner/scripts/add-bug.js <campaign.md|mission.md|entity-dir> "<title>" [--severity <level>]` — append a bug to the parent's `## Bugs` board safely.
 - `node .claude/skills/mission-planner/scripts/add-doc.js <campaign.md|mission.md|entity-dir> "<label>" <target>` — attach a document: append a round-tripping `- [label](target)` link to the `## Documents` section (idempotent on target).
 - `node .claude/skills/mission-planner/scripts/delete-bug.js <campaign.md|mission.md|entity-dir> "<title>"` — delete a bug: removes its `## Bugs` line AND trashes its `bugs/<slug>/` folder.
