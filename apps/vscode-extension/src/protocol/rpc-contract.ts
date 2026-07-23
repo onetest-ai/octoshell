@@ -1,6 +1,6 @@
 // apps/vscode-extension/src/protocol/rpc-contract.ts
 import { z } from "zod";
-import type { Campaign, Mission, Task, Bug } from "@octoshell/board";
+import type { Campaign, Mission, Task, Bug, Workflow } from "@octoshell/board";
 import type { Appearance } from "../host/appearance-store.js";
 import type { Report as TokenomicsReport } from "@octoshell/tokenomics";
 
@@ -136,6 +136,42 @@ export const rpcArgs = {
   "bug:setStatus": z.object({ bugId: z.string(), status: z.string() }),
   "bug:delete": z.object({ bugId: z.string() }),
   "bug:sync": z.object({ campaignId: z.string().optional(), missionId: z.string().optional() }),
+  // workflows
+  "workflow:list": z.object({ campaignId: z.string().optional(), missionId: z.string().optional() }),
+  "workflow:get": z.object({ workflowId: z.string() }),
+  "workflow:create": z.object({
+    name: z.string(),
+    campaignId: z.string().optional(),
+    missionId: z.string().optional(),
+  }),
+  "workflow:update": z.object({ workflowId: z.string(), description: z.string().optional() }),
+  "workflow:setMeta": z.object({
+    workflowId: z.string(),
+    meta: z.object({
+      name: z.string(),
+      description: z.string(),
+      phases: z.array(z.object({
+        title: z.string(),
+        detail: z.string().optional(),
+        steps: z.array(z.object({
+          id: z.string(),
+          agent: z.string(),
+          label: z.string(),
+          parallel: z.string().optional(),
+          dependsOn: z.array(z.string()).optional(),
+          backend: z.string().optional(),
+        })),
+      })),
+    }),
+  }),
+  "workflow:addRun": z.object({
+    workflowId: z.string(),
+    status: z.string(),
+    summary: z.string(),
+    at: z.string(),
+  }),
+  "workflow:delete": z.object({ workflowId: z.string() }),
+  "workflow:openScript": z.object({ workflowId: z.string() }),
 } satisfies Record<string, z.ZodType>;
 
 /** A single project entry returned by project:list (workspace = the open folder). */
@@ -194,6 +230,15 @@ export interface RpcResults {
   "bug:setStatus": { ok: true };
   "bug:delete": { ok: true };
   "bug:sync": { created: number };
+  // workflows — the plan of execution; the script is run by Claude Code, never by the extension
+  "workflow:list": Workflow[];
+  "workflow:get": Workflow | null;
+  "workflow:create": { id: string; folderPath: string };
+  "workflow:update": { ok: true };
+  "workflow:setMeta": { ok: true };
+  "workflow:addRun": { ok: true };
+  "workflow:delete": { ok: true };
+  "workflow:openScript": { ok: true };
 }
 
 export type RpcMethod = keyof typeof rpcArgs & keyof RpcResults;

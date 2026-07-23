@@ -70,6 +70,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const doc = await vscode.workspace.openTextDocument({ content, language: language ?? "log" });
         await vscode.window.showTextDocument(doc, { preview: true });
       },
+      openFile: async (absPath: string) => {
+        await vscode.window.showTextDocument(vscode.Uri.file(absPath));
+      },
     },
   };
   const entityPanels = new EntityPanelManager(context, dispatchCtx);

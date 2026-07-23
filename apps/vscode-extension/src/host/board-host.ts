@@ -23,6 +23,11 @@ import {
   deleteMission,
   deleteTask,
   deleteBug,
+  createWorkflow as createWorkflowFile,
+  updateWorkflow as updateWorkflowFile,
+  deleteWorkflow as deleteWorkflowFile,
+  setWorkflowMeta as setWorkflowMetaFile,
+  appendWorkflowRun as appendWorkflowRunFile,
   parseDocumentLinks,
   type EntityKind,
   type ManagedFields,
@@ -32,6 +37,9 @@ import {
   type Bug,
   type BugParent,
   type BugSeverity,
+  type Workflow,
+  type WorkflowParent,
+  type WorkflowMeta,
 } from "@octoshell/board";
 import { rollupCampaign, type Rollup } from "./board-rollup.js";
 import type { DocLink, DocFile, CampaignSummary, MissionProposal } from "../protocol/index.js";
@@ -367,6 +375,44 @@ export class BoardHost {
   deleteMission(id: string): void { deleteMission(this.octobotsDir, id); this.reconcile(); }
   deleteTask(id: string): void { deleteTask(this.octobotsDir, id); this.reconcile(); }
   deleteBug(id: string): void { deleteBug(this.octobotsDir, id); this.reconcile(); }
+
+  // ── Workflows API ───────────────────────────────────────────────────────────
+
+  listWorkflows(parent: WorkflowParent): Workflow[] { return this.model.listWorkflows(parent); }
+  getWorkflow(id: string): Workflow | null { return this.model.getWorkflow(id); }
+
+  createWorkflow(parent: WorkflowParent, input: { name: string }): { id: string; folderPath: string } {
+    const res = createWorkflowFile(this.octobotsDir, parent, input);
+    this.reconcile();
+    return res;
+  }
+
+  updateWorkflow(id: string, patch: { description?: string }): void {
+    updateWorkflowFile(this.octobotsDir, id, patch);
+    this.reconcile();
+  }
+
+  setWorkflowMeta(id: string, meta: WorkflowMeta): void {
+    setWorkflowMetaFile(this.octobotsDir, id, meta);
+    this.reconcile();
+  }
+
+  appendWorkflowRun(id: string, entry: { status: string; summary: string; at: string }): void {
+    appendWorkflowRunFile(this.octobotsDir, id, entry);
+    this.reconcile();
+  }
+
+  deleteWorkflow(id: string): void {
+    deleteWorkflowFile(this.octobotsDir, id);
+    this.reconcile();
+  }
+
+  /** Absolute path of a workflow's script, for opening it in a normal editor tab. */
+  workflowScriptPath(id: string): string {
+    const wf = this.model.getWorkflow(id);
+    if (!wf) throw new Error(`Workflow not found: ${id}`);
+    return join(this.octobotsDir, wf.scriptPath);
+  }
 
   // ── Private helpers (documents) ──────────────────────────────────────────────
 

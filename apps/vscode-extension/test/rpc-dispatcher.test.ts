@@ -22,7 +22,7 @@ function ctx(board?: BoardHost) {
   const { board: defaultBoard, repoRoot } = makeBoardWithRoot();
   const b = board ?? defaultBoard;
   const appearanceStore = new AppearanceStore(new FakeMemento());
-  return { board: b, appearanceStore, workspaceFolderPath: repoRoot, dialog: { openFiles: async () => ["x"] }, editor: { openReadonly: async () => {} } };
+  return { board: b, appearanceStore, workspaceFolderPath: repoRoot, dialog: { openFiles: async () => ["x"] }, editor: { openReadonly: async () => {}, openFile: async () => {} } };
 }
 
 describe("dispatch", () => {

@@ -15,7 +15,10 @@ export interface DispatchCtx {
   /** Host-backed dialogs (vscode.window.showOpenDialog). */
   dialog: { openFiles: () => Promise<string[]>; openFolder?: () => Promise<string | null> };
   /** Host editor capability — keeps this module free of a direct `vscode` import (testable). */
-  editor: { openReadonly: (content: string, language?: string) => Promise<void> };
+  editor: {
+    openReadonly: (content: string, language?: string) => Promise<void>;
+    openFile: (absPath: string) => Promise<void>;
+  };
 }
 
 type RpcHandler<M extends RpcMethod> = (
@@ -88,6 +91,23 @@ const handlers: { [M in RpcMethod]: RpcHandler<M> } = {
   "bug:setStatus": (a, c) => okStatus(c.board.setStatus("bug", a.bugId, a.status), a.status),
   "bug:delete": (a, c) => { c.board.deleteBug(a.bugId); return { ok: true }; },
   "bug:sync": (a, c) => c.board.syncBugsFromBoard(a.campaignId ? { campaignId: a.campaignId } : { missionId: a.missionId }),
+  // workflows — the plan of execution; the script is run by Claude Code, never by the extension
+  "workflow:list": (a, c) =>
+    c.board.listWorkflows(a.campaignId ? { campaignId: a.campaignId } : { missionId: a.missionId! }),
+  "workflow:get": (a, c) => c.board.getWorkflow(a.workflowId),
+  "workflow:create": (a, c) =>
+    c.board.createWorkflow(a.campaignId ? { campaignId: a.campaignId } : { missionId: a.missionId! }, { name: a.name }),
+  "workflow:update": (a, c) => { c.board.updateWorkflow(a.workflowId, { description: a.description }); return { ok: true }; },
+  "workflow:setMeta": (a, c) => { c.board.setWorkflowMeta(a.workflowId, a.meta); return { ok: true }; },
+  "workflow:addRun": (a, c) => {
+    c.board.appendWorkflowRun(a.workflowId, { status: a.status, summary: a.summary, at: a.at });
+    return { ok: true };
+  },
+  "workflow:delete": (a, c) => { c.board.deleteWorkflow(a.workflowId); return { ok: true }; },
+  "workflow:openScript": async (a, c) => {
+    await c.editor.openFile(c.board.workflowScriptPath(a.workflowId));
+    return { ok: true };
+  },
 };
 
 /** Exported for the exhaustiveness test (Task 11). */
