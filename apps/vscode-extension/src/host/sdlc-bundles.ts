@@ -38,6 +38,14 @@ export const FALLBACK_BUNDLES: Bundle[] = [
 const BUNDLES_CONTENTS_URL = "https://api.github.com/repos/arozumenko/sdlc-skills/contents/bundles";
 
 /**
+ * A safe bundle id: a lowercase-kebab slug. Discovered ids are validated against this before they
+ * are ever interpolated into the installer command — a directory name is untrusted input (the repo
+ * could be compromised, or the user may point at a fork), and the command is auto-run in a terminal,
+ * so anything outside this charset (spaces, `;`, `&&`, `$()`, …) is dropped rather than executed.
+ */
+const SAFE_BUNDLE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
  * Build the sdlc-skills installer command for a bundle. `update:true` appends `--update`, which the
  * installer treats as "overwrite existing installs" (it still preserves seeded briefings).
  */
@@ -67,7 +75,9 @@ export async function fetchBundleCatalog(fetchImpl: typeof fetch = fetch): Promi
           typeof e === "object" && e !== null && typeof (e as { name?: unknown }).name === "string",
       )
       .filter((e) => e.type === "dir")
-      .map((e) => e.name);
+      .map((e) => e.name)
+      // The id becomes a shell token in an auto-run terminal command — never trust a raw dir name.
+      .filter((name) => SAFE_BUNDLE_ID.test(name));
     if (ids.length === 0) return FALLBACK_BUNDLES;
 
     const byId = new Map(FALLBACK_BUNDLES.map((b) => [b.id, b]));
