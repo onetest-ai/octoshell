@@ -157,6 +157,16 @@
         "command": "octoshell.exportTokenomicsReport",
         "title": "Octobots: Export Tokenomics Report",
         "icon": "$(export)"
+      },
+      {
+        "command": "octoshell.newWorkflow",
+        "title": "Octobots: New Workflow",
+        "icon": "$(circuit-board)"
+      },
+      {
+        "command": "octoshell.deleteWorkflow",
+        "title": "Octobots: Delete Workflow",
+        "icon": "$(trash)"
       }
     ],
     "viewsContainers": {
@@ -221,6 +231,16 @@
         {
           "command": "octoshell.deleteBug",
           "when": "view == octoshell.campaigns && viewItem == octoshell.bug",
+          "group": "9_delete"
+        },
+        {
+          "command": "octoshell.newWorkflow",
+          "when": "view == octoshell.campaigns && (viewItem == octoshell.campaign || viewItem == octoshell.mission)",
+          "group": "1_new"
+        },
+        {
+          "command": "octoshell.deleteWorkflow",
+          "when": "view == octoshell.campaigns && viewItem == octoshell.workflow",
           "group": "9_delete"
         }
       ]

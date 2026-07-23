@@ -1,12 +1,13 @@
 import * as vscode from "vscode";
 import type { BoardHost, CampaignRollup } from "./board-host.js";
-import type { Campaign, Mission, Task, Bug } from "@octoshell/board";
+import type { Campaign, Mission, Task, Bug, Workflow } from "@octoshell/board";
 
 type Node =
   | { type: "campaign"; campaign: Campaign }
   | { type: "mission"; mission: Mission }
   | { type: "task"; task: Task }
-  | { type: "bug"; bug: Bug };
+  | { type: "bug"; bug: Bug }
+  | { type: "workflow"; workflow: Workflow };
 
 /** Map a mission/task status to its contributed status color (see package.json contributes.colors). */
 function statusColor(status: string): vscode.ThemeColor {
@@ -75,6 +76,16 @@ export class CampaignsTree implements vscode.TreeDataProvider<Node> {
       item.command = { command: "octoshell.openTaskById", title: "Open Task", arguments: [node.task.id] };
       return item;
     }
+    if (node.type === "workflow") {
+      const item = new vscode.TreeItem(node.workflow.name, vscode.TreeItemCollapsibleState.None);
+      item.description = node.workflow.parseError
+        ? "unreadable"
+        : `${node.workflow.phases.length} phase${node.workflow.phases.length === 1 ? "" : "s"}`;
+      item.iconPath = new vscode.ThemeIcon("circuit-board", statusColor(node.workflow.lastRunStatus ?? "draft"));
+      item.contextValue = "octoshell.workflow";
+      item.command = { command: "octoshell.openWorkflowById", title: "Open Workflow", arguments: [node.workflow.id] };
+      return item;
+    }
     const item = new vscode.TreeItem(node.bug.title, vscode.TreeItemCollapsibleState.None);
     item.description = `${node.bug.severity} · ${node.bug.status}`;
     item.iconPath = new vscode.ThemeIcon("bug", statusColor(node.bug.status));
@@ -89,12 +100,14 @@ export class CampaignsTree implements vscode.TreeDataProvider<Node> {
     }
     if (node.type === "campaign") {
       return [
+        ...this.board.listWorkflows({ campaignId: node.campaign.id }).map((workflow) => ({ type: "workflow", workflow }) as Node),
         ...this.board.listMissions(node.campaign.id).map((mission) => ({ type: "mission", mission }) as Node),
         ...this.board.listBugs({ campaignId: node.campaign.id }).map((bug) => ({ type: "bug", bug }) as Node),
       ];
     }
     if (node.type === "mission") {
       return [
+        ...this.board.listWorkflows({ missionId: node.mission.id }).map((workflow) => ({ type: "workflow", workflow }) as Node),
         ...this.board.listTasks(node.mission.id).map((task) => ({ type: "task", task }) as Node),
         ...this.board.listBugs({ missionId: node.mission.id }).map((bug) => ({ type: "bug", bug }) as Node),
       ];

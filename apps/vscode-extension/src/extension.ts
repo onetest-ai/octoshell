@@ -2,7 +2,7 @@ import { join, basename } from "node:path";
 import * as vscode from "vscode";
 import { BoardHost } from "./host/board-host.js";
 import { AppearanceStore } from "./host/appearance-store.js";
-import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE } from "./host/entity-panel-manager.js";
+import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE, WORKFLOW_VIEW_TYPE } from "./host/entity-panel-manager.js";
 import { TokenomicsPanel } from "./host/tokenomics-panel.js";
 import { renderReportHtml, type Report as TokenomicsReport } from "@octoshell/tokenomics";
 import { CampaignsTree } from "./host/campaigns-tree.js";
@@ -119,6 +119,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         else panel.dispose();
       },
     }),
+    vscode.window.registerWebviewPanelSerializer(WORKFLOW_VIEW_TYPE, {
+      async deserializeWebviewPanel(panel, state) {
+        const id = (state as { id?: string } | undefined)?.id;
+        if (id) entityPanels.adopt(panel, "workflow", id);
+        else panel.dispose();
+      },
+    }),
   );
 
   const campaignsTree = new CampaignsTree(board);
@@ -170,6 +177,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("octoshell.openMissionById", (id: string) => entityPanels.openMission(id)),
     vscode.commands.registerCommand("octoshell.openTaskById", (id: string) => entityPanels.openTask(id)),
     vscode.commands.registerCommand("octoshell.openBugById", (id: string) => entityPanels.openBug(id)),
+    vscode.commands.registerCommand("octoshell.openWorkflowById", (id: string) => entityPanels.openWorkflow(id)),
     vscode.commands.registerCommand("octoshell.newCampaign", async () => {
       const name = await vscode.window.showInputBox({ prompt: "Campaign name", placeHolder: "e.g. Q3 Rollout" });
       if (!name) return;
@@ -255,6 +263,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         campaignsTree.refresh();
       } catch (err) {
         vscode.window.showErrorMessage(`Octobots: could not delete bug — ${(err as Error).message}`);
+      }
+    }),
+    vscode.commands.registerCommand("octoshell.newWorkflow", async (node?: { campaign?: { id: string }; mission?: { id: string } }) => {
+      const parent = node?.campaign ? { campaignId: node.campaign.id } : node?.mission ? { missionId: node.mission.id } : null;
+      if (!parent) return;
+      const name = await vscode.window.showInputBox({
+        prompt: "Workflow name",
+        placeHolder: "e.g. build-tasks",
+      });
+      if (!name) return;
+      try {
+        const wf = board.createWorkflow(parent, { name });
+        campaignsTree.refresh();
+        entityPanels.openWorkflow(wf.id);
+      } catch (err) {
+        vscode.window.showErrorMessage(`Octobots: could not create workflow — ${(err as Error).message}`);
+      }
+    }),
+    vscode.commands.registerCommand("octoshell.deleteWorkflow", async (node?: { workflow?: { id: string; name: string } }) => {
+      const wf = node?.workflow;
+      if (!wf) return;
+      const pick = await vscode.window.showWarningMessage(
+        `Delete the workflow "${wf.name}"? This permanently removes its workflow.md and workflow.js.`,
+        { modal: true }, "Delete",
+      );
+      if (pick !== "Delete") return;
+      try {
+        board.deleteWorkflow(wf.id);
+        entityPanels.closeEntity("workflow", wf.id);
+        campaignsTree.refresh();
+      } catch (err) {
+        vscode.window.showErrorMessage(`Octobots: could not delete workflow — ${(err as Error).message}`);
       }
     }),
     vscode.commands.registerCommand("octoshell.addFileToCampaign", async (uri?: vscode.Uri) => {
