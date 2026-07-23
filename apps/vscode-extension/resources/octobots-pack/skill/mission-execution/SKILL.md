@@ -61,7 +61,13 @@ node .claude/skills/mission-planner/scripts/add-run.js \
 ```
 
 A **campaign** workflow orchestrates missions rather than tasks — run it when you are driving a whole
-campaign, not a single mission. If there is no workflow at either level, use the per-task loop below.
+campaign, not a single mission.
+
+If there is **no** workflow at either level, use the per-task loop below — that is the normal case and
+needs no ceremony. But if this mission's shape keeps being re-derived (a gate, a fan-out, work that
+could run concurrently), say so and point the user at the **workflow-designer** skill, which builds
+one. Do not author `workflow.js` yourself mid-run: designing the execution graph is a decision to
+make deliberately, not a side effect of executing.
 
 ## The per-task loop (one dynamic Workflow per task)
 

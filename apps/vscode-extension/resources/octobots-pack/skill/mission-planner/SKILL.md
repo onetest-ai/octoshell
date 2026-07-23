@@ -117,7 +117,10 @@ are `T<missionNumber>.<taskNumber>` within their mission (`T3.1`, `T3.2`, …). 
    plan under `docs/superpowers/plans/`, or a sibling `design.md`), record it as a document — see
    **Documents** below. The tasks come from the plan; without the plan linked, a resumed mission
    can't reconstruct why the tasks are what they are.
-5. Run `validate` and fix any well-formedness errors before you finish.
+5. Consider whether the mission needs an **execution workflow** — see **Workflows** below. If its
+   tasks have a real shape (a gate, a fan-out, work that can run concurrently), say so and point the
+   user at the `workflow-designer` skill rather than designing it here.
+6. Run `validate` and fix any well-formedness errors before you finish.
 
 Principles: YAGNI — the fewest tasks that satisfy the mission's acceptance criteria. Every task is
 verifiable: someone can tell when it's done. Stay within the mission's scope; if the mission itself
@@ -268,62 +271,27 @@ it `draft` to keep the derived rollup. Set it by editing the `## Status` body, o
 as the title), which writes/replaces that section. **Missions** are still driven by the app's run
 lifecycle (Start/Cancel) rather than a board marker; a `[status:]` marker on a mission line is ignored.
 
-## Workflows
+## Workflows (how the work runs — see the **workflow-designer** skill)
 
-A **workflow** is the plan of execution: the order of the steps and the agents to call. It sits
-beside the work it drives.
-
-- A **campaign** workflow orchestrates that campaign's **missions**. A campaign may hold several.
-- A **mission** workflow orchestrates that mission's **tasks**. **A mission has at most one.**
-
-Each workflow is a folder holding two files:
+A **workflow** is the plan of execution that sits beside the work: the order of the steps and the
+agents to call. A **campaign** workflow orchestrates its missions; a **mission** workflow
+orchestrates its tasks, and a mission has at most one.
 
 ```
 .octobots/campaigns/<campaign>/workflows/<slug>/workflow.md   # description + ## Runs log
-.octobots/campaigns/<campaign>/workflows/<slug>/workflow.js   # the executable script
-.octobots/campaigns/<campaign>/missions/<mission>/workflows/<slug>/…
+.octobots/campaigns/<campaign>/workflows/<slug>/workflow.js   # a Claude Code workflow script
 ```
 
-`workflow.js` is a **Claude Code dynamic-workflow script** — the thing you hand to the `Workflow`
-tool. Its `export const meta` block is the board's source of truth for the diagram, so:
+**That is not your job here.** Designing or editing a workflow — choosing phases, agents and what
+runs in parallel, and authoring the script — belongs to the **workflow-designer** skill. Running one
+belongs to **mission-execution**. Your job is the board: missions, tasks and acceptance criteria.
 
-> **`meta` must stay a pure object literal** — no variables, function calls, spreads or template
-> interpolation. The app reads it *without executing the script*; the moment it stops being a
-> literal the workflow shows as unreadable in Octoshell.
+When you finish decomposing a mission and its shape is worth recording — a review gate, a fan-out,
+work that can run concurrently — **say so and point the user at `workflow-designer`**. Don't
+hand-edit `workflow.js`: its `export const meta` must stay a pure object literal or the app can no
+longer draw the workflow, and `set-step.js` is what guarantees that.
 
-```js
-export const meta = {
-  name: 'build-tasks',                       // must equal the folder slug
-  description: 'Drive each task to a merged PR',
-  phases: [
-    { title: 'Plan',   steps: [{ id: 's1', agent: 'octobots-planner', label: 'Decompose' }] },
-    { title: 'Build',  steps: [
-        { id: 's2', agent: 'implementer', label: 'Build task',  parallel: 'b' },
-        { id: 's3', agent: 'tester',      label: 'Write tests', parallel: 'b', backend: 'codex' } ] },
-    { title: 'Review', steps: [{ id: 's4', agent: 'reviewer', label: 'Review', dependsOn: ['s2','s3'] }] },
-  ],
-}
-
-// Below meta the body is ordinary workflow code — loops, conditionals, anything.
-phase('Build')
-await pipeline(tasks, t => agent(`implement ${t.id}`), r => agent(`review ${r}`))
-```
-
-Rules:
-
-- Every step carries `id`, `agent` and `label`. `id` is unique across the whole workflow.
-- Steps sharing a `parallel` group run concurrently, and a group lives inside **one** phase.
-- `dependsOn` names step ids that exist.
-- Every phase the body enters with `phase('X')` has a matching `meta.phases` entry.
-- Use `add-workflow.js` and `set-step.js` rather than hand-editing the script, then run
-  `validate.js` on the workflow and fix every problem.
-- Log runs with `add-run.js` — never hand-write the `## Runs` section. The newest
-  `- [status:…]` line is what the app shows as the workflow's last run status.
-
-To **execute** a workflow, use the **mission-execution** skill: it hands `workflow.js` to Claude
-Code's `Workflow` tool and logs the outcome. Nothing in Octoshell runs the script.
-
-### Naming the agent on a task — `[role:<name>]`
+## Naming the agent on a task — `[role:<name>]`
 
 A task can name the agent that should pick it up, with a `[role:<name>]` marker at the start of its
 `## Tasks` board line:
@@ -419,6 +387,9 @@ Run from the repo root:
 - `node .claude/skills/mission-planner/scripts/delete-task.js <mission.md|mission-dir> "<name>"` — delete a task: removes its `## Tasks` block AND trashes its `tasks/<slug>/` folder.
 - `node .claude/skills/mission-planner/scripts/set-criterion.js <board.md> add "<text>" | check <n> | uncheck <n>` — manage acceptance criteria.
 - `node .claude/skills/mission-planner/scripts/set-status.js <parent board.md|dir> "<entity title>" <state>` — set/update the `[status:<state>]` marker on a task or bug board line (idempotent; preserves `[severity:]`/`[role:]`).
+These three are the **workflow-designer** skill's tools — they live here because every board writer
+shares one `scripts/` directory, but that skill owns the doctrine for using them:
+
 - `node .claude/skills/mission-planner/scripts/add-workflow.js --campaign <slug> [--mission <slug>] --name "<name>" [--description "<text>"]` — scaffold a workflow folder (`workflow.md` + a runnable `workflow.js`). Refuses a second workflow on a mission.
 - `node .claude/skills/mission-planner/scripts/set-step.js --workflow <workflow-dir> --phase "<title>" --id <stepId> --agent <name> --label "<text>" [--parallel <group>] [--depends-on <id,id>] [--backend <name>]` — upsert a step in the script's `meta`, rewriting only that literal and leaving the body untouched.
 - `node .claude/skills/mission-planner/scripts/add-run.js --workflow <workflow-dir> --status <state> --summary "<text>" [--at YYYY-MM-DD]` — append a run entry to `## Runs`.
