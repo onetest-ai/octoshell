@@ -4,9 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatch } from "../src/host/rpc-dispatcher.js";
 import { BoardHost } from "../src/host/board-host.js";
-import { TeamAssignments } from "../src/host/team-assignments.js";
 import { AppearanceStore } from "../src/host/appearance-store.js";
-import { CustomizationsIo } from "../src/host/customizations-io.js";
 import { FakeMemento } from "./helpers.js";
 
 /** Returns a fresh BoardHost backed by a temp dir, plus the workspace root for that temp dir. */
@@ -20,17 +18,11 @@ function makeBoard(): BoardHost {
   return makeBoardWithRoot().board;
 }
 
-function makeTeamAssignments() {
-  return new TeamAssignments(new FakeMemento());
-}
-
 function ctx(board?: BoardHost) {
   const { board: defaultBoard, repoRoot } = makeBoardWithRoot();
   const b = board ?? defaultBoard;
-  const teamAssignments = makeTeamAssignments();
   const appearanceStore = new AppearanceStore(new FakeMemento());
-  const customizationsIo = new CustomizationsIo(repoRoot);
-  return { board: b, teamAssignments, appearanceStore, customizationsIo, workspaceFolderPath: repoRoot, dialog: { openFiles: async () => ["x"] }, editor: { openReadonly: async () => {} } };
+  return { board: b, appearanceStore, workspaceFolderPath: repoRoot, dialog: { openFiles: async () => ["x"] }, editor: { openReadonly: async () => {}, openFile: async () => {} } };
 }
 
 describe("dispatch", () => {
@@ -264,50 +256,6 @@ describe("dispatch", () => {
     expect((syncCamp as { created: number }).created).toBe(0);
   });
 
-  it("routes team:assign / team:assignments to globalState (not daemon)", async () => {
-    const c = ctx();
-    await dispatch("team:assign", { projectId: "p1", scope: "campaign", scopeId: "camp1", workType: "bug", teamId: "t1" }, c as never);
-    const assignments = await dispatch("team:assignments", { projectId: "p1" }, c as never);
-    // assignment is stored and retrievable
-    expect(assignments).toContainEqual({ scope: "campaign", scopeId: "camp1", workType: "bug", teamId: "t1" });
-  });
-
-  it("routes teams:list to board (not daemon)", async () => {
-    const c = ctx();
-    const res = await dispatch("teams:list", { projectId: "p1" }, c as never);
-    // board.listTeams() returns an array (empty — no teams/*.json in the temp dir)
-    expect(Array.isArray(res)).toBe(true);
-  });
-
-  it("routes campaign:setTeam and mission:setTeam to board (disk markers)", async () => {
-    const b = makeBoard();
-    const camp = b.createCampaign({ name: "C" });
-    const mission = b.createMission({ title: "M", campaignId: camp.id });
-    const c = ctx(b);
-    const res1 = await dispatch("campaign:setTeam", { projectId: "p1", campaignId: camp.id, teamId: "team-eng" }, c as never);
-    const res2 = await dispatch("mission:setTeam", { projectId: "p1", missionId: mission.id, teamId: "team-cop" }, c as never);
-    expect(res1).toEqual({ ok: true });
-    expect(res2).toEqual({ ok: true });
-    // board has the team set via disk markers
-    expect(b.getTeam("campaign", camp.id)).toBe("team-eng");
-    expect(b.getTeam("mission", mission.id)).toBe("team-cop");
-  });
-
-  it("routes team:getBinding and team:setBinding to board (disk markers)", async () => {
-    const b = makeBoard();
-    const camp = b.createCampaign({ name: "C" });
-    const c = ctx(b);
-    // Initially null
-    const before = await dispatch("team:getBinding", { projectId: "p1", scope: "campaign", scopeId: camp.id }, c as never);
-    expect(before).toBeNull();
-    // Set the binding
-    const setRes = await dispatch("team:setBinding", { projectId: "p1", binding: { scope: "campaign", scopeId: camp.id, teamId: "team-x" } }, c as never);
-    expect(setRes).toEqual({ ok: true });
-    // Get it back
-    const after = await dispatch("team:getBinding", { projectId: "p1", scope: "campaign", scopeId: camp.id }, c as never);
-    expect((after as { teamId: string | null } | null)?.teamId).toBe("team-x");
-  });
-
   it("throws on unknown method", async () => {
     const c = ctx();
     await expect(dispatch("nope:nope", {}, c as never)).rejects.toThrow(/unknown method/i);
@@ -315,7 +263,7 @@ describe("dispatch", () => {
 
   it("rejects malformed args via Zod (handler never runs)", async () => {
     const c = ctx();
-    // campaign:setTeam requires campaignId to be a string; passing a number must fail Zod validation
-    await expect(dispatch("campaign:setTeam", { campaignId: 123, teamId: null }, c as never)).rejects.toThrow();
+    // campaign:setStatus requires campaignId to be a string; passing a number must fail Zod validation
+    await expect(dispatch("campaign:setStatus", { campaignId: 123, status: "draft" }, c as never)).rejects.toThrow();
   });
 });

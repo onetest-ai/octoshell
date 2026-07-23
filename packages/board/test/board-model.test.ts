@@ -59,3 +59,69 @@ describe("BoardModel read API", () => {
     expect(board.missingIdFiles().some((f) => f.kind === "campaign")).toBe(true);
   });
 });
+
+describe("workflows", () => {
+  it("parses a campaign workflow and a mission workflow", () => {
+    const c = join(root, "campaigns", "alpha");
+    mkdirSync(join(c, "workflows", "ship-missions"), { recursive: true });
+    writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");
+    writeFileSync(
+      join(c, "workflows", "ship-missions", "workflow.md"),
+      "# ship-missions\n\n## Description\nShip them\n\n## Runs\n- [status:done] 2026-07-23 — ok\n",
+    );
+    writeFileSync(
+      join(c, "workflows", "ship-missions", "workflow.js"),
+      "export const meta = { name: 'ship-missions', description: 'd', phases: [{ title: 'Go', steps: [{ id: 's1', agent: 'a', label: 'l' }] }] }\n",
+    );
+
+    const m = join(c, "missions", "m1-auth");
+    mkdirSync(join(m, "workflows", "build-tasks"), { recursive: true });
+    writeFileSync(join(m, "mission.md"), "# M1 - Auth\n\n## Description\nx\n");
+    writeFileSync(join(m, "workflows", "build-tasks", "workflow.md"), "# build-tasks\n\n## Description\nBuild\n");
+    writeFileSync(
+      join(m, "workflows", "build-tasks", "workflow.js"),
+      "export const meta = { name: 'build-tasks', phases: [] }\n",
+    );
+
+    const board = new BoardModel(root);
+    board.rebuild();
+
+    const campaignId = board.listCampaigns()[0]!.id;
+    const missionId = board.listMissions(campaignId)[0]!.id;
+
+    const cw = board.listWorkflows({ campaignId });
+    expect(cw).toHaveLength(1);
+    expect(cw[0]!.name).toBe("ship-missions");
+    expect(cw[0]!.campaignId).toBe(campaignId);
+    expect(cw[0]!.missionId).toBeNull();
+    expect(cw[0]!.phases[0]!.steps[0]!.agent).toBe("a");
+    expect(cw[0]!.lastRunStatus).toBe("done");
+    expect(cw[0]!.scriptPath).toBe("campaigns/alpha/workflows/ship-missions/workflow.js");
+    expect(cw[0]!.parseError).toBeNull();
+
+    const mw = board.listWorkflows({ missionId });
+    expect(mw).toHaveLength(1);
+    expect(mw[0]!.missionId).toBe(missionId);
+    expect(mw[0]!.lastRunStatus).toBeNull();
+
+    expect(board.getWorkflow(cw[0]!.id)!.name).toBe("ship-missions");
+    expect(board.workflowIdByFolderPath("campaigns/alpha/workflows/ship-missions")).toBe(cw[0]!.id);
+  });
+
+  it("surfaces an unreadable script as parseError instead of dropping the workflow", () => {
+    const c = join(root, "campaigns", "alpha");
+    mkdirSync(join(c, "workflows", "broken"), { recursive: true });
+    writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");
+    writeFileSync(join(c, "workflows", "broken", "workflow.md"), "# broken\n\n## Description\nd\n");
+    writeFileSync(join(c, "workflows", "broken", "workflow.js"), "const notMeta = 1\n");
+
+    const board = new BoardModel(root);
+    board.rebuild();
+    const campaignId = board.listCampaigns()[0]!.id;
+    const [wf] = board.listWorkflows({ campaignId });
+    expect(wf).toBeDefined();
+    expect(wf!.parseError).toMatch(/export const meta/);
+    expect(wf!.phases).toEqual([]);
+    expect(wf!.name).toBe("broken");
+  });
+});

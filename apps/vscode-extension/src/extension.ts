@@ -1,13 +1,10 @@
 import { join, basename } from "node:path";
 import * as vscode from "vscode";
 import { BoardHost } from "./host/board-host.js";
-import { TeamAssignments } from "./host/team-assignments.js";
-import { CustomizationsIo } from "./host/customizations-io.js";
 import { AppearanceStore } from "./host/appearance-store.js";
-import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE } from "./host/entity-panel-manager.js";
+import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE, WORKFLOW_VIEW_TYPE } from "./host/entity-panel-manager.js";
 import { TokenomicsPanel } from "./host/tokenomics-panel.js";
 import { renderReportHtml, type Report as TokenomicsReport } from "@octoshell/tokenomics";
-import { CustomizationsTree } from "./host/customizations-tree.js";
 import { CampaignsTree } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
@@ -53,13 +50,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const board = new BoardHost(join(fsPath, ".octobots"));
   board.reconcile(); // initial load: stamps missing task/bug id-markers and emits entities:changed
-  const teamAssignments = new TeamAssignments(context.globalState);
-  const customizationsIo = new CustomizationsIo(fsPath);
   const appearanceStore = new AppearanceStore(context.globalState);
   const dispatchCtx: DispatchCtx = {
     board,
-    teamAssignments,
-    customizationsIo,
     appearanceStore,
     workspaceFolderPath: fsPath,
     dialog: {
@@ -76,6 +69,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       openReadonly: async (content: string, language?: string) => {
         const doc = await vscode.workspace.openTextDocument({ content, language: language ?? "log" });
         await vscode.window.showTextDocument(doc, { preview: true });
+      },
+      openFile: async (absPath: string) => {
+        await vscode.window.showTextDocument(vscode.Uri.file(absPath));
       },
     },
   };
@@ -123,16 +119,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         else panel.dispose();
       },
     }),
+    vscode.window.registerWebviewPanelSerializer(WORKFLOW_VIEW_TYPE, {
+      async deserializeWebviewPanel(panel, state) {
+        const id = (state as { id?: string } | undefined)?.id;
+        if (id) entityPanels.adopt(panel, "workflow", id);
+        else panel.dispose();
+      },
+    }),
   );
 
   const campaignsTree = new CampaignsTree(board);
-  const tree = new CustomizationsTree(board, context.extensionPath);
-
-  // Refresh ONLY the campaigns tree when the board changes on disk. The customizations tree
-  // must NOT refresh here: its `listCustomizations()` recursively walks the whole workspace
-  // (agents/skills/CLAUDE.md/settings live outside `.octobots/`), and the board churns
-  // constantly while agents edit files — re-walking the workspace on every board event was the
-  // source of the long refreshes. Customizations refresh lazily instead (view visibility / add).
+  // Refresh the campaigns tree when the board changes on disk. The only disk watcher stays
+  // scoped to `.octobots/`.
   const boardRefreshHandler = (): void => {
     campaignsTree.refresh();
   };
@@ -179,6 +177,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("octoshell.openMissionById", (id: string) => entityPanels.openMission(id)),
     vscode.commands.registerCommand("octoshell.openTaskById", (id: string) => entityPanels.openTask(id)),
     vscode.commands.registerCommand("octoshell.openBugById", (id: string) => entityPanels.openBug(id)),
+    vscode.commands.registerCommand("octoshell.openWorkflowById", (id: string) => entityPanels.openWorkflow(id)),
     vscode.commands.registerCommand("octoshell.newCampaign", async () => {
       const name = await vscode.window.showInputBox({ prompt: "Campaign name", placeHolder: "e.g. Q3 Rollout" });
       if (!name) return;
@@ -266,6 +265,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showErrorMessage(`Octobots: could not delete bug — ${(err as Error).message}`);
       }
     }),
+    vscode.commands.registerCommand("octoshell.newWorkflow", async (node?: { campaign?: { id: string }; mission?: { id: string } }) => {
+      const parent = node?.campaign ? { campaignId: node.campaign.id } : node?.mission ? { missionId: node.mission.id } : null;
+      if (!parent) return;
+      const name = await vscode.window.showInputBox({
+        prompt: "Workflow name",
+        placeHolder: "e.g. build-tasks",
+      });
+      if (!name) return;
+      try {
+        const wf = board.createWorkflow(parent, { name });
+        campaignsTree.refresh();
+        entityPanels.openWorkflow(wf.id);
+      } catch (err) {
+        vscode.window.showErrorMessage(`Octobots: could not create workflow — ${(err as Error).message}`);
+      }
+    }),
+    vscode.commands.registerCommand("octoshell.deleteWorkflow", async (node?: { workflow?: { id: string; name: string } }) => {
+      const wf = node?.workflow;
+      if (!wf) return;
+      const pick = await vscode.window.showWarningMessage(
+        `Delete the workflow "${wf.name}"? This permanently removes its workflow.md and workflow.js.`,
+        { modal: true }, "Delete",
+      );
+      if (pick !== "Delete") return;
+      try {
+        board.deleteWorkflow(wf.id);
+        entityPanels.closeEntity("workflow", wf.id);
+        campaignsTree.refresh();
+      } catch (err) {
+        vscode.window.showErrorMessage(`Octobots: could not delete workflow — ${(err as Error).message}`);
+      }
+    }),
     vscode.commands.registerCommand("octoshell.addFileToCampaign", async (uri?: vscode.Uri) => {
       if (!uri) return;
       const campaigns = board.listCampaigns();
@@ -288,31 +319,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showInformationMessage(`Octobots: added ${basename(uri.fsPath)} to the campaign.`);
       } catch (err) {
         vscode.window.showErrorMessage(`Octobots: could not add file — ${(err as Error).message}`);
-      }
-    }),
-  );
-
-  const customizationsView = vscode.window.createTreeView("octoshell.customizations", { treeDataProvider: tree });
-  // Re-scan the workspace for customizations only when the panel actually becomes visible —
-  // not on board activity. This keeps the only disk watcher scoped to `.octobots/`.
-  customizationsView.onDidChangeVisibility((e) => {
-    if (e.visible) tree.refresh();
-  });
-  context.subscriptions.push(
-    customizationsView,
-    vscode.commands.registerCommand("octoshell.addCustomization", async () => {
-      const kind = await vscode.window.showQuickPick(["agent", "skill", "instruction", "hook", "mcp"], {
-        placeHolder: "Customization kind",
-      });
-      if (!kind) return;
-      // agent/skill/instruction require a name; hook/mcp don't.
-      const name = await vscode.window.showInputBox({ prompt: "Name" });
-      try {
-        const { path } = customizationsIo.addCustomization({ provider: "claude-acp", kind: kind as never, name: name || undefined });
-        await vscode.window.showTextDocument(vscode.Uri.file(path));
-        tree.refresh();
-      } catch (err) {
-        vscode.window.showErrorMessage(`Octobots: could not add ${kind} — ${(err as Error).message}`);
       }
     }),
   );

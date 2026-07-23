@@ -6,7 +6,6 @@ import {
   parseVersion,
   requiredSkillsForAgent,
   OCTOBOTS_PACK_VERSION,
-  OCTOBOTS_AGENTS,
   OCTOBOTS_SKILLS,
   installPack,
   packStatus,
@@ -29,8 +28,10 @@ describe("octobots-skill helpers", () => {
     }
   });
 
-  it("bundles no dedicated planning agents — planning lives in the mission-planner skill", () => {
-    expect(OCTOBOTS_AGENTS).toEqual([]);
+  it("ships no agents at all — planning lives in the skills, agent rosters belong to the repo", () => {
+    // Guards the payload, not just a constant: an `agents/` dir would ride along in every VSIX and
+    // reintroduce the names workflow-designer tells agents never to invent.
+    expect(existsSync(join(PACK_SRC, "agents"))).toBe(false);
   });
 });
 
@@ -44,6 +45,21 @@ describe("bundled pack payloads", () => {
   it.each(OCTOBOTS_SKILLS)("%s describes when to use it, not what it does", (name) => {
     const skill = readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
     expect(skill).toMatch(/^description: Use when /m);
+  });
+
+  // Four sibling skills all trigger inside an .octobots/ repo, so a description that only says when
+  // to use a skill leaves the model guessing between them. Each must also say what it is NOT for.
+  it.each(OCTOBOTS_SKILLS)("%s says what it is not for, to disambiguate from its siblings", (name) => {
+    const skill = readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
+    const description = /^description: (.+)$/m.exec(skill)?.[1] ?? "";
+    expect(description).toMatch(/\bNot for\b/);
+  });
+
+  it.each(OCTOBOTS_SKILLS)("%s does not name an agent the pack never installs", (name) => {
+    const skill = readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
+    // OCTOBOTS_AGENTS is empty: the pack ships skills and a hook, no agents. A skill that tells an
+    // agent to call `octobots-planner` sends it after something that is not on disk.
+    expect(skill).not.toMatch(/agent: ['"`]octobots-(planner|orchestrator)['"`]/);
   });
 });
 

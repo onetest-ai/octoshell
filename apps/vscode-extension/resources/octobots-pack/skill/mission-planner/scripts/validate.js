@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync } from "node:fs";
-import { basename } from "node:path";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { parseWorkflowMeta } from "./workflow-meta.mjs";
 
 const path = process.argv[2];
 if (!path || !existsSync(path)) {
@@ -8,8 +9,15 @@ if (!path || !existsSync(path)) {
   process.exit(2);
 }
 const text = readFileSync(path, "utf8");
-const kind = basename(path).replace(/\.md$/, ""); // campaign | mission | task | bug
+const kind = basename(path).replace(/\.md$/, ""); // campaign | mission | task | bug | workflow
 const problems = [];
+
+// A workflow is validated against its script, not against the task/mission contract.
+if (kind === "workflow") {
+  const dir = dirname(path);
+  for (const p of validateWorkflowDir(dir)) problems.push(p);
+  report();
+}
 
 // Title present + descriptive (not a placeholder like "T1" / "M3.2" / "Task 3").
 const titleM = /^#\s+(.+?)\s*$/m.exec(text);
@@ -49,12 +57,86 @@ if (kind === "mission") {
   }
 }
 
-if (problems.length) {
-  console.error(`INVALID ${path}:`);
-  for (const p of problems) console.error(`  - ${p}`);
-  process.exit(1);
+// A campaign or mission owns workflow folders; a mission may have at most one.
+if (kind === "campaign" || kind === "mission") {
+  const dir = dirname(path);
+  const workflowsDir = join(dir, "workflows");
+  const slugs = existsSync(workflowsDir)
+    ? readdirSync(workflowsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+    : [];
+  if (kind === "mission" && slugs.length > 1) {
+    problems.push(
+      `mission has more than one workflow (${slugs.length}); a mission may have at most one`,
+    );
+  }
+  for (const slug of slugs) {
+    for (const p of validateWorkflowDir(join(workflowsDir, slug))) {
+      problems.push(`workflow "${slug}": ${p}`);
+    }
+  }
 }
-console.log(`OK ${path}`);
+
+report();
+
+function report() {
+  if (problems.length) {
+    console.error(`INVALID ${path}:`);
+    for (const p of problems) console.error(`  - ${p}`);
+    process.exit(1);
+  }
+  console.log(`OK ${path}`);
+  process.exit(0);
+}
+
+/**
+ * Validate one workflow folder against its `workflow.js` meta. Returns a list of problems.
+ * Mirrors packages/board/src/validate.ts `validateWorkflow` — keep the two in step.
+ */
+function validateWorkflowDir(dir) {
+  const out = [];
+  const slug = basename(dir);
+  const jsPath = join(dir, "workflow.js");
+  if (!existsSync(jsPath)) return ["workflow.js is missing"];
+
+  let meta;
+  try {
+    meta = parseWorkflowMeta(readFileSync(jsPath, "utf8"));
+  } catch (err) {
+    return [err.message];
+  }
+
+  if (meta.name !== slug) out.push(`meta.name "${meta.name}" does not match its folder "${slug}"`);
+  if (meta.phases.length === 0) {
+    out.push("workflow has no phases");
+    return out;
+  }
+
+  const stepPhase = new Map();
+  const parallelPhase = new Map();
+  meta.phases.forEach((phase, pi) => {
+    if (phase.steps.length === 0) out.push(`phase "${phase.title}" has no steps`);
+    for (const step of phase.steps) {
+      if (stepPhase.has(step.id)) out.push(`duplicate step id "${step.id}"`);
+      else stepPhase.set(step.id, pi);
+      if (step.parallel !== undefined) {
+        const seen = parallelPhase.get(step.parallel);
+        if (seen !== undefined && seen !== pi) {
+          out.push(`parallel group "${step.parallel}" spans more than one phase`);
+        } else if (seen === undefined) {
+          parallelPhase.set(step.parallel, pi);
+        }
+      }
+    }
+  });
+  for (const phase of meta.phases) {
+    for (const step of phase.steps) {
+      for (const dep of step.dependsOn ?? []) {
+        if (!stepPhase.has(dep)) out.push(`step "${step.id}" dependsOn "${dep}", which is not a step`);
+      }
+    }
+  }
+  return out;
+}
 
 /** A name is a placeholder if it's empty, a letter-prefixed sequence number, a bare number, or a generic word. */
 function isPlaceholderName(raw) {

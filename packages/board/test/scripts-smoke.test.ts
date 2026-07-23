@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
@@ -182,5 +182,93 @@ describe("validate script", () => {
       expect((err as { status?: number }).status).toBe(2);
     }
     expect(threw).toBe(true);
+  });
+});
+
+describe("workflow scripts", () => {
+  /** Slug of a folderPath's last segment (the scripts take slugs, the library returns paths). */
+  function slugOf(folderPath: string): string {
+    return folderPath.split("/").pop()!;
+  }
+
+  it("add-workflow.js scaffolds a workflow the BoardModel parses cleanly", () => {
+    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+    runScript("add-workflow.js", ["--campaign", slugOf(c.folderPath), "--name", "Ship Missions"], projectDir);
+
+    const board = new BoardModel(boardRoot);
+    board.rebuild();
+    const [wf] = board.listWorkflows({ campaignId: c.id });
+    expect(wf).toBeDefined();
+    expect(wf!.name).toBe("ship-missions");
+    expect(wf!.parseError).toBeNull();
+    expect(wf!.phases).toHaveLength(1);
+  });
+
+  it("add-workflow.js refuses a second workflow on a mission", () => {
+    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
+    const cs = slugOf(c.folderPath);
+    const ms = slugOf(m.folderPath);
+    runScript("add-workflow.js", ["--campaign", cs, "--mission", ms, "--name", "build-tasks"], projectDir);
+    expect(() =>
+      runScript("add-workflow.js", ["--campaign", cs, "--mission", ms, "--name", "other"], projectDir),
+    ).toThrow();
+  });
+
+  it("set-step.js adds a step the BoardModel then reports", () => {
+    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+    const cs = slugOf(c.folderPath);
+    runScript("add-workflow.js", ["--campaign", cs, "--name", "ship"], projectDir);
+    const wfDir = join(".octobots", "campaigns", cs, "workflows", "ship");
+    runScript(
+      "set-step.js",
+      ["--workflow", wfDir, "--phase", "Build", "--id", "s2", "--agent", "impl", "--label", "Build it", "--parallel", "b"],
+      projectDir,
+    );
+
+    const board = new BoardModel(boardRoot);
+    board.rebuild();
+    const [wf] = board.listWorkflows({ campaignId: c.id });
+    expect(wf!.parseError).toBeNull();
+    const build = wf!.phases.find((p) => p.title === "Build");
+    expect(build!.steps[0]!.agent).toBe("impl");
+    expect(build!.steps[0]!.parallel).toBe("b");
+  });
+
+  it("add-run.js drives lastRunStatus", () => {
+    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+    const cs = slugOf(c.folderPath);
+    runScript("add-workflow.js", ["--campaign", cs, "--name", "ship"], projectDir);
+    const wfDir = join(".octobots", "campaigns", cs, "workflows", "ship");
+    runScript("add-run.js", ["--workflow", wfDir, "--status", "done", "--summary", "4 agents", "--at", "2026-07-23"], projectDir);
+    runScript("add-run.js", ["--workflow", wfDir, "--status", "failed", "--summary", "review", "--at", "2026-07-24"], projectDir);
+
+    const board = new BoardModel(boardRoot);
+    board.rebuild();
+    expect(board.listWorkflows({ campaignId: c.id })[0]!.lastRunStatus).toBe("failed");
+  });
+
+  it("validate.js fails a workflow whose meta.name disagrees with its folder", () => {
+    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+    const cs = slugOf(c.folderPath);
+    runScript("add-workflow.js", ["--campaign", cs, "--name", "ship"], projectDir);
+    const jsPath = join(boardRoot, "campaigns", cs, "workflows", "ship", "workflow.js");
+    writeFileSync(jsPath, readFileSync(jsPath, "utf8").replace('"ship"', '"other"'), "utf8");
+
+    expect(() =>
+      runScript("validate.js", [join(".octobots", "campaigns", cs, "workflows", "ship", "workflow.md")], projectDir),
+    ).toThrow();
+  });
+
+  it("validate.js passes a well-formed workflow", () => {
+    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+    const cs = slugOf(c.folderPath);
+    runScript("add-workflow.js", ["--campaign", cs, "--name", "ship"], projectDir);
+    const out = runScript(
+      "validate.js",
+      [join(".octobots", "campaigns", cs, "workflows", "ship", "workflow.md")],
+      projectDir,
+    );
+    expect(out).toMatch(/^OK /);
   });
 });

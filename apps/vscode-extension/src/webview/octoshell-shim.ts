@@ -1,5 +1,5 @@
 import type { RpcClient } from "./rpc-client.js";
-import type { TeamBinding } from "../protocol/index.js";
+import type { Workflow, WorkflowMeta } from "@octoshell/board";
 
 /** Board-only webview API exposed on window.octoshell.
  * Declares only the namespaces actually wired to RPC calls.
@@ -20,25 +20,21 @@ export interface OctoshellExtApi {
   mission: {
     get: (projectId: unknown, missionId: string) => Promise<unknown>;
   };
+  workflows: {
+    list: (parent: { campaignId?: string; missionId?: string }) => Promise<Workflow[]>;
+    get: (workflowId: string) => Promise<Workflow | null>;
+    create: (name: string, parent: { campaignId?: string; missionId?: string }) => Promise<{ id: string; folderPath: string }>;
+    update: (workflowId: string, description: string) => Promise<{ ok: true }>;
+    setMeta: (workflowId: string, meta: WorkflowMeta) => Promise<{ ok: true }>;
+    remove: (workflowId: string) => Promise<{ ok: true }>;
+    openScript: (workflowId: string) => Promise<{ ok: true }>;
+  };
   settings: {
     getAppearance: () => Promise<unknown>;
     setAppearance: (value: unknown) => Promise<{ ok: true }>;
     listProviders: () => Promise<{ rows: never[]; registryStale: boolean }>;
     getPermissions: () => Promise<{ defaultApprovalMode: string | null }>;
     agentSelectorFlags: () => Promise<Record<string, boolean>>;
-  };
-  customizations: {
-    list: () => Promise<unknown[]>;
-    readFile: (path: string) => Promise<unknown>;
-    writeFile: (path: string, content: string) => Promise<{ ok: true }>;
-    add: (input: unknown) => Promise<unknown>;
-  };
-  teams: {
-    list: () => Promise<unknown>;
-    setCampaignTeam: (campaignId: string, teamId: string | null) => Promise<unknown>;
-    setMissionTeam: (missionId: string, teamId: string | null) => Promise<unknown>;
-    getBinding: (scope: "campaign" | "mission", scopeId: string) => Promise<TeamBinding | null>;
-    setBinding: (binding: TeamBinding) => Promise<{ ok: true }>;
   };
 }
 
@@ -62,25 +58,21 @@ export function createOctoshellShim(rpc: RpcClient): OctoshellExtApi {
     mission: {
       get: (_p, missionId) => c("mission:get", { missionId }) as never,
     },
+    workflows: {
+      list: (parent) => c("workflow:list", parent) as never,
+      get: (workflowId) => c("workflow:get", { workflowId }) as never,
+      create: (name, parent) => c("workflow:create", { name, ...parent }) as never,
+      update: (workflowId, description) => c("workflow:update", { workflowId, description }) as never,
+      setMeta: (workflowId, meta) => c("workflow:setMeta", { workflowId, meta }) as never,
+      remove: (workflowId) => c("workflow:delete", { workflowId }) as never,
+      openScript: (workflowId) => c("workflow:openScript", { workflowId }) as never,
+    },
     settings: {
       getAppearance: () => c("settings:getAppearance", {}) as never,
       setAppearance: (value) => c("settings:setAppearance", { value }) as never,
       listProviders: () => c("settings:listProviders", {}) as never,
       getPermissions: () => c("settings:getPermissions", {}) as never,
       agentSelectorFlags: () => c("settings:agentSelectorFlags", {}) as never,
-    },
-    customizations: {
-      list: () => c("customizations:list", {}) as never,
-      readFile: (path) => c("customizations:readFile", { path }) as never,
-      writeFile: (path, content) => c("customizations:writeFile", { path, content }) as never,
-      add: (input) => c("customizations:add", { input }) as never,
-    },
-    teams: {
-      list: () => c("teams:list", {}) as never,
-      setCampaignTeam: (campaignId, teamId) => c("campaign:setTeam", { campaignId, teamId }) as never,
-      setMissionTeam: (missionId, teamId) => c("mission:setTeam", { missionId, teamId }) as never,
-      getBinding: (scope, scopeId) => c("team:getBinding", { scope, scopeId }) as never,
-      setBinding: (binding) => c("team:setBinding", { binding }) as never,
     },
   };
 }

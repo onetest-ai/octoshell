@@ -1,6 +1,4 @@
 import type { BoardHost } from "./board-host.js";
-import type { TeamAssignments } from "./team-assignments.js";
-import type { CustomizationsIo } from "./customizations-io.js";
 import type { AppearanceStore } from "./appearance-store.js";
 import { readAgentSelectorFlags } from "./agent-selector-flags.js";
 import { basename } from "node:path";
@@ -10,10 +8,6 @@ import { rpcArgs, type RpcMethod, type RpcArgsOf, type RpcResultOf } from "../pr
 export interface DispatchCtx {
   /** Board façade — serves all board read/create/edit/delete features with no DB. */
   board: BoardHost;
-  /** globalState-backed store for team-type assignments (board-backed, no database). */
-  teamAssignments: TeamAssignments;
-  /** Host-local customization file I/O (no daemon needed). */
-  customizationsIo: CustomizationsIo;
   /** globalState-backed appearance preferences (no daemon/appRuntime needed). */
   appearanceStore: AppearanceStore;
   /** Workspace folder path (the open folder), used for project:list. */
@@ -21,7 +15,10 @@ export interface DispatchCtx {
   /** Host-backed dialogs (vscode.window.showOpenDialog). */
   dialog: { openFiles: () => Promise<string[]>; openFolder?: () => Promise<string | null> };
   /** Host editor capability — keeps this module free of a direct `vscode` import (testable). */
-  editor: { openReadonly: (content: string, language?: string) => Promise<void> };
+  editor: {
+    openReadonly: (content: string, language?: string) => Promise<void>;
+    openFile: (absPath: string) => Promise<void>;
+  };
 }
 
 type RpcHandler<M extends RpcMethod> = (
@@ -53,10 +50,6 @@ const handlers: { [M in RpcMethod]: RpcHandler<M> } = {
   "project:open": (_a, _c) => ({ ok: true }),
   "dialog:openFiles": (_a, c) => c.dialog.openFiles(),
   "dialog:openFolder": (_a, c) => (c.dialog.openFolder ? c.dialog.openFolder() : null),
-  "customizations:list": (_a, c) => c.board.listCustomizations(),
-  "customizations:readFile": (a, c) => c.customizationsIo.readCustomizationFile(a.path),
-  "customizations:writeFile": (a, c) => c.customizationsIo.writeCustomizationFile(a.path, a.content),
-  "customizations:add": (a, c) => c.customizationsIo.addCustomization(a.input as never),
   "settings:getAppearance": (_a, c) => c.appearanceStore.get(),
   "settings:setAppearance": (a, c) => { c.appearanceStore.set(a.value as never); return { ok: true }; },
   "settings:listProviders": () => ({ rows: [], registryStale: false }),
@@ -98,14 +91,23 @@ const handlers: { [M in RpcMethod]: RpcHandler<M> } = {
   "bug:setStatus": (a, c) => okStatus(c.board.setStatus("bug", a.bugId, a.status), a.status),
   "bug:delete": (a, c) => { c.board.deleteBug(a.bugId); return { ok: true }; },
   "bug:sync": (a, c) => c.board.syncBugsFromBoard(a.campaignId ? { campaignId: a.campaignId } : { missionId: a.missionId }),
-  // teams — board-backed (disk markers) + globalState for type-assignments
-  "teams:list": (_a, c) => c.board.listTeams(),
-  "campaign:setTeam": (a, c) => { c.board.setTeam("campaign", a.campaignId, a.teamId); return { ok: true }; },
-  "mission:setTeam": (a, c) => { c.board.setTeam("mission", a.missionId, a.teamId); return { ok: true }; },
-  "team:getBinding": (a, c) => c.board.getTeamBinding(a.scope, a.scopeId),
-  "team:setBinding": (a, c) => c.board.setTeamBinding(a.binding),
-  "team:assign": async (a, c) => { await c.teamAssignments.set(a.scope, a.scopeId, a.workType, a.teamId); return { ok: true }; },
-  "team:assignments": (_a, c) => c.teamAssignments.list(),
+  // workflows — the plan of execution; the script is run by Claude Code, never by the extension
+  "workflow:list": (a, c) =>
+    c.board.listWorkflows(a.campaignId ? { campaignId: a.campaignId } : { missionId: a.missionId! }),
+  "workflow:get": (a, c) => c.board.getWorkflow(a.workflowId),
+  "workflow:create": (a, c) =>
+    c.board.createWorkflow(a.campaignId ? { campaignId: a.campaignId } : { missionId: a.missionId! }, { name: a.name }),
+  "workflow:update": (a, c) => { c.board.updateWorkflow(a.workflowId, { description: a.description }); return { ok: true }; },
+  "workflow:setMeta": (a, c) => { c.board.setWorkflowMeta(a.workflowId, a.meta); return { ok: true }; },
+  "workflow:addRun": (a, c) => {
+    c.board.appendWorkflowRun(a.workflowId, { status: a.status, summary: a.summary, at: a.at });
+    return { ok: true };
+  },
+  "workflow:delete": (a, c) => { c.board.deleteWorkflow(a.workflowId); return { ok: true }; },
+  "workflow:openScript": async (a, c) => {
+    await c.editor.openFile(c.board.workflowScriptPath(a.workflowId));
+    return { ok: true };
+  },
 };
 
 /** Exported for the exhaustiveness test (Task 11). */

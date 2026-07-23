@@ -7,8 +7,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
-import { join, basename, dirname } from "node:path";
-import { homedir } from "node:os";
+import { join, basename } from "node:path";
 import { EventEmitter } from "node:events";
 import {
   BoardModel,
@@ -24,8 +23,11 @@ import {
   deleteMission,
   deleteTask,
   deleteBug,
-  setTeam,
-  getTeam,
+  createWorkflow as createWorkflowFile,
+  updateWorkflow as updateWorkflowFile,
+  deleteWorkflow as deleteWorkflowFile,
+  setWorkflowMeta as setWorkflowMetaFile,
+  appendWorkflowRun as appendWorkflowRunFile,
   parseDocumentLinks,
   type EntityKind,
   type ManagedFields,
@@ -35,14 +37,12 @@ import {
   type Bug,
   type BugParent,
   type BugSeverity,
+  type Workflow,
+  type WorkflowParent,
+  type WorkflowMeta,
 } from "@octoshell/board";
-import {
-  readCustomizations,
-  DEFAULT_MAX_ITEMS,
-  type CustomizationItem,
-} from "@octoshell/customizations";
 import { rollupCampaign, type Rollup } from "./board-rollup.js";
-import type { DocLink, DocFile, CampaignSummary, MissionProposal, TeamEntry } from "../protocol/index.js";
+import type { DocLink, DocFile, CampaignSummary, MissionProposal } from "../protocol/index.js";
 
 export interface CampaignRollup extends Rollup {
   campaignId: string;
@@ -222,18 +222,6 @@ export class BoardHost {
     return { id: input.path, kind: "file", target: input.path, label, createdAt: Date.now() };
   }
 
-  listCustomizations(): CustomizationItem[] {
-    return readCustomizations(
-      {
-        projectDir: dirname(this.octobotsDir),
-        claudeConfigDir: process.env["CLAUDE_CONFIG_DIR"] ?? join(homedir(), ".claude"),
-        homeDir: homedir(),
-        skipDirs: new Set(["node_modules", ".git", "dist", "out", ".turbo", ".next", "coverage"]),
-        maxItems: DEFAULT_MAX_ITEMS,
-      },
-      ["claude-code"], // providers are file-discovered; pass the always-on set (no DB provider_state)
-    );
-  }
 
   // ── Proposal sync API ───────────────────────────────────────────────────────
 
@@ -388,58 +376,42 @@ export class BoardHost {
   deleteTask(id: string): void { deleteTask(this.octobotsDir, id); this.reconcile(); }
   deleteBug(id: string): void { deleteBug(this.octobotsDir, id); this.reconcile(); }
 
-  // ── Teams API ───────────────────────────────────────────────────────────────
+  // ── Workflows API ───────────────────────────────────────────────────────────
 
-  listTeams(): TeamEntry[] {
-    const dir = join(this.octobotsDir, "teams");
-    if (!existsSync(dir)) return [];
-    const out: TeamEntry[] = [];
-    try {
-      for (const f of readdirSync(dir)) {
-        if (!f.endsWith(".json")) continue;
-        try {
-          const raw = JSON.parse(readFileSync(join(dir, f), "utf8")) as Record<string, unknown>;
-          const id = typeof raw["id"] === "string" ? raw["id"] : undefined;
-          if (!id) continue;
-          const title = typeof raw["title"] === "string" ? raw["title"] : id;
-          // support both "roster" and "localAgents" array fields
-          const rosterRaw = Array.isArray(raw["roster"]) ? raw["roster"]
-            : Array.isArray(raw["localAgents"]) ? raw["localAgents"]
-            : [];
-          const roster = (rosterRaw as unknown[]).filter((r): r is string => typeof r === "string");
-          out.push({ id, title, roster });
-        } catch { /* skip malformed */ }
-      }
-    } catch { /* teams dir unreadable */ }
-    return out;
+  listWorkflows(parent: WorkflowParent): Workflow[] { return this.model.listWorkflows(parent); }
+  getWorkflow(id: string): Workflow | null { return this.model.getWorkflow(id); }
+
+  createWorkflow(parent: WorkflowParent, input: { name: string }): { id: string; folderPath: string } {
+    const res = createWorkflowFile(this.octobotsDir, parent, input);
+    this.reconcile();
+    return res;
   }
 
-  setTeam(kind: "campaign" | "mission", id: string, slug: string | null): void {
-    setTeam(this.octobotsDir, kind, id, slug);
+  updateWorkflow(id: string, patch: { description?: string }): void {
+    updateWorkflowFile(this.octobotsDir, id, patch);
     this.reconcile();
   }
 
-  getTeam(kind: "campaign" | "mission", id: string): string | null {
-    return getTeam(this.octobotsDir, kind, id);
-  }
-
-  /**
-   * Returns the team binding for a campaign or mission (disk marker), or null if no team is set.
-   * The simplified binding has no entrypoint/members (execution concepts dropped).
-   */
-  getTeamBinding(scope: "campaign" | "mission", scopeId: string): { scope: "campaign" | "mission"; scopeId: string; teamId: string | null } | null {
-    const teamId = getTeam(this.octobotsDir, scope, scopeId);
-    if (teamId === null) return null;
-    return { scope, scopeId, teamId };
-  }
-
-  /**
-   * Sets (or clears) the team binding for a campaign or mission via a disk marker.
-   */
-  setTeamBinding(binding: { scope: "campaign" | "mission"; scopeId: string; teamId: string | null }): { ok: true } {
-    setTeam(this.octobotsDir, binding.scope, binding.scopeId, binding.teamId);
+  setWorkflowMeta(id: string, meta: WorkflowMeta): void {
+    setWorkflowMetaFile(this.octobotsDir, id, meta);
     this.reconcile();
-    return { ok: true };
+  }
+
+  appendWorkflowRun(id: string, entry: { status: string; summary: string; at: string }): void {
+    appendWorkflowRunFile(this.octobotsDir, id, entry);
+    this.reconcile();
+  }
+
+  deleteWorkflow(id: string): void {
+    deleteWorkflowFile(this.octobotsDir, id);
+    this.reconcile();
+  }
+
+  /** Absolute path of a workflow's script, for opening it in a normal editor tab. */
+  workflowScriptPath(id: string): string {
+    const wf = this.model.getWorkflow(id);
+    if (!wf) throw new Error(`Workflow not found: ${id}`);
+    return join(this.octobotsDir, wf.scriptPath);
   }
 
   // ── Private helpers (documents) ──────────────────────────────────────────────

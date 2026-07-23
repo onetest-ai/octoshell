@@ -13,14 +13,13 @@ it, and rebuilds its in‑memory model from disk on every change.
 | --- | --- |
 | `apps/vscode-extension` | The VS Code extension — host (Node) side + React webview. The only app. |
 | `packages/board` | Pure, file‑based board library: parse, validate, and write the markdown model. |
-| `packages/customizations` | Discovers agent‑customization files (Claude Code, Copilot) in a workspace. |
 
 ## Language & build
 
 - **TypeScript**, `module: "NodeNext"`, `strict`, `noUncheckedIndexedAccess`. ESM throughout;
   relative imports carry the `.js` extension.
 - **turborepo** orchestrates per‑package `build` / `test` / `lint` / `typecheck` in dependency
-  order (`board`/`customizations` → `vscode-extension`).
+  order (`board`/`tokenomics` → `vscode-extension`).
 - **Node ≥ 22.5** (see `.nvmrc`), **pnpm 9** (pinned via `packageManager`).
 - Validation with **zod** where runtime schema checks are needed.
 
@@ -29,13 +28,13 @@ it, and rebuilds its in‑memory model from disk on every change.
 - Bundled with **esbuild** (CommonJS, VS Code's `main`).
 - `BoardHost` is the façade over `@octoshell/board`: every mutation writes markdown, then
   reconciles a fresh board model and emits `entities:changed`.
-- Sidebar `TreeDataProvider`s (`CampaignsTree`, `CustomizationsTree`) and an `EntityPanelManager`
+- A sidebar `TreeDataProvider` (`CampaignsTree`) and an `EntityPanelManager`
   that opens one webview tab per campaign / mission / task / bug.
 - `rpc-dispatcher.ts` is the canonical RPC table routing webview calls to host services.
 - A single **debounced, git‑quiescence‑gated** board watcher re‑parses the whole `.octobots`
   tree after it settles, so bulk git operations don't churn state.
 - `octobots-skill` / `octobots-hooks` install the bundled workflow pack into `<workspace>/.claude`.
-- Light host state (team assignments, appearance) is kept in VS Code `globalState` — not a DB.
+- Light host state (appearance) is kept in VS Code `globalState` — not a DB.
 
 ## Webview (`apps/vscode-extension/src/webview`)
 
@@ -61,16 +60,18 @@ it, and rebuilds its in‑memory model from disk on every change.
 
 Shipped inside the extension and copied into a workspace on demand:
 
-- the **`octobots` skill** with command scripts (`add-task.js`, `add-bug.js`, `set-status.js`,
-  `set-criterion.js`, `validate.js`, `list.js`, `show.js`, `add-doc.js`, `create-team.js`, …);
-- **planning agents** (`octobots-planner`, `octobots-orchestrator`);
+- the **`mission-planner` skill** with command scripts (`add-task.js`, `add-bug.js`, `set-status.js`,
+  `set-criterion.js`, `validate.js`, `list.js`, `show.js`, `add-doc.js`, `add-workflow.js`,
+  `set-step.js`, `add-run.js`, …);
+- the **`workflow-designer`**, **`mission-execution`** and **`mission-completion-gate`** skills;
+- **no agents** — the pack ships skills and a hook only;
 - a **session hook** (`hooks/primer.mjs`) that primes a CLI agent with the board model and is
   inert outside an `.octobots/` repo.
 
 ## Testing
 
 - **Vitest** across all packages.
-- `board` and `customizations` test pure functions against fixture trees.
+- `board` and `tokenomics` test pure functions against fixture trees.
 - Webview tests use **happy‑dom** + `@testing-library/react` (with an `attachInternals` polyfill
   for the `@vscode-elements` web components).
 - Host‑side tests write to temp directories rather than the repo's own `.octobots/`.

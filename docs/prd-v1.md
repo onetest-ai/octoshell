@@ -47,43 +47,38 @@ Each entity has a **status**: `draft → executing → awaitingApproval → done
 5. As a user, I want to manage a task's acceptance‑criteria checklist, so "done" is verifiable.
 6. As a user, I want to attach documents (links or files) to an entity, so context travels with
    the work.
-7. As a user, I want to assign teams to entities, so ownership is clear.
-8. As a user, I want to delete an entity, so I can prune abandoned work.
+7. As a user, I want to delete an entity, so I can prune abandoned work.
 
 ### Disk as the source of truth
 
-9. As a user, I want every change written to markdown immediately, so the plan is always in the
+8. As a user, I want every change written to markdown immediately, so the plan is always in the
    repo and reviewable via git.
-10. As a user, I want edits made on disk (by an agent, or by `git checkout`/`stash`/`rebase`) to
+9. As a user, I want edits made on disk (by an agent, or by `git checkout`/`stash`/`rebase`) to
     show up in the UI without churn or corruption, so the editor and the files never disagree.
 
 ### Driving the board from CLI agents
 
-11. As a user, I want to install a workflow pack into my workspace, so my CLI agents understand
+10. As a user, I want to install a workflow pack into my workspace, so my CLI agents understand
     the board model.
-12. As an agent, I want small scripts to create and update board entities
+11. As an agent, I want small scripts to create and update board entities
     (`add-task.js`, `add-bug.js`, `set-status.js`, `set-criterion.js`, `add-doc.js`, …), so I can
     drive the board without a UI.
-13. As an agent, I want a `validate.js` that flags malformed entities (missing acceptance
+12. As an agent, I want a `validate.js` that flags malformed entities (missing acceptance
     criteria, bare‑id titles, missing sections), so I can keep the board well‑formed.
-14. As an agent, I want a session primer that explains the board on start, so I follow the
+13. As an agent, I want a session primer that explains the board on start, so I follow the
     campaign/mission/task conventions automatically.
-
-### Customizations
-
-15. As a user, I want the extension to discover agent customizations (Claude Code, Copilot) in my
-    workspace, so I can see what's configured.
 
 ## Implementation notes
 
 - **No database, no server, no daemon.** `BoardHost` writes markdown and reconciles a fresh
   in‑memory model from disk; a single debounced, git‑quiescence‑gated watcher handles external
-  edits. Light host state (team assignments, appearance) lives in VS Code `globalState`.
-- **Monorepo:** `packages/board` (parse/validate/write), `packages/customizations` (discovery),
+  edits. Light host state (appearance) lives in VS Code `globalState`.
+- **Monorepo:** `packages/board` (parse/validate/write), `packages/tokenomics` (transcript pricing),
   `apps/vscode-extension` (host + React/Vite webview on VS Code theme tokens).
-- **Workflow pack** (`resources/octobots-pack`): the `octobots` skill + command scripts, planning
-  agents (`octobots-planner`, `octobots-orchestrator`), and a `hooks/primer.mjs` session hook,
-  installed into `<workspace>/.claude` on demand.
+- **Workflow pack** (`resources/octobots-pack`): the `mission-planner` skill + command scripts,
+  the `workflow-designer` / `mission-execution` / `mission-completion-gate` skills, and a
+  `hooks/primer.mjs` session hook, installed into `<workspace>/.claude` on demand. No agents — agent
+  rosters belong to the repo.
 - See `docs/tech-stack.md` for the full stack and `CLAUDE.md` for the architecture tour.
 
 ## Out of scope

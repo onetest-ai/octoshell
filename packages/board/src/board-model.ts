@@ -9,8 +9,9 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseManagedBlock, mapBoardStatus, boardLineEntityName, type EntityKind } from "./managed-block.js";
-import type { Campaign, Mission, Task, Bug, BugSeverity } from "./types.js";
-import type { BugParent } from "./types.js";
+import { parseWorkflowMeta } from "./workflow-meta.js";
+import type { Campaign, Mission, Task, Bug, BugSeverity, Workflow, WorkflowPhase } from "./types.js";
+import type { BugParent, WorkflowParent } from "./types.js";
 
 /** Entry in the missingIdFiles() list — an .md that had no `<!-- octobots:id ... -->` marker. */
 export interface MissingIdFile {
@@ -31,18 +32,22 @@ export class BoardModel {
   private missions = new Map<string, Mission>();
   private tasks = new Map<string, Task>();
   private bugs = new Map<string, Bug>();
+  private workflows = new Map<string, Workflow>();
 
   // Parent-indexed lists
   private missionsByCampaign = new Map<string, string[]>(); // campaignId → mission ids
   private tasksByMission = new Map<string, string[]>();     // missionId → task ids
   private bugsByCampaign = new Map<string, string[]>();     // campaignId → bug ids
   private bugsByMission = new Map<string, string[]>();      // missionId → bug ids
+  private workflowsByCampaign = new Map<string, string[]>(); // campaignId → workflow ids
+  private workflowsByMission = new Map<string, string[]>();  // missionId → workflow ids
 
   // FolderPath → id indexes
   private campaignByFolder = new Map<string, string>();
   private missionByFolder = new Map<string, string>();
   private taskByFolder = new Map<string, string>();
   private bugByFolder = new Map<string, string>();
+  private workflowByFolder = new Map<string, string>();
 
   // Files without an id marker
   private missingIds: MissingIdFile[] = [];
@@ -58,14 +63,18 @@ export class BoardModel {
     this.missions.clear();
     this.tasks.clear();
     this.bugs.clear();
+    this.workflows.clear();
     this.missionsByCampaign.clear();
     this.tasksByMission.clear();
     this.bugsByCampaign.clear();
     this.bugsByMission.clear();
+    this.workflowsByCampaign.clear();
+    this.workflowsByMission.clear();
     this.campaignByFolder.clear();
     this.missionByFolder.clear();
     this.taskByFolder.clear();
     this.bugByFolder.clear();
+    this.workflowByFolder.clear();
     this.missingIds = [];
 
     if (!this.root) return;
@@ -94,7 +103,6 @@ export class BoardModel {
         target: cf.target ?? "",
         status: (cf.status ? (mapBoardStatus(cf.status) ?? "draft") : "draft"),
         folderPath: cFolder,
-        teamId: null,
         createdAt: cMtime,
         updatedAt: cMtime,
       };
@@ -102,6 +110,12 @@ export class BoardModel {
       this.campaignByFolder.set(cFolder, cId);
       this.missionsByCampaign.set(cId, []);
       this.bugsByCampaign.set(cId, []);
+      this.workflowsByCampaign.set(cId, []);
+      for (const wf of parseWorkflows(this.root, cFolder, { campaignId: cId })) {
+        this.workflows.set(wf.id, wf);
+        this.workflowByFolder.set(wf.folderPath, wf.id);
+        this.workflowsByCampaign.get(cId)!.push(wf.id);
+      }
 
       // Parse campaign-level bug statuses from campaign.md ## Bugs board lines
       const cBugStatuses = parseSectionBoardStatuses(cText, "## Bugs");
@@ -171,7 +185,6 @@ export class BoardModel {
           description: mf.description ?? "",
           acceptanceCriteria: mf.acceptanceCriteria ?? "",
           folderPath: mFolder,
-          teamId: null,
           createdAt: mMtime,
           updatedAt: mMtime,
         };
@@ -180,6 +193,12 @@ export class BoardModel {
         this.missionsByCampaign.get(cId)!.push(mId);
         this.tasksByMission.set(mId, []);
         this.bugsByMission.set(mId, []);
+        this.workflowsByMission.set(mId, []);
+        for (const wf of parseWorkflows(this.root, mFolder, { missionId: mId })) {
+          this.workflows.set(wf.id, wf);
+          this.workflowByFolder.set(wf.folderPath, wf.id);
+          this.workflowsByMission.get(mId)!.push(wf.id);
+        }
 
         // Parse mission-level bug and task statuses from mission.md board lines
         const mBugStatuses = parseSectionBoardStatuses(mText, "## Bugs");
@@ -307,6 +326,22 @@ export class BoardModel {
     return this.bugs.get(id) ?? null;
   }
 
+  /** Workflows for a campaign or mission parent, sorted newest-first. */
+  listWorkflows(parent: WorkflowParent): Workflow[] {
+    const ids =
+      "campaignId" in parent
+        ? this.workflowsByCampaign.get(parent.campaignId) ?? []
+        : this.workflowsByMission.get(parent.missionId) ?? [];
+    const entities = ids
+      .map((id) => this.workflows.get(id))
+      .filter((w): w is Workflow => w !== undefined);
+    return sortEntities(entities);
+  }
+
+  getWorkflow(id: string): Workflow | null {
+    return this.workflows.get(id) ?? null;
+  }
+
   // ── FolderPath → id indexes ──────────────────────────────────────────────
 
   campaignIdByFolderPath(folderPath: string): string | null {
@@ -323,6 +358,10 @@ export class BoardModel {
 
   bugIdByFolderPath(folderPath: string): string | null {
     return this.bugByFolder.get(folderPath) ?? null;
+  }
+
+  workflowIdByFolderPath(folderPath: string): string | null {
+    return this.workflowByFolder.get(folderPath) ?? null;
   }
 
   // ── Missing ID tracking ──────────────────────────────────────────────────
@@ -398,6 +437,77 @@ function parseSectionBoardStatuses(text: string, sectionHeading: string): Map<st
     // Any parse error → return what we have so far (callers default to "draft")
   }
   return result;
+}
+
+/**
+ * Parse every workflow folder under `<parentFolder>/workflows/`. A workflow whose script cannot be
+ * read is still returned, carrying `parseError` — an unreadable workflow must be visible on the
+ * board, not silently absent.
+ */
+function parseWorkflows(
+  root: string,
+  parentFolder: string,
+  parent: WorkflowParent,
+): Workflow[] {
+  const out: Workflow[] = [];
+  const dir = join(root, parentFolder, "workflows");
+  for (const slug of safeReaddir(dir)) {
+    const folderPath = `${parentFolder}/workflows/${slug}`;
+    const mdPath = join(root, folderPath, "workflow.md");
+    const mdText = safeReadFile(mdPath);
+    if (mdText === null) continue; // no workflow.md → not a workflow folder
+
+    const fields = parseManagedBlock(mdText);
+    const jsPath = join(root, folderPath, "workflow.js");
+    const jsText = safeReadFile(jsPath);
+
+    let name = fields.name || deSlug(slug);
+    let description = fields.description ?? "";
+    let phases: WorkflowPhase[] = [];
+    let parseError: string | null = null;
+
+    if (jsText === null) {
+      parseError = "workflow.js is missing";
+    } else {
+      try {
+        const meta = parseWorkflowMeta(jsText);
+        name = meta.name;
+        if (meta.description) description = meta.description;
+        phases = meta.phases;
+      } catch (err) {
+        parseError = (err as Error).message;
+      }
+    }
+
+    const mtime = safeMtime(mdPath);
+    out.push({
+      id: `folder:${folderPath}`,
+      campaignId: "campaignId" in parent ? parent.campaignId : null,
+      missionId: "missionId" in parent ? parent.missionId : null,
+      name,
+      description,
+      phases,
+      scriptPath: `${folderPath}/workflow.js`,
+      folderPath,
+      parseError,
+      lastRunStatus: newestRunStatus(fields.runs ?? ""),
+      createdAt: mtime,
+      updatedAt: mtime,
+    });
+  }
+  return out;
+}
+
+/** Status of the last `- [status:x] …` line in a `## Runs` body, or null when there are none. */
+function newestRunStatus(runsBody: string): string | null {
+  let last: string | null = null;
+  for (const line of runsBody.split("\n")) {
+    const m = line.match(/^\s*-\s*\[status:([^\]]+)\]/i);
+    if (!m) continue;
+    const mapped = mapBoardStatus((m[1] ?? "").trim());
+    if (mapped) last = mapped;
+  }
+  return last;
 }
 
 /** Safely read directory entries (returns [] on any error). */

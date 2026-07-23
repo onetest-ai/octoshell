@@ -7,7 +7,6 @@ export interface Campaign {
   target: string;
   status: string;
   folderPath: string;
-  teamId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -20,7 +19,6 @@ export interface Mission {
   description: string;
   acceptanceCriteria: string;
   folderPath: string;
-  teamId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -59,6 +57,56 @@ export interface Bug {
 
 /** A bug is parented by exactly one of a campaign or a mission. */
 export type BugParent = { campaignId: string } | { missionId: string };
+
+/** One node in a workflow: an agent to call, and how it is ordered against its siblings. */
+export interface WorkflowStep {
+  /** Unique within the workflow. */
+  id: string;
+  /** Agent / subagent type to call. */
+  agent: string;
+  /** Caption shown on the diagram node. */
+  label: string;
+  /** Steps sharing a group id run concurrently. */
+  parallel?: string;
+  /** Step ids this step waits for. */
+  dependsOn?: string[];
+  /** Optional CLI backend override — claude | copilot | codex. */
+  backend?: string;
+}
+
+/** A band of the workflow diagram. Mirrors an entry of the script's `meta.phases`. */
+export interface WorkflowPhase {
+  title: string;
+  detail?: string;
+  steps: WorkflowStep[];
+}
+
+/**
+ * A workflow: the plan of execution for a campaign (which orchestrates its missions) or a
+ * mission (which orchestrates its tasks). Backed by a folder holding `workflow.md` and
+ * `workflow.js`; the script's `meta` is the source of truth for name/description/phases.
+ */
+export interface Workflow {
+  id: string;
+  /** Exactly one of campaignId / missionId is non-null. */
+  campaignId: string | null;
+  missionId: string | null;
+  name: string;
+  description: string;
+  phases: WorkflowPhase[];
+  /** Repo-relative path of the script, e.g. `campaigns/a/workflows/w/workflow.js`. */
+  scriptPath: string;
+  folderPath: string;
+  /** Non-null when `meta` could not be located, evaluated or coerced. `phases` is then empty. */
+  parseError: string | null;
+  /** Status of the newest `## Runs` board line, or null when there are no runs. */
+  lastRunStatus: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A workflow is parented by exactly one of a campaign or a mission. */
+export type WorkflowParent = { campaignId: string } | { missionId: string };
 
 export function newId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 12);

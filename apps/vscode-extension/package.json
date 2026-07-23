@@ -1,8 +1,8 @@
 {
   "name": "@octoshell/vscode-extension",
   "displayName": "Octobots",
-  "description": "Plan and track AI coding work as markdown boards \u2014 campaigns, missions, tasks and bugs \u2014 right inside VS Code, and install a workflow pack that teaches CLI coding agents (Claude Code, Codex, Copilot) to drive them.",
-  "version": "0.0.33",
+  "description": "Plan and track AI coding work as markdown boards — campaigns, missions, tasks and bugs — right inside VS Code, and install a workflow pack that teaches CLI coding agents (Claude Code, Codex, Copilot) to drive them.",
+  "version": "0.0.34",
   "private": true,
   "license": "Apache-2.0",
   "publisher": "onetest-ai",
@@ -101,11 +101,6 @@
     ],
     "commands": [
       {
-        "command": "octoshell.addCustomization",
-        "title": "Octobots: Add Customization",
-        "icon": "$(add)"
-      },
-      {
         "command": "octoshell.openSettings",
         "title": "Octobots: Open Settings",
         "icon": "$(gear)"
@@ -162,6 +157,16 @@
         "command": "octoshell.exportTokenomicsReport",
         "title": "Octobots: Export Tokenomics Report",
         "icon": "$(export)"
+      },
+      {
+        "command": "octoshell.newWorkflow",
+        "title": "Octobots: New Workflow",
+        "icon": "$(circuit-board)"
+      },
+      {
+        "command": "octoshell.deleteWorkflow",
+        "title": "Octobots: Delete Workflow",
+        "icon": "$(trash)"
       }
     ],
     "viewsContainers": {
@@ -179,21 +184,11 @@
           "id": "octoshell.campaigns",
           "name": "Campaigns",
           "visibility": "visible"
-        },
-        {
-          "id": "octoshell.customizations",
-          "name": "Customizations",
-          "visibility": "collapsed"
         }
       ]
     },
     "menus": {
       "view/title": [
-        {
-          "command": "octoshell.addCustomization",
-          "when": "view == octoshell.customizations",
-          "group": "navigation"
-        },
         {
           "command": "octoshell.newCampaign",
           "when": "view == octoshell.campaigns",
@@ -237,6 +232,16 @@
           "command": "octoshell.deleteBug",
           "when": "view == octoshell.campaigns && viewItem == octoshell.bug",
           "group": "9_delete"
+        },
+        {
+          "command": "octoshell.newWorkflow",
+          "when": "view == octoshell.campaigns && (viewItem == octoshell.campaign || viewItem == octoshell.mission)",
+          "group": "1_new"
+        },
+        {
+          "command": "octoshell.deleteWorkflow",
+          "when": "view == octoshell.campaigns && viewItem == octoshell.workflow",
+          "group": "9_delete"
         }
       ]
     },
@@ -253,13 +258,13 @@
           "type": "boolean",
           "default": false,
           "scope": "window",
-          "description": "Show the persona (sub-agent) selector for GitHub Copilot CLI chats. Off by default \u2014 Copilot exposes its own custom agents through its native agent config option."
+          "description": "Show the persona (sub-agent) selector for GitHub Copilot CLI chats. Off by default — Copilot exposes its own custom agents through its native agent config option."
         },
         "octoshell.providers.codex-acp.agentSelector": {
           "type": "boolean",
           "default": false,
           "scope": "window",
-          "description": "Show the persona (sub-agent) selector for OpenAI Codex chats. Off by default \u2014 Codex has no custom-agent concept."
+          "description": "Show the persona (sub-agent) selector for OpenAI Codex chats. Off by default — Codex has no custom-agent concept."
         }
       }
     }
@@ -278,7 +283,6 @@
   },
   "dependencies": {
     "@octoshell/board": "workspace:*",
-    "@octoshell/customizations": "workspace:*",
     "@octoshell/tokenomics": "workspace:*",
     "zod": "^4.4.3"
   },

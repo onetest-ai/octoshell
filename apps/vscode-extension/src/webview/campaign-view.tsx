@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { StatusPill } from "./status-pill.js";
 import { Field } from "./field.js";
 import { ChecklistField } from "./checklist-field.js";
-import { TeamSection } from "./team-section.js";
 import { ENTITY_STATUS_OPTIONS } from "./entity-status.js";
 import type { RpcClient } from "./rpc-client.js";
 import type { RpcResultOf } from "../protocol/index.js";
@@ -275,7 +274,6 @@ export function CampaignView({ id, rpc, onOpenMission, onOpenBug, onDeleteMissio
         )}
       </section>
 
-      <TeamSection scope="campaign" scopeId={id} rpc={rpc} />
 
       {error && <div className="text-sm text-status-error">{error}</div>}
     </div>

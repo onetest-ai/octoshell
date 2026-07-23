@@ -7,7 +7,7 @@ export type SpineEventPayload = { projectId: string } & Record<string, unknown>;
 
 /** host → webview: the bind envelope sent when a panel opens (or after webview-ready).
  *  The host posts one per entity kind: campaign, mission, task, or bug. */
-export type BindMessage = { type: "bind"; kind: "campaign" | "mission" | "task" | "bug"; id: string };
+export type BindMessage = { type: "bind"; kind: "campaign" | "mission" | "task" | "bug" | "workflow"; id: string };
 
 export type HostEvent =
   | { type: "rpc:result"; id: number; ok: boolean; value?: unknown; error?: string }
