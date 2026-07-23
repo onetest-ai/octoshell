@@ -1,4 +1,4 @@
-export type EntityKind = "campaign" | "mission" | "task" | "bug";
+export type EntityKind = "campaign" | "mission" | "task" | "bug" | "workflow";
 
 /** Authored content owned by the `.md` brief (the DB only caches these). */
 export interface ManagedFields {
@@ -20,6 +20,8 @@ export interface ManagedFields {
   actual?: string;
   rca?: string;
   environment?: string;
+  /** workflow only — the raw body of the `## Runs` section. */
+  runs?: string;
 }
 
 const PLACEHOLDER = "_(not set)_";
@@ -99,7 +101,10 @@ export function renderManagedBlock(
 ): string {
   const lines = [`# ${fields.name}`];
   lines.push(``);
-  if (kind === "bug") {
+  if (kind === "workflow") {
+    lines.push(section("Description", fields.description));
+    lines.push(section("Runs", fields.runs ?? ""));
+  } else if (kind === "bug") {
     lines.push(section("Severity", fields.severity ?? ""));
     lines.push(section("Description", fields.description));
     lines.push(section("Steps to Reproduce", fields.stepsToReproduce ?? ""));
@@ -161,6 +166,7 @@ export function parseManagedBlock(text: string): ManagedFields {
     actual: sectionBody("Actual"),
     rca: sectionBody("RCA"),
     environment: sectionBody("Environment"),
+    runs: sectionBody("Runs"),
   };
 }
 
