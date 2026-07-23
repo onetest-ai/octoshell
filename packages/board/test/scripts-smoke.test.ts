@@ -82,6 +82,72 @@ describe("add-task script", () => {
   });
 });
 
+describe("add-campaign script", () => {
+  it("creates a campaign folder the BoardModel parses, with a `## Missions` section that validates", () => {
+    const out = runScript("add-campaign.js", ["Q3 Rollout", "--description", "Ship it", "--target", "Done"], projectDir);
+    expect(out.trim()).toContain("added campaign: Q3 Rollout");
+
+    const campaignMd = join(boardRoot, "campaigns", "q3-rollout", "campaign.md");
+    const md = readFileSync(campaignMd, "utf8");
+    expect(md).toContain("## Missions");
+    expect(md).toContain("Ship it");
+    expect(md).toContain("## Target\nDone");
+
+    const board = new BoardModel(boardRoot);
+    board.rebuild();
+    expect(board.listCampaigns().some((c) => c.name === "Q3 Rollout")).toBe(true);
+
+    // A mission-less campaign scaffolded by the script is well-formed.
+    expect(runScript("validate.js", [campaignMd], projectDir)).toContain("OK");
+  });
+
+  it("exits 2 with missing args", () => {
+    let threw = false;
+    try {
+      runScript("add-campaign.js", [], projectDir);
+    } catch (err: unknown) {
+      threw = true;
+      expect((err as { status?: number }).status).toBe(2);
+    }
+    expect(threw).toBe(true);
+  });
+});
+
+describe("add-mission script", () => {
+  it("creates a mission under a campaign and projects it onto `## Missions`", () => {
+    runScript("add-campaign.js", ["Camp"], projectDir);
+    const campaignDir = join(boardRoot, "campaigns", "camp");
+
+    const out = runScript("add-mission.js", [campaignDir, "M1 - First mission", "--description", "Do things"], projectDir);
+    expect(out.trim()).toContain("added mission: M1 - First mission");
+
+    // The campaign's `## Missions` placeholder is dropped, the real line appears.
+    const campaignMd = readFileSync(join(campaignDir, "campaign.md"), "utf8");
+    expect(campaignMd).toContain("- M1 - First mission");
+    expect(campaignMd).not.toContain("_(none yet");
+
+    const board = new BoardModel(boardRoot);
+    board.rebuild();
+    const c = board.listCampaigns()[0]!;
+    expect(board.listMissions(c.id).some((m) => m.title === "M1 - First mission")).toBe(true);
+
+    // Same title again → deduped slug, not a clobbered folder.
+    runScript("add-mission.js", [campaignDir, "M1 - First mission"], projectDir);
+    expect(existsSync(join(campaignDir, "missions", "m1-first-mission-2"))).toBe(true);
+  });
+
+  it("exits 2 with missing args", () => {
+    let threw = false;
+    try {
+      runScript("add-mission.js", [], projectDir);
+    } catch (err: unknown) {
+      threw = true;
+      expect((err as { status?: number }).status).toBe(2);
+    }
+    expect(threw).toBe(true);
+  });
+});
+
 describe("set-status script", () => {
   it("sets status on a task board line", () => {
     const c = createCampaign(boardRoot, { name: "Camp" });
