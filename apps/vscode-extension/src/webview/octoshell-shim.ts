@@ -32,9 +32,6 @@ export interface OctoshellExtApi {
   settings: {
     getAppearance: () => Promise<unknown>;
     setAppearance: (value: unknown) => Promise<{ ok: true }>;
-    listProviders: () => Promise<{ rows: never[]; registryStale: boolean }>;
-    getPermissions: () => Promise<{ defaultApprovalMode: string | null }>;
-    agentSelectorFlags: () => Promise<Record<string, boolean>>;
   };
 }
 
@@ -70,9 +67,6 @@ export function createOctoshellShim(rpc: RpcClient): OctoshellExtApi {
     settings: {
       getAppearance: () => c("settings:getAppearance", {}) as never,
       setAppearance: (value) => c("settings:setAppearance", { value }) as never,
-      listProviders: () => c("settings:listProviders", {}) as never,
-      getPermissions: () => c("settings:getPermissions", {}) as never,
-      agentSelectorFlags: () => c("settings:agentSelectorFlags", {}) as never,
     },
   };
 }
