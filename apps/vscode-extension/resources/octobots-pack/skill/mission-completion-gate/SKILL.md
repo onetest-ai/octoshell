@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 23
+version: 24
 ---
 
 # mission-completion-gate
@@ -167,8 +167,8 @@ failure by design; pass `--strict` only when running it by hand to debug.
 
 ## Companions
 
-- **`mission-execution`** — the per-task loop this gate sits on top of; same role
-  model (Rio/Py/Jay/Sage/Alex/Max) and review machinery.
+- **`mission-execution`** — the mission loop this gate sits on top of (one Workflow per mission,
+  tasks sequenced inside it); same role model (Rio/Py/Jay/Sage/Alex/Max) and review machinery.
 - **`code-review` / `requesting-code-review`** — the review mechanics Rio uses in
   phase 3.
 - Mechanical gate: whatever the project runs pre-commit and in CI (linters,
