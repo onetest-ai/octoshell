@@ -61,8 +61,8 @@ A step's `agent` names a real agent. **Before designing anything, find out what 
 ls .claude/agents          # the repo's agents, one directory per agent
 ```
 
-The Octobots pack itself ships planning agents only (`octobots-planner`, `octobots-orchestrator`).
-Many repos have nothing else. So:
+**The Octobots pack installs no agents at all** — it ships skills and a session hook. Every agent
+name you can use comes from the repo itself, and many repos have none. So:
 
 1. **Use names that exist.** A step naming an agent the repo doesn't have produces a script that
    fails at run time, and the board will happily show it as valid — `validate.js` checks the shape
@@ -73,6 +73,9 @@ Many repos have nothing else. So:
    generic default. Ask once, with the list you found.
 3. **Prefer fewer, real agents over a rich cast of imaginary ones.** A three-step workflow that runs
    beats a seven-step one that doesn't.
+
+Every `<a real agent>` in the example below is a placeholder for exactly this reason — there is no
+default roster to fall back on.
 
 State which agents you found and which you used. That sentence is what makes the workflow auditable.
 
@@ -118,7 +121,7 @@ export const meta = {
   name: 'build-tasks',                       // must equal the folder slug
   description: 'Drive each task to a merged PR',
   phases: [
-    { title: 'Plan',   steps: [{ id: 's1', agent: 'octobots-planner', label: 'Decompose' }] },
+    { title: 'Plan',   steps: [{ id: 's1', agent: '<a real agent>', label: 'Decompose' }] },
     { title: 'Build',  steps: [
         { id: 's2', agent: '<a real agent>', label: 'Build task',  parallel: 'b' },
         { id: 's3', agent: '<a real agent>', label: 'Write tests', parallel: 'b' } ] },

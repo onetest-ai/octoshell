@@ -1,6 +1,6 @@
 ---
 name: mission-execution
-description: Use when executing a planned Octobots mission or task in a repo with an .octobots/ directory — building an already-planned task (one that has acceptance criteria) through to a merged, verified PR; picking up the next task on a mission board; resuming a mission whose execution stalled or whose task branch crashed mid-run; or driving several board tasks to green in sequence. Not for a one-off edit with no board task behind it, and not for planning or decomposing the work itself.
+description: Use when executing a planned Octobots mission or task in a repo with an .octobots/ directory — building an already-planned task (one that has acceptance criteria) through to a merged, verified PR; running a mission's or campaign's board-defined workflow.js and logging the run; picking up the next task on a mission board; resuming a mission whose execution stalled or whose task branch crashed mid-run; or driving several board tasks to green in sequence. Not for a one-off edit with no board task behind it, not for planning or decomposing the work itself (that is mission-planner), and not for designing the workflow it runs (that is workflow-designer).
 version: 23
 ---
 

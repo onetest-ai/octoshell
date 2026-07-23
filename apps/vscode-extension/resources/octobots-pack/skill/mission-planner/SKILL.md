@@ -1,6 +1,6 @@
 ---
 name: mission-planner
-description: Use when working in a repo with an .octobots/ directory — driving Octobots campaigns, missions, tasks, or bugs; reading or editing campaign.md / mission.md / task.md / bug.md board files; proposing or logging missions, tasks, or bugs/defects; importing or syncing work from an external planning system (Epic/Story/Task/defect in Jira, GitHub, Azure DevOps, onetest-tms) onto the board, or mirroring board items back out; filing or reporting a bug (record it on the Octobots board, not only as a GitHub issue or external tracker ticket); or checking acceptance criteria.
+description: Use when planning or recording work on an Octobots board in a repo with an .octobots/ directory — decomposing an intent into campaigns, missions and tasks; reading or editing campaign.md / mission.md / task.md / bug.md; setting acceptance criteria or statuses; filing or reporting a bug or defect (record it on the board, not only as a GitHub issue or external tracker ticket); or importing work from an external planning system (Epic/Story/Task/defect in Jira, GitHub, Azure DevOps, onetest-tms) onto the board and mirroring board items back out. Not for designing how a mission runs — which agents in what order (that is workflow-designer) — and not for building a planned task through to a merged PR (that is mission-execution).
 version: 23
 ---
 
@@ -61,9 +61,9 @@ Rules:
 
 ## Planning by scope
 
-Which board you plan against — and how — depends on the chat scope. The host puts you in one
-of these modes via a thin planning agent (`octobots-orchestrator` for campaigns,
-`octobots-planner` for missions and tasks); follow the matching doctrine below.
+Which board you plan against — and how — depends on the scope you were asked about: a campaign, a
+mission, or a single task. Work out which from the request and the board you were pointed at, then
+follow the matching doctrine below.
 
 ### Campaign chat — orchestrator (strategic)
 
