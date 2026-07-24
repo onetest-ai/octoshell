@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 29
+version: 30
 ---
 
 # mission-completion-gate
@@ -15,6 +15,11 @@ done until this gate is green.
 > Triggered automatically by `.octobots/hooks/mission-gate.mjs` (PostToolUse on
 > `set-status.js … done` for an `M<n>` mission). You can also run it by hand
 > before marking a mission done.
+>
+> Note the layering (see mission-planner, *Setting status on a mission*): flipping a mission `done`
+> with `set-status.js` does **not** drive the app's displayed mission status — that comes from the
+> run lifecycle — but it **does** fire this hook. Flipping the mission `done` is therefore the
+> intended way to launch this gate, not a no-op; don't skip it thinking the marker is "ignored".
 
 ## Hard rules (non-negotiable)
 
