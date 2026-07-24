@@ -453,33 +453,25 @@ function parseWorkflows(
   const dir = join(root, parentFolder, "workflows");
   for (const slug of safeReaddir(dir)) {
     const folderPath = `${parentFolder}/workflows/${slug}`;
-    const mdPath = join(root, folderPath, "workflow.md");
-    const mdText = safeReadFile(mdPath);
-    if (mdText === null) continue; // no workflow.md → not a workflow folder
-
-    const fields = parseManagedBlock(mdText);
     const jsPath = join(root, folderPath, "workflow.js");
     const jsText = safeReadFile(jsPath);
+    if (jsText === null) continue; // no workflow.js → not a workflow folder
 
-    let name = fields.name || deSlug(slug);
-    let description = fields.description ?? "";
+    let name = deSlug(slug);
+    let description = "";
     let phases: WorkflowPhase[] = [];
     let parseError: string | null = null;
 
-    if (jsText === null) {
-      parseError = "workflow.js is missing";
-    } else {
-      try {
-        const meta = parseWorkflowMeta(jsText);
-        name = meta.name;
-        if (meta.description) description = meta.description;
-        phases = meta.phases;
-      } catch (err) {
-        parseError = (err as Error).message;
-      }
+    try {
+      const meta = parseWorkflowMeta(jsText);
+      name = meta.name;
+      if (meta.description) description = meta.description;
+      phases = meta.phases;
+    } catch (err) {
+      parseError = (err as Error).message;
     }
 
-    const mtime = safeMtime(mdPath);
+    const mtime = safeMtime(jsPath);
     out.push({
       id: `folder:${folderPath}`,
       campaignId: "campaignId" in parent ? parent.campaignId : null,
@@ -490,7 +482,7 @@ function parseWorkflows(
       scriptPath: `${folderPath}/workflow.js`,
       folderPath,
       parseError,
-      lastRunStatus: newestRunStatus(fields.runs ?? ""),
+      lastRunStatus: readLastRunStatus(root, folderPath),
       createdAt: mtime,
       updatedAt: mtime,
     });
@@ -498,7 +490,36 @@ function parseWorkflows(
   return out;
 }
 
-/** Status of the last `- [status:x] …` line in a `## Runs` body, or null when there are none. */
+/**
+ * Newest run status for a workflow: prefer `runs.jsonl` (the current log), and fall back to a
+ * legacy `workflow.md` `## Runs` body so a not-yet-migrated folder still shows its last run.
+ */
+function readLastRunStatus(root: string, folderPath: string): string | null {
+  const jsonl = safeReadFile(join(root, folderPath, "runs.jsonl"));
+  if (jsonl !== null) return newestRunStatusFromJsonl(jsonl);
+  const md = safeReadFile(join(root, folderPath, "workflow.md"));
+  if (md !== null) return newestRunStatus(parseManagedBlock(md).runs ?? "");
+  return null;
+}
+
+/** Status of the last well-formed JSON line in a `runs.jsonl` body (mapped), or null. */
+function newestRunStatusFromJsonl(body: string): string | null {
+  let last: string | null = null;
+  for (const line of body.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    try {
+      const status = (JSON.parse(t) as { status?: unknown }).status;
+      const mapped = mapBoardStatus(String(status ?? "").trim());
+      if (mapped) last = mapped;
+    } catch {
+      /* skip a malformed line */
+    }
+  }
+  return last;
+}
+
+/** Status of the last `- [status:x] …` line in a legacy `## Runs` body, or null when there are none. */
 function newestRunStatus(runsBody: string): string | null {
   let last: string | null = null;
   for (const line of runsBody.split("\n")) {

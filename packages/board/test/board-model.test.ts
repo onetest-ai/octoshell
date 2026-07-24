@@ -112,7 +112,6 @@ describe("workflows", () => {
     const c = join(root, "campaigns", "alpha");
     mkdirSync(join(c, "workflows", "broken"), { recursive: true });
     writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");
-    writeFileSync(join(c, "workflows", "broken", "workflow.md"), "# broken\n\n## Description\nd\n");
     writeFileSync(join(c, "workflows", "broken", "workflow.js"), "const notMeta = 1\n");
 
     const board = new BoardModel(root);
@@ -122,6 +121,57 @@ describe("workflows", () => {
     expect(wf).toBeDefined();
     expect(wf!.parseError).toMatch(/export const meta/);
     expect(wf!.phases).toEqual([]);
-    expect(wf!.name).toBe("broken");
+    // No .md heading to source from any more — the name falls back to the de-slugged folder name.
+    expect(wf!.name).toBe("Broken");
+  });
+
+  it("discovers a workflow by workflow.js alone (no workflow.md)", () => {
+    const c = join(root, "campaigns", "alpha");
+    mkdirSync(join(c, "workflows", "shipit"), { recursive: true });
+    writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");
+    writeFileSync(
+      join(c, "workflows", "shipit", "workflow.js"),
+      "export const meta = { name: 'shipit', description: 'Ship', phases: [{ title: 'Run', steps: [{ id: 's1', agent: 'claude', label: 'go' }] }] }\n",
+    );
+
+    const board = new BoardModel(root);
+    board.rebuild();
+    const campaignId = board.listCampaigns()[0]!.id;
+    const [wf] = board.listWorkflows({ campaignId });
+    expect(wf).toBeDefined();
+    expect(wf!.name).toBe("shipit");
+    expect(wf!.parseError).toBeNull();
+    expect(wf!.phases[0]!.title).toBe("Run");
+  });
+
+  it("does NOT treat a folder with only a workflow.md (no workflow.js) as a workflow", () => {
+    const c = join(root, "campaigns", "alpha");
+    mkdirSync(join(c, "workflows", "orphan"), { recursive: true });
+    writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");
+    writeFileSync(join(c, "workflows", "orphan", "workflow.md"), "# orphan\n\n## Description\nd\n");
+
+    const board = new BoardModel(root);
+    board.rebuild();
+    const campaignId = board.listCampaigns()[0]!.id;
+    expect(board.listWorkflows({ campaignId })).toEqual([]);
+  });
+
+  it("reads lastRunStatus from runs.jsonl (newest line wins)", () => {
+    const c = join(root, "campaigns", "alpha");
+    mkdirSync(join(c, "workflows", "run-log"), { recursive: true });
+    writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");
+    writeFileSync(
+      join(c, "workflows", "run-log", "workflow.js"),
+      "export const meta = { name: 'run-log', description: '', phases: [{ title: 'Run', steps: [{ id: 's1', agent: 'claude', label: 'go' }] }] }\n",
+    );
+    writeFileSync(
+      join(c, "workflows", "run-log", "runs.jsonl"),
+      '{"status":"failed","summary":"first","at":"2026-07-01"}\n{"status":"done","summary":"second","at":"2026-07-02"}\n',
+    );
+
+    const board = new BoardModel(root);
+    board.rebuild();
+    const campaignId = board.listCampaigns()[0]!.id;
+    expect(board.listWorkflows({ campaignId })[0]!.lastRunStatus).toBe("done");
   });
 });
