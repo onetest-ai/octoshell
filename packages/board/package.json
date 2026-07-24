@@ -6,7 +6,12 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
@@ -14,9 +19,13 @@
     "lint": "eslint src"
   },
   "devDependencies": {
-    "vitest": "^2.0.0",
     "@vitest/coverage-v8": "^2.0.0",
+    "eslint": "^9.0.0",
     "typescript": "^5.5.0",
-    "eslint": "^9.0.0"
+    "vitest": "^2.0.0"
+  },
+  "dependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "js-yaml": "^5.2.2"
   }
 }
