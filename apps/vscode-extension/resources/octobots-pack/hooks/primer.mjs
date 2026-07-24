@@ -1,4 +1,4 @@
-// octobots-pack-version: 32
+// octobots-pack-version: 33
 // Shared Octobots session primer. Registered as a SessionStart/compaction hook in each backend
 // (Claude/Copilot/Codex). Emits the routing primer as additionalContext in the calling backend's
 // JSON shape, but ONLY in an Octobots repo. Self-gates on .octobots/ so it is inert elsewhere.
@@ -7,7 +7,9 @@ import { join } from "node:path";
 
 const PRIMER = [
   "This repository is driven by **Octobots**. Work is organized as campaigns -> missions -> tasks,",
-  "plus bugs - each a markdown board under `.octobots/`. Editing those boards (via the scripts in",
+  "plus bugs - each a `<kind>.yaml` file (campaign.yaml/mission.yaml/task.yaml/bug.yaml) under",
+  "`.octobots/`. Children are folder-derived: a parent NEVER lists its tasks/bugs, and status/role/",
+  "severity live as fields in the child's own yaml. Editing those files (via the scripts in",
   "`.claude/skills/mission-planner/scripts/`) is how you drive the app; there is no API.",
   "- Create work and **file bugs on the board**, not only in GitHub/TMS or another external tracker.",
   "- External **Epic/Story/Task/Defect** map to **campaign/mission/task/bug** - import them onto the",

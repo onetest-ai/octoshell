@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCampaign, createMission, createTask, createBug, deleteTask, deleteBug, deleteMission, deleteCampaign, trashFolder } from "../src/write.js";
@@ -9,12 +9,11 @@ let root: string;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), "board-del-")); });
 afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
-it("removes the task board line and trashes its folder", () => {
+it("trashes a task's folder; BoardModel no longer lists it", () => {
   const c = createCampaign(root, { name: "Q3" });
   const m = createMission(root, c.id, { title: "M1 - x", acceptanceCriteria: "- [ ] a" });
   const t = createTask(root, m.id, { name: "T1.1 - JWT", acceptanceCriteria: "- [ ] a" });
   expect(deleteTask(root, t.id)).toBe(true);
-  expect(readFileSync(join(root, m.folderPath, "mission.md"), "utf8")).not.toContain("T1.1 - JWT");
   expect(existsSync(join(root, t.folderPath))).toBe(false);
   expect(existsSync(join(root, ".trash"))).toBe(true);
   const b = new BoardModel(root); b.rebuild();
@@ -31,25 +30,21 @@ it("does not create .trash when task id is not found", () => {
 });
 
 describe("deleteBug", () => {
-  it("removes the bug board line and trashes its folder (mission-level bug)", () => {
+  it("trashes a mission-level bug's folder; BoardModel no longer lists it", () => {
     const c = createCampaign(root, { name: "Q3" });
     const m = createMission(root, c.id, { title: "Sprint 1", acceptanceCriteria: "- [ ] a" });
     const bug = createBug(root, { missionId: m.id }, { title: "Login Crash", severity: "critical" });
     expect(deleteBug(root, bug.id)).toBe(true);
-    const missionMd = readFileSync(join(root, m.folderPath, "mission.md"), "utf8");
-    expect(missionMd).not.toContain("Login Crash");
     expect(existsSync(join(root, bug.folderPath))).toBe(false);
     expect(existsSync(join(root, ".trash"))).toBe(true);
     const board = new BoardModel(root); board.rebuild();
     expect(board.getBug(bug.id)).toBeNull();
   });
 
-  it("removes the bug board line and trashes its folder (campaign-level bug)", () => {
+  it("trashes a campaign-level bug's folder; BoardModel no longer lists it", () => {
     const c = createCampaign(root, { name: "Q3" });
     const bug = createBug(root, { campaignId: c.id }, { title: "Signup Error", severity: "major" });
     expect(deleteBug(root, bug.id)).toBe(true);
-    const campaignMd = readFileSync(join(root, c.folderPath, "campaign.md"), "utf8");
-    expect(campaignMd).not.toContain("Signup Error");
     expect(existsSync(join(root, bug.folderPath))).toBe(false);
     expect(existsSync(join(root, ".trash"))).toBe(true);
     const board = new BoardModel(root); board.rebuild();
@@ -62,12 +57,10 @@ describe("deleteBug", () => {
 });
 
 describe("deleteMission", () => {
-  it("removes the mission board line from campaign.md and trashes the mission folder", () => {
+  it("trashes the mission folder; BoardModel no longer lists it", () => {
     const c = createCampaign(root, { name: "Q3" });
     const m = createMission(root, c.id, { title: "Auth Sprint", acceptanceCriteria: "- [ ] a" });
     expect(deleteMission(root, m.id)).toBe(true);
-    const campaignMd = readFileSync(join(root, c.folderPath, "campaign.md"), "utf8");
-    expect(campaignMd).not.toContain("Auth Sprint");
     expect(existsSync(join(root, m.folderPath))).toBe(false);
     expect(existsSync(join(root, ".trash"))).toBe(true);
     const board = new BoardModel(root); board.rebuild();

@@ -1,6 +1,6 @@
 // apps/vscode-extension/test/board-host.test.ts
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BoardHost } from "../src/host/board-host.js";
@@ -131,13 +131,15 @@ describe("BoardHost", () => {
     expect(docs.attachedFiles.map((f) => f.target)).toContain("/repo/plan.md");
   });
 
-  it("campaignDocs.files lists on-disk files in the campaign folder (excluding campaign.md)", () => {
+  it("campaignDocs.files lists on-disk files in the campaign folder (excluding the campaign.yaml entity file)", () => {
     const { board, octo } = host();
     const c = board.createCampaign({ name: "C" });
     const cFolder = c.folderPath; // e.g. "campaigns/c"
     writeFileSync(join(octo, cFolder, "notes.md"), "# Notes\n", "utf8");
     const docs = board.campaignDocs(c.id);
     expect(docs.files.map((f) => f.name)).toContain("notes.md");
+    // The entity file itself is never listed as a document.
+    expect(docs.files.map((f) => f.name)).not.toContain("campaign.yaml");
     expect(docs.files.map((f) => f.name)).not.toContain("campaign.md");
   });
 
@@ -170,23 +172,18 @@ describe("BoardHost", () => {
 
   // ── Proposal sync methods ────────────────────────────────────────────────────
 
-  it("syncCampaignMissions returns empty proposals when campaign has no ## Missions lines", () => {
+  it("syncCampaignMissions returns empty proposals when the campaign description has no ## Missions section", () => {
     const { board } = host();
     const c = board.createCampaign({ name: "C" });
     const result = board.syncCampaignMissions(c.id);
     expect(result.proposals).toEqual([]);
   });
 
-  it("syncCampaignMissions reports a board-line mission as exists:false when no folder exists", () => {
-    const { board, octo } = host();
+  it("syncCampaignMissions reports a description-authored mission as exists:false when no folder exists", () => {
+    const { board } = host();
     const c = board.createCampaign({ name: "C" });
-    // Manually append a ## Missions section to the campaign.md
-    const cFolder = c.folderPath;
-    const briefPath = join(octo, cFolder, "campaign.md");
-    const existing = readFileSync(briefPath, "utf8");
-    // createCampaign ships a `## Missions` section with a placeholder; append the bullet into it
-    // (as addBoardLine would) rather than starting a duplicate section.
-    writeFileSync(briefPath, existing + "- Pending Mission\n", "utf8");
+    // The proposal list lives in the campaign's own YAML `description` prose, not a parent projection.
+    board.updateBrief("campaign", c.id, { description: "## Missions\n- Pending Mission\n" });
     const result = board.syncCampaignMissions(c.id);
     expect(result.proposals).toHaveLength(1);
     expect(result.proposals[0]!.title).toBe("Pending Mission");
@@ -194,25 +191,22 @@ describe("BoardHost", () => {
   });
 
   it("syncCampaignMissions marks a mission as exists:true when folder exists", () => {
-    const { board, octo } = host();
+    const { board } = host();
     const c = board.createCampaign({ name: "C" });
+    board.updateBrief("campaign", c.id, { description: "## Missions\n- Real Mission\n" });
     // Create the mission folder via board
     board.createMission({ title: "Real Mission", campaignId: c.id });
-    // Manually verify it shows as exists:true after re-sync
+    // Now it is both a ## Missions proposal AND has a folder → exists:true
     const result = board.syncCampaignMissions(c.id);
-    // "Real Mission" is in the ## Missions board line AND has a folder
     const proposal = result.proposals.find((p) => p.title === "Real Mission");
     expect(proposal?.exists).toBe(true);
   });
 
   it("createMissionsFromBoard materializes proposals and a re-sync shows them as exists:true", () => {
-    const { board, octo } = host();
+    const { board } = host();
     const c = board.createCampaign({ name: "C" });
-    // Append a ## Missions board line manually
-    const briefPath = join(octo, c.folderPath, "campaign.md");
-    const existing = readFileSync(briefPath, "utf8");
-    // Append the bullet into the `## Missions` section createCampaign already ships (placeholder-only).
-    writeFileSync(briefPath, existing + "- New Mission — do the work\n", "utf8");
+    // Author a ## Missions bullet in the campaign description (YAML).
+    board.updateBrief("campaign", c.id, { description: "## Missions\n- New Mission — do the work\n" });
 
     // Before creating: shows as exists:false
     const before = board.syncCampaignMissions(c.id);

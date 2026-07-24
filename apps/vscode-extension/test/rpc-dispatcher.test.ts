@@ -139,9 +139,11 @@ describe("dispatch", () => {
     const b = makeBoard();
     const camp = b.createCampaign({ name: "C" });
     const c = ctx(b);
-    // Before creating: sync shows no proposals (no ## Missions lines in campaign.md yet)
+    // Before authoring: sync shows no proposals (campaign description has no ## Missions section).
     const sync0 = await dispatch("campaign:missions:sync", { projectId: "p1", campaignId: camp.id }, c as never);
     expect((sync0 as { proposals: unknown[] }).proposals).toEqual([]);
+    // Author a ## Missions list into the campaign description (campaign.yaml), then materialize it.
+    await dispatch("campaign:update", { projectId: "p1", campaignId: camp.id, description: "## Missions\n- Alpha\n" }, c as never);
     // createMissionsFromBoard creates a mission and reconciles
     const result = await dispatch("campaign:missions:create", { projectId: "p1", campaignId: camp.id, missions: [{ title: "Alpha" }] }, c as never);
     expect((result as { created: number }).created).toBe(1);

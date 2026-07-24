@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 32
+version: 33
 ---
 
 # mission-completion-gate
@@ -70,7 +70,7 @@ omitted. Phases:
    mission-level acceptance criteria on the board and mark it `done` for real.
    **Post the gate results** (suites + coverage %, black-box QA per-criterion
    verdict, review outcome) wherever the project mirrors its missions — a GitHub
-   issue, a Jira ticket, or the mission's own `## Description` if there is no
+   issue, a Jira ticket, or the mission's own `description` field if there is no
    external tracker. Each gate run appends its outcome, so the mission carries
    its verification history. See `mission-planner` (§ *External systems*).
 
@@ -157,15 +157,15 @@ override it explicitly (see below).
 
 **Authored fields — the one thing the pipeline cannot derive.** Effort is the
 rubric's sizing key and exists nowhere in a transcript. Declare it on the board,
-at planning time, in an optional `## Tokenomics` block in `mission.md`:
+at planning time, in an optional `tokenomics` field in `mission.yaml`:
 
-```markdown
-## Tokenomics
-effort_days: 3
-size_tshirt: M
-complexity_score: 18
-maturity: production
-branches: feat/<campaign>-m<n>, feat/<campaign>-m<n>-t<k>
+```yaml
+tokenomics:
+  effort_days: 3
+  size_tshirt: M
+  complexity_score: 18
+  maturity: production
+  branches: feat/<campaign>-m<n>, feat/<campaign>-m<n>-t<k>
 ```
 
 `rollup.mjs` prints a NOTE for every mission missing this, and `report.html`

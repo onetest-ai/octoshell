@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,20 +9,23 @@ let root: string;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), "board-ed-")); });
 afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
-it("updates a mission description while preserving the ## Tasks tail", () => {
+function reread(r: string): BoardModel {
+  const b = new BoardModel(r);
+  b.rebuild();
+  return b;
+}
+
+it("updates a mission description; BoardModel reads it back", () => {
   const c = createCampaign(root, { name: "Q3" });
   const m = createMission(root, c.id, { title: "M1 - x", acceptanceCriteria: "- [ ] a" });
   expect(updateBrief(root, "mission", m.id, { description: "new desc" })).toBe(true);
-  const md = readFileSync(join(root, m.folderPath, "mission.md"), "utf8");
-  expect(md).toContain("new desc");
-  expect(md).toContain("## Tasks");
+  expect(reread(root).getMission(m.id)?.description).toBe("new desc");
 });
 
-it("sets campaign status via the ## Status section", () => {
+it("sets campaign status; BoardModel reads it back", () => {
   const c = createCampaign(root, { name: "Q3" });
   expect(setStatus(root, "campaign", c.id, "done")).toBe(true);
-  const b = new BoardModel(root); b.rebuild();
-  expect(b.getCampaign(c.id)?.status).toBe("done");
+  expect(reread(root).getCampaign(c.id)?.status).toBe("done");
 });
 
 it("adds and checks acceptance criteria", () => {
@@ -30,16 +33,15 @@ it("adds and checks acceptance criteria", () => {
   const m = createMission(root, c.id, { title: "M1 - x", acceptanceCriteria: "" });
   addCriterion(root, "mission", m.id, "Ship feature");
   setCriterion(root, "mission", m.id, 1, true);
-  const md = readFileSync(join(root, m.folderPath, "mission.md"), "utf8");
-  expect(md).toContain("- [x] Ship feature");
+  expect(reread(root).getMission(m.id)?.acceptanceCriteria).toContain("- [x] Ship feature");
 });
 
-it("adds a document link idempotently", () => {
+it("adds a document link idempotently and removes it", () => {
   const c = createCampaign(root, { name: "Q3" });
   addDocument(root, "campaign", c.id, "Spec", "docs/spec.md");
   addDocument(root, "campaign", c.id, "Spec", "docs/spec.md");
-  const md = readFileSync(join(root, c.folderPath, "campaign.md"), "utf8");
-  expect(md.match(/docs\/spec\.md/g)?.length).toBe(1);
+  const yamlPath = join(root, c.folderPath, "campaign.yaml");
+  expect(readFileSync(yamlPath, "utf8").match(/docs\/spec\.md/g)?.length).toBe(1);
   removeDocument(root, "campaign", c.id, "docs/spec.md");
-  expect(readFileSync(join(root, c.folderPath, "campaign.md"), "utf8")).not.toContain("docs/spec.md");
+  expect(readFileSync(yamlPath, "utf8")).not.toContain("docs/spec.md");
 });
