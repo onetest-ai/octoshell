@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { load as yamlLoad } from "js-yaml";
 import { emptyEstimate, type Estimate, type WorkLogEntry } from "./types.js";
 
 /**
@@ -49,15 +50,72 @@ export function parseEstimateBlock(text: string): Estimate {
   return est;
 }
 
-/** Read the estimate off an entity folder (`<folderPath>/<file>.md`). */
-export function readEstimate(folderPath: string, file: "mission.md" | "task.md"): Estimate {
-  const path = join(folderPath, file);
-  if (!existsSync(path)) return emptyEstimate();
-  try {
-    return parseEstimateBlock(readFileSync(path, "utf8"));
-  } catch {
-    return emptyEstimate();
+/**
+ * Build an Estimate from the authored `tokenomics` map on a `<kind>.yaml` file — the open,
+ * snake_case map (`effort_days`, `size_tshirt`, `complexity_score`, `self_size`, `maturity`,
+ * `estimated_retrospectively`, plus free-form `estimate_basis`/`note` the report ignores). Only
+ * what a human wrote lands here; nothing is inferred.
+ */
+export function estimateFromTokenomics(map: Record<string, unknown> | null | undefined): Estimate {
+  const est = emptyEstimate();
+  if (!map || typeof map !== "object") return est;
+
+  const num = (key: string): number | null => {
+    const raw = map[key];
+    if (raw === undefined || raw === null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+  const str = (key: string): string | null => {
+    const raw = map[key];
+    if (typeof raw === "string") return raw.length ? raw : null;
+    if (typeof raw === "number" || typeof raw === "boolean") return String(raw);
+    return null;
+  };
+
+  est.effortDays = num("effort_days");
+  est.complexityScore = num("complexity_score");
+  est.sizeTshirt = str("size_tshirt");
+  est.selfSize = str("self_size");
+  est.maturity = str("maturity");
+  const retro = map["estimated_retrospectively"];
+  est.estimatedRetrospectively = retro === true || retro === "true";
+  const branches = map["branches"];
+  if (Array.isArray(branches)) {
+    est.branches = branches.map((b) => String(b).trim()).filter(Boolean);
+  } else if (typeof branches === "string") {
+    est.branches = branches
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
+  return est;
+}
+
+/**
+ * Read the estimate off an entity folder. Prefers the YAML board file
+ * (`<folderPath>/<kind>.yaml`, the `tokenomics` field), falling back to a legacy Markdown
+ * `<kind>.md` `## Tokenomics` block for boards not yet migrated.
+ */
+export function readEstimate(folderPath: string, kind: "mission" | "task"): Estimate {
+  const yamlPath = join(folderPath, `${kind}.yaml`);
+  if (existsSync(yamlPath)) {
+    try {
+      const raw = (yamlLoad(readFileSync(yamlPath, "utf8")) ?? {}) as Record<string, unknown>;
+      return estimateFromTokenomics(raw.tokenomics as Record<string, unknown> | undefined);
+    } catch {
+      return emptyEstimate();
+    }
+  }
+  const mdPath = join(folderPath, `${kind}.md`);
+  if (existsSync(mdPath)) {
+    try {
+      return parseEstimateBlock(readFileSync(mdPath, "utf8"));
+    } catch {
+      return emptyEstimate();
+    }
+  }
+  return emptyEstimate();
 }
 
 /**

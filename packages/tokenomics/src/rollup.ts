@@ -53,7 +53,7 @@ export function rollup(opts: RollupOptions): Report {
     .map((m) => ({
       mission: m,
       tasks: board.listTasks(m.id),
-      estimate: readEstimate(join(artifactsRoot, m.folderPath), "mission.md"),
+      estimate: readEstimate(join(artifactsRoot, m.folderPath), "mission"),
     }));
 
   const grouped = new Map<string, Segment[]>();
@@ -246,7 +246,7 @@ function buildTaskRuns(
         declared?.name ??
         (key === MISSION_LEVEL ? "Mission-level work (planning, integration, gate)" : "(not on the board)"),
       status: declared?.status ?? null,
-      estimate: declared ? readEstimate(join(artifactsRoot, declared.folderPath), "task.md") : emptyEstimate(),
+      estimate: declared ? readEstimate(join(artifactsRoot, declared.folderPath), "task") : emptyEstimate(),
       branches: [...new Set(taskSegs.map((s) => s.branch))].sort(),
       turns: taskSegs.reduce((n, s) => n + s.turns, 0),
       subagentDispatches: subagents.length,
@@ -269,7 +269,7 @@ function buildTaskRuns(
       taskId: label,
       name: t.name,
       status: t.status,
-      estimate: readEstimate(join(artifactsRoot, t.folderPath), "task.md"),
+      estimate: readEstimate(join(artifactsRoot, t.folderPath), "task"),
       branches: [],
       turns: 0,
       subagentDispatches: 0,
