@@ -3,7 +3,7 @@ import { join, dirname, basename } from "node:path";
 import { renderManagedBlock, parseManagedBlock, mapBoardStatus, boardLineEntityName, type EntityKind, type ManagedFields } from "./managed-block.js";
 import { slugify, uniqueSlug } from "./slug.js";
 import { type BugParent, type BugSeverity, type WorkflowParent } from "./types.js";
-import { findMetaSpan, serializeMeta, parseWorkflowMeta, type WorkflowMeta } from "./workflow-meta.js";
+import { findMetaSpan, serializeMeta, type WorkflowMeta } from "./workflow-meta.js";
 import { BoardModel } from "./board-model.js";
 
 function siblingSlugs(dir: string): Set<string> {
@@ -696,22 +696,6 @@ function workflowFolder(root: string, id: string): string | null {
   board.rebuild();
   const wf = board.getWorkflow(id);
   return wf ? join(root, wf.folderPath) : null;
-}
-
-export function updateWorkflow(root: string, id: string, patch: { description?: string }): boolean {
-  const folder = workflowFolder(root, id);
-  if (folder === null) return false;
-  const jsPath = join(folder, "workflow.js");
-  if (!existsSync(jsPath)) return false;
-
-  // Description lives in the script's `meta` (the source of truth) — rewrite only that literal.
-  const source = readFileSync(jsPath, "utf8");
-  const span = findMetaSpan(source);
-  if (!span) return false; // never rewrite a script whose meta we could not locate
-  const meta = parseWorkflowMeta(source);
-  const next: WorkflowMeta = { ...meta, description: patch.description ?? meta.description };
-  writeFileSync(jsPath, source.slice(0, span.start) + serializeMeta(next) + source.slice(span.end), "utf8");
-  return true;
 }
 
 export function setWorkflowMeta(root: string, id: string, meta: WorkflowMeta): boolean {

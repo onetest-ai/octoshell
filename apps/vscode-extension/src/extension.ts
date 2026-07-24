@@ -292,7 +292,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const wf = node?.workflow;
       if (!wf) return;
       const pick = await vscode.window.showWarningMessage(
-        `Delete the workflow "${wf.name}"? This permanently removes its workflow.md and workflow.js.`,
+        `Delete the workflow "${wf.name}"? This permanently removes its workflow.js and runs.jsonl.`,
         { modal: true }, "Delete",
       );
       if (pick !== "Delete") return;

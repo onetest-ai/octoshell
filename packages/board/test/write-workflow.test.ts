@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { BoardModel } from "../src/board-model.js";
 import {
-  createWorkflow, updateWorkflow, deleteWorkflow, setWorkflowMeta, appendWorkflowRun,
+  createWorkflow, deleteWorkflow, setWorkflowMeta, appendWorkflowRun,
 } from "../src/write.js";
 
 function fixture(): { root: string; campaignId: string; missionId: string } {
@@ -49,25 +49,6 @@ describe("createWorkflow", () => {
     const board = new BoardModel(root);
     board.rebuild();
     expect(board.listWorkflows({ missionId })).toHaveLength(2);
-  });
-});
-
-describe("updateWorkflow", () => {
-  it("edits the description in the script's meta (no workflow.md) and the body survives", () => {
-    const { root, campaignId } = fixture();
-    const { id, folderPath } = createWorkflow(root, { campaignId }, { name: "w" });
-    const bodyBefore = read(root, id, "workflow.js").slice(read(root, id, "workflow.js").indexOf("phase("));
-
-    expect(updateWorkflow(root, id, { description: "new text" })).toBe(true);
-
-    const js = read(root, id, "workflow.js");
-    expect(js).toContain("new text");
-    expect(js.slice(js.indexOf("phase("))).toBe(bodyBefore); // body untouched
-    expect(existsSync(join(root, folderPath, "workflow.md"))).toBe(false);
-
-    const board = new BoardModel(root);
-    board.rebuild();
-    expect(board.getWorkflow(id)!.description).toBe("new text");
   });
 });
 

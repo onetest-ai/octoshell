@@ -29,7 +29,11 @@ describe("BoardHost workflows", () => {
     let fired = 0;
     board.on("entities:changed", () => { fired++; });
     const { id } = board.createWorkflow({ missionId }, { name: "Build" });
-    board.updateWorkflow(id, { description: "d" });
+    board.setWorkflowMeta(id, {
+      name: "build",
+      description: "d",
+      phases: [{ title: "Run", steps: [{ id: "s1", agent: "claude", label: "Build" }] }],
+    });
     board.appendWorkflowRun(id, { status: "done", summary: "ok", at: "2026-07-23" });
     board.deleteWorkflow(id);
     expect(fired).toBe(4);

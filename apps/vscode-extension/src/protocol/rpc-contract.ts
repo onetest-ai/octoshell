@@ -141,7 +141,6 @@ export const rpcArgs = {
     campaignId: z.string().optional(),
     missionId: z.string().optional(),
   }),
-  "workflow:update": z.object({ workflowId: z.string(), description: z.string().optional() }),
   "workflow:setMeta": z.object({
     workflowId: z.string(),
     meta: z.object({
@@ -228,7 +227,6 @@ export interface RpcResults {
   "workflow:list": Workflow[];
   "workflow:get": Workflow | null;
   "workflow:create": { id: string; folderPath: string };
-  "workflow:update": { ok: true };
   "workflow:setMeta": { ok: true };
   "workflow:addRun": { ok: true };
   "workflow:delete": { ok: true };

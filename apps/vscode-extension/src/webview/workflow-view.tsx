@@ -103,15 +103,20 @@ export function WorkflowView({ id, rpc }: Props): JSX.Element {
 
   const saveDescription = useCallback(
     async (value: string) => {
+      if (!data) return;
       setError(null);
       try {
-        await rpc.call("workflow:update", { workflowId: id, description: value });
+        // Description lives in the script's meta — persist it the same way as step edits.
+        await rpc.call("workflow:setMeta", {
+          workflowId: id,
+          meta: { name: data.name, description: value, phases: data.phases },
+        });
         await load();
       } catch (err) {
         setError((err as Error).message);
       }
     },
-    [id, rpc, load],
+    [data, id, rpc, load],
   );
 
   if (!data) return <div className="p-4 text-fg-muted">Loading…</div>;

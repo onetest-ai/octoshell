@@ -24,7 +24,6 @@ import {
   deleteTask,
   deleteBug,
   createWorkflow as createWorkflowFile,
-  updateWorkflow as updateWorkflowFile,
   deleteWorkflow as deleteWorkflowFile,
   setWorkflowMeta as setWorkflowMetaFile,
   appendWorkflowRun as appendWorkflowRunFile,
@@ -385,11 +384,6 @@ export class BoardHost {
     const res = createWorkflowFile(this.octobotsDir, parent, input);
     this.reconcile();
     return res;
-  }
-
-  updateWorkflow(id: string, patch: { description?: string }): void {
-    updateWorkflowFile(this.octobotsDir, id, patch);
-    this.reconcile();
   }
 
   setWorkflowMeta(id: string, meta: WorkflowMeta): void {
