@@ -53,7 +53,9 @@ export function registerBoardWatcher(opts: {
 }): vscode.Disposable {
   const { folder, board, repoRoot, onSettled } = opts;
   const watcher = vscode.workspace.createFileSystemWatcher(
-    new vscode.RelativePattern(folder, ".octobots/campaigns/**/*.md"),
+    // Entities are now YAML (`<kind>.yaml`); `.md` is still watched for legacy boards mid-migration
+    // and for doc files attached in a campaign/mission folder.
+    new vscode.RelativePattern(folder, ".octobots/campaigns/**/*.{md,yaml}"),
   );
   const gate = createQuiescentDebouncer({
     debounceMs: BOARD_DEBOUNCE_MS,

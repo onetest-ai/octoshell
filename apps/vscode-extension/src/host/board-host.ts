@@ -29,6 +29,7 @@ import {
   appendWorkflowRun as appendWorkflowRunFile,
   migrateLegacyWorkflows as migrateLegacyWorkflowsFile,
   parseDocumentLinks,
+  loadEntity,
   type EntityKind,
   type ManagedFields,
   type Campaign,
@@ -226,15 +227,14 @@ export class BoardHost {
   // ── Proposal sync API ───────────────────────────────────────────────────────
 
   /**
-   * Parse `## Missions` board lines from campaign.md and report which ones already have a folder.
-   * Parse `## Missions` board lines from campaign.md and report which ones already have a folder.
+   * Parse a `## Missions` bullet list from the campaign's own `description` (campaign.yaml) and
+   * report which proposed missions already have a folder. Children are folder-derived — the parent
+   * never enumerates them — so this reads only the human-authored proposal prose, not a projection.
    */
   syncCampaignMissions(campaignId: string): { proposals: MissionProposal[] } {
     const c = this.model.getCampaign(campaignId);
     if (!c) return { proposals: [] };
-    const briefPath = join(this.octobotsDir, c.folderPath, "campaign.md");
-    let text = "";
-    try { text = readFileSync(briefPath, "utf8"); } catch { return { proposals: [] }; }
+    const text = c.description ?? "";
 
     // Parse ## Missions bullets
     const lines = text.split("\n");
@@ -421,15 +421,16 @@ export class BoardHost {
     if (!entity) return { files: [], links: [], attachedFiles: [] };
 
     const folderAbs = join(this.octobotsDir, entity.folderPath);
-    const briefName = kind === "campaign" ? "campaign.md" : "mission.md";
-    const briefPath = join(folderAbs, briefName);
+    const yamlName = `${kind}.yaml`;
+    const mdName = `${kind}.md`; // legacy, for dual-read
 
     // Scan the entity folder for on-disk files (mirrors daemon's listFolder).
     const files: DocFile[] = [];
     try {
       for (const entry of readdirSync(folderAbs, { withFileTypes: true })) {
         if (!entry.isFile() && !entry.isDirectory()) continue;
-        if (entry.isFile() && entry.name === briefName) continue; // exclude the brief itself
+        // Exclude the entity file itself (YAML, or a legacy .md still lingering pre-migration).
+        if (entry.isFile() && (entry.name === yamlName || entry.name === mdName)) continue;
         try {
           const st = statSync(join(folderAbs, entry.name));
           files.push({ name: entry.name, kind: entry.isDirectory() ? "dir" : "file", size: st.size, mtime: st.mtimeMs });
@@ -437,10 +438,15 @@ export class BoardHost {
       }
     } catch { /* folder unreadable */ }
 
-    // Parse document links from the brief's ## Documents section.
-    let briefText = "";
-    try { briefText = readFileSync(briefPath, "utf8"); } catch { /* no brief */ }
-    const parsed = parseDocumentLinks(briefText);
+    // Documents live in the entity's `documents` YAML field; fall back to a legacy .md's
+    // `## Documents` section during migration overlap.
+    let parsed: { label: string; target: string }[] = [];
+    try {
+      const yamlPath = join(folderAbs, yamlName);
+      const mdPath = join(folderAbs, mdName);
+      if (existsSync(yamlPath)) parsed = loadEntity(readFileSync(yamlPath, "utf8")).documents;
+      else if (existsSync(mdPath)) parsed = parseDocumentLinks(readFileSync(mdPath, "utf8"));
+    } catch { /* unreadable entity file → no documents */ }
 
     // Separate links (URL-like targets) from attached files (path targets).
     const links: DocLink[] = [];
