@@ -1,33 +1,25 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { readEntity, resolveEntityFile } from "./entity-io.mjs";
 
+// Show an entity from its `<kind>.yaml` (falling back to a legacy `<kind>.md`). Default: print the raw
+// file. `--digest`: print a compact title + description + acceptance-criteria summary.
 const arg = process.argv[2];
 const digest = process.argv.includes("--digest");
-if (!arg) { console.error("usage: show.js <board.md|entity-dir> [--digest]"); process.exit(2); }
-let path = arg;
-if (existsSync(arg) && statSync(arg).isDirectory()) {
-  for (const name of ["campaign.md", "mission.md", "task.md"]) {
-    if (existsSync(join(arg, name))) { path = join(arg, name); break; }
-  }
-}
-if (!existsSync(path)) { console.error(`show: file not found: ${path}`); process.exit(2); }
-const text = readFileSync(path, "utf8");
+if (!arg || !existsSync(arg)) { console.error(`show: file not found: ${arg ?? "(none)"}`); process.exit(2); }
 
-if (!digest) { process.stdout.write(text); process.exit(0); }
+const resolved = resolveEntityFile(arg);
+if (!resolved) { console.error(`show: not an entity file or folder: ${arg}`); process.exit(2); }
 
-function section(label) {
-  const re = new RegExp(`^##\\s+${label}\\s*$`, "m");
-  const m = re.exec(text);
-  if (!m) return "";
-  const rest = text.slice(m.index + m[0].length);
-  const nextH = rest.search(/^##\s+/m);
-  const comment = rest.search(/^<!--/m);
-  const ends = [nextH, comment].filter((n) => n >= 0);
-  const cut = ends.length ? Math.min(...ends) : -1;
-  return (cut >= 0 ? rest.slice(0, cut) : rest).trim();
+if (!digest) {
+  process.stdout.write(readFileSync(resolved.file, "utf8"));
+  process.exit(0);
 }
-const titleM = text.match(/^#\s+(.*)$/m);
-console.log(titleM ? titleM[1].trim() : "(untitled)");
-const desc = section("Description"); if (desc) console.log(`\nDescription: ${desc}`);
-const ac = section("Acceptance Criteria"); if (ac) console.log(`\nAcceptance Criteria:\n${ac}`);
+
+const f = readEntity(resolved.file, resolved.format);
+console.log(f.name || "(untitled)");
+if (f.description) console.log(`\nDescription: ${f.description}`);
+if (f.acceptanceCriteria.length) {
+  console.log("\nAcceptance Criteria:");
+  for (const c of f.acceptanceCriteria) console.log(`- [${c.done ? "x" : " "}] ${c.text}`);
+}

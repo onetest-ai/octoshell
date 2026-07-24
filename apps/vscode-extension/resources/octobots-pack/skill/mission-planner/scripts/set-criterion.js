@@ -1,41 +1,40 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { dumpEntity, readEntity, resolveEntityFile } from "./entity-io.mjs";
 
-const [path, op, arg] = process.argv.slice(2);
-if (!path || !existsSync(path) || !op) {
-  console.error('usage: set-criterion.js <board.md> add "<text>" | check <n> | uncheck <n>');
+// Edit an entity's OWN `acceptance_criteria` list in its `<kind>.yaml` (a list of { text, done }).
+//   set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>
+// Applies to campaigns, missions, and tasks (bugs have no acceptance criteria).
+const [arg, op, opArg] = process.argv.slice(2);
+if (!arg || !existsSync(arg) || !op) {
+  console.error('usage: set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>');
   process.exit(2);
 }
-const lines = readFileSync(path, "utf8").split("\n");
-const start = lines.findIndex((l) => /^##\s+Acceptance Criteria\s*$/.test(l.trim()));
-if (start < 0) { console.error("set-criterion: no '## Acceptance Criteria' section"); process.exit(1); }
-let end = lines.length;
-for (let i = start + 1; i < lines.length; i++) {
-  if (/^##\s+/.test(lines[i].trim()) || lines[i].startsWith("<!--")) { end = i; break; }
+const resolved = resolveEntityFile(arg, ["campaign", "mission", "task"]);
+if (!resolved) {
+  console.error("set-criterion: not a campaign/mission/task entity file (bugs have no acceptance criteria)");
+  process.exit(2);
 }
-const itemIdx = []; // indices of `- [ ]`/`- [x]` lines within the section
-for (let i = start + 1; i < end; i++) if (/^\s*[-*]\s*\[[ xX]\]/.test(lines[i])) itemIdx.push(i);
+const fields = readEntity(resolved.file, resolved.format);
+const list = fields.acceptanceCriteria;
 
 if (op === "add") {
-  const text = (arg ?? "").trim();
+  const text = (opArg ?? "").trim();
   if (!text) { console.error("set-criterion add: missing text"); process.exit(2); }
-  if (itemIdx.length) {
-    lines.splice(itemIdx[itemIdx.length - 1] + 1, 0, `- [ ] ${text}`);
-  } else {
-    // First real criterion: strip a lone italic placeholder (e.g. `_(not set)_`) in the
-    // section so it doesn't linger above the item, then insert right after the heading.
-    for (let i = end - 1; i > start; i--) {
-      if (/^[ \t]*_\(.*?\)_[ \t]*$/.test(lines[i])) lines.splice(i, 1);
-    }
-    lines.splice(start + 1, 0, `- [ ] ${text}`);
-  }
+  list.push({ text, done: false });
 } else if (op === "check" || op === "uncheck") {
-  const n = Number(arg);
-  if (!Number.isInteger(n) || n < 1 || n > itemIdx.length) { console.error(`set-criterion: index out of range (1..${itemIdx.length})`); process.exit(2); }
-  const li = itemIdx[n - 1];
-  lines[li] = lines[li].replace(/\[[ xX]\]/, op === "check" ? "[x]" : "[ ]");
+  const n = Number(opArg);
+  if (!Number.isInteger(n) || n < 1 || n > list.length) {
+    console.error(`set-criterion: index out of range (1..${list.length})`);
+    process.exit(2);
+  }
+  list[n - 1].done = op === "check";
 } else {
-  console.error(`set-criterion: unknown op '${op}'`); process.exit(2);
+  console.error(`set-criterion: unknown op '${op}'`);
+  process.exit(2);
 }
-writeFileSync(path, lines.join("\n"), "utf8");
+
+// Always persist as YAML in the entity folder (migrating a legacy .md on edit).
+writeFileSync(join(dirname(resolved.file), `${resolved.kind}.yaml`), dumpEntity(resolved.kind, fields), "utf8");
 console.log(`acceptance criteria updated (${op})`);

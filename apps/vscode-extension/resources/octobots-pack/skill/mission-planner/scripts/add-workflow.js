@@ -30,8 +30,12 @@ if (!campaign || !name) {
   process.exit(2);
 }
 
+// A campaign/mission IS its folder — discover it whether it holds a `<kind>.yaml` (current) or a
+// legacy `<kind>.md` (mid-migration). Workflows themselves are unchanged by the YAML migration.
+const hasEntity = (dir, kind) => existsSync(join(dir, `${kind}.yaml`)) || existsSync(join(dir, `${kind}.md`));
+
 const campaignDir = join(process.cwd(), ".octobots", "campaigns", campaign);
-if (!existsSync(join(campaignDir, "campaign.md"))) {
+if (!hasEntity(campaignDir, "campaign")) {
   console.error(`add-workflow: campaign not found: .octobots/campaigns/${campaign}`);
   process.exit(2);
 }
@@ -39,7 +43,7 @@ if (!existsSync(join(campaignDir, "campaign.md"))) {
 let parentDir = campaignDir;
 if (mission) {
   parentDir = join(campaignDir, "missions", mission);
-  if (!existsSync(join(parentDir, "mission.md"))) {
+  if (!hasEntity(parentDir, "mission")) {
     console.error(`add-workflow: mission not found: .octobots/campaigns/${campaign}/missions/${mission}`);
     process.exit(2);
   }
