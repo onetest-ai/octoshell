@@ -96,24 +96,52 @@ Rewriting every entity file in a real user board is the dangerous part.
 
 Discovery keys on `<kind>.yaml` (with the one-version `.md` fallback).
 
-## Blast radius → a mission (~8 tasks)
+## Entity files have THREE readers — all must move together
+
+An entity file is read by more than the app. The migration is only safe if every reader moves to
+YAML in the same mission:
+
+1. **`BoardModel`** (`packages/board`) — the app's parse.
+2. **The pack scripts** — `add-*`, `set-*`, `list`, `show`, `validate`, `add-doc`.
+3. **`packages/tokenomics`** — `estimates.ts` `readEstimate()` parses the `## Tokenomics` block from
+   `mission.md`/`task.md` for the cost report. **If it isn't updated, every authored estimate goes
+   blank and every mission is flagged "no authored effort."** This is a required task, not optional.
+
+## Tokenomics is also a view gap
+
+The authored estimate is consumed by the cost report but is **never shown on the mission/task detail
+panel**. Once `tokenomics` is a parsed field on the entity, add a **read-only "Estimate" block** to
+`MissionView` and `TaskView` (size, effort, complexity, maturity, and the retrospective/basis/note
+flags). Keep `tokenomics` an **open map** in the schema so it carries `maturity`,
+`estimated_retrospectively`, `estimate_basis`, `note`, etc. without a fixed field list.
+
+## Blast radius → a mission (~10 tasks)
 
 1. **board: schema + serializer** — new `entity-schema.ts` (YAML load/dump + typed fields) replacing
-   `managed-block.ts`; the `ManagedFields` shape becomes the entity schema.
+   `managed-block.ts`; the `ManagedFields` shape becomes the entity schema (incl. `tokenomics` as an
+   open map).
 2. **board: parse** — `BoardModel` discovers by `<kind>.yaml`, reads fields from YAML, derives child
-   lists from folders, reads child `status`/`role`/`severity` from the child file.
+   lists from folders, reads child `status`/`role`/`severity` from the child file, and now parses
+   `tokenomics` onto the `Mission`/`Task` entity.
 3. **board: write + validate** — `write.ts` create/update write YAML fields; `add-task`/`add-bug`
    equivalents stop touching the parent; `validate.ts` schema-validates.
 4. **pack scripts** — vendor js-yaml; rewrite `add-*`, `set-*`, `list`, `show`, `validate`,
    `add-doc` to YAML; `add-task`/`add-bug` create folder + child YAML only.
-5. **app** — RPC write handlers write YAML fields (the field-based RPC contract is largely unchanged,
-   so the webview panels are mostly untouched); the delete/status flows.
-6. **migration** — `migrateEntitiesToYaml(root)` in the board package + `BoardHost` call on
-   activation + standalone `migrate.js`; dual-read; trash-not-delete.
-7. **docs** — primer + all SKILL.md (board anatomy, schema, scripts) rewritten for YAML; pack version
+5. **tokenomics package** — `estimates.ts` `readEstimate()` reads the `tokenomics:` YAML field from
+   `mission.yaml`/`task.yaml` instead of the Markdown section; keep the same `Estimate` shape so
+   `rollup`/`render` are untouched. Regression: the cost report still shows authored sizes/effort.
+6. **app: panels** — surface the parsed `tokenomics` estimate as a read-only block in `MissionView`
+   and `TaskView` (the view gap above).
+7. **app: RPC write layer** — handlers write YAML fields (the field-based RPC contract is largely
+   unchanged, so the webview panels are otherwise untouched); delete/status flows.
+8. **migration** — `migrateEntitiesToYaml(root)` in the board package + `BoardHost` call on
+   activation + standalone `migrate.js`; dual-read; trash-not-delete; folds parent markers into
+   child files and the `## Tokenomics` block into the `tokenomics:` field.
+9. **docs** — primer + all SKILL.md (board anatomy, schema, scripts) rewritten for YAML; pack version
    bump.
-8. **end-to-end QA** — the misplacement bug is gone; a full board round-trips md→yaml with no lost
-   status/role/criteria; dual-read + idempotent migration verified.
+10. **end-to-end QA** — the misplacement bug is gone; a full board round-trips md→yaml with no lost
+    status/role/criteria/**tokenomics**; the cost report still reads authored estimates; the estimate
+    now shows on the mission/task panels; dual-read + idempotent migration verified.
 
 ## Non-goals / accepted changes
 
