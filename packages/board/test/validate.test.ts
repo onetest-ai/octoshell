@@ -163,12 +163,12 @@ describe("workflow validation", () => {
     expect(messages.some((m) => /export const meta/.test(m))).toBe(true);
   });
 
-  it("reports a missing workflow.js", () => {
+  it("does not treat a folder without workflow.js as a workflow", () => {
     const root = wfBoard({
       "campaigns/alpha/campaign.md": CAMPAIGN,
-      "campaigns/alpha/workflows/w/workflow.md": WF_MD,
+      "campaigns/alpha/workflows/w/workflow.md": WF_MD, // legacy .md-only folder, no script
     });
-    expect(validateBoard(root).some((f) => /workflow\.js is missing/.test(f.message))).toBe(true);
+    expect(validateBoard(root).filter((f) => f.kind === "workflow")).toEqual([]);
   });
 
   it("reports a name that does not match the folder slug", () => {

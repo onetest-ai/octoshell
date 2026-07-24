@@ -30,7 +30,7 @@ describe("createWorkflow", () => {
     const { root, campaignId } = fixture();
     const { folderPath } = createWorkflow(root, { campaignId }, { name: "Ship Missions" });
     expect(folderPath).toBe("campaigns/alpha/workflows/ship-missions");
-    expect(existsSync(join(root, folderPath, "workflow.md"))).toBe(true);
+    expect(existsSync(join(root, folderPath, "workflow.md"))).toBe(false); // js-only — no markdown
     expect(existsSync(join(root, folderPath, "workflow.js"))).toBe(true);
 
     const board = new BoardModel(root);
@@ -53,13 +53,21 @@ describe("createWorkflow", () => {
 });
 
 describe("updateWorkflow", () => {
-  it("edits the description in workflow.md and leaves the script alone", () => {
+  it("edits the description in the script's meta (no workflow.md) and the body survives", () => {
     const { root, campaignId } = fixture();
-    const { id } = createWorkflow(root, { campaignId }, { name: "w" });
-    const before = read(root, id, "workflow.js");
+    const { id, folderPath } = createWorkflow(root, { campaignId }, { name: "w" });
+    const bodyBefore = read(root, id, "workflow.js").slice(read(root, id, "workflow.js").indexOf("phase("));
+
     expect(updateWorkflow(root, id, { description: "new text" })).toBe(true);
-    expect(read(root, id, "workflow.md")).toContain("new text");
-    expect(read(root, id, "workflow.js")).toBe(before);
+
+    const js = read(root, id, "workflow.js");
+    expect(js).toContain("new text");
+    expect(js.slice(js.indexOf("phase("))).toBe(bodyBefore); // body untouched
+    expect(existsSync(join(root, folderPath, "workflow.md"))).toBe(false);
+
+    const board = new BoardModel(root);
+    board.rebuild();
+    expect(board.getWorkflow(id)!.description).toBe("new text");
   });
 });
 
@@ -90,32 +98,22 @@ describe("setWorkflowMeta", () => {
 });
 
 describe("appendWorkflowRun", () => {
-  it("appends a board line and drives lastRunStatus", () => {
+  it("appends JSON lines to runs.jsonl and drives lastRunStatus", () => {
     const { root, campaignId } = fixture();
-    const { id } = createWorkflow(root, { campaignId }, { name: "w" });
+    const { id, folderPath } = createWorkflow(root, { campaignId }, { name: "w" });
     expect(appendWorkflowRun(root, id, { status: "done", summary: "4 agents, 12m", at: "2026-07-23" })).toBe(true);
     expect(appendWorkflowRun(root, id, { status: "failed", summary: "review phase", at: "2026-07-24" })).toBe(true);
 
-    const md = read(root, id, "workflow.md");
-    expect(md).toContain("- [status:done] 2026-07-23 — 4 agents, 12m");
-    expect(md).toContain("- [status:failed] 2026-07-24 — review phase");
+    // Runs live in runs.jsonl, one JSON object per line — no workflow.md.
+    expect(existsSync(join(root, folderPath, "workflow.md"))).toBe(false);
+    const lines = read(root, id, "runs.jsonl").trim().split("\n");
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[0]!)).toEqual({ status: "done", summary: "4 agents, 12m", at: "2026-07-23" });
+    expect(JSON.parse(lines[1]!).status).toBe("failed");
 
     const board = new BoardModel(root);
     board.rebuild();
-    expect(board.getWorkflow(id)!.lastRunStatus).toBe("failed");
-  });
-
-  it("clears the Runs placeholder and leaves the Description placeholder alone", () => {
-    const { root, campaignId } = fixture();
-    const { id } = createWorkflow(root, { campaignId }, { name: "w" });
-    appendWorkflowRun(root, id, { status: "done", summary: "ok", at: "2026-07-23" });
-
-    const md = read(root, id, "workflow.md");
-    const runsBody = md.slice(md.indexOf("## Runs"));
-    // The placeholder inside Runs is what the entry replaces...
-    expect(runsBody).not.toContain("_(not set)_");
-    // ...and Description's placeholder, which the run log has no business touching, survives.
-    expect(md.slice(md.indexOf("## Description"), md.indexOf("## Runs"))).toContain("_(not set)_");
+    expect(board.getWorkflow(id)!.lastRunStatus).toBe("failed"); // newest line wins
   });
 });
 
@@ -124,7 +122,7 @@ describe("deleteWorkflow", () => {
     const { root, campaignId } = fixture();
     const { id, folderPath } = createWorkflow(root, { campaignId }, { name: "w" });
     expect(deleteWorkflow(root, id)).toBe(true);
-    expect(existsSync(join(root, folderPath, "workflow.md"))).toBe(false);
+    expect(existsSync(join(root, folderPath, "workflow.js"))).toBe(false);
     const board = new BoardModel(root);
     board.rebuild();
     expect(board.listWorkflows({ campaignId })).toHaveLength(0);
