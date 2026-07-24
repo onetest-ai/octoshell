@@ -4,9 +4,10 @@ import { Field } from "./field.js";
 import { ChecklistField } from "./checklist-field.js";
 import { ENTITY_STATUS_OPTIONS } from "./entity-status.js";
 import { EstimateBlock } from "./estimate-block.js";
+import { NotesBlock } from "./notes-block.js";
 import type { RpcClient } from "./rpc-client.js";
 
-interface Task { id: string; missionId: string; name: string; status: string; description: string; acceptanceCriteria: string; tokenomics?: Record<string, string | number | boolean> }
+interface Task { id: string; missionId: string; name: string; status: string; description: string; acceptanceCriteria: string; tokenomics?: Record<string, string | number | boolean>; notes?: string }
 
 export function TaskView({ id, rpc }: { id: string; rpc: RpcClient }): JSX.Element {
   const [task, setTask] = useState<Task | null>(null);
@@ -73,6 +74,7 @@ export function TaskView({ id, rpc }: { id: string; rpc: RpcClient }): JSX.Eleme
       <ChecklistField label="Acceptance Criteria" value={t?.acceptanceCriteria ?? ""} onSave={(v) => void save("acceptanceCriteria", v)} />
 
       <EstimateBlock tokenomics={t?.tokenomics} />
+      <NotesBlock notes={t?.notes} />
 
       {error && <div className="text-sm text-status-error">{error}</div>}
     </div>

@@ -100,6 +100,7 @@ export class BoardModel {
         acceptanceCriteria: cf.acceptanceCriteria,
         target: cf.target ?? "",
         status: resolveStatus(cf.ownStatus),
+        ...(cf.notes ? { notes: cf.notes } : {}),
         folderPath: cFolder,
         createdAt: cMtime,
         updatedAt: cMtime,
@@ -148,6 +149,7 @@ export class BoardModel {
           actual: bf.actual ?? "",
           rca: bf.rca ?? "",
           environment: bf.environment ?? "",
+          ...(bf.notes ? { notes: bf.notes } : {}),
           folderPath: bFolder,
           createdAt: bRead.mtime,
           updatedAt: bRead.mtime,
@@ -177,6 +179,7 @@ export class BoardModel {
           description: mf.description,
           acceptanceCriteria: mf.acceptanceCriteria,
           ...(mf.tokenomics ? { tokenomics: mf.tokenomics } : {}),
+          ...(mf.notes ? { notes: mf.notes } : {}),
           folderPath: mFolder,
           createdAt: mRead.mtime,
           updatedAt: mRead.mtime,
@@ -254,6 +257,7 @@ export class BoardModel {
             description: tf.description,
             acceptanceCriteria: tf.acceptanceCriteria,
             ...(tf.tokenomics ? { tokenomics: tf.tokenomics } : {}),
+            ...(tf.notes ? { notes: tf.notes } : {}),
             folderPath: tFolder,
             createdAt: tRead.mtime,
             updatedAt: tRead.mtime,
@@ -586,6 +590,7 @@ interface EntityRead {
     rca?: string;
     environment?: string;
     tokenomics?: Tokenomics;
+    notes?: string;
   };
 }
 
@@ -614,6 +619,7 @@ function readEntity(root: string, folderPath: string, kind: "campaign" | "missio
         rca: f.rca,
         environment: f.environment,
         tokenomics: f.tokenomics,
+        notes: f.notes,
       },
     };
   }

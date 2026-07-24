@@ -4,9 +4,10 @@ import { Field } from "./field.js";
 import { ChecklistField } from "./checklist-field.js";
 import { ENTITY_STATUS_OPTIONS } from "./entity-status.js";
 import { EstimateBlock } from "./estimate-block.js";
+import { NotesBlock } from "./notes-block.js";
 import type { RpcClient } from "./rpc-client.js";
 
-interface Mission { id: string; campaignId: string; title: string; status: string; description: string; acceptanceCriteria: string; tokenomics?: Record<string, string | number | boolean> }
+interface Mission { id: string; campaignId: string; title: string; status: string; description: string; acceptanceCriteria: string; tokenomics?: Record<string, string | number | boolean>; notes?: string }
 interface PersistedTask { id: string; missionId: string; name: string; status: string }
 interface MissionBug { id: string; title: string; status: string; severity: string }
 interface DocFile { name: string; kind: string; size: number; mtime: number }
@@ -107,6 +108,7 @@ export function MissionView(
       <ChecklistField label="Acceptance Criteria" value={m?.acceptanceCriteria ?? ""} onSave={(v) => void save("acceptanceCriteria", v)} />
 
       <EstimateBlock tokenomics={m?.tokenomics} />
+      <NotesBlock notes={m?.notes} />
 
       <section>
         <div className="flex items-center justify-between mb-2">

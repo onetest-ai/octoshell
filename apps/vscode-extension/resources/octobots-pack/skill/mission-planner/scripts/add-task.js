@@ -3,19 +3,21 @@ import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { dumpEntity, siblingSlugs, slugify, uniqueSlug } from "./entity-io.mjs";
 
-// Parse argv: extract optional --role <name> flag (anywhere), leaving positional args.
+// Parse argv: extract optional --role <name> / --description <text> flags (anywhere), leaving positional args.
 const rawArgs = process.argv.slice(2);
 let role = null;
+let description = "";
 const positional = [];
 for (let i = 0; i < rawArgs.length; i++) {
   if (rawArgs[i] === "--role") role = (rawArgs[++i] ?? "").trim() || null;
+  else if (rawArgs[i] === "--description") description = (rawArgs[++i] ?? "").trim();
   else positional.push(rawArgs[i]);
 }
 
 const arg = positional[0];
 const title = (positional[1] ?? "").trim();
 if (!arg || !title) {
-  console.error('usage: add-task.js <mission-dir|mission.yaml> "<title>" [--role <name>]');
+  console.error('usage: add-task.js <mission-dir|mission.yaml> "<title>" [--role <name>] [--description <text>]');
   process.exit(2);
 }
 // Resolve the mission folder from a dir or a mission.yaml/.md file path.
@@ -35,7 +37,7 @@ mkdirSync(taskDir, { recursive: true });
 
 writeFileSync(
   join(taskDir, "task.yaml"),
-  dumpEntity("task", { name: title, description: "", acceptanceCriteria: [], role: role ?? undefined, status: "draft" }),
+  dumpEntity("task", { name: title, description, acceptanceCriteria: [], role: role ?? undefined, status: "draft" }),
   "utf8",
 );
 console.log(`added task: ${title} (tasks/${slug})`);

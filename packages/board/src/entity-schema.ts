@@ -39,6 +39,8 @@ export interface EntityFields {
   rca?: string; // bug
   environment?: string; // bug
   tokenomics?: Tokenomics; // mission / task
+  /** Free-form appended prose — recorded decisions, rationale, sign-offs. Preserved verbatim. */
+  notes?: string;
 }
 
 function asString(v: unknown): string {
@@ -95,6 +97,7 @@ export function loadEntity(text: string): EntityFields {
     rca: optString(raw.rca),
     environment: optString(raw.environment),
     tokenomics: parseTokenomics(raw.tokenomics),
+    notes: optString(raw.notes),
   };
 }
 
@@ -122,5 +125,7 @@ export function dumpEntity(kind: EntityKind, f: EntityFields): string {
   if ((kind === "mission" || kind === "task") && f.tokenomics && Object.keys(f.tokenomics).length) {
     o.tokenomics = f.tokenomics;
   }
+  // Free-form appended prose (decisions/rationale/sign-offs) — emitted for every kind when present.
+  if (f.notes && f.notes.trim()) o.notes = f.notes;
   return yamlDump(o, { lineWidth: -1, noRefs: true });
 }

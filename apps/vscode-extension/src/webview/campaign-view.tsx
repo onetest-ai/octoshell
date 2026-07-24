@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { StatusPill } from "./status-pill.js";
 import { Field } from "./field.js";
 import { ChecklistField } from "./checklist-field.js";
+import { NotesBlock } from "./notes-block.js";
 import { ENTITY_STATUS_OPTIONS } from "./entity-status.js";
 import type { RpcClient } from "./rpc-client.js";
 import type { RpcResultOf } from "../protocol/index.js";
@@ -154,6 +155,7 @@ export function CampaignView({ id, rpc, onOpenMission, onOpenBug, onDeleteMissio
       <Field label="Target" value={c?.target ?? ""} onSave={(v) => void save("target", v)} />
       <Field label="Description" value={c?.description ?? ""} onSave={(v) => void save("description", v)} />
       <ChecklistField label="Acceptance Criteria" value={c?.acceptanceCriteria ?? ""} onSave={(v) => void save("acceptanceCriteria", v)} />
+      <NotesBlock notes={c?.notes} />
 
       <section>
         <div className="flex items-center justify-between mb-2">
