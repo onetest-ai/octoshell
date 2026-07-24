@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EntityKind } from "./managed-block.js";
 import { parseWorkflowMeta } from "./workflow-meta.js";
+import { loadEntity, type EntityFields } from "./entity-schema.js";
 
 export interface BoardFinding {
   mdPath: string;
@@ -127,7 +128,34 @@ function safeReadFile(filePath: string): string | null {
   }
 }
 
+/** Validate a parsed YAML entity: a descriptive name, and (mission/task) ≥1 acceptance criterion. */
+function validateEntityYaml(kind: EntityKind, fields: EntityFields, path: string): BoardFinding[] {
+  const findings: BoardFinding[] = [];
+  const push = (message: string): void => {
+    findings.push({ mdPath: path, kind, severity: "error", message });
+  };
+  if (!fields.name.trim()) {
+    push("missing a name");
+  } else if (isPlaceholderName(fields.name)) {
+    push(
+      `title "${fields.name.trim()}" is just an id/placeholder — use the form \`<id> - descriptive name\` ` +
+        `(e.g. "M3 - Skills workspace", "T3.1 - Add JWT validation to /login"); the bare id alone is not a name`,
+    );
+  }
+  if ((kind === "mission" || kind === "task") && !fields.acceptanceCriteria.some((c) => c.text.trim())) {
+    push(
+      "no acceptance criterion — add at least one checkable acceptance criterion (use set-criterion.js); " +
+        "a task/mission without a verifiable acceptance criterion is not well-formed",
+    );
+  }
+  return findings;
+}
+
+/** Validate one entity, preferring its `<kind>.yaml` and falling back to a legacy `<kind>.md`. */
 function validateFile(filePath: string, kind: EntityKind): BoardFinding[] {
+  const yamlPath = filePath.replace(/\.md$/, ".yaml");
+  const yamlText = safeReadFile(yamlPath);
+  if (yamlText !== null) return validateEntityYaml(kind, loadEntity(yamlText), yamlPath);
   const text = safeReadFile(filePath);
   if (text === null) return [];
   return validateBriefText(kind, text, filePath);
