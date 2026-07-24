@@ -53,6 +53,30 @@ describe("TaskView", () => {
     await screen.findByText(/not found/i);
   });
 
+  it("renders a read-only Estimate block when tokenomics is present", async () => {
+    const rpc = fakeRpc({
+      "task:get": {
+        id: "t1", missionId: "m1", name: "Profile the API", status: "draft",
+        description: "do it", acceptanceCriteria: "p95<100ms",
+        tokenomics: { size: "S", effort_days: 1, complexity_score: 2 },
+      },
+    });
+    render(<TaskView id="t1" rpc={rpc as never} />);
+    await screen.findByText("Profile the API");
+    expect(screen.getByText(/Estimate/i)).toBeTruthy();
+    expect(screen.getByText(/effort days/i)).toBeTruthy();
+    expect(screen.getByText("1")).toBeTruthy();
+    expect(screen.getByText(/complexity score/i)).toBeTruthy();
+    expect(screen.getByText("2")).toBeTruthy();
+  });
+
+  it("renders NO Estimate block when tokenomics is absent", async () => {
+    const rpc = fakeRpc();
+    render(<TaskView id="t1" rpc={rpc as never} />);
+    await screen.findByText("Profile the API");
+    expect(screen.queryByText(/Estimate/i)).toBeNull();
+  });
+
   it("does NOT render Start or Cancel buttons (execution-era removed)", async () => {
     const rpc = fakeRpc();
     render(<TaskView id="t1" rpc={rpc as never} />);

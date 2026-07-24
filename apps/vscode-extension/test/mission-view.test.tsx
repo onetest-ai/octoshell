@@ -66,6 +66,31 @@ describe("MissionView", () => {
     }
   });
 
+  it("renders a read-only Estimate block when tokenomics is present", async () => {
+    const rpc = fakeRpc({
+      "mission:get": {
+        id: "m1", campaignId: "camp1", title: "Draft a Q3 report", status: "executing",
+        description: "", acceptanceCriteria: "",
+        tokenomics: { size: "M", effort_days: 3, complexity_score: 7, maturity: "prototype" },
+      },
+    });
+    render(<MissionView id="m1" rpc={rpc as never} onOpenTask={() => {}} onNewTask={() => {}} />);
+    await screen.findByText("Draft a Q3 report");
+    expect(screen.getByText(/Estimate/i)).toBeTruthy();
+    expect(screen.getByText(/effort days/i)).toBeTruthy();
+    expect(screen.getByText("3")).toBeTruthy();
+    expect(screen.getByText("M")).toBeTruthy();
+    expect(screen.getByText(/maturity/i)).toBeTruthy();
+    expect(screen.getByText("prototype")).toBeTruthy();
+  });
+
+  it("renders NO Estimate block when tokenomics is absent", async () => {
+    const rpc = fakeRpc();
+    render(<MissionView id="m1" rpc={rpc as never} onOpenTask={() => {}} onNewTask={() => {}} />);
+    await screen.findByText("Draft a Q3 report");
+    expect(screen.queryByText(/Estimate/i)).toBeNull();
+  });
+
   it("header has no emoji glyphs", async () => {
     const rpc = fakeRpc();
     const { container } = render(<MissionView id="m1" rpc={rpc as never} onOpenTask={() => {}} onNewTask={() => {}} />);
