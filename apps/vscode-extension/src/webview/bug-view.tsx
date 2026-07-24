@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { StatusPill } from "./status-pill.js";
 import { Field } from "./field.js";
 import { ENTITY_STATUS_OPTIONS } from "./entity-status.js";
+import { NotesBlock } from "./notes-block.js";
 import type { RpcClient } from "./rpc-client.js";
 
 interface Bug {
@@ -17,6 +18,7 @@ interface Bug {
   actual: string;
   rca: string;
   environment: string;
+  notes?: string;
 }
 
 const SEVERITIES = ["blocker", "critical", "major", "minor", "trivial"] as const;
@@ -109,6 +111,7 @@ export function BugView({ id, rpc }: { id: string; rpc: RpcClient }): JSX.Elemen
       <Field label="Actual" value={b?.actual ?? ""} onSave={(v) => void save("actual", v)} />
       <Field label="RCA" value={b?.rca ?? ""} onSave={(v) => void save("rca", v)} />
       <Field label="Environment" value={b?.environment ?? ""} onSave={(v) => void save("environment", v)} />
+      <NotesBlock notes={b?.notes} />
 
       {error && <div className="text-sm text-status-error">{error}</div>}
     </div>

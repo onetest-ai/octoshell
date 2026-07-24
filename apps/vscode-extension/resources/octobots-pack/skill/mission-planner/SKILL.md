@@ -87,8 +87,9 @@ As work proceeds, agents (and people) accumulate things that belong **with the e
 criterion, a document, or a status: a **recorded decision** and its rationale ("auth uses the server
 clock because…"), an **update** on what changed and why, a **product-owner sign-off**. Put them in
 the entity's **`notes`** field — a free-form block scalar (`notes: |`), preserved verbatim and shown
-read-only on the mission/task panel under a **Notes** heading. Use your own `##`-style sub-headings
-inside it (`## Decision`, `## Update`, `## Product decisions`) to keep it legible.
+read-only under a **Notes** heading on the entity's panel (campaign, mission, task, and bug all have
+one). Use your own `##`-style sub-headings inside it (`## Decision`, `## Update`, `## Product
+decisions`) to keep it legible.
 
 `notes` is the durable home for this. Don't leave a decision only in chat (it's gone when the chat
 is) or only in a commit message (invisible from the board) — if it's a decision or sign-off about the
