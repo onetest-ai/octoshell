@@ -28,6 +28,7 @@ import {
   setWorkflowMeta as setWorkflowMetaFile,
   appendWorkflowRun as appendWorkflowRunFile,
   migrateLegacyWorkflows as migrateLegacyWorkflowsFile,
+  migrateEntitiesToYaml as migrateEntitiesToYamlFile,
   parseDocumentLinks,
   loadEntity,
   type EntityKind,
@@ -405,6 +406,15 @@ export class BoardHost {
   /** One-time migration to the js-only workflow layout. Returns how many workflow.md were retired. */
   migrateLegacyWorkflows(): number {
     return migrateLegacyWorkflowsFile(this.octobotsDir);
+  }
+
+  /**
+   * One-time, idempotent migration of every entity file from Markdown to YAML: parse each
+   * `<kind>.md`, fold parent `[status:]`/`[role:]`/`[severity:]` markers and a `## Tokenomics` block
+   * into the child's own yaml, then trash the `.md`. Returns how many `.md` files were migrated.
+   */
+  migrateEntitiesToYaml(): number {
+    return migrateEntitiesToYamlFile(this.octobotsDir);
   }
 
   /** Absolute path of a workflow's script, for opening it in a normal editor tab. */
