@@ -4,6 +4,8 @@ export interface Campaign {
   isDefault: boolean;
   description: string;
   acceptanceCriteria: string;
+  /** Free-form appended prose (decisions, rationale, sign-offs), preserved verbatim. */
+  notes?: string;
   target: string;
   status: string;
   folderPath: string;
@@ -20,6 +22,8 @@ export interface Mission {
   acceptanceCriteria: string;
   /** Authored planning estimate from the entity's `tokenomics` field, when present. */
   tokenomics?: Record<string, string | number | boolean>;
+  /** Free-form appended prose (decisions, rationale, sign-offs), preserved verbatim. */
+  notes?: string;
   folderPath: string;
   createdAt: number;
   updatedAt: number;
@@ -34,6 +38,8 @@ export interface Task {
   acceptanceCriteria: string;
   /** Authored planning estimate from the entity's `tokenomics` field, when present. */
   tokenomics?: Record<string, string | number | boolean>;
+  /** Free-form appended prose (decisions, rationale, sign-offs), preserved verbatim. */
+  notes?: string;
   folderPath: string;
   createdAt: number;
   updatedAt: number;
@@ -54,6 +60,8 @@ export interface Bug {
   actual: string;
   rca: string;
   environment: string;
+  /** Free-form appended prose (decisions, rationale, sign-offs), preserved verbatim. */
+  notes?: string;
   folderPath: string;
   createdAt: number;
   updatedAt: number;

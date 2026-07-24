@@ -70,6 +70,20 @@ describe("add-task script", () => {
     expect(tasks.some((t) => t.name === "T1.2 - Scoped Task")).toBe(true);
   });
 
+  it("creates a task with --description flag, persisted to the task's own yaml", () => {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Mission" });
+    const missionDir = join(boardRoot, m.folderPath);
+
+    const scope = "Add JWT validation middleware to /login; reject expired/tampered tokens with 401.";
+    runScript("add-task.js", [missionDir, "T1.3 - Scoped Task", "--description", scope], projectDir);
+
+    const board = new BoardModel(boardRoot);
+    board.rebuild();
+    const task = board.listTasks(m.id).find((t) => t.name === "T1.3 - Scoped Task");
+    expect(task?.description).toBe(scope);
+  });
+
   it("exits 2 with missing args", () => {
     let threw = false;
     try {
