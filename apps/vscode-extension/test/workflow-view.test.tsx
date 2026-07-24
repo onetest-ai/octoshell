@@ -78,4 +78,32 @@ describe("WorkflowView", () => {
       expect(calls.some(([m]) => m === "workflow:openScript")).toBe(true);
     });
   });
+
+  it("edits dependsOn as comma-separated ids, persisting a string array", async () => {
+    const { rpc, calls } = stubRpc();
+    render(<WorkflowView id={WF.id} rpc={rpc} />);
+    const deps = await screen.findByLabelText("Step s1 depends on");
+    fireEvent.change(deps, { target: { value: "s0, s2 ,  s3 " } });
+    fireEvent.blur(deps);
+    await waitFor(() => {
+      const call = calls.find(([m]) => m === "workflow:setMeta");
+      expect(call).toBeDefined();
+      const args = call![1] as { meta: { phases: { steps: { dependsOn?: string[] }[] }[] } };
+      expect(args.meta.phases[0]!.steps[0]!.dependsOn).toEqual(["s0", "s2", "s3"]);
+    });
+  });
+
+  it("clears dependsOn to undefined when the field is emptied", async () => {
+    const withDeps = { ...WF, phases: [{ title: "Build", steps: [{ id: "s1", agent: "impl", label: "Build it", dependsOn: ["s0"] }] }] };
+    const { rpc, calls } = stubRpc({ "workflow:get": withDeps });
+    render(<WorkflowView id={WF.id} rpc={rpc} />);
+    const deps = await screen.findByLabelText("Step s1 depends on");
+    fireEvent.change(deps, { target: { value: "  " } });
+    fireEvent.blur(deps);
+    await waitFor(() => {
+      const call = calls.find(([m]) => m === "workflow:setMeta");
+      const args = call![1] as { meta: { phases: { steps: { dependsOn?: string[] }[] }[] } };
+      expect(args.meta.phases[0]!.steps[0]!.dependsOn).toBeUndefined();
+    });
+  });
 });

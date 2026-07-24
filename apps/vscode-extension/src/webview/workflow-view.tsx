@@ -188,6 +188,17 @@ export function WorkflowView({ id, rpc }: Props): JSX.Element {
                       defaultValue={step.parallel ?? ""}
                       onBlur={(e) => patchStep(pi, si, { parallel: e.target.value || undefined })}
                     />
+                    <input
+                      aria-label={`Step ${step.id} depends on`}
+                      title="Depends-on: comma-separated step ids that must finish first. Chain writers linearly (each on the one before it) so the diagram shows the real sequence."
+                      className="w-24 bg-input text-fg-input border border-border rounded px-2 py-1 text-sm"
+                      placeholder="after…"
+                      defaultValue={(step.dependsOn ?? []).join(", ")}
+                      onBlur={(e) => {
+                        const ids = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                        patchStep(pi, si, { dependsOn: ids.length ? ids : undefined });
+                      }}
+                    />
                     <button
                       type="button"
                       aria-label={`Remove step ${step.id}`}
