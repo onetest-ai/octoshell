@@ -143,13 +143,13 @@ function validateFile(filePath: string, kind: EntityKind): BoardFinding[] {
  *   campaigns/<id>/bugs/<id>/bug.md
  */
 /**
- * Validate one workflow folder. `mdPath` is used as the finding location because it is the file a
- * human opens; script problems are reported against it too so every finding has one anchor.
+ * Validate one workflow folder against its `workflow.js` — the script is both the source of truth
+ * and the file a human opens, so every finding anchors on it.
  */
-export function validateWorkflow(mdPath: string, jsPath: string, folderSlug: string): BoardFinding[] {
+export function validateWorkflow(jsPath: string, folderSlug: string): BoardFinding[] {
   const out: BoardFinding[] = [];
   const err = (message: string): void => {
-    out.push({ mdPath, kind: "workflow", severity: "error", message });
+    out.push({ mdPath: jsPath, kind: "workflow", severity: "error", message });
   };
 
   if (!existsSync(jsPath)) {
@@ -207,11 +207,14 @@ export function validateWorkflow(mdPath: string, jsPath: string, folderSlug: str
 /** Validate every workflow folder under an entity, returning the count found. */
 function validateWorkflowsUnder(entityDir: string, findings: BoardFinding[]): number {
   const dir = join(entityDir, "workflows");
-  const slugs = safeReaddir(dir);
-  for (const slug of slugs) {
-    findings.push(...validateWorkflow(join(dir, slug, "workflow.md"), join(dir, slug, "workflow.js"), slug));
+  let count = 0;
+  for (const slug of safeReaddir(dir)) {
+    const jsPath = join(dir, slug, "workflow.js");
+    if (!existsSync(jsPath)) continue; // no workflow.js → not a workflow (e.g. a legacy .md-only folder)
+    count++;
+    findings.push(...validateWorkflow(jsPath, slug));
   }
-  return slugs.length;
+  return count;
 }
 
 export function validateBoard(root: string): BoardFinding[] {

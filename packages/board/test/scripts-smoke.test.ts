@@ -340,7 +340,7 @@ describe("workflow scripts", () => {
     writeFileSync(jsPath, readFileSync(jsPath, "utf8").replace('"ship"', '"other"'), "utf8");
 
     expect(() =>
-      runScript("validate.js", [join(".octobots", "campaigns", cs, "workflows", "ship", "workflow.md")], projectDir),
+      runScript("validate.js", [join(".octobots", "campaigns", cs, "workflows", "ship", "workflow.js")], projectDir),
     ).toThrow();
   });
 
@@ -350,7 +350,7 @@ describe("workflow scripts", () => {
     runScript("add-workflow.js", ["--campaign", cs, "--name", "ship"], projectDir);
     const out = runScript(
       "validate.js",
-      [join(".octobots", "campaigns", cs, "workflows", "ship", "workflow.md")],
+      [join(".octobots", "campaigns", cs, "workflows", "ship", "workflow.js")],
       projectDir,
     );
     expect(out).toMatch(/^OK /);

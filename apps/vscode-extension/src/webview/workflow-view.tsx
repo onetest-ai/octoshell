@@ -103,15 +103,20 @@ export function WorkflowView({ id, rpc }: Props): JSX.Element {
 
   const saveDescription = useCallback(
     async (value: string) => {
+      if (!data) return;
       setError(null);
       try {
-        await rpc.call("workflow:update", { workflowId: id, description: value });
+        // Description lives in the script's meta — persist it the same way as step edits.
+        await rpc.call("workflow:setMeta", {
+          workflowId: id,
+          meta: { name: data.name, description: value, phases: data.phases },
+        });
         await load();
       } catch (err) {
         setError((err as Error).message);
       }
     },
-    [id, rpc, load],
+    [data, id, rpc, load],
   );
 
   if (!data) return <div className="p-4 text-fg-muted">Loading…</div>;
@@ -182,10 +187,22 @@ export function WorkflowView({ id, rpc }: Props): JSX.Element {
                     />
                     <input
                       aria-label={`Step ${step.id} parallel group`}
+                      title="Parallel group id — steps sharing one run concurrently. Leave blank to run sequentially (the default; use only for read-only steps)."
                       className="w-20 bg-input text-fg-input border border-border rounded px-2 py-1 text-sm"
-                      placeholder="par"
+                      placeholder="group"
                       defaultValue={step.parallel ?? ""}
                       onBlur={(e) => patchStep(pi, si, { parallel: e.target.value || undefined })}
+                    />
+                    <input
+                      aria-label={`Step ${step.id} depends on`}
+                      title="Depends-on: comma-separated step ids that must finish first. Chain writers linearly (each on the one before it) so the diagram shows the real sequence."
+                      className="w-24 bg-input text-fg-input border border-border rounded px-2 py-1 text-sm"
+                      placeholder="after…"
+                      defaultValue={(step.dependsOn ?? []).join(", ")}
+                      onBlur={(e) => {
+                        const ids = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                        patchStep(pi, si, { dependsOn: ids.length ? ids : undefined });
+                      }}
                     />
                     <button
                       type="button"

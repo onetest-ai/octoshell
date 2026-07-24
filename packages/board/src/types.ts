@@ -83,8 +83,8 @@ export interface WorkflowPhase {
 
 /**
  * A workflow: the plan of execution for a campaign (which orchestrates its missions) or a
- * mission (which orchestrates its tasks). Backed by a folder holding `workflow.md` and
- * `workflow.js`; the script's `meta` is the source of truth for name/description/phases.
+ * mission (which orchestrates its tasks). Backed by a folder holding `workflow.js` (plus an
+ * append-only `runs.jsonl` log); the script's `meta` is the source of truth for name/description/phases.
  */
 export interface Workflow {
   id: string;
