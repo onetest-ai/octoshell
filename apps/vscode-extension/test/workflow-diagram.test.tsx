@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { layoutWorkflow, WorkflowDiagram } from "../src/webview/workflow-diagram.js";
+import { layoutWorkflow, WorkflowDiagram, fitLabel } from "../src/webview/workflow-diagram.js";
 
 // Step labels deliberately differ from phase titles so `getByText` stays unambiguous.
 const PHASES = [
@@ -76,5 +76,31 @@ describe("WorkflowDiagram", () => {
   it("renders a placeholder when there are no phases", () => {
     render(<WorkflowDiagram phases={[]} />);
     expect(screen.getByText(/no phases/i)).toBeTruthy();
+  });
+
+  it("truncates an overlong step label into the card and shows the full text on hover", () => {
+    const long = "Build role plumbing (Player model, migration, match_store, matches API, hydration)";
+    render(
+      <WorkflowDiagram
+        phases={[{ title: "Build", steps: [{ id: "s1", agent: "python-dev", label: long }] }]}
+      />,
+    );
+    // The rendered label is truncated with an ellipsis…
+    const ellipsized = screen.getByText(/…$/);
+    expect(ellipsized.textContent!.length).toBeLessThan(long.length);
+    // …but the full label survives in the node <title> tooltip.
+    expect(screen.getByText(`${long} — python-dev`)).toBeTruthy();
+  });
+});
+
+describe("fitLabel", () => {
+  it("leaves a short label untouched", () => {
+    expect(fitLabel("Build task")).toBe("Build task");
+  });
+
+  it("truncates a long label with a trailing ellipsis and never exceeds the budget", () => {
+    const out = fitLabel("Build read-only Role column on the assignment page");
+    expect(out.endsWith("…")).toBe(true);
+    expect(out.length).toBeLessThanOrEqual(Math.floor((168 - 20) / 6.6));
   });
 });

@@ -26,6 +26,19 @@ const GAP_X = 24;
 const GAP_Y = 44;
 const PAD = 16;
 const BAND_LABEL_W = 96;
+const TEXT_PAD = 10; // left inset of node text (matches the render x offset)
+
+/**
+ * SVG `<text>` has no CSS ellipsis, so a long label just overflows the card. Truncate it to what
+ * fits a node of `nodeWidth` at roughly `charPx` per glyph (proportional-font estimate, deliberately
+ * conservative — a little under-fill beats spilling past the card), appending an ellipsis. The full
+ * text stays available via the node's `<title>` tooltip.
+ */
+export function fitLabel(text: string, nodeWidth = NODE_W, charPx = 6.6): string {
+  const maxChars = Math.max(4, Math.floor((nodeWidth - TEXT_PAD * 2) / charPx));
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars - 1).trimEnd() + "…";
+}
 
 /** Lay phases out top-to-bottom, steps left-to-right within their phase. */
 export function layoutWorkflow(phases: WorkflowPhase[]): DiagramLayout {
@@ -132,6 +145,7 @@ export function WorkflowDiagram({ phases }: { phases: WorkflowPhase[] }): JSX.El
 
         {layout.nodes.map((n) => (
           <g key={n.id}>
+            <title>{`${n.label} — ${n.agent}`}</title>
             <rect
               x={n.x}
               y={n.y}
@@ -141,11 +155,11 @@ export function WorkflowDiagram({ phases }: { phases: WorkflowPhase[] }): JSX.El
               fill="var(--vscode-editorWidget-background)"
               stroke="var(--vscode-widget-border, var(--vscode-editorWidget-border))"
             />
-            <text x={n.x + 10} y={n.y + 21} fontSize={12} fill="var(--vscode-foreground)">
-              {n.label}
+            <text x={n.x + TEXT_PAD} y={n.y + 21} fontSize={12} fill="var(--vscode-foreground)">
+              {fitLabel(n.label)}
             </text>
-            <text x={n.x + 10} y={n.y + 39} fontSize={11} fill="var(--vscode-descriptionForeground)">
-              {n.agent}
+            <text x={n.x + TEXT_PAD} y={n.y + 39} fontSize={11} fill="var(--vscode-descriptionForeground)">
+              {fitLabel(n.agent, NODE_W, 6)}
             </text>
           </g>
         ))}

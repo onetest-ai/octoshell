@@ -182,8 +182,9 @@ export function WorkflowView({ id, rpc }: Props): JSX.Element {
                     />
                     <input
                       aria-label={`Step ${step.id} parallel group`}
+                      title="Parallel group id — steps sharing one run concurrently. Leave blank to run sequentially (the default; use only for read-only steps)."
                       className="w-20 bg-input text-fg-input border border-border rounded px-2 py-1 text-sm"
-                      placeholder="par"
+                      placeholder="group"
                       defaultValue={step.parallel ?? ""}
                       onBlur={(e) => patchStep(pi, si, { parallel: e.target.value || undefined })}
                     />
