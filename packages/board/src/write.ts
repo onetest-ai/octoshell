@@ -730,3 +730,53 @@ export function deleteWorkflow(root: string, id: string): boolean {
   if (folder === null) return false;
   return trashFolder(folder, root);
 }
+
+/** Convert a legacy `## Runs` markdown body to newline-delimited runs.jsonl content. */
+function legacyRunsToJsonl(runsBody: string): string {
+  const out: string[] = [];
+  for (const line of runsBody.split("\n")) {
+    // Legacy line shape: `- [status:done] 2026-07-23 — 4 agents, 12m`
+    const m = line.match(/^\s*-\s*\[status:([^\]]+)\]\s*(\S+)?\s*(?:—\s*(.*))?$/);
+    if (!m) continue;
+    out.push(JSON.stringify({ status: (m[1] ?? "").trim(), summary: (m[3] ?? "").trim(), at: (m[2] ?? "").trim() }));
+  }
+  return out.length ? out.join("\n") + "\n" : "";
+}
+
+/**
+ * One-time migration to the js-only workflow layout: for every `workflows/<slug>/` folder that still
+ * has a `workflow.md`, materialize its `## Runs` log into `runs.jsonl` (only when none exists yet) and
+ * delete the stray `workflow.md`. Idempotent — a folder with no `workflow.md` is untouched. Returns
+ * how many `workflow.md` files were retired.
+ */
+export function migrateLegacyWorkflows(root: string): number {
+  const dirs = (p: string): string[] => {
+    try {
+      return readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+    } catch {
+      return [];
+    }
+  };
+  let retired = 0;
+  const sweep = (workflowsDir: string): void => {
+    for (const slug of dirs(workflowsDir)) {
+      const folder = join(workflowsDir, slug);
+      const mdPath = join(folder, "workflow.md");
+      if (!existsSync(mdPath)) continue;
+      const runsPath = join(folder, "runs.jsonl");
+      if (!existsSync(runsPath)) {
+        const jsonl = legacyRunsToJsonl(parseManagedBlock(readFileSync(mdPath, "utf8")).runs ?? "");
+        if (jsonl) writeFileSync(runsPath, jsonl, "utf8");
+      }
+      rmSync(mdPath, { force: true });
+      retired++;
+    }
+  };
+  const campaigns = join(root, "campaigns");
+  for (const c of dirs(campaigns)) {
+    sweep(join(campaigns, c, "workflows"));
+    const missions = join(campaigns, c, "missions");
+    for (const m of dirs(missions)) sweep(join(missions, m, "workflows"));
+  }
+  return retired;
+}

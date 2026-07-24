@@ -56,6 +56,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   })();
 
   const board = new BoardHost(join(fsPath, ".octobots"));
+  board.migrateLegacyWorkflows(); // one-time: retire workflow.md, materialize runs.jsonl (idempotent)
   board.reconcile(); // initial load: stamps missing task/bug id-markers and emits entities:changed
   const appearanceStore = new AppearanceStore(context.globalState);
   const dispatchCtx: DispatchCtx = {

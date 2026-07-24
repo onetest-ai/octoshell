@@ -27,6 +27,7 @@ import {
   deleteWorkflow as deleteWorkflowFile,
   setWorkflowMeta as setWorkflowMetaFile,
   appendWorkflowRun as appendWorkflowRunFile,
+  migrateLegacyWorkflows as migrateLegacyWorkflowsFile,
   parseDocumentLinks,
   type EntityKind,
   type ManagedFields,
@@ -399,6 +400,11 @@ export class BoardHost {
   deleteWorkflow(id: string): void {
     deleteWorkflowFile(this.octobotsDir, id);
     this.reconcile();
+  }
+
+  /** One-time migration to the js-only workflow layout. Returns how many workflow.md were retired. */
+  migrateLegacyWorkflows(): number {
+    return migrateLegacyWorkflowsFile(this.octobotsDir);
   }
 
   /** Absolute path of a workflow's script, for opening it in a normal editor tab. */
