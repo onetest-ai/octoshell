@@ -324,8 +324,8 @@ agents to call. A **campaign** workflow orchestrates its missions; a **mission**
 orchestrates its tasks, and a mission has at most one.
 
 ```
-.octobots/campaigns/<campaign>/workflows/<slug>/workflow.md   # description + ## Runs log
-.octobots/campaigns/<campaign>/workflows/<slug>/workflow.js   # a Claude Code workflow script
+.octobots/campaigns/<campaign>/workflows/<slug>/workflow.js     # the script (meta = name/description/phases + body)
+.octobots/campaigns/<campaign>/workflows/<slug>/runs.jsonl      # append-only run log (created on first run)
 ```
 
 **That is not your job here.** Designing or editing a workflow — choosing phases, agents and what
@@ -438,7 +438,7 @@ Run from the repo root:
 These three are the **workflow-designer** skill's tools — they live here because every board writer
 shares one `scripts/` directory, but that skill owns the doctrine for using them:
 
-- `node .claude/skills/mission-planner/scripts/add-workflow.js --campaign <slug> [--mission <slug>] --name "<name>" [--description "<text>"]` — scaffold a workflow folder (`workflow.md` + a runnable `workflow.js`). Refuses a second workflow on a mission.
+- `node .claude/skills/mission-planner/scripts/add-workflow.js --campaign <slug> [--mission <slug>] --name "<name>" [--description "<text>"]` — scaffold a workflow folder with a runnable `workflow.js` (name/description/phases in its `meta`). Refuses a second workflow on a mission.
 - `node .claude/skills/mission-planner/scripts/set-step.js --workflow <workflow-dir> --phase "<title>" --id <stepId> --agent <name> --label "<text>" [--parallel <group>] [--depends-on <id,id>] [--backend <name>]` — upsert a step in the script's `meta`, rewriting only that literal and leaving the body untouched.
-- `node .claude/skills/mission-planner/scripts/add-run.js --workflow <workflow-dir> --status <state> --summary "<text>" [--at YYYY-MM-DD]` — append a run entry to `## Runs`.
-- `node .claude/skills/mission-planner/scripts/validate.js <board.md>` — check a board is well-formed (title, boundary comment, owned section) AND that it meets the contract: a descriptive (non-placeholder) name, and — for missions/tasks — at least one acceptance criterion; for a mission, no placeholder-named `## Tasks` items. Given a `workflow.md` it checks the workflow's script instead (meta present and literal, name matches the folder, phases and steps well-formed); given a campaign/mission it also checks every workflow beneath it. Run it after editing and fix every problem.
+- `node .claude/skills/mission-planner/scripts/add-run.js --workflow <workflow-dir> --status <state> --summary "<text>" [--at YYYY-MM-DD]` — append a run entry (one JSON line) to the workflow's `runs.jsonl`.
+- `node .claude/skills/mission-planner/scripts/validate.js <board.md>` — check a board is well-formed (title, boundary comment, owned section) AND that it meets the contract: a descriptive (non-placeholder) name, and — for missions/tasks — at least one acceptance criterion; for a mission, no placeholder-named `## Tasks` items. Given a `workflow.js` (or a workflow folder) it checks the workflow's script instead (meta present and literal, name matches the folder, phases and steps well-formed); given a campaign/mission it also checks every workflow beneath it. Run it after editing and fix every problem.

@@ -127,11 +127,11 @@ restated agent name.
 
 ## The file format
 
-A workflow is a folder holding two files:
+A workflow is a folder built around its script:
 
 ```
-.octobots/campaigns/<campaign>/workflows/<slug>/workflow.md   # description + ## Runs log
-.octobots/campaigns/<campaign>/workflows/<slug>/workflow.js   # the executable script
+.octobots/campaigns/<campaign>/workflows/<slug>/workflow.js   # the executable script (meta + body)
+.octobots/campaigns/<campaign>/workflows/<slug>/runs.jsonl    # append-only run log (created on first run)
 .octobots/campaigns/<campaign>/missions/<mission>/workflows/<slug>/…
 ```
 
@@ -330,7 +330,7 @@ while (budget.total && budget.remaining() > 50_000) { /* one more finder */ }
 Scripts live in the `mission-planner` skill's `scripts/` directory (one home for everything that
 writes the board). Run them from the repo root.
 
-1. **Scaffold** — creates the folder, a `workflow.md` and a runnable single-phase `workflow.js`:
+1. **Scaffold** — creates the folder and a runnable single-phase `workflow.js`:
 
    ```bash
    node .claude/skills/mission-planner/scripts/add-workflow.js \
@@ -358,7 +358,7 @@ writes the board). Run them from the repo root.
 
    ```bash
    node .claude/skills/mission-planner/scripts/validate.js \
-     .octobots/campaigns/<c>/missions/<m>/workflows/<w>/workflow.md
+     .octobots/campaigns/<c>/missions/<m>/workflows/<w>/workflow.js
    ```
 
    It checks: `workflow.js` present; `meta` locatable and a pure literal; `meta.name` equal to the
@@ -367,7 +367,7 @@ writes the board). Run them from the repo root.
    `campaign.md` or `mission.md` also checks every workflow beneath it, and flags a mission with more
    than one.
 
-Do **not** write `## Runs` by hand — `mission-execution` appends entries with `add-run.js` after a
+Do **not** write `runs.jsonl` by hand — `mission-execution` appends entries with `add-run.js` after a
 run. It is a log, not a plan.
 
 ## Finishing

@@ -1,23 +1,30 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { parseWorkflowMeta } from "./workflow-meta.mjs";
 
-const path = process.argv[2];
-if (!path || !existsSync(path)) {
-  console.error(`validate: file not found: ${path ?? "(none)"}`);
+const arg = process.argv[2];
+if (!arg || !existsSync(arg)) {
+  console.error(`validate: file not found: ${arg ?? "(none)"}`);
   process.exit(2);
 }
-const text = readFileSync(path, "utf8");
-const kind = basename(path).replace(/\.md$/, ""); // campaign | mission | task | bug | workflow
+// A workflow is now its script. Accept a `workflow.js` file, or a folder containing one.
+let path = arg;
+if (statSync(arg).isDirectory()) {
+  const js = join(arg, "workflow.js");
+  if (existsSync(js)) path = js;
+  else { console.error(`validate: no workflow.js in ${arg}`); process.exit(2); }
+}
+const kind = basename(path).replace(/\.(md|js)$/, ""); // campaign | mission | task | bug | workflow
 const problems = [];
 
 // A workflow is validated against its script, not against the task/mission contract.
 if (kind === "workflow") {
-  const dir = dirname(path);
-  for (const p of validateWorkflowDir(dir)) problems.push(p);
+  for (const p of validateWorkflowDir(dirname(path))) problems.push(p);
   report();
 }
+
+const text = readFileSync(path, "utf8"); // markdown boards only reach here
 
 // Title present + descriptive (not a placeholder like "T1" / "M3.2" / "Task 3").
 const titleM = /^#\s+(.+?)\s*$/m.exec(text);
@@ -62,7 +69,10 @@ if (kind === "campaign" || kind === "mission") {
   const dir = dirname(path);
   const workflowsDir = join(dir, "workflows");
   const slugs = existsSync(workflowsDir)
-    ? readdirSync(workflowsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+    ? readdirSync(workflowsDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .filter((slug) => existsSync(join(workflowsDir, slug, "workflow.js"))) // a workflow is its .js
     : [];
   if (kind === "mission" && slugs.length > 1) {
     problems.push(
