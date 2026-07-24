@@ -101,18 +101,11 @@ export function loadEntity(text: string): EntityFields {
 /** Serialize typed fields to a `<kind>.yaml` body, emitting only the keys that kind uses, in a stable order. */
 export function dumpEntity(kind: EntityKind, f: EntityFields): string {
   const o: Record<string, unknown> = { name: f.name };
-  if (kind === "campaign") {
-    o.status = f.status ?? "draft";
-    o.target = f.target ?? "";
-  }
-  if (kind === "task") {
-    o.status = f.status ?? "draft";
-    if (f.role) o.role = f.role;
-  }
-  if (kind === "bug") {
-    o.severity = f.severity ?? "major";
-    o.status = f.status ?? "draft";
-  }
+  // Every entity persists its own status in its own file — no parent projection carries it.
+  o.status = f.status ?? "draft";
+  if (kind === "campaign") o.target = f.target ?? "";
+  if (kind === "task" && f.role) o.role = f.role;
+  if (kind === "bug") o.severity = f.severity ?? "major";
   o.description = f.description ?? "";
   if (kind === "bug") {
     o.steps_to_reproduce = f.stepsToReproduce ?? "";

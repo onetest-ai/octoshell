@@ -59,9 +59,9 @@ describe("entity-schema load/dump", () => {
     expect(back.actual).toBe("crashes");
   });
 
-  it("a mission emits no status/role and keeps documents + tokenomics", () => {
+  it("a mission emits its own status but no role, and keeps documents + tokenomics", () => {
     const yaml = dumpEntity("mission", base({ name: "M1", status: "executing", role: "x", tokenomics: { effort_days: 3 } }));
-    expect(yaml).not.toMatch(/^status:/m);
+    expect(yaml).toMatch(/^status: executing$/m);
     expect(yaml).not.toMatch(/^role:/m);
     expect(loadEntity(yaml).tokenomics).toEqual({ effort_days: 3 });
   });

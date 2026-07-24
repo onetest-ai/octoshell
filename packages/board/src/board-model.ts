@@ -9,6 +9,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseManagedBlock, mapBoardStatus, boardLineEntityName, type EntityKind } from "./managed-block.js";
+import { loadEntity, ENTITY_STATUSES, type AcceptanceCriterion, type Tokenomics } from "./entity-schema.js";
 import { parseWorkflowMeta } from "./workflow-meta.js";
 import type { Campaign, Mission, Task, Bug, BugSeverity, Workflow, WorkflowPhase } from "./types.js";
 import type { BugParent, WorkflowParent } from "./types.js";
@@ -84,24 +85,21 @@ export class BoardModel {
 
     for (const cslug of cSlugs) {
       const cFolder = `campaigns/${cslug}`;
-      const cMdPath = join(this.root, cFolder, "campaign.md");
-      const cText = safeReadFile(cMdPath);
-      if (cText === null) continue; // no campaign.md → skip
-
-      const cMtime = safeMtime(cMdPath);
-      const cf = parseManagedBlock(cText);
-      const hasCId = !!cf.id;
+      const cRead = readEntity(this.root, cFolder, "campaign");
+      if (!cRead) continue; // no campaign.yaml or campaign.md → skip
+      const cf = cRead.fields;
+      const cMtime = cRead.mtime;
       const cId = cf.id ?? `folder:${cFolder}`;
-      if (!hasCId) this.missingIds.push({ kind: "campaign", folderPath: cFolder, mdPath: cMdPath });
+      if (!cRead.isYaml && !cf.id) this.missingIds.push({ kind: "campaign", folderPath: cFolder, mdPath: cRead.mdPath });
 
       const campaign: Campaign = {
         id: cId,
         name: cf.name || deSlug(cslug),
         isDefault: false,
-        description: cf.description ?? "",
-        acceptanceCriteria: cf.acceptanceCriteria ?? "",
+        description: cf.description,
+        acceptanceCriteria: cf.acceptanceCriteria,
         target: cf.target ?? "",
-        status: (cf.status ? (mapBoardStatus(cf.status) ?? "draft") : "draft"),
+        status: resolveStatus(cf.ownStatus),
         folderPath: cFolder,
         createdAt: cMtime,
         updatedAt: cMtime,
@@ -117,9 +115,10 @@ export class BoardModel {
         this.workflowsByCampaign.get(cId)!.push(wf.id);
       }
 
-      // Parse campaign-level bug statuses from campaign.md ## Bugs board lines
+      // Legacy .md children carry their status on the parent's board lines; a YAML campaign has no
+      // such projection (its children carry their own status), so these maps stay empty for YAML.
+      const cText = cRead.isYaml ? "" : (safeReadFile(join(this.root, cFolder, "campaign.md")) ?? "");
       const cBugStatuses = parseSectionBoardStatuses(cText, "## Bugs");
-      // Parse campaign-level mission statuses from campaign.md ## Missions board lines
       const cMissionStatuses = parseSectionBoardStatuses(cText, "## Missions");
 
       // Campaign-level bugs
@@ -127,34 +126,31 @@ export class BoardModel {
       const bSlugs = safeReaddir(cBugsDir);
       for (const bslug of bSlugs) {
         const bFolder = `${cFolder}/bugs/${bslug}`;
-        const bMdPath = join(this.root, bFolder, "bug.md");
-        const bText = safeReadFile(bMdPath);
-        if (bText === null) continue;
-        const bMtime = safeMtime(bMdPath);
-        const bf = parseManagedBlock(bText);
-        const hasBId = !!bf.id;
+        const bRead = readEntity(this.root, bFolder, "bug");
+        if (!bRead) continue;
+        const bf = bRead.fields;
         const bId = bf.id ?? `folder:${bFolder}`;
-        if (!hasBId) this.missingIds.push({ kind: "bug", folderPath: bFolder, mdPath: bMdPath });
+        if (!bRead.isYaml && !bf.id) this.missingIds.push({ kind: "bug", folderPath: bFolder, mdPath: bRead.mdPath });
 
         // Key on the board-line entity NAME (em/en-dash and `: ` split off any description), matching
-        // how the status map is keyed — otherwise an em-dash title like "M9 — Foo" never matches.
+        // how the legacy status map is keyed. A YAML bug carries its own status (`ownStatus`).
         const bugTitle = boardLineEntityName(bf.name || deSlug(bslug)).toLowerCase();
         const bug: Bug = {
           id: bId,
           campaignId: cId,
           missionId: null,
           title: bf.name || deSlug(bslug),
-          status: (cBugStatuses.get(bugTitle) ?? "draft"),
+          status: bf.ownStatus ?? cBugStatuses.get(bugTitle) ?? "draft",
           severity: parseSeverity(bf.severity),
-          description: bf.description ?? "",
+          description: bf.description,
           stepsToReproduce: bf.stepsToReproduce ?? "",
           expected: bf.expected ?? "",
           actual: bf.actual ?? "",
           rca: bf.rca ?? "",
           environment: bf.environment ?? "",
           folderPath: bFolder,
-          createdAt: bMtime,
-          updatedAt: bMtime,
+          createdAt: bRead.mtime,
+          updatedAt: bRead.mtime,
         };
         this.bugs.set(bId, bug);
         this.bugByFolder.set(bFolder, bId);
@@ -167,26 +163,23 @@ export class BoardModel {
 
       for (const mslug of mSlugs) {
         const mFolder = `${cFolder}/missions/${mslug}`;
-        const mMdPath = join(this.root, mFolder, "mission.md");
-        const mText = safeReadFile(mMdPath);
-        if (mText === null) continue;
-
-        const mMtime = safeMtime(mMdPath);
-        const mf = parseManagedBlock(mText);
-        const hasMId = !!mf.id;
+        const mRead = readEntity(this.root, mFolder, "mission");
+        if (!mRead) continue;
+        const mf = mRead.fields;
         const mId = mf.id ?? `folder:${mFolder}`;
-        if (!hasMId) this.missingIds.push({ kind: "mission", folderPath: mFolder, mdPath: mMdPath });
+        if (!mRead.isYaml && !mf.id) this.missingIds.push({ kind: "mission", folderPath: mFolder, mdPath: mRead.mdPath });
 
         const mission: Mission = {
           id: mId,
           campaignId: cId,
           title: mf.name || deSlug(mslug),
-          status: (cMissionStatuses.get(boardLineEntityName(mf.name || deSlug(mslug)).toLowerCase()) ?? "draft"),
-          description: mf.description ?? "",
-          acceptanceCriteria: mf.acceptanceCriteria ?? "",
+          status: mf.ownStatus ?? cMissionStatuses.get(boardLineEntityName(mf.name || deSlug(mslug)).toLowerCase()) ?? "draft",
+          description: mf.description,
+          acceptanceCriteria: mf.acceptanceCriteria,
+          ...(mf.tokenomics ? { tokenomics: mf.tokenomics } : {}),
           folderPath: mFolder,
-          createdAt: mMtime,
-          updatedAt: mMtime,
+          createdAt: mRead.mtime,
+          updatedAt: mRead.mtime,
         };
         this.missions.set(mId, mission);
         this.missionByFolder.set(mFolder, mId);
@@ -200,7 +193,9 @@ export class BoardModel {
           this.workflowsByMission.get(mId)!.push(wf.id);
         }
 
-        // Parse mission-level bug and task statuses from mission.md board lines
+        // Legacy .md children take their status from mission.md board lines; YAML children carry
+        // their own (`ownStatus`), so these maps stay empty for a YAML mission.
+        const mText = mRead.isYaml ? "" : (safeReadFile(join(this.root, mFolder, "mission.md")) ?? "");
         const mBugStatuses = parseSectionBoardStatuses(mText, "## Bugs");
         const mTaskStatuses = parseSectionBoardStatuses(mText, "## Tasks");
 
@@ -209,14 +204,11 @@ export class BoardModel {
         const mbSlugs = safeReaddir(mBugsDir);
         for (const bslug of mbSlugs) {
           const bFolder = `${mFolder}/bugs/${bslug}`;
-          const bMdPath = join(this.root, bFolder, "bug.md");
-          const bText = safeReadFile(bMdPath);
-          if (bText === null) continue;
-          const bMtime = safeMtime(bMdPath);
-          const bf = parseManagedBlock(bText);
-          const hasBId = !!bf.id;
+          const bRead = readEntity(this.root, bFolder, "bug");
+          if (!bRead) continue;
+          const bf = bRead.fields;
           const bId = bf.id ?? `folder:${bFolder}`;
-          if (!hasBId) this.missingIds.push({ kind: "bug", folderPath: bFolder, mdPath: bMdPath });
+          if (!bRead.isYaml && !bf.id) this.missingIds.push({ kind: "bug", folderPath: bFolder, mdPath: bRead.mdPath });
 
           const bugTitle = boardLineEntityName(bf.name || deSlug(bslug)).toLowerCase();
           const bug: Bug = {
@@ -224,17 +216,17 @@ export class BoardModel {
             campaignId: null,
             missionId: mId,
             title: bf.name || deSlug(bslug),
-            status: (mBugStatuses.get(bugTitle) ?? "draft"),
+            status: bf.ownStatus ?? mBugStatuses.get(bugTitle) ?? "draft",
             severity: parseSeverity(bf.severity),
-            description: bf.description ?? "",
+            description: bf.description,
             stepsToReproduce: bf.stepsToReproduce ?? "",
             expected: bf.expected ?? "",
             actual: bf.actual ?? "",
             rca: bf.rca ?? "",
             environment: bf.environment ?? "",
             folderPath: bFolder,
-            createdAt: bMtime,
-            updatedAt: bMtime,
+            createdAt: bRead.mtime,
+            updatedAt: bRead.mtime,
           };
           this.bugs.set(bId, bug);
           this.bugByFolder.set(bFolder, bId);
@@ -247,27 +239,24 @@ export class BoardModel {
 
         for (const tslug of tSlugs) {
           const tFolder = `${mFolder}/tasks/${tslug}`;
-          const tMdPath = join(this.root, tFolder, "task.md");
-          const tText = safeReadFile(tMdPath);
-          if (tText === null) continue;
-
-          const tMtime = safeMtime(tMdPath);
-          const tf = parseManagedBlock(tText);
-          const hasTId = !!tf.id;
+          const tRead = readEntity(this.root, tFolder, "task");
+          if (!tRead) continue;
+          const tf = tRead.fields;
           const tId = tf.id ?? `folder:${tFolder}`;
-          if (!hasTId) this.missingIds.push({ kind: "task", folderPath: tFolder, mdPath: tMdPath });
+          if (!tRead.isYaml && !tf.id) this.missingIds.push({ kind: "task", folderPath: tFolder, mdPath: tRead.mdPath });
 
           const taskName = boardLineEntityName(tf.name || deSlug(tslug)).toLowerCase();
           const task: Task = {
             id: tId,
             missionId: mId,
             name: tf.name || deSlug(tslug),
-            status: (mTaskStatuses.get(taskName) ?? "draft"),
-            description: tf.description ?? "",
-            acceptanceCriteria: tf.acceptanceCriteria ?? "",
+            status: tf.ownStatus ?? mTaskStatuses.get(taskName) ?? "draft",
+            description: tf.description,
+            acceptanceCriteria: tf.acceptanceCriteria,
+            ...(tf.tokenomics ? { tokenomics: tf.tokenomics } : {}),
             folderPath: tFolder,
-            createdAt: tMtime,
-            updatedAt: tMtime,
+            createdAt: tRead.mtime,
+            updatedAt: tRead.mtime,
           };
           this.tasks.set(tId, task);
           this.taskByFolder.set(tFolder, tId);
@@ -558,6 +547,98 @@ function safeMtime(path: string): number {
   } catch {
     return Date.now();
   }
+}
+
+/** Render structured criteria back to the checklist string the entity API exposes. */
+function renderCriteria(cs: AcceptanceCriterion[]): string {
+  return cs.map((c) => `- [${c.done ? "x" : " "}] ${c.text}`).join("\n");
+}
+
+/** Resolve a stored/authored status string to a canonical entity status. */
+function resolveStatus(raw: string | undefined): string {
+  if (!raw) return "draft";
+  if ((ENTITY_STATUSES as readonly string[]).includes(raw)) return raw;
+  return mapBoardStatus(raw) ?? "draft";
+}
+
+/**
+ * The normalized fields of one entity, read from `<kind>.yaml` (primary) or a legacy `<kind>.md`
+ * (fallback during migration). `ownStatus` is the status the entity carries in its OWN file — set for
+ * every YAML entity and for a campaign's `## Status`; left undefined for a legacy md task/bug/mission
+ * whose status still lives on the parent's board line.
+ */
+interface EntityRead {
+  mtime: number;
+  isYaml: boolean;
+  mdPath: string;
+  fields: {
+    id?: string; // legacy octobots:id marker (md only)
+    name: string;
+    description: string;
+    acceptanceCriteria: string;
+    ownStatus?: string;
+    role?: string;
+    target?: string;
+    severity?: string;
+    stepsToReproduce?: string;
+    expected?: string;
+    actual?: string;
+    rca?: string;
+    environment?: string;
+    tokenomics?: Tokenomics;
+  };
+}
+
+/** Read an entity from `<kind>.yaml`, falling back to a legacy `<kind>.md`. Null if neither exists. */
+function readEntity(root: string, folderPath: string, kind: "campaign" | "mission" | "task" | "bug"): EntityRead | null {
+  const yamlPath = join(root, folderPath, `${kind}.yaml`);
+  const mdPath = join(root, folderPath, `${kind}.md`);
+  const yText = safeReadFile(yamlPath);
+  if (yText !== null) {
+    const f = loadEntity(yText);
+    return {
+      mtime: safeMtime(yamlPath),
+      isYaml: true,
+      mdPath,
+      fields: {
+        name: f.name,
+        description: f.description,
+        acceptanceCriteria: renderCriteria(f.acceptanceCriteria),
+        ownStatus: resolveStatus(f.status),
+        role: f.role,
+        target: f.target,
+        severity: f.severity,
+        stepsToReproduce: f.stepsToReproduce,
+        expected: f.expected,
+        actual: f.actual,
+        rca: f.rca,
+        environment: f.environment,
+        tokenomics: f.tokenomics,
+      },
+    };
+  }
+  const mText = safeReadFile(mdPath);
+  if (mText === null) return null;
+  const mf = parseManagedBlock(mText);
+  return {
+    mtime: safeMtime(mdPath),
+    isYaml: false,
+    mdPath,
+    fields: {
+      id: mf.id,
+      name: mf.name,
+      description: mf.description ?? "",
+      acceptanceCriteria: mf.acceptanceCriteria ?? "",
+      ownStatus: kind === "campaign" ? resolveStatus(mf.status) : undefined,
+      target: mf.target,
+      severity: mf.severity,
+      stepsToReproduce: mf.stepsToReproduce,
+      expected: mf.expected,
+      actual: mf.actual,
+      rca: mf.rca,
+      environment: mf.environment,
+    },
+  };
 }
 
 /** De-slug a folder name: `my-slug` → `My Slug`. Mirrors `parseEntityTitle` fallback. */

@@ -18,6 +18,8 @@ export interface Mission {
   status: string;
   description: string;
   acceptanceCriteria: string;
+  /** Authored planning estimate from the entity's `tokenomics` field, when present. */
+  tokenomics?: Record<string, string | number | boolean>;
   folderPath: string;
   createdAt: number;
   updatedAt: number;
@@ -30,6 +32,8 @@ export interface Task {
   status: string;
   description: string;
   acceptanceCriteria: string;
+  /** Authored planning estimate from the entity's `tokenomics` field, when present. */
+  tokenomics?: Record<string, string | number | boolean>;
   folderPath: string;
   createdAt: number;
   updatedAt: number;
