@@ -1,4 +1,4 @@
-import { readFileSync, mkdtempSync, existsSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, existsSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, it, expect } from "vitest";
@@ -154,4 +154,85 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
     expect(packStatus(repo).upToDate).toBe(false);
   });
 
+});
+
+describe("tokenomics CLI install", () => {
+  // The gate skill tells an agent to run `node .octobots/tokenomics/run.mjs`. If the pack does not
+  // put it there, that instruction fails on every install — which is how it behaved before v35.
+  it("installs the whole pipeline the gate is told to run", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    const dir = join(repo, ".octobots", "tokenomics");
+    for (const f of ["run.mjs", "collect.mjs", "rollup.mjs", "render.mjs", "prices.json"]) {
+      expect(existsSync(join(dir, f))).toBe(true);
+    }
+  });
+
+  it("every command the pack's skills name is a file the pack actually installs", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    for (const name of OCTOBOTS_SKILLS) {
+      const skill = readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
+      for (const [, script] of skill.matchAll(/\.octobots\/tokenomics\/([\w.-]+\.mjs)/g)) {
+        expect(existsSync(join(repo, ".octobots", "tokenomics", script))).toBe(true);
+      }
+    }
+  });
+
+  // The CLI was hand-vendored from a repo whose Makefile wrapped it. The pack ships no Makefile, so
+  // a `make tokenomics-prices` in the payload documents rate refresh as a command that cannot run
+  // in any workspace that installs it.
+  it("documents no `make` target, since the pack ships no Makefile", () => {
+    const dir = join(PACK_SRC, "tokenomics");
+    for (const f of readdirSync(dir)) {
+      const text = readFileSync(join(dir, f), "utf8");
+      expect(text, `${f} references a make target`).not.toMatch(/\bmake tokenomics/);
+    }
+  });
+
+  it("names its own scripts by a path that exists in the payload", () => {
+    const dir = join(PACK_SRC, "tokenomics");
+    for (const f of readdirSync(dir)) {
+      for (const [, script] of readFileSync(join(dir, f), "utf8").matchAll(/\.octobots\/tokenomics\/([\w.-]+\.mjs)/g)) {
+        expect(existsSync(join(dir, script)), `${f} names a missing ${script}`).toBe(true);
+      }
+    }
+  });
+
+  it("reports not-installed when the tokenomics runner is missing", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    rmSync(join(repo, ".octobots", "tokenomics", "run.mjs"), { force: true });
+    expect(packStatus(repo).installed).toBe(false);
+  });
+
+  it("reports not-up-to-date when the installed runner is from an older pack", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    const entry = join(repo, ".octobots", "tokenomics", "run.mjs");
+    writeFileSync(entry, readFileSync(entry, "utf8").replace(/octobots-pack-version: \d+/, "octobots-pack-version: 1"));
+    const st = packStatus(repo);
+    expect(st.installed).toBe(true);
+    expect(st.upToDate).toBe(false);
+  });
+
+  // Transcripts are pruned outside the repo, so a clobbered artifact is unrecoverable — an upgrade
+  // may refresh the scripts but must never touch what was already measured.
+  it("preserves collected artifacts and a refreshed price table across a re-install", () => {
+    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    installPack(PACK_SRC, repo);
+    const dir = join(repo, ".octobots", "tokenomics");
+    mkdirSync(join(dir, "raw"), { recursive: true });
+    writeFileSync(join(dir, "raw", "segments.jsonl"), '{"session_id":"s1"}\n');
+    writeFileSync(join(dir, "worklog.jsonl"), '{"session_id":"s1","task":"T1.1"}\n');
+    writeFileSync(join(dir, "runs.json"), '{"runs":[{"kept":true}]}');
+    writeFileSync(join(dir, "prices.json"), '{"models":{"refreshed":{}}}');
+
+    installPack(PACK_SRC, repo);
+
+    expect(readFileSync(join(dir, "raw", "segments.jsonl"), "utf8")).toContain("s1");
+    expect(readFileSync(join(dir, "worklog.jsonl"), "utf8")).toContain("T1.1");
+    expect(readFileSync(join(dir, "runs.json"), "utf8")).toContain("kept");
+    expect(readFileSync(join(dir, "prices.json"), "utf8")).toContain("refreshed");
+  });
 });

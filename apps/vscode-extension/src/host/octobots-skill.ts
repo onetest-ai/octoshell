@@ -1,9 +1,10 @@
 import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { installPrimer, registerClaudeHook, claudeHookStatus } from "./octobots-hooks.js";
+import { installTokenomics, tokenomicsStatus } from "./octobots-tokenomics.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
-export const OCTOBOTS_PACK_VERSION = 34;
+export const OCTOBOTS_PACK_VERSION = 35;
 
 /** The skills the pack ships, by directory name under `skill/` and `.claude/skills/`. */
 export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate"] as const;
@@ -52,11 +53,15 @@ export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERS
   let claude: { present: boolean; current: boolean };
   try { claude = claudeHookStatus(repoRoot, currentVersion); }
   catch { claude = { present: false, current: false }; }
-  if (skillVs.some((v) => v === null) || primerV === null || !claude.present) {
+  // The tokenomics CLI is pack payload too: the mission gate is told to run it, so a pack without
+  // it is incomplete, not merely missing an extra.
+  const tokenomics = tokenomicsStatus(repoRoot, currentVersion);
+  if (skillVs.some((v) => v === null) || primerV === null || !claude.present || !tokenomics.present) {
     return { installed: false, currentVersion, upToDate: false };
   }
   const upToDate =
-    skillVs.every((v) => v === currentVersion) && primerV === currentVersion && claude.current;
+    skillVs.every((v) => v === currentVersion) && primerV === currentVersion && claude.current &&
+    tokenomics.current;
   return { installed: true, currentVersion, upToDate };
 }
 
@@ -75,8 +80,9 @@ function copyTree(from: string, to: string): number {
 
 /**
  * Install the pack from `srcRoot` (the resources/octobots-pack dir) into <repoRoot>:
- * each skill → .claude/skills/<name>, plus the session primer and its Claude hook. Skill dirs
- * retired by a rename are removed first, so an upgrade never leaves two copies on disk.
+ * each skill → .claude/skills/<name>, the session primer and its Claude hook, and the tokenomics
+ * CLI → .octobots/tokenomics. Skill dirs retired by a rename are removed first, so an upgrade never
+ * leaves two copies on disk.
  *
  * The pack installs **no agents**. Planning and execution run under whatever agent the user is
  * already in, driven by the skills; agent rosters belong to the repo, not to us.
@@ -93,6 +99,7 @@ export function installPack(srcRoot: string, repoRoot: string): { written: numbe
     );
   }
   written += installPrimer(srcRoot, repoRoot);
+  written += installTokenomics(srcRoot, repoRoot);
   registerClaudeHook(repoRoot, OCTOBOTS_PACK_VERSION);
   return { written };
 }
