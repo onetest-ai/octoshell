@@ -22,6 +22,11 @@ const run = (cmd, args) => execFileSync(cmd, args, { cwd: extDir, stdio: "inheri
 //    failure leaves the cached table in place rather than breaking packaging.
 run("node", [join(extDir, "..", "..", "packages", "tokenomics", "scripts", "update-prices.mjs")]);
 
+// 1b. The pack's tokenomics CLI carries its own cached table (`prices.json`), read at runtime by
+//     the copy installed into a workspace. Refresh it from the same upstream so a fresh install
+//     does not start out on a stale snapshot. Equally non-fatal.
+run("node", [join(extDir, "resources", "octobots-pack", "tokenomics", "update-prices.mjs")]);
+
 // 2. Clean stale webview assets (vite does not empty media/ between builds) so the vsix only
 //    contains the current bundle, then rebuild fresh.
 rmSync(join(extDir, "media", "assets"), { recursive: true, force: true });

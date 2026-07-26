@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 34
+version: 35
 ---
 
 # mission-completion-gate
@@ -62,7 +62,7 @@ omitted. Phases:
    the regression test that would have caught it** → Sage re-verifies the affected
    criterion (still black-box).
 4. **Tokenomics capture (non-blocking)** — run
-   `node .octobots/tokenomics/collect.mjs` and commit the refreshed
+   `node .octobots/tokenomics/run.mjs` and commit the refreshed
    `.octobots/tokenomics/` artifacts (`raw/segments.jsonl`, `runs.json`,
    `report.html`). See § *Tokenomics capture* below. **Never blocks**: this is
    analytics, and the gate must not fail a correct mission over it.
@@ -116,7 +116,7 @@ if (review.blocking.length) return { blocked: 'review', review }
 
 phase('Tokenomics')   // non-blocking: analytics never fails a green mission
 const tokenomics = await agent(
-  `Run \`node .octobots/tokenomics/collect.mjs\` at the repo root, then report the row ` +
+  `Run \`node .octobots/tokenomics/run.mjs\` at the repo root, then report the row ` +
   `for mission ${missionId} from .octobots/tokenomics/runs.json (cost, tokens, turns, ` +
   `dispatches, net_loc) and whether its authored sizing (effort_days/size_tshirt) is ` +
   `present. Commit the refreshed .octobots/tokenomics/ artifacts. If anything fails, ` +
@@ -139,8 +139,14 @@ pruned without warning. Once they are gone the mission's cost is unrecoverable,
 so the gate captures it at completion rather than at reporting time.
 
 ```
-node .octobots/tokenomics/collect.mjs        # collect -> rollup -> render
+node .octobots/tokenomics/run.mjs            # collect -> rollup -> render
 ```
+
+The CLI ships with this pack and is installed into `.octobots/tokenomics/` — there is nothing to set
+up, and it needs no dependencies beyond node. Two support scripts sit alongside it: `selftest.mjs`
+(runs the whole pipeline against a synthetic board in both entity formats — run it if a report looks
+wrong before believing the report) and `verify.mjs` (cross-checks the totals against `ccusage`).
+Re-installing the pack refreshes the scripts and never touches collected artifacts.
 
 Produces, under `.octobots/tokenomics/` (all committed):
 
