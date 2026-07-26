@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Refresh the cached LiteLLM price table.
 //
-//   make tokenomics-prices          # refresh prices.json, then commit it
+//   node .octobots/tokenomics/update-prices.mjs          # refresh prices.json, then commit it
 //   node .octobots/tokenomics/update-prices.mjs --check   # report drift, write nothing
 //
 // Run this manually, occasionally — when models change or prices move. The
@@ -64,7 +64,7 @@ if (!Object.keys(models).length) {
 
 const next = {
   _comment:
-    "CACHED FROM LITELLM — do not hand-edit. Refresh with `make tokenomics-prices` and commit. " +
+    "CACHED FROM LITELLM — do not hand-edit. Refresh with `node .octobots/tokenomics/update-prices.mjs` and commit. " +
     "Entries are verbatim upstream: costs are USD PER TOKEN (not per million), under upstream's " +
     "own field names. Refreshing this file re-prices all historical runs on the next rollup.",
   _source: SOURCE,
@@ -91,7 +91,7 @@ if (existsSync(OUT)) {
   if (changed) {
     console.error(`tokenomics: ${changes.length} price change(s):`);
     for (const c of changes) console.error(`  ${c}`);
-    console.error("tokenomics: re-run `make tokenomics` to re-price historical runs.");
+    console.error("tokenomics: re-run `node .octobots/tokenomics/run.mjs` to re-price historical runs.");
   } else {
     console.error("tokenomics: prices unchanged.");
   }

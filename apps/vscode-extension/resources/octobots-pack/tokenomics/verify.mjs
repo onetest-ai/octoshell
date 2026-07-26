@@ -5,7 +5,7 @@
 // agents under `subagents/workflows/`), cost and token totals drift and this
 // fails loudly instead of quietly under-reporting.
 //
-//   make tokenomics-verify              # fail if cost or tokens deviate > 10%
+//   node .octobots/tokenomics/verify.mjs              # fail if cost or tokens deviate > 10%
 //   node .octobots/tokenomics/verify.mjs --tolerance 5
 //
 // Requires network (runs ccusage via npx), so it is NOT part of the mission
@@ -34,7 +34,7 @@ const TOK_DIR = join(PROJECT_DIR, ".octobots", "tokenomics");
 
 const runsFile = join(TOK_DIR, "runs.json");
 if (!existsSync(runsFile)) {
-  console.error(`tokenomics: ${runsFile} missing — run \`make tokenomics\` first`);
+  console.error(`tokenomics: ${runsFile} missing — run \`node .octobots/tokenomics/run.mjs\` first`);
   process.exit(1);
 }
 const d = JSON.parse(readFileSync(runsFile, "utf8"));

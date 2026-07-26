@@ -1,4 +1,4 @@
-import { readFileSync, mkdtempSync, existsSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, existsSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, it, expect } from "vitest";
@@ -175,6 +175,26 @@ describe("tokenomics CLI install", () => {
       const skill = readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
       for (const [, script] of skill.matchAll(/\.octobots\/tokenomics\/([\w.-]+\.mjs)/g)) {
         expect(existsSync(join(repo, ".octobots", "tokenomics", script))).toBe(true);
+      }
+    }
+  });
+
+  // The CLI was hand-vendored from a repo whose Makefile wrapped it. The pack ships no Makefile, so
+  // a `make tokenomics-prices` in the payload documents rate refresh as a command that cannot run
+  // in any workspace that installs it.
+  it("documents no `make` target, since the pack ships no Makefile", () => {
+    const dir = join(PACK_SRC, "tokenomics");
+    for (const f of readdirSync(dir)) {
+      const text = readFileSync(join(dir, f), "utf8");
+      expect(text, `${f} references a make target`).not.toMatch(/\bmake tokenomics/);
+    }
+  });
+
+  it("names its own scripts by a path that exists in the payload", () => {
+    const dir = join(PACK_SRC, "tokenomics");
+    for (const f of readdirSync(dir)) {
+      for (const [, script] of readFileSync(join(dir, f), "utf8").matchAll(/\.octobots\/tokenomics\/([\w.-]+\.mjs)/g)) {
+        expect(existsSync(join(dir, script)), `${f} names a missing ${script}`).toBe(true);
       }
     }
   });

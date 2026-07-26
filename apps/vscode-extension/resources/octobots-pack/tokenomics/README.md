@@ -8,10 +8,11 @@ Output conforms to the EPAM *AI Factory Run Submission* schema v1.0 —
 `stop: implementation`, `owner_group: dev`, one row per Octobots **mission**.
 
 ```
-make tokenomics            # collect -> rollup -> render (idempotent, safe to re-run)
-make tokenomics-report     # re-render report.html from runs.json only
-make tokenomics-prices     # refresh the cached price table (occasional; commit it)
-make tokenomics-selftest   # run the pipeline against a synthetic project
+node .octobots/tokenomics/run.mjs             # collect -> rollup -> render (idempotent, safe to re-run)
+node .octobots/tokenomics/render.mjs          # re-render report.html from runs.json only
+node .octobots/tokenomics/update-prices.mjs   # refresh the cached price table (occasional; commit it)
+node .octobots/tokenomics/selftest.mjs        # run the pipeline against a synthetic project
+node .octobots/tokenomics/verify.mjs          # cross-check totals against ccusage
 ```
 
 ## Why it runs at the mission gate
@@ -65,7 +66,7 @@ actually cut from, and that base is resolved from the mission's **PR**
 correct for a trunk-based mission and **wrong for a campaign on an integration
 branch**, where it re-counts every previously-merged mission.
 
-So the order at mission close is: **push -> open the PR -> `make tokenomics`**.
+So the order at mission close is: **push -> open the PR -> `node .octobots/tokenomics/run.mjs`**.
 Collecting before the PR exists inflates the row. It is not permanent damage —
 `net_loc` is recomputed from git on every run, so re-running after the PR opens
 corrects it (observed on edgeserver-microplus/M3: +10312/-73 across 90 files
@@ -157,8 +158,8 @@ same per-token units. There is no local price schema to drift out of sync, and
 any number in it can be diffed straight against upstream.
 
 ```
-make tokenomics-prices                                   # refresh + report what moved
-node .octobots/tokenomics/update-prices.mjs --check       # report drift, write nothing
+node .octobots/tokenomics/update-prices.mjs           # refresh + report what moved
+node .octobots/tokenomics/update-prices.mjs --check   # report drift, write nothing
 ```
 
 Refresh it manually, occasionally, and commit the result. **The pipeline never

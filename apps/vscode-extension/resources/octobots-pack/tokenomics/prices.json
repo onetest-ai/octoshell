@@ -1,5 +1,5 @@
 {
-  "_comment": "CACHED FROM LITELLM — do not hand-edit. Refresh with `make tokenomics-prices` and commit. Entries are verbatim upstream: costs are USD PER TOKEN (not per million), under upstream's own field names. Refreshing this file re-prices all historical runs on the next rollup.",
+  "_comment": "CACHED FROM LITELLM — do not hand-edit. Refresh with `node .octobots/tokenomics/update-prices.mjs` and commit. Entries are verbatim upstream: costs are USD PER TOKEN (not per million), under upstream's own field names. Refreshing this file re-prices all historical runs on the next rollup.",
   "_source": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
   "fetched_at": "2026-07-26",
   "models": {

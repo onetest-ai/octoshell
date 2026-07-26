@@ -16,16 +16,32 @@ import { dirname, join } from "node:path";
 const extDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const run = (cmd, args) => execFileSync(cmd, args, { cwd: extDir, stdio: "inherit" });
 
-// 1. Refresh the cached model prices so every release ships current rates. The
-//    table is compiled into the bundle (never fetched at runtime), so this is
-//    the only point at which it can be updated. Non-fatal by design: a network
-//    failure leaves the cached table in place rather than breaking packaging.
-run("node", [join(extDir, "..", "..", "packages", "tokenomics", "scripts", "update-prices.mjs")]);
+/**
+ * Run a step whose failure must not stop the release. The price refreshes are the only such steps:
+ * both leave the previous cached table in place when upstream is unreachable, so a stale table is
+ * the worst outcome — and a stale table beats no VSIX. The two refreshers disagree on exit code
+ * (the pack's CLI exits 1 so a user who asks for a refresh learns it failed), which is why
+ * tolerance belongs here at the call site rather than in either script.
+ */
+const runSoft = (label, cmd, args) => {
+  try {
+    run(cmd, args);
+  } catch {
+    console.warn(`\n[package] ${label} failed — shipping the cached table as-is.\n`);
+  }
+};
 
-// 1b. The pack's tokenomics CLI carries its own cached table (`prices.json`), read at runtime by
-//     the copy installed into a workspace. Refresh it from the same upstream so a fresh install
-//     does not start out on a stale snapshot. Equally non-fatal.
-run("node", [join(extDir, "resources", "octobots-pack", "tokenomics", "update-prices.mjs")]);
+// 1. Refresh the cached model prices so every release ships current rates. Neither table is ever
+//    fetched at runtime, so packaging is the only point at which either can be updated.
+//
+//    (a) The extension's compiled table, bundled into dist/extension.js.
+runSoft("extension price refresh", "node",
+  [join(extDir, "..", "..", "packages", "tokenomics", "scripts", "update-prices.mjs")]);
+
+//    (b) The pack CLI's own `prices.json`, read at runtime by the copy installed into a workspace.
+//        Same upstream, so a fresh install does not start out on a stale snapshot.
+runSoft("pack price refresh", "node",
+  [join(extDir, "resources", "octobots-pack", "tokenomics", "update-prices.mjs")]);
 
 // 2. Clean stale webview assets (vite does not empty media/ between builds) so the vsix only
 //    contains the current bundle, then rebuild fresh.
