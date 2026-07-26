@@ -1,7 +1,7 @@
 {
   "_comment": "CACHED FROM LITELLM — do not hand-edit. Refresh with `make tokenomics-prices` and commit. Entries are verbatim upstream: costs are USD PER TOKEN (not per million), under upstream's own field names. Refreshing this file re-prices all historical runs on the next rollup.",
   "_source": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
-  "fetched_at": "2026-07-22",
+  "fetched_at": "2026-07-26",
   "models": {
     "claude-3-7-sonnet-20250219": {
       "input_cost_per_token": 0.000003,
@@ -121,6 +121,13 @@
       "cache_creation_input_token_cost_above_1hr": 0.00001
     },
     "claude-opus-4-8": {
+      "input_cost_per_token": 0.000005,
+      "output_cost_per_token": 0.000025,
+      "cache_read_input_token_cost": 5e-7,
+      "cache_creation_input_token_cost": 0.00000625,
+      "cache_creation_input_token_cost_above_1hr": 0.00001
+    },
+    "claude-opus-5": {
       "input_cost_per_token": 0.000005,
       "output_cost_per_token": 0.000025,
       "cache_read_input_token_cost": 5e-7,
