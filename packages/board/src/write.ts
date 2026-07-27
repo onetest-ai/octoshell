@@ -163,52 +163,11 @@ export function createCampaign(
   return { id: `folder:${folderPath}`, folderPath };
 }
 
-/**
- * Add a human-facing board line under a section in a parent brief.
- *
- * Logic lifted from add-task.js:26-36 and add-bug.js:36-38:
- * 1. If the file contains a placeholder matching `_(none...)_` or `_(no bugs yet)_`, replace it.
- * 2. Else if the section already exists, append the line at end of file.
- * 3. Else create the section at end of file.
- */
-export function addBoardLine(
-  parentMdPath: string,
-  section: "## Missions" | "## Tasks" | "## Bugs",
-  line: string,
-): void {
-  let text = existsSync(parentMdPath) ? readFileSync(parentMdPath, "utf8") : "";
-  // Matches both "_(none yet — ...)_" (tasks) and "_(no bugs yet)_" (bugs)
-  const placeholderRe = /_\(none[^)]*\)_|_\(no [^)]*\)_/;
-  const sectionRe = new RegExp(`^${section}\\s*$`, "m");
-
-  if (sectionRe.test(text) && placeholderRe.test(text.slice(text.search(sectionRe)))) {
-    // Replace the placeholder within the section area
-    const head = text.search(sectionRe);
-    text = text.slice(0, head) + text.slice(head).replace(placeholderRe, line);
-  } else if (sectionRe.test(text)) {
-    // Section exists, no placeholder — insert at end of the section's body,
-    // immediately before the next ## heading (or at end of file if the target
-    // section is the last one).
-    const headIdx = text.search(sectionRe);
-    const afterHead = text.slice(headIdx);
-    // Find where the next ## heading starts (relative to afterHead)
-    const nextHeadingMatch = afterHead.match(/\n(?=## )/);
-    if (nextHeadingMatch && nextHeadingMatch.index !== undefined) {
-      // Insert just before the blank/newline that precedes the next heading
-      const insertAt = headIdx + nextHeadingMatch.index;
-      const before = text.slice(0, insertAt);
-      const after = text.slice(insertAt);
-      text = (before.endsWith("\n") ? before : before + "\n") + line + "\n" + after;
-    } else {
-      // Target section is last — append at end of file
-      text = (text.endsWith("\n") ? text : text + "\n") + line + "\n";
-    }
-  } else {
-    // No section yet — create it at end of file
-    text = (text.endsWith("\n") ? text : text + "\n") + `\n${section}\n${line}\n`;
-  }
-  writeFileSync(parentMdPath, text, "utf8");
-}
+// `addBoardLine` lived here: it wrote a child's board line onto a PARENT's markdown, the
+// pre-YAML projection. Children are folder-derived now — a parent never enumerates them — so the
+// function had no callers and calling it would have reintroduced stale parent projections. Removed
+// rather than left in the package's public API. `removeSectionLine` below is NOT dead: the delete
+// paths still use it to clean a legacy parent `.md`.
 
 function parentFolder(
   root: string,
