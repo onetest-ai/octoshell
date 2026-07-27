@@ -4,7 +4,7 @@ import { installPrimer, registerClaudeHook, claudeHookStatus } from "./octobots-
 import { installTokenomics, tokenomicsStatus } from "./octobots-tokenomics.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
-export const OCTOBOTS_PACK_VERSION = 35;
+export const OCTOBOTS_PACK_VERSION = 36;
 
 /** The skills the pack ships, by directory name under `skill/` and `.claude/skills/`. */
 export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate"] as const;

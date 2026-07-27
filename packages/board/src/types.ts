@@ -21,7 +21,7 @@ export interface Mission {
   description: string;
   acceptanceCriteria: string;
   /** Authored planning estimate from the entity's `tokenomics` field, when present. */
-  tokenomics?: Record<string, string | number | boolean>;
+  tokenomics?: Record<string, unknown>;
   /** Free-form appended prose (decisions, rationale, sign-offs), preserved verbatim. */
   notes?: string;
   folderPath: string;
@@ -37,7 +37,7 @@ export interface Task {
   description: string;
   acceptanceCriteria: string;
   /** Authored planning estimate from the entity's `tokenomics` field, when present. */
-  tokenomics?: Record<string, string | number | boolean>;
+  tokenomics?: Record<string, unknown>;
   /** Free-form appended prose (decisions, rationale, sign-offs), preserved verbatim. */
   notes?: string;
   folderPath: string;

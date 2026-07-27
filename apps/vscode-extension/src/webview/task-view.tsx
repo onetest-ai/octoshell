@@ -7,7 +7,7 @@ import { EstimateBlock } from "./estimate-block.js";
 import { NotesBlock } from "./notes-block.js";
 import type { RpcClient } from "./rpc-client.js";
 
-interface Task { id: string; missionId: string; name: string; status: string; description: string; acceptanceCriteria: string; tokenomics?: Record<string, string | number | boolean>; notes?: string }
+interface Task { id: string; missionId: string; name: string; status: string; description: string; acceptanceCriteria: string; tokenomics?: Record<string, unknown>; notes?: string }
 
 export function TaskView({ id, rpc }: { id: string; rpc: RpcClient }): JSX.Element {
   const [task, setTask] = useState<Task | null>(null);

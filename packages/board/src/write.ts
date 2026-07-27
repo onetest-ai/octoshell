@@ -106,6 +106,9 @@ function loadCurrentFields(root: string, kind: YamlKind, folderPath: string, res
     actual: mf.actual,
     rca: mf.rca,
     environment: mf.environment,
+    // The write that follows replaces the `.md` with a `.yaml`; without this the free-form prose
+    // below the managed block (recorded decisions, sign-offs) is destroyed by the conversion.
+    notes: parseNotes(md),
   };
 }
 

@@ -70,6 +70,20 @@ describe("TaskView", () => {
     expect(screen.getByText("2")).toBeTruthy();
   });
 
+  it("renders a nested tokenomics value readably, not as [object Object]", async () => {
+    const rpc = fakeRpc({
+      "task:get": {
+        id: "t1", missionId: "m1", name: "Profile the API", status: "draft",
+        description: "do it", acceptanceCriteria: "p95<100ms",
+        tokenomics: { effort_days: 2, breakdown: { design: 1, build: 1 } },
+      },
+    });
+    render(<TaskView id="t1" rpc={rpc as never} />);
+    await screen.findByText("Profile the API");
+    expect(screen.queryByText(/\[object Object\]/)).toBeNull();
+    expect(screen.getByText(/design/)).toBeTruthy();
+  });
+
   it("renders NO Estimate block when tokenomics is absent", async () => {
     const rpc = fakeRpc();
     render(<TaskView id="t1" rpc={rpc as never} />);

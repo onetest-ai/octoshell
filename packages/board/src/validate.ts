@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EntityKind } from "./managed-block.js";
 import { parseWorkflowMeta } from "./workflow-meta.js";
-import { loadEntity, type EntityFields } from "./entity-schema.js";
+import { loadEntity, KIND_KEYS, KNOWN_KEYS, type EntityFields } from "./entity-schema.js";
 
 export interface BoardFinding {
   mdPath: string;
@@ -148,7 +148,49 @@ function validateEntityYaml(kind: EntityKind, fields: EntityFields, path: string
         "a task/mission without a verifiable acceptance criterion is not well-formed",
     );
   }
+  // A key this schema knows but this kind does not own. It is preserved across writes (nothing is
+  // silently deleted) but the board never reads it, so it is reported rather than left to rot.
+  // `kind` here is the wider managed-block union; only the four YAML kinds have a key list.
+  const owned: readonly string[] | undefined = KIND_KEYS[kind as keyof typeof KIND_KEYS];
+  for (const key of owned ? Object.keys(fields.extra ?? {}) : []) {
+    if (!KNOWN_KEYS.has(key) || owned!.includes(key)) continue;
+    push(`\`${key}\` is not a ${kind} field (${owningKinds(key)}) — it is preserved on disk but the board ignores it`);
+  }
+
+  // Criteria appended as prose into `notes` instead of written to `acceptance_criteria`: they read
+  // fine to a human but the board never sees them as criteria. Bugs carry no criteria, so a
+  // checkbox in a bug's notes is a legitimate repro checklist.
+  if (kind !== "bug") {
+    const stranded = strandedCriteria(fields.notes);
+    if (stranded.length) {
+      push(
+        `${stranded.length} acceptance criterion-shaped line(s) stranded in \`notes\` ` +
+          `(first: "${stranded[0]}") — notes are free-form prose the board never reads as criteria; ` +
+          "move them into `acceptance_criteria` with set-criterion.js and never append them by hand",
+      );
+    }
+  }
   return findings;
+}
+
+/** Human-readable list of the kinds that DO own `key`, for the misplaced-field message. */
+function owningKinds(key: string): string {
+  const kinds = (Object.keys(KIND_KEYS) as Array<keyof typeof KIND_KEYS>).filter((k) => KIND_KEYS[k].includes(key));
+  return kinds.length ? `${kinds.join("/")} only` : "no kind uses it";
+}
+
+/**
+ * Checkbox lines sitting in an entity's free-form `notes` — acceptance criteria that were appended
+ * as text instead of written through the parser. Returns their texts.
+ * Mirrors the pack's `scripts/validate.js` `strandedCriteria` — keep the two in step.
+ */
+export function strandedCriteria(notes: string | undefined): string[] {
+  const out: string[] = [];
+  for (const line of (notes ?? "").split("\n")) {
+    const m = line.match(/^\s*[-*]\s*\[[ xX]\]\s*(\S.*)$/);
+    if (m) out.push((m[1] ?? "").trim());
+  }
+  return out;
 }
 
 /** Validate one entity, preferring its `<kind>.yaml` and falling back to a legacy `<kind>.md`. */

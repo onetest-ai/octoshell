@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { parseWorkflowMeta } from "./workflow-meta.mjs";
-import { readEntity, resolveEntityFile } from "./entity-io.mjs";
+import { readEntity, resolveEntityFile, KIND_KEYS, KNOWN_KEYS } from "./entity-io.mjs";
 
 const arg = process.argv[2];
 if (!arg || !existsSync(arg)) {
@@ -62,6 +62,30 @@ if ((kind === "mission" || kind === "task") && !fields.acceptanceCriteria.some((
     "no acceptance criteria — add at least one `acceptance_criteria` item (use set-criterion.js); " +
       "a task/mission without a verifiable criterion is not well-formed",
   );
+}
+
+// A key this schema knows but this kind does not own. It is preserved across writes (nothing is
+// silently deleted) but the board never reads it, so it is reported rather than left to rot.
+for (const key of Object.keys(fields.extra ?? {})) {
+  if (!KNOWN_KEYS.includes(key) || KIND_KEYS[kind].includes(key)) continue;
+  const owners = Object.keys(KIND_KEYS).filter((k) => KIND_KEYS[k].includes(key));
+  problems.push(
+    `\`${key}\` is not a ${kind} field (${owners.length ? `${owners.join("/")} only` : "no kind uses it"}) — ` +
+      "it is preserved on disk but the board ignores it",
+  );
+}
+
+// Criteria that were appended as prose into `notes` instead of written to `acceptance_criteria`
+// ("stranded criteria"): they read fine to a human but are invisible to the board model.
+if (kind === "campaign" || kind === "mission" || kind === "task") {
+  const stranded = strandedCriteria(fields.notes);
+  if (stranded.length) {
+    problems.push(
+      `${stranded.length} acceptance criterion-shaped line(s) stranded in \`notes\` ` +
+        `(first: "${stranded[0]}") — notes are free-form prose the board never reads as criteria; ` +
+        "move them into `acceptance_criteria` with set-criterion.js and never append them by hand",
+    );
+  }
 }
 
 // A campaign or mission owns workflow folders; a mission may have at most one.
@@ -142,6 +166,20 @@ function validateWorkflowDir(dir) {
         if (!stepPhase.has(dep)) out.push(`step "${step.id}" dependsOn "${dep}", which is not a step`);
       }
     }
+  }
+  return out;
+}
+
+/**
+ * Checkbox lines sitting in an entity's free-form `notes` — acceptance criteria that were appended
+ * as text instead of written through the parser. Returns their texts.
+ * Mirrors packages/board/src/validate.ts `strandedCriteria` — keep the two in step.
+ */
+function strandedCriteria(notes) {
+  const out = [];
+  for (const line of String(notes ?? "").split("\n")) {
+    const m = line.match(/^\s*[-*]\s*\[[ xX]\]\s*(\S.*)$/);
+    if (m) out.push((m[1] ?? "").trim());
   }
   return out;
 }
