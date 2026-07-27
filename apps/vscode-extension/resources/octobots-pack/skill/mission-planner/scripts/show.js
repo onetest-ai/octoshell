@@ -23,3 +23,6 @@ if (f.acceptanceCriteria.length) {
   console.log("\nAcceptance Criteria:");
   for (const c of f.acceptanceCriteria) console.log(`- [${c.done ? "x" : " "}] ${c.text}`);
 }
+// Notes carry the recorded decisions/sign-offs — surface them, or an agent reading only the digest
+// edits the entity without ever seeing why it is what it is.
+if (f.notes) console.log(`\nNotes:\n${f.notes}`);

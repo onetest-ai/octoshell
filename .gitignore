@@ -3,6 +3,7 @@ dist/
 out/
 .turbo/
 coverage/
+coverage-pack/
 *.log
 .DS_Store
 release/

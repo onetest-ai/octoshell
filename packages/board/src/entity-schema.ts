@@ -15,13 +15,17 @@ export type EntityStatus = (typeof ENTITY_STATUSES)[number];
 export interface AcceptanceCriterion {
   text: string;
   done: boolean;
+  /** Any other keys found on the item, carried through untouched. */
+  [extra: string]: unknown;
 }
 export interface DocumentLink {
   label: string;
   target: string;
+  /** Any other keys found on the item, carried through untouched. */
+  [extra: string]: unknown;
 }
 /** Authored planning estimate — an open map so it carries maturity/basis/note without a fixed list. */
-export type Tokenomics = Record<string, string | number | boolean>;
+export type Tokenomics = Record<string, unknown>;
 
 /** The parsed fields of an entity file; which are present depends on the kind. */
 export interface EntityFields {
@@ -41,7 +45,40 @@ export interface EntityFields {
   tokenomics?: Tokenomics; // mission / task
   /** Free-form appended prose — recorded decisions, rationale, sign-offs. Preserved verbatim. */
   notes?: string;
+  /**
+   * Top-level keys this schema does not model, carried through a round-trip untouched. Every write
+   * rewrites the whole file from these fields, so without this an unmodelled key is destroyed by the
+   * next unrelated edit — which is how a campaign's `notes` decision record was lost.
+   */
+  extra?: Record<string, unknown>;
 }
+
+/** Which top-level keys each kind emits. A known key outside its kind's list is misplaced. */
+export const KIND_KEYS: Record<EntityKind, readonly string[]> = {
+  campaign: ["name", "status", "target", "description", "acceptance_criteria", "documents", "notes"],
+  mission: ["name", "status", "description", "acceptance_criteria", "documents", "tokenomics", "notes"],
+  task: ["name", "status", "role", "description", "acceptance_criteria", "tokenomics", "notes"],
+  bug: ["name", "status", "severity", "description", "steps_to_reproduce", "expected", "actual", "rca", "environment", "notes"],
+};
+
+/** The top-level keys this schema owns; anything else round-trips through `extra`. */
+export const KNOWN_KEYS = new Set([
+  "name",
+  "description",
+  "acceptance_criteria",
+  "documents",
+  "status",
+  "role",
+  "target",
+  "severity",
+  "steps_to_reproduce",
+  "expected",
+  "actual",
+  "rca",
+  "environment",
+  "tokenomics",
+  "notes",
+]);
 
 function asString(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -49,12 +86,48 @@ function asString(v: unknown): string {
 function optString(v: unknown): string | undefined {
   return typeof v === "string" && v.length ? v : undefined;
 }
+/** The item's keys minus the ones named — carried through so nothing on the item is dropped. */
+function restOf(item: object, owned: string[]): Record<string, unknown> {
+  const rest: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(item as Record<string, unknown>)) {
+    if (!owned.includes(k)) rest[k] = v;
+  }
+  return rest;
+}
+
+/** True for a value that carries nothing — absent, blank, or an empty list/map. */
+function isEmptyish(v: unknown): boolean {
+  if (v === null || v === undefined) return true;
+  if (typeof v === "string") return v.trim() === "";
+  if (Array.isArray(v)) return v.length === 0;
+  if (typeof v === "object") return Object.keys(v as object).length === 0;
+  return false;
+}
+
+/**
+ * Everything worth carrying across a round-trip: keys the schema does not know, plus keys it DOES
+ * know that carry content. `dumpEntity` only re-emits what the kind did not already write, so a
+ * known key lands here purely as a safety net for the kinds that do not own it (a `documents:` on a
+ * task, say) — malformed, but never silently deleted. Empty values are skipped so a round-trip does
+ * not litter every file with `documents: []`.
+ */
+function carryForward(raw: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (!KNOWN_KEYS.has(k) || !isEmptyish(v)) out[k] = v;
+  }
+  return out;
+}
 function parseCriteria(v: unknown): AcceptanceCriterion[] {
   if (!Array.isArray(v)) return [];
   const out: AcceptanceCriterion[] = [];
   for (const item of v) {
     if (item && typeof item === "object" && "text" in item) {
-      out.push({ text: asString((item as { text: unknown }).text), done: Boolean((item as { done?: unknown }).done) });
+      out.push({
+        text: asString((item as { text: unknown }).text),
+        done: Boolean((item as { done?: unknown }).done),
+        ...restOf(item, ["text", "done"]),
+      });
     }
   }
   return out;
@@ -65,17 +138,22 @@ function parseDocuments(v: unknown): DocumentLink[] {
   for (const item of v) {
     if (item && typeof item === "object" && "target" in item) {
       const target = asString((item as { target: unknown }).target);
-      if (target) out.push({ label: asString((item as { label?: unknown }).label) || target, target });
+      if (target) {
+        out.push({
+          label: asString((item as { label?: unknown }).label) || target,
+          target,
+          ...restOf(item, ["label", "target"]),
+        });
+      }
     }
   }
   return out;
 }
 function parseTokenomics(v: unknown): Tokenomics | undefined {
   if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
-  const out: Tokenomics = {};
-  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-    if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") out[k] = val;
-  }
+  // Every value is kept, scalar or not — dropping a nested block would silently lose an estimate's
+  // breakdown on the next unrelated write.
+  const out: Tokenomics = { ...(v as Record<string, unknown>) };
   return Object.keys(out).length ? out : undefined;
 }
 
@@ -98,6 +176,7 @@ export function loadEntity(text: string): EntityFields {
     environment: optString(raw.environment),
     tokenomics: parseTokenomics(raw.tokenomics),
     notes: optString(raw.notes),
+    extra: carryForward(raw),
   };
 }
 
@@ -117,15 +196,26 @@ export function dumpEntity(kind: EntityKind, f: EntityFields): string {
     o.rca = f.rca ?? "";
     o.environment = f.environment ?? "";
   } else {
-    o.acceptance_criteria = f.acceptanceCriteria.map((c) => ({ text: c.text, done: c.done }));
+    // Spread the item's other keys back out — an agent may annotate a criterion (evidence, who
+    // verified it) and a rewrite must not strip that.
+    o.acceptance_criteria = f.acceptanceCriteria.map((c) => ({
+      text: c.text,
+      done: c.done,
+      ...restOf(c, ["text", "done"]),
+    }));
   }
   if (kind === "campaign" || kind === "mission") {
-    o.documents = f.documents.map((d) => ({ label: d.label, target: d.target }));
+    o.documents = f.documents.map((d) => ({ label: d.label, target: d.target, ...restOf(d, ["label", "target"]) }));
   }
   if ((kind === "mission" || kind === "task") && f.tokenomics && Object.keys(f.tokenomics).length) {
     o.tokenomics = f.tokenomics;
   }
   // Free-form appended prose (decisions/rationale/sign-offs) — emitted for every kind when present.
   if (f.notes && f.notes.trim()) o.notes = f.notes;
+  // Keys this schema does not model are re-emitted last, so a write never destroys content it did
+  // not understand. Modelled keys always win — `extra` can only add.
+  for (const [k, v] of Object.entries(f.extra ?? {})) {
+    if (!(k in o)) o[k] = v;
+  }
   return yamlDump(o, { lineWidth: -1, noRefs: true });
 }
