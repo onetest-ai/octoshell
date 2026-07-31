@@ -189,9 +189,12 @@ export function dumpEntity(kind, f) {
   // destroyed by the next unrelated edit. Keep in step with entity-schema.ts `dumpEntity`.
   if (f.notes && f.notes.trim()) o.notes = f.notes;
   // Keys this schema does not model are re-emitted last, so a write never destroys content it did
-  // not understand. Modelled keys always win — `extra` can only add.
+  // not understand. The typed model always wins for a key this KIND owns — including when it chose
+  // to omit one, which is how a field gets cleared. Carrying those back would make `notes: ""`
+  // (or a cleared role/tokenomics) silently revert to whatever was last on disk.
   for (const [k, v] of Object.entries(f.extra ?? {})) {
-    if (!(k in o)) o[k] = v;
+    if (k in o || (KIND_KEYS[kind] ?? []).includes(k)) continue;
+    o[k] = v;
   }
   return yamlDump(o, { lineWidth: -1, noRefs: true });
 }

@@ -65,7 +65,7 @@ export function CampaignView({ id, rpc, onOpenMission, onOpenBug, onDeleteMissio
   }, [id, rpc, load]);
 
   const save = useCallback(
-    async (field: "target" | "acceptanceCriteria" | "description", value: string) => {
+    async (field: "target" | "acceptanceCriteria" | "description" | "notes", value: string) => {
       setError(null);
       try {
         await rpc.call("campaign:update", { campaignId: id, [field]: value });
@@ -155,7 +155,7 @@ export function CampaignView({ id, rpc, onOpenMission, onOpenBug, onDeleteMissio
       <Field label="Target" value={c?.target ?? ""} onSave={(v) => void save("target", v)} />
       <Field label="Description" value={c?.description ?? ""} onSave={(v) => void save("description", v)} />
       <ChecklistField label="Acceptance Criteria" value={c?.acceptanceCriteria ?? ""} onSave={(v) => void save("acceptanceCriteria", v)} />
-      <NotesBlock notes={c?.notes} />
+      <NotesBlock notes={c?.notes} onSave={(v) => void save("notes", v)} />
 
       <section>
         <div className="flex items-center justify-between mb-2">

@@ -70,6 +70,26 @@ describe("TaskView", () => {
     expect(screen.getByText("2")).toBeTruthy();
   });
 
+  it("saves edited Notes via task:update", async () => {
+    const rpc = fakeRpc({
+      "task:get": {
+        id: "t1", missionId: "m1", name: "Profile the API", status: "draft",
+        description: "do it", acceptanceCriteria: "p95<100ms", notes: "## Decision\noriginal",
+      },
+    });
+    render(<TaskView id="t1" rpc={rpc as never} />);
+    await screen.findByText("Profile the API");
+
+    fireEvent.click(screen.getByRole("button", { name: /edit notes/i }));
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "## Decision\nrewritten" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(rpc.calls.some(
+        (c) => c.method === "task:update" && (c.args as { notes?: string }).notes === "## Decision\nrewritten",
+      )).toBe(true));
+  });
+
   it("renders a nested tokenomics value readably, not as [object Object]", async () => {
     const rpc = fakeRpc({
       "task:get": {

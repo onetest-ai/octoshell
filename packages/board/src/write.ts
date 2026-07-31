@@ -281,6 +281,8 @@ export function updateBrief(root: string, kind: EntityKind, id: string, patch: P
     if (patch.actual !== undefined) f.actual = patch.actual;
     if (patch.rca !== undefined) f.rca = patch.rca;
     if (patch.environment !== undefined) f.environment = patch.environment;
+    // Blank clears the field — `dumpEntity` omits an empty `notes` rather than writing `notes: ''`.
+    if (patch.notes !== undefined) f.notes = patch.notes;
   });
 }
 

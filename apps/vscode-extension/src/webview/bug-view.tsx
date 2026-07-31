@@ -23,7 +23,7 @@ interface Bug {
 
 const SEVERITIES = ["blocker", "critical", "major", "minor", "trivial"] as const;
 type Severity = (typeof SEVERITIES)[number];
-type BugField = "description" | "stepsToReproduce" | "expected" | "actual" | "rca" | "environment";
+type BugField = "description" | "stepsToReproduce" | "expected" | "actual" | "rca" | "environment" | "notes";
 
 export function BugView({ id, rpc }: { id: string; rpc: RpcClient }): JSX.Element {
   const [bug, setBug] = useState<Bug | null>(null);
@@ -111,7 +111,7 @@ export function BugView({ id, rpc }: { id: string; rpc: RpcClient }): JSX.Elemen
       <Field label="Actual" value={b?.actual ?? ""} onSave={(v) => void save("actual", v)} />
       <Field label="RCA" value={b?.rca ?? ""} onSave={(v) => void save("rca", v)} />
       <Field label="Environment" value={b?.environment ?? ""} onSave={(v) => void save("environment", v)} />
-      <NotesBlock notes={b?.notes} />
+      <NotesBlock notes={b?.notes} onSave={(v) => void save("notes", v)} />
 
       {error && <div className="text-sm text-status-error">{error}</div>}
     </div>

@@ -22,6 +22,8 @@ export interface ManagedFields {
   environment?: string;
   /** workflow only — the raw body of the `## Runs` section. */
   runs?: string;
+  /** Free-form appended prose (decisions, rationale, sign-offs). Markdown, preserved verbatim. */
+  notes?: string;
 }
 
 const PLACEHOLDER = "_(not set)_";

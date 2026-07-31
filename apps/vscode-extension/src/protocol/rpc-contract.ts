@@ -79,6 +79,7 @@ export const rpcArgs = {
   "campaign:update": z.object({
     campaignId: z.string(),
     description: z.string().optional(), acceptanceCriteria: z.string().optional(), target: z.string().optional(),
+    notes: z.string().optional(),
   }),
   "campaign:setStatus": z.object({ campaignId: z.string(), status: z.string() }),
   "campaign:docs": z.object({ campaignId: z.string() }),
@@ -98,6 +99,7 @@ export const rpcArgs = {
   "mission:get": z.object({ missionId: z.string() }),
   "mission:update": z.object({
     missionId: z.string(), description: z.string().optional(), acceptanceCriteria: z.string().optional(),
+    notes: z.string().optional(),
   }),
   "mission:setStatus": z.object({ missionId: z.string(), status: z.string() }),
   "mission:syncTasks": z.object({ missionId: z.string() }),
@@ -111,6 +113,7 @@ export const rpcArgs = {
   "task:create": z.object({ missionId: z.string(), name: z.string() }),
   "task:update": z.object({
     taskId: z.string(), description: z.string().optional(), acceptanceCriteria: z.string().optional(),
+    notes: z.string().optional(),
   }),
   "task:setStatus": z.object({ taskId: z.string(), status: z.string() }),
   "task:delete": z.object({ taskId: z.string() }),
@@ -129,6 +132,7 @@ export const rpcArgs = {
     description: z.string().optional(), stepsToReproduce: z.string().optional(),
     expected: z.string().optional(), actual: z.string().optional(),
     rca: z.string().optional(), environment: z.string().optional(),
+    notes: z.string().optional(),
   }),
   "bug:setStatus": z.object({ bugId: z.string(), status: z.string() }),
   "bug:delete": z.object({ bugId: z.string() }),

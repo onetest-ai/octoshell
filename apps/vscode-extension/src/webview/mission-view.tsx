@@ -56,7 +56,7 @@ export function MissionView(
     return off;
   }, [id, rpc, load]);
 
-  const save = useCallback(async (field: "acceptanceCriteria" | "description", value: string) => {
+  const save = useCallback(async (field: "acceptanceCriteria" | "description" | "notes", value: string) => {
     setError(null);
     try {
       await rpc.call("mission:update", { missionId: id, [field]: value });
@@ -108,7 +108,7 @@ export function MissionView(
       <ChecklistField label="Acceptance Criteria" value={m?.acceptanceCriteria ?? ""} onSave={(v) => void save("acceptanceCriteria", v)} />
 
       <EstimateBlock tokenomics={m?.tokenomics} />
-      <NotesBlock notes={m?.notes} />
+      <NotesBlock notes={m?.notes} onSave={(v) => void save("notes", v)} />
 
       <section>
         <div className="flex items-center justify-between mb-2">

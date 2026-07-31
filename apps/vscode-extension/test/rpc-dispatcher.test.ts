@@ -73,6 +73,36 @@ describe("dispatch", () => {
     expect(c.board.getCampaign(camp.id)?.target).toBe("T");
   });
 
+  it("routes notes through <kind>:update for every entity kind", async () => {
+    const b = makeBoard();
+    const camp = b.createCampaign({ name: "Q3" });
+    const mission = b.createMission({ campaignId: camp.id, title: "M1 - Auth" });
+    const task = b.createTask({ missionId: mission.id, name: "T1.1 - JWT" });
+    const bug = b.createBug({ campaignId: camp.id, title: "B1 - Broken" });
+    const c = ctx(b);
+
+    await dispatch("campaign:update", { projectId: "p1", campaignId: camp.id, notes: "## C\ncampaign" }, c as never);
+    await dispatch("mission:update", { projectId: "p1", missionId: mission.id, notes: "## M\nmission" }, c as never);
+    await dispatch("task:update", { projectId: "p1", taskId: task.id, notes: "## T\ntask" }, c as never);
+    await dispatch("bug:update", { projectId: "p1", bugId: bug.id, notes: "## B\nbug" }, c as never);
+
+    expect(c.board.getCampaign(camp.id)?.notes).toBe("## C\ncampaign");
+    expect(c.board.getMission(mission.id)?.notes).toBe("## M\nmission");
+    expect(c.board.getTask(task.id)?.notes).toBe("## T\ntask");
+    expect(c.board.getBug(bug.id)?.notes).toBe("## B\nbug");
+  });
+
+  it("leaves notes alone when <kind>:update omits them", async () => {
+    const b = makeBoard();
+    const camp = b.createCampaign({ name: "Q3" });
+    const c = ctx(b);
+    await dispatch("campaign:update", { projectId: "p1", campaignId: camp.id, notes: "keep me" }, c as never);
+
+    await dispatch("campaign:update", { projectId: "p1", campaignId: camp.id, description: "d" }, c as never);
+
+    expect(c.board.getCampaign(camp.id)?.notes).toBe("keep me");
+  });
+
   it("routes campaign:docs, addLink, removeLink to board (not daemon)", async () => {
     const b = makeBoard();
     const camp = b.createCampaign({ name: "C" });
