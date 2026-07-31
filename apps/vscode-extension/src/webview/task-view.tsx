@@ -28,7 +28,7 @@ export function TaskView({ id, rpc }: { id: string; rpc: RpcClient }): JSX.Eleme
     return off;
   }, [id, rpc, load]);
 
-  const save = useCallback(async (field: "acceptanceCriteria" | "description", value: string) => {
+  const save = useCallback(async (field: "acceptanceCriteria" | "description" | "notes", value: string) => {
     setError(null);
     try {
       await rpc.call("task:update", { taskId: id, [field]: value });
@@ -74,7 +74,7 @@ export function TaskView({ id, rpc }: { id: string; rpc: RpcClient }): JSX.Eleme
       <ChecklistField label="Acceptance Criteria" value={t?.acceptanceCriteria ?? ""} onSave={(v) => void save("acceptanceCriteria", v)} />
 
       <EstimateBlock tokenomics={t?.tokenomics} />
-      <NotesBlock notes={t?.notes} />
+      <NotesBlock notes={t?.notes} onSave={(v) => void save("notes", v)} />
 
       {error && <div className="text-sm text-status-error">{error}</div>}
     </div>

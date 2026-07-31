@@ -27,6 +27,20 @@ const { load: yamlLoad } = (await import(pathToFileURL(join(SCRIPTS, "vendor/js-
   load: (text: string) => Record<string, unknown>;
 };
 
+/** Raw load/dump for each implementation, so a test can mutate the parsed fields between them. */
+interface Impl {
+  load: (yaml: string) => Record<string, unknown>;
+  dump: (kind: string, fields: Record<string, unknown>) => string;
+}
+const APIS: Record<string, Impl> = {
+  "app entity-schema.ts": {
+    load: (yaml) => loadEntity(yaml) as unknown as Record<string, unknown>,
+    dump: (kind, f) => dumpEntity(kind as never, f as never),
+  },
+  "pack entity-io.mjs": { load: pack.loadEntity, dump: pack.dumpEntity },
+};
+const kindOf = (name: string): Impl => APIS[name]!;
+
 /** The two implementations of the same on-disk contract. */
 const IMPLS: Array<[string, (kind: string, yaml: string) => Record<string, unknown>]> = [
   ["app entity-schema.ts", (kind, yaml) => yamlLoad(dumpEntity(kind as never, loadEntity(yaml)))],
@@ -132,6 +146,24 @@ describe.each(IMPLS)("%s preserves content it does not model", (_name, roundTrip
     // An empty list carries nothing — preserving it would litter every task with `documents: []`.
     const out = roundTrip("task", `${TASK_HEAD}acceptance_criteria: []\ndocuments: []\n`);
     expect(out.documents).toBeUndefined();
+  });
+
+  // The carry-through is a safety net for content the model does not own — it must never out-vote
+  // the model on a field the kind DOES own. If it does, clearing an optional field is impossible:
+  // the modelled path omits it, and `extra` puts the old value straight back.
+  it("lets the kind clear an optional field it owns, instead of resurrecting the old value", () => {
+    const withNotes = `${TASK_HEAD}acceptance_criteria: []\nnotes: an old decision\n`;
+    const parsed = kindOf(_name).load(withNotes);
+    const cleared = kindOf(_name).dump("task", { ...parsed, notes: "" });
+    expect(cleared).not.toContain("an old decision");
+
+    const withRole = `${TASK_HEAD}acceptance_criteria: []\nrole: python-dev\n`;
+    const parsedRole = kindOf(_name).load(withRole);
+    expect(kindOf(_name).dump("task", { ...parsedRole, role: undefined })).not.toContain("python-dev");
+
+    const withTok = `${TASK_HEAD}acceptance_criteria: []\ntokenomics:\n  effort_days: 2\n`;
+    const parsedTok = kindOf(_name).load(withTok);
+    expect(kindOf(_name).dump("task", { ...parsedTok, tokenomics: undefined })).not.toContain("effort_days");
   });
 
   it("survives repeated round-trips without erosion", () => {
