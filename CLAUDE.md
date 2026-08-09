@@ -132,3 +132,28 @@ Vitest across the board. Renderer tests use happy‑dom + `@testing-library/reac
 `attachInternals` polyfill for `@vscode-elements` web components in `test-setup.ts`). The `board`
 and `tokenomics` packages test their pure functions directly against fixture trees; host‑side
 tests write to temp directories rather than the repo's own `.octobots/`.
+
+<!-- BUNDLE:feature-development START -->
+## Team roles on this project
+
+This is a pure **TypeScript/Node** monorepo — no Python, no iOS, no Android code exists here (see
+`AGENTS.md` § Team roles for how this was verified). Of the feature-development bundle's roles,
+only `js-dev` (all app code here is TS), `qa-engineer`, `ba`, `tech-lead`, `project-manager`, and
+`scout` have work. `python-dev`, `ios-dev`, `android-dev`, and `test-automation-engineer` (the
+bundle's default Playwright-e2e role) have **no applicable surface** — there is no backend
+service, no mobile app, and end-to-end coverage here is Vitest + happy-dom against the extension
+itself, owned by `js-dev`/`qa-engineer`. Full per-role detail: `AGENTS.md` § Team roles.
+
+## Agent memory — two layers
+
+**`.agents/knowledge/`** — distilled, cross-role, **verified** facts about this project. Meant to
+be committed and reviewed (see `AGENTS.md` § Agent memory for a `.gitignore` gap scout found here).
+Read its `README.md` before starting, plus the folder covering what you are touching.
+
+**`.agents/memory/<role>/`** — your own working notes and daily log. **Local only** (gitignored,
+never shared between machines), so anything another role needs is invisible there.
+
+Promote a fact to `.agents/knowledge/` only if it is cross-role, verified (dated, method stated),
+durable, and costly to rediscover — see `AGENTS.md` § Agent memory for the full rule. Never commit
+an unverified claim there; it is worse than silence, because it is trusted.
+<!-- BUNDLE:feature-development END -->
