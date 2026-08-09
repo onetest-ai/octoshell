@@ -27,5 +27,14 @@ export default tseslint.config(
         caughtErrorsIgnorePattern: "^_"
       }]
     }
+  },
+  {
+    // `packages/graph` runs under `noUncheckedIndexedAccess`, and its output is a
+    // committed artifact: a `!` that silences a genuinely-absent index turns a crash
+    // into a wrong number in a file people diff. Narrow or throw instead.
+    files: ["packages/graph/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-non-null-assertion": "error"
+    }
   }
 );

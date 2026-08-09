@@ -253,7 +253,7 @@ export interface HarvestOptions {
   since?: string;
 }
 
-const RECORD = " ";
+const RECORD = "\u0000";
 
 /** Read a repo's history into commits, newest first. */
 export function harvest(repoRoot: string, opts: HarvestOptions = {}): Commit[] {
@@ -1435,7 +1435,7 @@ export function rollUp(
     const mb = moduleOf(pb);
     if (ma === mb) continue;
     const [from, to] = ma < mb ? [ma, mb] : [mb, ma];
-    const key = `${from} ${to}`;
+    const key = `${from}\u0000${to}`;
     const existing = acc.get(key);
     if (existing) existing.weight += e.npmi;
     else acc.set(key, { from, to, weight: e.npmi });
@@ -1904,7 +1904,7 @@ export function readGraphify(
     const mb = moduleOf(fb);
     if (ma === mb) continue;
 
-    const key = `${ma} ${mb}`;
+    const key = `${ma}\u0000${mb}`;
     const existing = acc.get(key);
     if (existing) existing.weight += 1;
     else acc.set(key, { from: ma, to: mb, weight: 1 });
@@ -2701,8 +2701,8 @@ export function drift(
 ): DriftRow[] {
   const declared = new Set<string>();
   for (const e of spine.imports) {
-    declared.add(`${e.from} ${e.to}`);
-    declared.add(`${e.to} ${e.from}`);
+    declared.add(`${e.from}\u0000${e.to}`);
+    declared.add(`${e.to}\u0000${e.from}`);
   }
 
   const rows: DriftRow[] = [];
@@ -2716,7 +2716,7 @@ export function drift(
     const ma = spine.moduleOf(pa);
     const mb = spine.moduleOf(pb);
     if (ma === mb) continue;                                  // intra-module
-    if (declared.has(`${ma} ${mb}`)) continue;           // already declared
+    if (declared.has(`${ma}\u0000${mb}`)) continue;           // already declared
 
     rows.push({
       a: pa, b: pb, moduleA: ma, moduleB: mb,
@@ -3393,7 +3393,7 @@ export { nameCluster, pageRank, rollUp, type ModuleEdge } from "./rollup.js";
 export { declaredSpine, type Spine } from "./spine.js";
 export { jaccard, remapClusters, type RemapOptions } from "./stability.js";
 export type { Commit } from "./types.js";
-export { weighEdges, type Edge, type WeightOptions } from "./weights.js";
+export { edgeWeight, weighEdges, type Edge, type WeightOptions } from "./weights.js";
 ```
 
 - [ ] **Step 6: Add the bin entry and the bundler**
