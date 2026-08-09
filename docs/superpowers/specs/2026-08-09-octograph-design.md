@@ -58,6 +58,8 @@ These are load-bearing. Each one is a tarpit we are explicitly declining to ente
 | D7 | Output location | **`.octobots/graph/` when a board exists**, neutral dir otherwise | Settled by precedent: `.octobots/` already holds five non-entity subdirectories (`tokenomics/`, `hooks/`, `teams/`, `pastes/`, `.trash/`). `board-model.ts:89` skips directories lacking a `<kind>.yaml`, so artifacts there are invisible to the parser. Never *creates* `.octobots/`. |
 | D8 | Release shape | **v1 and v2 planned together** | Early adopters are Octobots users; they all have boards. Shipping the standalone half alone would test the least-used surface first. |
 | D9 | Language | **Node, zero runtime deps** | Matches `npx github:` bridging, matches the pack's vendored `.mjs` convention, needs no venv or `uv`. |
+| D10 | Detect installed state? | **Yes — `doctor`**, deviating from sdlc-skills' Q4 "pure stateless launcher" | sdlc-skills installs files; success or failure is visible in the terminal. Octograph's failure mode is **silent degradation** — absent Graphify just makes `drift` blunter, thin history just makes the map sparse. Nothing announces itself, and a user cannot trace "this map looks useless" back to its cause. Detection is warranted exactly where failure is quiet. |
+| D11 | Where do health checks live? | **In octograph (`doctor`), not the extension** | Keeps the launcher thin per D5, and CLI users get identical diagnostics. The extension runs `doctor` and shows the terminal; it never re-implements the checks. |
 
 ---
 
@@ -297,9 +299,55 @@ Narrow on purpose. The compression *is* the product; a wide surface dilutes it.
 | `drift` | no | Hidden coupling and boundary erosion (A6). |
 | `own [<path>]` | **yes** | Which mission owns this module; which criterion this file exists to satisfy; linked external ticket. |
 | `conflicts <taskA> <taskB>` | **yes** | Collision score and the specific contended files. |
+| `doctor` | no | Preflight and postflight diagnostics (see below). Exit non-zero when a **required** input is missing; exit zero with warnings when an optional one is. |
 
 Global flags: `--out`, `--since`, `--max-commit-files`, `--half-life`, `--min-support`,
 `--budget`, `--json`.
+
+### `doctor` — the silent-degradation guard
+
+Every input is graded, and each degraded one states **what it costs and how to fix it**. A "✓ done"
+that hides a useless result is the outcome this command exists to prevent.
+
+```
+octograph doctor
+
+  Required
+  ✓ git                  2.43.0
+  ✓ repository           /Users/…/octoshell
+  ⚠ history depth        4 commits — co-change needs ~200+ to be meaningful
+                         shallow clone, or a squashed migration?
+                         → map/impact will be sparse; drift unreliable
+
+  Declared spine  (precedence: graphify → manifests → directories)
+  ✗ graphify             not installed     → uv tool install graphifyy
+  ✓ manifests            pnpm-workspace.yaml, 3 × package.json
+  ✓ directories          always available
+    → using manifests. drift can say "different modules" but not
+      "nothing imports across them"
+
+  Board overlay
+  ✓ .octobots/           found
+  ✓ worklog.jsonl        142 entries
+  ✓ tasks with criteria  31
+
+  Artifacts
+  ✗ .octobots/graph/     not built         → octograph map
+```
+
+**Postflight** (printed after every `map` run) reports signal quality, not just success:
+
+```
+built 14 modules from 1,247 commits / 203 files
+spine: manifests (graphify absent)   median pair support: 6   hubs quarantined: 3
+bridged 4 disconnected components    cluster IDs: 12 kept, 2 new
+```
+
+`cluster IDs: kept / new` is the line that matters most in day-to-day use — a run reporting many
+new IDs against an unchanged codebase means A5b regressed, and the committed artifact is about to
+churn.
+
+**Machine-readable:** `doctor --json` for CI, so a pipeline can fail on a degraded graph.
 
 ---
 
@@ -336,12 +384,36 @@ Inherits the principle established for sdlc-skills in
 
 > **Octobots is a thin launcher; the library owns the truth.**
 
+### `octograph setup` — the interactive installer
+
+D10 wants installed-state detection; D5 wants a launcher that never captures output. Both hold if
+the interactivity lives in the library, exactly as sdlc-skills does it:
+
+`setup` runs `doctor`, then for each missing-but-installable input **prompts** and runs the install
+itself, then builds and prints the postflight. The extension only opens a terminal on it.
+
+Safety rules:
+
+- **Prompt before installing anything.** Never install as a side effect of a build.
+- **Never pipe a remote script to a shell.** Graphify installs via `uv tool install graphifyy`;
+  if `uv` itself is absent, print its install URL and stop. Convenience does not justify
+  `curl … | sh` on the user's machine.
+- **Never install into the repo.** Graphify is a user-level tool; `setup` touches no tracked file
+  except the artifacts under `<out>/`.
+
+### Extension commands
+
 - `src/host/octograph.ts` — command-string construction and artifact-path resolution. Pure
-  functions, unit-tested. Mirrors `sdlc-bundles.ts`, including validating any interpolated
-  argument against a safe-slug pattern before it reaches a terminal.
-- `src/host/octograph-command.ts` — thin VS Code glue. Registers **"Octobots: Build Code Graph"**.
-  Creates a terminal, sends `npx github:arozumenko/octograph map`, shows it. No output capture, no
-  installed-state detection, no post-run verification.
+  functions, unit-tested. Mirrors `sdlc-bundles.ts`, including validating any interpolated argument
+  against a safe-slug pattern before it reaches a terminal.
+- `src/host/octograph-command.ts` — thin VS Code glue registering two commands:
+  - **"Octobots: Install Graph"** → `npx github:arozumenko/octograph setup` — first-run flow:
+    health checks, prompted installs, initial build.
+  - **"Octobots: Rebuild Graph"** → `npx github:arozumenko/octograph map` — the routine path.
+
+  Both create a terminal, send the command, and show it. **No output capture, no state tracking, no
+  post-run verification** — the terminal is the interface, and `doctor` is the only thing that
+  knows how to judge the result.
 - `hooks/primer.mjs` — injects `.octobots/graph/map.md` as session context **when it exists and is
   under a size cap**; otherwise injects a one-line pointer to the command. Agents do not call tools
   they forget exist, so ambient orientation is what actually gets used.
@@ -358,7 +430,7 @@ plumbing.
 |---|---|---|
 | Graphify churns its schema | Medium | Narrow read surface (import edges only) confined to one adapter |
 | Graphify adds history mining | Medium | Co-change is the differentiated hook, **not the moat**. The moat is the board join, which they cannot grow. Design degrades to the overlay rather than dying. |
-| **Short or rewritten history** | **High** | Squashed migrations and fresh repos destroy the signal — *this repo was migrated as a single history-less commit*. Detect low commit counts and say so in output rather than emitting confident nonsense. Fall back to leaning on the declared spine. |
+| **Short or rewritten history** | **High** | Squashed migrations and fresh repos destroy the signal — *this repo was migrated as a single history-less commit*. **`doctor` grades history depth and says so** rather than emitting confident nonsense; degraded runs lean on the declared spine and label themselves as such. |
 | Cross-repo coupling invisible | Medium | Inherent to git-history analysis in a polyrepo. State as a documented limitation; do not paper over it. |
 | Generated files and lockfiles dominate | Low | nPMI suppresses them mathematically; plus an explicit ignore list |
 | Committed artifact churns on every run | Low | **A5b (Jaccard cluster-ID remap) is the real mitigation** — without it this risk is critical, since arbitrary Louvain relabeling would rewrite `map.md` on architecturally-unchanged runs. Plus stable sort and coarse granularity. Graphify solves the merge half with a git merge driver — adopt if it bites. |
@@ -391,6 +463,8 @@ Vitest, matching the monorepo convention.
 3. Every command produces useful output with **no** `.octobots/` directory present.
 4. `map.md` fits a stated token budget and is regenerable byte-identically from the same commit.
 5. The Octobots bridge adds no runtime dependency to the extension.
+6. `doctor` correctly grades this repo as **degraded** (thin history, no Graphify) and names both
+   causes with their fixes — the failure this design is most likely to ship silently.
 
 ---
 
