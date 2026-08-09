@@ -306,10 +306,11 @@ What survives is cross-boundary coupling with no declared edge. A `drift` run wh
   Therefore `own` and `conflicts` must be *specified and tested* against a near-empty worklog, and
   must state which mode produced an answer — `provenance` (from git) or `predicted` (from lexical
   match) — never blurring the two.
-- **Conflict prediction** — score two tasks' predicted file sets by summed nPMI rather than raw
-  overlap. Raw overlap is useless: every task touches `package.json`. This is what could let
-  `workflow-designer` prove two tasks are disjoint and fan them out, replacing the current
-  one-branch-at-a-time rule with evidence.
+- **Decomposition check** — over a *set* of tasks (a mission's or campaign's), score each pair's
+  predicted surface by summed nPMI rather than raw overlap. Raw overlap is useless: every task
+  touches `package.json`, which is exactly what the A3 weighting and the A6 noise floor suppress.
+  Consumed by Rio when decomposing and Alex when writing criteria — a decomposition-quality
+  signal, delivered while the decomposition is still cheap to change.
 
 ### A8 — Test files: tag, never drop
 
@@ -351,7 +352,7 @@ Narrow on purpose. The compression *is* the product; a wide surface dilutes it.
 | `impact <path>` | no | Blast radius: coupled files and modules ranked by nPMI, plus declared dependents. |
 | `drift` | no | Hidden coupling and boundary erosion (A6). |
 | `own [<path>]` | **yes** | Which mission owns this module; which criterion this file exists to satisfy; linked external ticket. |
-| `conflicts <taskA> <taskB>` | **yes** | Collision score and the specific contended files. |
+| `conflicts <mission\|campaign>` | **yes** | Coupling structure across **all** that parent's tasks — which predict overlapping surface, ranked by nPMI, with the contended modules named. A planning-time decomposition check, not a runtime scheduler. Accepts an explicit task list too. |
 | `doctor` | no | Preflight and postflight diagnostics (see below). Three-state exit, defined below. |
 
 Global flags: `--out`, `--since`, `--max-commit-files`, `--half-life`, `--min-support`,
@@ -369,14 +370,26 @@ interesting rather than needed.
 | `drift` | Tech lead in review; anyone auditing architecture | Catch the cross-boundary contract nobody imports (the octoweb case) |
 | `doctor` | Anyone whose output looks thin | Know *why* it's thin |
 | `own` | Reviewer or agent asking why code exists | Trace code to the criterion that motivated it |
-| `conflicts` | **Not yet established — see below** | — |
+| `conflicts` | **Rio (`tech-lead`)** decomposing a story into tasks; **Alex (`ba`)** writing acceptance criteria | "Is this decomposition clean, or did I split one piece of work into three?" / "Do two criteria describe the same change?" |
 
-**`conflicts` has no confirmed consumer.** Its rationale is conditional in its own description
-("this is what *could* let `workflow-designer` prove two tasks are disjoint"), and no
-`workflow-designer` requirement asks for it. Contrast `drift`, which is grounded in two verified
-incidents. It is retained here because the substrate makes it nearly free once `impact` exists —
-but it should be the **first thing cut** if the plan needs trimming, and it must not be built
-before `own` proves the board overlay works at all.
+**`conflicts` is a discovery- and planning-level alert, not a runtime scheduler.** An earlier draft
+justified it conditionally ("*could* let `workflow-designer` prove two tasks are disjoint"), which
+was speculation about an execution-time consumer that never asked for it. The real consumers sit
+one stage earlier, and that changes three things:
+
+- **It runs before any code exists**, so it operates *only* in `predicted` mode (A7). Lexical
+  matching is not a degraded fallback here — it is the sole mode, permanently, because planning
+  precedes execution by definition.
+- **It takes a set, not a pair.** Rio decomposing into six tasks wants one answer about the whole
+  decomposition, not fifteen pairwise calls.
+- **It answers a decomposition-quality question, not a scheduling one.** Two tasks predicting the
+  same module is usually a sign the split is wrong, not a scheduling hazard to route around.
+
+Parallel-safety at execution time falls out of the same data, but is a consequence, not the
+requirement.
+
+**Build order still holds:** `conflicts` shares the task↔surface prediction machinery with `own`,
+so `own` must prove the overlay works first.
 
 ### Configuration
 
