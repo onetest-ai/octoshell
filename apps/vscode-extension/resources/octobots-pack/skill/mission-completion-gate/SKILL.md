@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 37
+version: 38
 ---
 
 # mission-completion-gate
@@ -34,6 +34,12 @@ done until this gate is green.
   branch diff, then **calls Py (`python-dev`) / Jay (`js-dev`) directly** and
   challenges each of their decisions **against the acceptance criteria**
   ("criterion N says X — your code does Y; defend it"). Devs justify or fix.
+- **A fixed finding is not a failed gate.** Rio remediates in-flight — fix, plus
+  the regression test that would have caught it. Block on findings that are
+  **still open**, never on the mere existence of findings; then have Sage
+  re-verify the criteria those fixes touched, still black-box. Blocking on any
+  finding at all punishes the review for working, and teaches the next one to
+  report less.
 - **New code ≥80% covered.** the project's new-code coverage gate must pass on
   changed lines vs the base branch, not repo-wide.
 - **Merge/complete only on green.** Trust-but-verify substantive fixes in the
@@ -57,10 +63,11 @@ omitted. Phases:
 3. **Critical review (Rio)** — Rio reviews `git diff <base>...HEAD` — where `<base>` is the
    branch the mission was cut from (the campaign branch when it lands atomically, else `main`),
    the **same base the coverage step measures against** — with a security
-   lens, then interrogates Py/Jay against the criteria. Returns
-   `{blocking:[…], nits:[…]}`. Each blocking finding → dev addresses it **+ adds
-   the regression test that would have caught it** → Sage re-verifies the affected
-   criterion (still black-box).
+   lens, then interrogates Py/Jay against the criteria. Rio **fixes each blocking
+   finding in place + adds the regression test that would have caught it**, and
+   returns `{fixed:[…], stillOpen:[…], nits:[…]}`. Block on `stillOpen` only —
+   then Sage re-verifies the criteria those fixes touched (still black-box),
+   because a fix changed the code *after* Sage signed off on it.
 4. **Tokenomics capture (non-blocking)** — run
    `node .octobots/tokenomics/run.mjs` and commit the refreshed
    `.octobots/tokenomics/` artifacts (`raw/segments.jsonl`, `runs.json`,
@@ -110,9 +117,27 @@ phase('Review')
 const review = await agent(
   `You are Rio (tech-lead). Review \`git diff ${baseBranch}...HEAD\` for ${missionId} with a ` +
   `security lens, then challenge Py/Jay's decisions against each acceptance criterion. ` +
-  `Return blocking vs nits.`,
+  `Fix each blocking finding yourself, add the regression test that would have caught it, ` +
+  `re-run the suites green, and push. Report findings as fixed vs still-open.`,
   { agentType: 'tech-lead', phase: 'Review', schema: REVIEW_SCHEMA })
-if (review.blocking.length) return { blocked: 'review', review }
+
+// Gate on what is STILL OPEN, not on whether anything was found. A finding that Rio found,
+// fixed and regression-tested is the gate working — failing the mission for it would punish
+// the review for doing its job, and (worse) train the next reviewer to report less.
+if (review.stillOpen.length) return { blocked: 'review', review }
+
+// A fix changes the code AFTER Sage signed off, so Sage's verdict no longer covers it.
+// Re-verify the affected criteria only — still black-box, still no diff, no source.
+if (review.fixed.length) {
+  const affected = [...new Set(review.fixed.map(f => f.criterion).filter(Boolean))]
+  const recheck = await agent(
+    `You are Sage. You already passed these criteria, then the tech lead fixed blocking defects ` +
+    `in the code you verified. Re-verify ONLY these against the FIXED build, still black-box — ` +
+    `do not read src/ or the diff:\n${JSON.stringify(affected)}\n` +
+    `For each defect, prove the specific failure it describes can no longer occur.`,
+    { agentType: 'qa-engineer', phase: 'Review', schema: QA_SCHEMA })
+  if (recheck.criteria.some(c => !c.pass)) return { blocked: 'qa-recheck', recheck }
+}
 
 phase('Tokenomics')   // non-blocking: analytics never fails a green mission
 const tokenomics = await agent(
