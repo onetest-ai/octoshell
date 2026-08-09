@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { join } from "node:path";
+import { readGraphify } from "./graphify.js";
+import { insideRepo } from "./paths.js";
 import type { ModuleEdge } from "./rollup.js";
 
 export interface Spine {
@@ -46,19 +48,6 @@ function pnpmPackageGlobs(text: string): string[] {
     if (value) globs.push(value);
   }
   return globs;
-}
-
-/**
- * Resolve a manifest-declared path inside the repo, or null if it escapes.
- *
- * A workspace file is repo content, so it must not be able to point the walk at
- * a directory outside the root: `packages: ['../*']` would otherwise enumerate
- * the repo's siblings and land their names in a committed artifact.
- */
-function insideRepo(repoRoot: string, rel: string): string | null {
-  const root = resolve(repoRoot);
-  const abs = resolve(root, rel);
-  return abs === root || abs.startsWith(`${root}${sep}`) ? abs : null;
 }
 
 function readdirSafe(dir: string): string[] {
@@ -179,17 +168,28 @@ function twoSegmentModule(path: string): string {
 }
 
 export function declaredSpine(repoRoot: string, files: string[]): Spine {
+  // 1. Pick the best available module BOUNDARY.
   const roots = workspaceRoots(repoRoot);
+  const manifestBased = roots.length > 1 || (roots.length === 1 && roots[0] !== ".");
 
-  if (roots.length > 1 || (roots.length === 1 && roots[0] !== ".")) {
+  let moduleOf: (path: string) => string;
+  if (manifestBased) {
     const sorted = [...roots].sort((a, b) => b.length - a.length);
-    const moduleOf = (path: string): string =>
+    moduleOf = (path: string): string =>
       sorted.find((r) => path === r || path.startsWith(`${r}/`)) ?? twoSegmentModule(path);
-    const modules = [...new Set(files.map(moduleOf))].sort();
-    return { source: "manifests", modules, moduleOf, imports: [] };
+  } else {
+    moduleOf = twoSegmentModule;
   }
 
-  const moduleOf = twoSegmentModule;
+  // 2. Independently, pick the best available EDGE source. Graphify only wins
+  //    on edges — using its presence to also downgrade boundaries to the crude
+  //    two-segment heuristic would make the highest-fidelity tier produce the
+  //    worst module names in any repo whose packages sit deeper than two
+  //    segments (`services/team-a/api-gateway`).
+  const imports = readGraphify(repoRoot, moduleOf) ?? [];
+  const source: Spine["source"] =
+    imports.length > 0 ? "graphify" : manifestBased ? "manifests" : "directories";
+
   const modules = [...new Set(files.map(moduleOf))].sort();
-  return { source: "directories", modules, moduleOf, imports: [] };
+  return { source, modules, moduleOf, imports };
 }

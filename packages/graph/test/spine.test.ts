@@ -176,4 +176,61 @@ describe("declaredSpine", () => {
     const spine = declaredSpine(root, ["services/a/main.go"]);
     expect(spine.source).toBe("directories");
   });
+
+  it("takes edges from graphify while keeping manifest boundaries", () => {
+    const root = repoWith({
+      "pnpm-workspace.yaml": "packages:\n  - 'services/*'\n",
+      "services/team-a/package.json": '{"name":"a"}',
+      "services/team-b/package.json": '{"name":"b"}',
+      "graphify-out/graph.json": JSON.stringify({
+        nodes: [
+          { id: "1", file: "services/team-a/src/x.ts" },
+          { id: "2", file: "services/team-b/src/y.ts" },
+        ],
+        edges: [{ source: "1", target: "2", type: "imports" }],
+      }),
+    });
+    const spine = declaredSpine(root, [
+      "services/team-a/src/x.ts",
+      "services/team-b/src/y.ts",
+    ]);
+    expect(spine.source).toBe("graphify");
+    expect(spine.imports.length).toBeGreaterThan(0);
+    // Boundaries still come from the manifest, NOT the two-segment fallback:
+    // "services/team-a", never "services/team".
+    expect(spine.moduleOf("services/team-a/src/x.ts")).toBe("services/team-a");
+  });
+
+  // The two lists in a Spine must be ordered by the same rule. `modules` uses
+  // plain `.sort()` (code units); if `imports` used `localeCompare`, a repo with
+  // a capitalized module directory would emit a committed artifact whose edge
+  // order contradicts its own module order — and would additionally reorder on
+  // nothing but a change of LANG.
+  it("orders imports by the same collation as modules", () => {
+    const root = repoWith({
+      "pnpm-workspace.yaml": "packages:\n  - 'Sources/*'\n",
+      "Sources/Zed/package.json": '{"name":"zed"}',
+      "Sources/alpha/package.json": '{"name":"alpha"}',
+      "Sources/common/package.json": '{"name":"common"}',
+      "graphify-out/graph.json": JSON.stringify({
+        nodes: [
+          { id: "z", file: "Sources/Zed/x.ts" },
+          { id: "a", file: "Sources/alpha/y.ts" },
+          { id: "c", file: "Sources/common/z.ts" },
+        ],
+        edges: [
+          { source: "a", target: "c", type: "imports" },
+          { source: "z", target: "c", type: "imports" },
+        ],
+      }),
+    });
+    const spine = declaredSpine(root, [
+      "Sources/Zed/x.ts",
+      "Sources/alpha/y.ts",
+      "Sources/common/z.ts",
+    ]);
+    expect(spine.source).toBe("graphify");
+    expect(spine.modules).toEqual(["Sources/Zed", "Sources/alpha", "Sources/common"]);
+    expect(spine.imports.map((e) => e.from)).toEqual(["Sources/Zed", "Sources/alpha"]);
+  });
 });
