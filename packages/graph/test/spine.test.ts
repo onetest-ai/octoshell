@@ -176,4 +176,28 @@ describe("declaredSpine", () => {
     const spine = declaredSpine(root, ["services/a/main.go"]);
     expect(spine.source).toBe("directories");
   });
+
+  it("takes edges from graphify while keeping manifest boundaries", () => {
+    const root = repoWith({
+      "pnpm-workspace.yaml": "packages:\n  - 'services/*'\n",
+      "services/team-a/package.json": '{"name":"a"}',
+      "services/team-b/package.json": '{"name":"b"}',
+      "graphify-out/graph.json": JSON.stringify({
+        nodes: [
+          { id: "1", file: "services/team-a/src/x.ts" },
+          { id: "2", file: "services/team-b/src/y.ts" },
+        ],
+        edges: [{ source: "1", target: "2", type: "imports" }],
+      }),
+    });
+    const spine = declaredSpine(root, [
+      "services/team-a/src/x.ts",
+      "services/team-b/src/y.ts",
+    ]);
+    expect(spine.source).toBe("graphify");
+    expect(spine.imports.length).toBeGreaterThan(0);
+    // Boundaries still come from the manifest, NOT the two-segment fallback:
+    // "services/team-a", never "services/team".
+    expect(spine.moduleOf("services/team-a/src/x.ts")).toBe("services/team-a");
+  });
 });
