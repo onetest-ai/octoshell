@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { buildRepo, type CommitSpec } from "./fixtures/repo.js";
 import { analyze } from "../src/analyze.js";
+import { renderMap } from "../src/render.js";
 import { DEFAULTS } from "../src/config.js";
 
 const NOW = Date.UTC(2026, 0, 30);
@@ -145,6 +148,70 @@ describe("analyze: module identity invariant", () => {
     commits.push(...backgroundChurn(15));
     const { analysis } = analyze(buildRepo(commits), DEFAULTS, { now: NOW });
     expectNoDanglingModuleEdges(analysis);
+  });
+
+  /**
+   * The same invariant on the OTHER branch of `moduleEdges`, which the two
+   * tests around it cannot reach: they exercise `rollUp`, whose endpoints are
+   * `moduleOf` over harvested files and so are backed by a file by
+   * construction. `readGraphify`'s are not. Graphify indexes the whole tree
+   * while `harvest` only sees commits inside the `--since` window, under the
+   * mega-commit cap, touching two or more paths — so a package with no
+   * analysable churn in that window is an ordinary import endpoint with no
+   * harvested file at all.
+   *
+   * Pre-fix, `pkg/c` was named by a dependency line in map.md and had no
+   * heading of its own, and `layerRanks` dropped every edge touching it.
+   */
+  it("holds when Graphify names a module the harvest window never touched", () => {
+    const commits: CommitSpec[] = [];
+    for (let i = 0; i < 6; i++) commits.push({ files: ["pkg/a/a1.ts", "pkg/a/a2.ts"] });
+    for (let i = 0; i < 6; i++) commits.push({ files: ["pkg/b/b1.ts", "pkg/b/b2.ts"] });
+    const root = buildRepo(commits);
+    writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'pkg/*'\n");
+    for (const p of ["a", "b", "c"]) {
+      mkdirSync(join(root, `pkg/${p}`), { recursive: true });
+      writeFileSync(join(root, `pkg/${p}/package.json`), `{"name":"${p}"}\n`);
+    }
+    mkdirSync(join(root, "graphify-out"), { recursive: true });
+    writeFileSync(
+      join(root, "graphify-out/graph.json"),
+      JSON.stringify({
+        nodes: [
+          { id: "a", file: "pkg/a/a1.ts" },
+          { id: "b", file: "pkg/b/b1.ts" },
+          // Declared, imported — and never touched by an analysable commit.
+          { id: "c", file: "pkg/c/c1.ts" },
+        ],
+        edges: [
+          { source: "a", target: "b", type: "imports" },
+          { source: "b", target: "c", type: "imports" },
+        ],
+      }),
+    );
+
+    const { analysis, files } = analyze(root, DEFAULTS, { now: NOW });
+
+    // Preconditions: the Graphify tier really is in play, `pkg/c` really is
+    // unharvested, and a module edge really does name it — without all three
+    // the assertion below passes for any implementation.
+    expect(analysis.spineSource).toBe("graphify");
+    expect(files.some((f) => f.startsWith("pkg/c/"))).toBe(false);
+    expect(analysis.moduleEdges).toContainEqual({ from: "pkg/b", to: "pkg/c", weight: 1 });
+
+    expectNoDanglingModuleEdges(analysis);
+
+    // Present as a real heading, and honest about what the history says: the
+    // module exists and is depended upon, no analysable commit touched it.
+    const c = analysis.modules.find((m) => m.name === "pkg/c");
+    expect(c?.members).toEqual([]);
+    expect(renderMap(analysis, DEFAULTS.budgetTokens)).toContain("**pkg/c**");
+
+    // And it is ranked rather than skipped — `layerRanks` dropped every edge
+    // touching an unknown module, so pre-fix `pkg/b` came out as a leaf.
+    expect(analysis.modules.find((m) => m.name === "pkg/a")?.layer).toBe(0);
+    expect(analysis.modules.find((m) => m.name === "pkg/b")?.layer).toBe(1);
+    expect(c?.layer).toBe(2);
   });
 
   it("holds for an unvoted star-centre hub", () => {

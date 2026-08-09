@@ -250,6 +250,25 @@ export function declaredSpine(repoRoot: string, files: string[]): Spine {
   const source: Spine["source"] =
     imports.length > 0 ? "graphify" : manifestBased ? "manifests" : "directories";
 
-  const modules = [...filesByModule(files, moduleOf).keys()].sort();
+  // The module universe is every module the spine can NAME, from either half
+  // above: one that a harvested file lives in, OR one that a declared import
+  // edge points at. The second half is not decoration. `files` is what
+  // `harvest` saw — commits inside the `--since` window, under the mega-commit
+  // cap, touching two or more paths — while Graphify indexes the whole tree, so
+  // a package that simply had no analysable churn in that window has no
+  // harvested file and yet is a perfectly real endpoint in `imports`. Deriving
+  // this list from `filesByModule` alone made it disagree with `imports`
+  // whenever that happened, and both consumers then failed the same way:
+  // `layerRanks` silently DROPPED every edge touching the missing module (so a
+  // cycle running through it vanished and everything downstream mis-ranked),
+  // and `analyze` rendered a dependency line to a module with no heading of its
+  // own — the identical dangling-reference defect already fixed once on the
+  // co-change branch of `moduleEdges`, still open on this one.
+  const names = new Set(filesByModule(files, moduleOf).keys());
+  for (const e of imports) {
+    names.add(e.from);
+    names.add(e.to);
+  }
+  const modules = [...names].sort();
   return { source, modules, moduleOf, imports };
 }

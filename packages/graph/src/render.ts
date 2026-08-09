@@ -26,9 +26,23 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     lines.push(`- **${m.name}**${layer} — ${m.members.length} files`);
   }
 
+  // An arrow is a claim, and only one of the two edge producers can back it.
+  // A Graphify spine states which module imports which, so `from → to` is the
+  // fact. A co-change rollup states only that two modules move together;
+  // `rollUp` orders its endpoints lexicographically to key an accumulator, so
+  // rendering that as an arrow invents a direction — and gets it backwards
+  // whenever the dependency runs against alphabetical order (`web` importing
+  // `api` rolls up to `api → web`, which reads as "api depends on web"). map.md
+  // is loaded into an agent's context as architecture truth, so it says only
+  // what it knows: `↔`, under a heading that names the weaker relation.
+  const directed = analysis.moduleEdgesDirected;
+  const section = directed ? "## Dependencies" : "## Coupling (undirected co-change)";
+  const link = directed ? "→" : "↔";
+  const edgeUnit = directed ? "dependency edge" : "coupling edge";
+
   const edges: string[] = [];
   for (const e of analysis.moduleEdges) {
-    edges.push(`- ${e.from} → ${e.to} (${e.weight.toFixed(2)})`);
+    edges.push(`- ${e.from} ${link} ${e.to} (${e.weight.toFixed(2)})`);
   }
 
   const note = (dropped: number, unit: string): string[] =>
@@ -40,10 +54,10 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
       ...lines.slice(0, keptModules),
       ...note(lines.length - keptModules, "module"),
       "",
-      "## Dependencies",
+      section,
       "",
       ...edges.slice(0, keptEdges),
-      ...note(edges.length - keptEdges, "dependency edge"),
+      ...note(edges.length - keptEdges, edgeUnit),
     ].join("\n") + "\n";
 
   /** Geometric shrink: ~12% of what is left, at least one line. */

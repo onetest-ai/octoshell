@@ -141,7 +141,7 @@ describe("end-to-end: map.md stays within its token budget on a real, edge-heavy
     // exists to prevent; asserting the budget alone cannot see it, since
     // dropping every module line also gets under the budget.
     expect(md).toContain("module(s) truncated to fit the token budget.");
-    expect(md).toContain("dependency edge(s) truncated to fit the token budget.");
+    expect(md).toContain("coupling edge(s) truncated to fit the token budget.");
   });
 });
 

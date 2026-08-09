@@ -11,6 +11,7 @@ const analysis: Analysis = {
     { id: 1, name: "apps/ext", members: ["apps/ext/src/b.ts"], layer: 0 },
   ],
   moduleEdges: [{ from: "apps/ext", to: "packages/board", weight: 3.2 }],
+  moduleEdgesDirected: false,
   hubs: ["package.json"],
   bridged: 0,
   clusterIds: { kept: 2, fresh: 0 },
@@ -70,7 +71,9 @@ describe("renderMap", () => {
     };
     const md = renderMap(edgeHeavy, 500);
     expect(estimateTokens(md)).toBeLessThanOrEqual(500);
-    expect(md).toContain("dependency edge(s) truncated");
+    // The fixture's spine is `manifests`, so these are undirected co-change
+    // edges, not declared dependencies — see module-edge-direction.test.ts.
+    expect(md).toContain("coupling edge(s) truncated");
     // Trimming must not starve one section to pay for the other: the single
     // module survives a cut that drops hundreds of edges.
     expect(md).toContain("pkg/only");

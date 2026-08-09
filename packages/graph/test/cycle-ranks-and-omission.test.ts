@@ -32,6 +32,9 @@ function fourModuleCommits(): CommitSpec[] {
 function writeManifest(root: string): void {
   writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'svc/*'\n");
   for (const pkg of ["a", "b", "c", "d"]) {
+    // `recursive` matters: a declared package need not have been created by a
+    // commit — see the unharvested-cycle-member case below.
+    mkdirSync(join(root, `svc/${pkg}`), { recursive: true });
     writeFileSync(join(root, `svc/${pkg}/package.json`), `{"name":"${pkg}"}\n`);
   }
 }
@@ -86,6 +89,44 @@ describe("end-to-end: a module downstream of a dependency cycle ranks strictly d
     const md = renderMap(analysis, DEFAULTS.budgetTokens);
     expect(md).toContain(`**svc/a** [layer ${String(a.layer)}]`);
     expect(md).toContain(`**svc/d** [layer ${String(d.layer)}]`);
+  });
+});
+
+describe("end-to-end: a cycle running through a module with no harvested file", () => {
+  /**
+   * The rank half of the declared-module-universe defect. `layerRanks` skips
+   * any edge whose endpoint is missing from the module list it was handed, and
+   * that list used to come from harvested files alone — so a declared package
+   * with no analysable churn in the `--since` window took its edges down with
+   * it. Here the whole b<->c cycle hangs off `svc/c`: drop it and `svc/b` looks
+   * like a leaf, `svc/d` loses its only inbound edge and ranks 0, and map.md
+   * reports a clean layered architecture over a repo that has a cycle in it.
+   *
+   * The co-change fixture deliberately omits `svc/c` entirely — this is the
+   * ordinary case of a stable package nobody has touched lately, not a
+   * contrived one.
+   */
+  it("contracts the cycle and ranks downstream deeper, though the cycle member is unharvested", () => {
+    const commits: CommitSpec[] = [];
+    for (let i = 0; i < 6; i++) commits.push({ files: ["svc/a/a1.ts", "svc/a/a2.ts"] });
+    for (let i = 0; i < 6; i++) commits.push({ files: ["svc/b/b1.ts", "svc/b/b2.ts"] });
+    for (let i = 0; i < 6; i++) commits.push({ files: ["svc/d/d1.ts", "svc/d/d2.ts"] });
+    const root = buildRepo(commits);
+    writeManifest(root);
+    writeCyclicGraphify(root);
+
+    const { analysis, files } = analyze(root, DEFAULTS, { now: NOW });
+
+    // Precondition: `svc/c` really is absent from the harvest.
+    expect(files.some((f) => f.startsWith("svc/c/"))).toBe(false);
+
+    const b = moduleNamed(analysis.modules, "svc/b");
+    const c = moduleNamed(analysis.modules, "svc/c");
+    const d = moduleNamed(analysis.modules, "svc/d");
+
+    expect(moduleNamed(analysis.modules, "svc/a").layer).toBe(0);
+    expect(b.layer).toBe(c.layer);
+    expect(d.layer).toBeGreaterThan(c.layer ?? -1);
   });
 });
 

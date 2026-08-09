@@ -22,6 +22,20 @@ export interface Analysis {
   spineSource: "graphify" | "manifests" | "directories";
   modules: ModuleSummary[];
   moduleEdges: ModuleEdge[];
+  /**
+   * Whether `moduleEdges` carries a DIRECTION, or only a symmetric coupling.
+   *
+   * `moduleEdges` has two possible producers and they do not mean the same
+   * thing. `readGraphify` emits a declared import edge: `from` really does
+   * depend on `to`. `rollUp` projects co-change, which has no direction at all
+   * — it orders the endpoints lexicographically purely to key the accumulator,
+   * so a rendered `from → to` would assert a dependency the data cannot
+   * support, and would assert it BACKWARDS about half the time (`web` importing
+   * `api` rolls up to `api → web`). A consumer must be able to tell the two
+   * apart without re-deriving the rule, so it is stated here, once, by the same
+   * expression that picks the edges.
+   */
+  moduleEdgesDirected: boolean;
   hubs: string[];
   bridged: number;
   clusterIds: { kept: number; fresh: number };
@@ -68,7 +82,11 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
   }
 
   const spine = declaredSpine(repoRoot, table.files);
-  const moduleEdges = spine.imports.length > 0
+  // One expression decides both which edges are reported and whether they carry
+  // a direction — see `Analysis.moduleEdgesDirected`. Splitting the two apart
+  // is how a renderer ends up drawing an arrow on a symmetric edge.
+  const moduleEdgesDirected = spine.imports.length > 0;
+  const moduleEdges = moduleEdgesDirected
     ? spine.imports
     : rollUp(edges, table.files, spine.moduleOf);
   const ranks = layerRanks(spine.modules, spine.imports);
@@ -188,6 +206,22 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
   // A move above can empty a donor bucket; an empty module is not a module.
   for (const [name, ids] of [...merged]) if (ids.length === 0) merged.delete(name);
 
+  // Second half of the same backstop, for the modules `filesByModule` CANNOT
+  // produce: a declared module that a `moduleEdges` row names but no harvested
+  // file lives in. Graphify indexes the whole tree while `harvest` only sees
+  // commits inside the `--since` window and under the mega-commit cap, so a
+  // package with no analysable churn is an ordinary endpoint in `spine.imports`
+  // and has no file to be grouped by. Without this it would be a dependency
+  // line pointing at a module with no heading — the same dangling reference the
+  // loop above closes for the co-change branch. `spine.modules` is the one
+  // place that union is computed (see spine.ts), so the two cannot drift.
+  //
+  // Rendered as a real heading with zero files, which is the true statement:
+  // the module exists and is depended upon, and this history window says
+  // nothing about it. It sorts last (member count descending) and is therefore
+  // the first thing the token budget drops.
+  for (const name of spine.modules) if (!merged.has(name)) merged.set(name, []);
+
   const modules: ModuleSummary[] = [...merged.entries()]
     // Code units through the shared comparator, never `localeCompare`: it
     // collates by the machine's default locale, so a committed artifact would
@@ -210,6 +244,7 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
       spineSource: spine.source,
       modules,
       moduleEdges,
+      moduleEdgesDirected,
       hubs: pathsOf([...hubIds]),
       bridged: synthetic,
       clusterIds: { kept: 0, fresh: modules.length },
