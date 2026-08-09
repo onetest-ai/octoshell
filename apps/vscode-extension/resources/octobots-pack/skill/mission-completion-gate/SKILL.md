@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 38
+version: 39
 ---
 
 # mission-completion-gate
@@ -40,6 +40,14 @@ done until this gate is green.
   re-verify the criteria those fixes touched, still black-box. Blocking on any
   finding at all punishes the review for working, and teaches the next one to
   report less.
+- **A gate that keeps finding premise defects is a signal, not a success.**
+  This gate exists to catch **integration** defects — abstractions that
+  duplicated across tasks, contracts that do not compose, end-to-end
+  determinism. When it instead keeps finding *premise* defects (a boundary
+  computed wrongly, a convention one module got backwards), the depth rule is
+  not being applied upstream: those belong to the foundation task that emitted
+  them, caught black-box at task level, before four more tasks built on the bad
+  answer. Report it as a process finding alongside the code one.
 - **New code ≥80% covered.** the project's new-code coverage gate must pass on
   changed lines vs the base branch, not repo-wide.
 - **Merge/complete only on green.** Trust-but-verify substantive fixes in the
