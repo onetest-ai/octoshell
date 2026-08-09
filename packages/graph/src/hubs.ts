@@ -26,8 +26,17 @@ export function detectHubs(
 
   const strength = new Array<number>(fileCount).fill(0);
   for (const e of edges) {
-    strength[e.a] = (strength[e.a] ?? 0) + e.npmi;
-    strength[e.b] = (strength[e.b] ?? 0) + e.npmi;
+    // Negative nPMI means "these two co-change less than chance would predict"
+    // — evidence of no coupling, not of anti-coupling. Summed signed, it would
+    // *subtract* from a node's degree: a high-churn file scores negative
+    // against the other high-churn files it seldom moves with, so the very
+    // nodes quarantine exists to catch could cancel themselves back under the
+    // threshold. Clamping at 0 also makes this the same graph the clustering
+    // downstream measures, which weights edges by `Math.max(0, npmi)` — a hub
+    // detector reading a different graph quarantines the wrong nodes.
+    const w = Math.max(0, e.npmi);
+    strength[e.a] = (strength[e.a] ?? 0) + w;
+    strength[e.b] = (strength[e.b] ?? 0) + w;
   }
 
   const mean = strength.reduce((a, b) => a + b, 0) / fileCount;
