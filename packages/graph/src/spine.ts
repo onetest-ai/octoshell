@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { join } from "node:path";
 import { readGraphify } from "./graphify.js";
+import { insideRepo } from "./paths.js";
 import type { ModuleEdge } from "./rollup.js";
 
 export interface Spine {
@@ -47,19 +48,6 @@ function pnpmPackageGlobs(text: string): string[] {
     if (value) globs.push(value);
   }
   return globs;
-}
-
-/**
- * Resolve a manifest-declared path inside the repo, or null if it escapes.
- *
- * A workspace file is repo content, so it must not be able to point the walk at
- * a directory outside the root: `packages: ['../*']` would otherwise enumerate
- * the repo's siblings and land their names in a committed artifact.
- */
-function insideRepo(repoRoot: string, rel: string): string | null {
-  const root = resolve(repoRoot);
-  const abs = resolve(root, rel);
-  return abs === root || abs.startsWith(`${root}${sep}`) ? abs : null;
 }
 
 function readdirSafe(dir: string): string[] {
