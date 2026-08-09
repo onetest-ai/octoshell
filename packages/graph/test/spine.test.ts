@@ -233,4 +233,95 @@ describe("declaredSpine", () => {
     expect(spine.modules).toEqual(["Sources/Zed", "Sources/alpha", "Sources/common"]);
     expect(spine.imports.map((e) => e.from)).toEqual(["Sources/Zed", "Sources/alpha"]);
   });
+
+  it("expands a nested wildcard glob (`services/*/*`)", () => {
+    // The open defect: the hand-rolled scanner only expanded a single trailing
+    // `/*`, so `services/*/*` silently produced zero roots and the map fell
+    // back to the crude two-segment "directories" tier.
+    const root = repoWith({
+      "pnpm-workspace.yaml": "packages:\n  - 'services/*/*'\n",
+      "services/team-a/api/package.json": '{"name":"api"}',
+      "services/team-b/web/package.json": '{"name":"web"}',
+    });
+    const spine = declaredSpine(root, [
+      "services/team-a/api/x.ts",
+      "services/team-b/web/y.ts",
+    ]);
+    expect(spine.source).toBe("manifests");
+    expect(spine.moduleOf("services/team-a/api/x.ts")).toBe("services/team-a/api");
+    expect(spine.moduleOf("services/team-b/web/y.ts")).toBe("services/team-b/web");
+  });
+
+  it("parses a flow-sequence `packages:` list (`[pkg-a, pkg-b]`)", () => {
+    const root = repoWith({
+      "pnpm-workspace.yaml": "packages: [pkg-a, pkg-b]\n",
+      "pkg-a/package.json": '{"name":"pkg-a"}',
+      "pkg-b/package.json": '{"name":"pkg-b"}',
+    });
+    const spine = declaredSpine(root, ["pkg-a/x.ts", "pkg-b/y.ts"]);
+    expect(spine.source).toBe("manifests");
+    expect(spine.moduleOf("pkg-a/x.ts")).toBe("pkg-a");
+    expect(spine.moduleOf("pkg-b/y.ts")).toBe("pkg-b");
+  });
+
+  it("parses quoted and unquoted entries alongside a comment line inside the block", () => {
+    const root = repoWith({
+      "pnpm-workspace.yaml":
+        "packages:\n  - 'packages/one' # single-quoted\n  - \"packages/two\"\n  # a comment line, no entry\n  - packages/three\n",
+      "packages/one/package.json": '{"name":"one"}',
+      "packages/two/package.json": '{"name":"two"}',
+      "packages/three/package.json": '{"name":"three"}',
+    });
+    const spine = declaredSpine(root, [
+      "packages/one/a.ts",
+      "packages/two/b.ts",
+      "packages/three/c.ts",
+    ]);
+    expect(spine.source).toBe("manifests");
+    expect(spine.moduleOf("packages/one/a.ts")).toBe("packages/one");
+    expect(spine.moduleOf("packages/two/b.ts")).toBe("packages/two");
+    expect(spine.moduleOf("packages/three/c.ts")).toBe("packages/three");
+  });
+
+  it("still does not let `onlyBuiltDependencies` contribute a root, through the real parser", () => {
+    // Regression pin for the already-patched defect, now guarded structurally
+    // (reading the parsed `packages` key) instead of by a scoped regex.
+    const root = repoWith({
+      "pnpm-workspace.yaml":
+        "packages:\n  - 'packages/*'\nonlyBuiltDependencies: [core]\n",
+      "packages/one/package.json": '{"name":"one"}',
+      "core/deep/x.ts": "",
+    });
+    const spine = declaredSpine(root, ["packages/one/a.ts", "core/deep/x.ts", "core/wide/y.ts"]);
+    expect(spine.moduleOf("core/deep/x.ts")).toBe("core/deep");
+    expect(spine.modules).toEqual(["core/deep", "core/wide", "packages/one"]);
+  });
+
+  it("still skips a quoted `!` exclusion entry on its own, with the real parser", () => {
+    // Same scenario as "does not treat a `!` exclusion as a module root"
+    // above, but exercised alongside a real `packages/*` glob in the same
+    // list — the exclusion's own tag-like `!` prefix must not trip up
+    // js-yaml's tag parsing when quoted, and must still be filtered before
+    // expansion rather than becoming a root string of its own.
+    const root = repoWith({
+      "pnpm-workspace.yaml": "packages:\n  - 'apps/*'\n  - '!packages/private'\n",
+      "apps/one/package.json": '{"name":"one"}',
+    });
+    const spine = declaredSpine(root, ["apps/one/a.ts"]);
+    expect(spine.source).toBe("manifests");
+    expect(spine.modules).toEqual(["apps/one"]);
+    expect(spine.moduleOf("apps/one/a.ts")).toBe("apps/one");
+  });
+
+  it("degrades to the directories tier on malformed YAML instead of throwing", () => {
+    const root = repoWith({
+      // Unbalanced flow-sequence bracket: a genuine YAML parse error.
+      "pnpm-workspace.yaml": "packages: [packages/one, packages/two\n",
+      "packages/one/package.json": '{"name":"one"}',
+    });
+    expect(() => declaredSpine(root, ["packages/one/a.ts"])).not.toThrow();
+    const spine = declaredSpine(root, ["packages/one/a.ts"]);
+    expect(spine.source).toBe("directories");
+    expect(spine.moduleOf("packages/one/a.ts")).toBe("packages/one");
+  });
 });

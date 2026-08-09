@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { load as loadYaml } from "js-yaml";
 import { readGraphify } from "./graphify.js";
 import { insideRepo } from "./paths.js";
 import type { ModuleEdge } from "./rollup.js";
@@ -13,41 +14,36 @@ export interface Spine {
 }
 
 /**
- * The `packages:` list of a pnpm workspace file, without a YAML parser.
+ * The `packages:` list of a pnpm workspace file, via a real YAML parser.
  *
- * Deliberately not a YAML parse: we need one list of strings, and the package
- * must stay dependency-free. But it *is* scoped to that one key. A
- * `pnpm-workspace.yaml` holds several other list-shaped keys —
- * `onlyBuiltDependencies` (which pnpm 10 writes on its own),
- * `ignoredBuiltDependencies`, `neverBuiltDependencies`, `publicHoistPattern` —
- * and reading every `- item` line in the file turns a build dependency's *name*
- * into a module root. In a repo with a `core/` directory,
- * `onlyBuiltDependencies: [core]` then collapses every `core/**` file into one
- * module instead of `core/<sub>`, and that wrong boundary propagates silently
- * into the committed artifact through `rollUp`, which drops intra-module edges.
+ * Scoped to that one key. A `pnpm-workspace.yaml` holds several other
+ * list-shaped keys — `onlyBuiltDependencies` (which pnpm 10 writes on its
+ * own), `ignoredBuiltDependencies`, `neverBuiltDependencies`,
+ * `publicHoistPattern` — and reading any of those as package globs turns a
+ * build dependency's *name* into a module root. In a repo with a `core/`
+ * directory, `onlyBuiltDependencies: [core]` would then collapse every
+ * `core/**` file into one module instead of `core/<sub>`, and that wrong
+ * boundary would propagate silently into the committed artifact through
+ * `rollUp`, which drops intra-module edges. Reading the parsed document's
+ * `packages` key directly — rather than re-implementing that scoping with
+ * more string matching — makes that a structural property instead of a
+ * regex accident.
+ *
+ * Never throws: a malformed document, or one whose top level or `packages`
+ * key isn't shaped as expected, degrades to "no globs found" so the caller
+ * falls through to the next spine tier instead of taking the whole map down.
  */
 function pnpmPackageGlobs(text: string): string[] {
-  const globs: string[] = [];
-  let inPackages = false;
-  for (const line of text.split("\n")) {
-    if (/^\s*(#|$)/.test(line)) continue;
-    if (/^(---|\.\.\.)\s*$/.test(line)) {
-      inPackages = false;
-      continue;
-    }
-    // A key at column 0 opens (or closes) the section we care about.
-    const key = /^([A-Za-z_][A-Za-z0-9_-]*)\s*:/.exec(line);
-    if (key) {
-      inPackages = key[1] === "packages";
-      continue;
-    }
-    if (!inPackages) continue;
-    // Quoted or bare item, with an optional trailing comment.
-    const item = /^\s*-\s*(?:'([^']*)'|"([^"]*)"|([^#\s][^#]*?))\s*(?:#.*)?$/.exec(line);
-    const value = item?.[1] ?? item?.[2] ?? item?.[3];
-    if (value) globs.push(value);
+  let doc: unknown;
+  try {
+    doc = loadYaml(text);
+  } catch {
+    return [];
   }
-  return globs;
+  if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return [];
+  const packages = (doc as Record<string, unknown>).packages;
+  if (!Array.isArray(packages)) return [];
+  return packages.filter((item): item is string => typeof item === "string");
 }
 
 function readdirSafe(dir: string): string[] {
@@ -110,6 +106,53 @@ function discoverManifestRoots(repoRoot: string): string[] {
   return found;
 }
 
+/** The real subdirectories of a repo-relative path, or `[]` if it isn't a directory. */
+function subdirectories(repoRoot: string, relDir: string): string[] {
+  const abs = insideRepo(repoRoot, relDir);
+  if (abs === null) return [];
+  return readdirSafe(abs).filter((entry) => isDirectory(join(abs, entry)));
+}
+
+/**
+ * Expand a workspace glob into concrete repo-relative directories.
+ *
+ * Supports exactly the shape pnpm workspace globs document: a path made of
+ * literal segments and zero or more standalone `*` segments, each `*`
+ * matching any one directory name at that level. That covers a single
+ * wildcard at the end (`packages` then a lone `*`, the original shape here)
+ * and repeated wildcards nested deeper (`services`, `*`, `*` again) alike.
+ * Each `*` is resolved by listing real directories, so a wildcard over a
+ * path that doesn't exist yields no roots rather than a literal `*` string.
+ *
+ * Deliberately NOT supported — a full glob engine is a tarpit, and these
+ * are not shapes pnpm's own docs use:
+ *  - a recursive, any-depth wildcard segment
+ *  - a partial-segment wildcard, e.g. `apps` + a dash + `service`, or a
+ *    `pkg-` prefix followed by a wildcard
+ *  - brace or bracket expansion, e.g. `{a,b}` or `[abc]`
+ * A glob using one of these is treated as a literal path (matching the
+ * pre-existing behavior for any non-wildcard segment): it will not resolve
+ * to a real directory, so it contributes no files under `moduleOf` — never
+ * a crash, just a boundary that quietly matches nothing.
+ */
+function expandGlob(repoRoot: string, glob: string): string[] {
+  let bases = ["."];
+  for (const segment of glob.split("/")) {
+    if (segment === "*") {
+      const next: string[] = [];
+      for (const base of bases) {
+        for (const entry of subdirectories(repoRoot, base)) {
+          next.push(base === "." ? entry : `${base}/${entry}`);
+        }
+      }
+      bases = next;
+    } else {
+      bases = bases.map((base) => (base === "." ? segment : `${base}/${segment}`));
+    }
+  }
+  return bases.filter((rel) => rel !== "." && insideRepo(repoRoot, rel) !== null);
+}
+
 /** Directories a workspace manifest names, e.g. `packages/*` -> packages/one, packages/two. */
 function workspaceRoots(repoRoot: string): string[] {
   const globs: string[] = [];
@@ -139,16 +182,7 @@ function workspaceRoots(repoRoot: string): string[] {
   for (const glob of globs) {
     // `!pkg/private` is an exclusion, never a root of its own.
     if (glob.startsWith("!")) continue;
-    if (glob.endsWith("/*")) {
-      const base = glob.slice(0, -2);
-      const dir = insideRepo(repoRoot, base);
-      if (dir === null) continue;
-      for (const entry of readdirSafe(dir)) {
-        if (isDirectory(join(dir, entry))) out.push(`${base}/${entry}`);
-      }
-    } else if (insideRepo(repoRoot, glob) !== null) {
-      out.push(glob);
-    }
+    out.push(...expandGlob(repoRoot, glob));
   }
 
   // An explicit workspace manifest already answered the question; only fall
