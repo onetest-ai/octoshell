@@ -92,15 +92,17 @@ describe("end-to-end: determinism", () => {
 });
 
 describe("end-to-end: hub suppression", () => {
-  it("a file touched in every commit neither tops the ranking nor merges two genuine communities", () => {
+  it("a file in every commit of both regions neither tops the ranking nor merges two genuine communities", () => {
     const commits: { files: string[] }[] = [];
     for (let i = 0; i < 8; i++) commits.push({ files: ["r1a.ts", "r1b.ts", "r1c.ts", "hub.ts"] });
     for (let i = 0; i < 8; i++) commits.push({ files: ["r2a.ts", "r2b.ts", "r2c.ts", "hub.ts"] });
     // Background churn the hub never touches: dilutes its global marginal
     // below the 100% it has within R1/R2, which is what keeps its nPMI (and
-    // so its weighted degree) from decaying to exactly zero — the
-    // interesting case is a hub that still carries *some* real weight, not
-    // one nPMI has already zeroed out on its own.
+    // so its weighted degree) from decaying to exactly zero — this is the
+    // case of a hub that still carries *some* real weight. The complementary
+    // case, a file in *literally* every commit, takes a different path
+    // through the engine and is covered by the next test; neither stands in
+    // for the other.
     for (let i = 0; i < 30; i++) commits.push({ files: [`n${i}a.ts`, `n${i}b.ts`] });
 
     const repo = buildRepo(commits);
@@ -152,6 +154,73 @@ describe("end-to-end: hub suppression", () => {
       (path) => naiveCommunityOf(path) === naiveHubCommunity,
     );
     expect(joinedRegion).toBe(true);
+  });
+
+  it("a file in literally every commit neither tops the ranking nor merges two genuine communities", () => {
+    // The acceptance criterion's literal fixture: nothing else churns, so the
+    // file's marginal is exactly 1. That is not a harder version of the test
+    // above — it is a *different code path*, and the test above cannot stand
+    // in for it:
+    //
+    //   P(hub) = 1  =>  pmi = log(pab / (pa * 1)) = 0  =>  npmi = 0
+    //
+    // Every hub edge is therefore weightless, so the file's weighted degree
+    // is 0 — *below* the mean, never three sd above it — and `detectHubs`
+    // does not flag it. Quarantine never fires, and the property the previous
+    // test asserts (`partition.has(hubIdx) === false`) does not hold here.
+    // The two acceptance-criterion properties still do, by a different
+    // mechanism, and that is what this test pins.
+    const commits: { files: string[] }[] = [];
+    for (let i = 0; i < 8; i++) commits.push({ files: ["r1a.ts", "r1b.ts", "r1c.ts", "hub.ts"] });
+    for (let i = 0; i < 8; i++) commits.push({ files: ["r2a.ts", "r2b.ts", "r2c.ts", "hub.ts"] });
+
+    const repo = buildRepo(commits);
+    const { files, edges, hubIds, partition } = runPipeline(repo, NOW);
+    const hubIdx = files.indexOf("hub.ts");
+    expect(hubIdx).toBeGreaterThanOrEqual(0);
+
+    // Degree-based quarantine is blind to this hub — recorded, not endorsed.
+    // If `detectHubs` ever grows a marginal-frequency rule, this line is the
+    // one that must change, and it should change deliberately.
+    expect([...hubIds]).toEqual([]);
+
+    // Never tops the ranking: nPMI alone already sinks every hub edge to 0,
+    // strictly below every genuine pair, and the sort puts them last.
+    const hubEdges = edges.filter((e) => e.a === hubIdx || e.b === hubIdx);
+    const genuineEdges = edges.filter((e) => e.a !== hubIdx && e.b !== hubIdx);
+    expect(hubEdges.length).toBe(6);
+    expect(genuineEdges.length).toBe(6);
+    const maxHubNpmi = Math.max(...hubEdges.map((e) => e.npmi));
+    const minGenuineNpmi = Math.min(...genuineEdges.map((e) => e.npmi));
+    expect(maxHubNpmi).toBe(0);
+    expect(maxHubNpmi).toBeLessThan(minGenuineNpmi);
+    const topEdge = edges[0];
+    if (topEdge === undefined) throw new Error("expected at least one edge");
+    expect(topEdge.a === hubIdx || topEdge.b === hubIdx).toBe(false);
+
+    // Never merges two genuine communities: R1 and R2 stay apart even though
+    // the hub co-changes with all six of their files and nothing quarantined
+    // it — the zero weights keep it out of Louvain's adjacency entirely.
+    const communityOf = (path: string): number | undefined => {
+      const idx = files.indexOf(path);
+      return idx < 0 ? undefined : partition.get(idx);
+    };
+    const r1Communities = new Set(["r1a.ts", "r1b.ts", "r1c.ts"].map(communityOf));
+    const r2Communities = new Set(["r2a.ts", "r2b.ts", "r2c.ts"].map(communityOf));
+    expect(r1Communities.size).toBe(1);
+    expect(r2Communities.size).toBe(1);
+    expect(r1Communities).not.toEqual(r2Communities);
+
+    // Un-quarantined and weightless, the file reaches Louvain as an isolated
+    // component, so `bridgeComponents` attaches it to one region by directory
+    // proximity — it ends up *inside* a genuine module rather than outside
+    // every module. Asserted so a change in either mechanism surfaces here
+    // instead of silently in the committed artifact.
+    const hubCommunity = partition.get(hubIdx);
+    expect(hubCommunity).toBeDefined();
+    const [r1Community] = r1Communities;
+    const [r2Community] = r2Communities;
+    expect(hubCommunity === r1Community || hubCommunity === r2Community).toBe(true);
   });
 });
 
