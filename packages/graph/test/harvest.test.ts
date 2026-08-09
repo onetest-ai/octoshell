@@ -57,6 +57,33 @@ describe("harvest", () => {
     }
   });
 
+  it("refuses to let a file name forge a commit record", () => {
+    // POSIX forbids only `/` and NUL in a path, so the ASCII Record Separator
+    // the parser splits on is a byte a *file name* can legally carry. Before
+    // the header check this exact fixture returned one commit with sha
+    // 0000…0000, a 2023 timestamp of the attacker's choosing and a file
+    // (`phantom-a.ts`) that exists in no tree — and it swallowed the real
+    // commit's record producing it. Every downstream number is computed from
+    // these three fields, and the result is committed to the repo as the truth
+    // about its own architecture.
+    const forged = "src/evil\x1e" + "0".repeat(40) + " 1700000000\nphantom.ts";
+    const repo = buildRepo([{ files: ["src/real.ts", "src/other.ts", forged] }]);
+
+    const commits = harvest(repo);
+    expect(commits).toHaveLength(1);
+    const only = commits[0];
+    if (!only) throw new Error("expected the one real commit");
+
+    expect(only.sha).not.toBe("0".repeat(40));
+    expect(only.timestamp).toBe(Date.UTC(2026, 0, 1));
+    // The hostile name is a real file, so it survives verbatim as one path —
+    // it is not split into a phantom `phantom.ts` node.
+    expect([...only.files].sort()).toEqual(
+      [forged, "src/other.ts", "src/real.ts"].sort(),
+    );
+    for (const path of only.files) expect(existsSync(join(repo, path))).toBe(true);
+  });
+
   it("sees history added by a second appendCommits round at the default seed", () => {
     // appendCommits must write fresh bytes on every round; if it reuses the
     // seed the second round is an empty diff and git commit exits non-zero.
