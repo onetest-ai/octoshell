@@ -22,19 +22,28 @@ function gitIn(root: string) {
 /**
  * Add commits to an existing fixture repo. `seq` seeds file contents so a
  * second call writes different bytes and git actually records a change.
+ *
+ * The seed is offset by the number of commits already in the repo, so calling
+ * this twice with the same `seq` and the same file set still writes fresh
+ * bytes each round. Without that offset the second round is a no-op diff and
+ * `git commit` exits non-zero — a trap for tests that build history in stages
+ * (the cluster-stability test does exactly that). Still deterministic: the
+ * offset is a function of repo state, not of wall-clock time.
  */
 export function appendCommits(root: string, commits: CommitSpec[], seq = 1000): void {
   const git = gitIn(root);
+  const existing = Number(git(["rev-list", "--count", "--all"]).toString().trim());
   commits.forEach((spec, i) => {
+    const stamp = seq + existing + i;
     for (const rel of spec.files) {
       const abs = join(root, rel);
       mkdirSync(dirname(abs), { recursive: true });
       // Content must change or git records no diff for the file.
-      writeFileSync(abs, `content ${seq + i}\n`);
+      writeFileSync(abs, `content ${stamp}\n`);
     }
     git(["add", "-A"]);
     const when = new Date(Date.UTC(2026, 0, 1) - (spec.daysAgo ?? 0) * 86400000).toISOString();
-    git(["commit", "-q", "-m", `commit ${seq + i}`], {
+    git(["commit", "-q", "-m", `commit ${stamp}`], {
       GIT_AUTHOR_DATE: when,
       GIT_COMMITTER_DATE: when,
     });
