@@ -69,7 +69,15 @@ function similarity(a: Map<string, number>, b: Map<string, number>): number {
  */
 export function bridgeComponents(edges: Edge[], files: string[]): Edge[] {
   const nodes = [...new Set(edges.flatMap((e) => [e.a, e.b]))].sort((a, b) => a - b);
-  const comps = findComponents(edges, nodes);
+  // Connectivity has to be measured on the same graph the clustering measures.
+  // Louvain weights every edge by `Math.max(0, npmi)` and drops the zero ones,
+  // because a non-positive nPMI means the pair co-changes *less* than chance —
+  // evidence of separation, not a link. Counting those edges here would call a
+  // node "already connected" and skip the bridge, leaving it a singleton
+  // community downstream: precisely the junk module this function exists to
+  // absorb. (Same invariant hubs.ts documents for strength.)
+  const linked = edges.filter((e) => e.npmi > 0);
+  const comps = findComponents(linked, nodes);
   if (comps.length <= 1) return edges;
 
   const hists = comps.map((c) => dirHistogram(c, files));
