@@ -52,5 +52,20 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
     }
   }
 
-  return { ...cfg, ...overrides };
+  // Key by key rather than `{ ...cfg, ...overrides }`. A spread copies an
+  // EXPLICIT `undefined` over a good default, and `Partial<Config>` is exactly
+  // the shape a caller assembling flags builds — `{ budgetTokens: argv.budget }`
+  // is `{ budgetTokens: undefined }` when the flag is absent, not `{}`. That
+  // lands `undefined` in `Config.budgetTokens`, and `estimateTokens(out) >
+  // undefined` is false for every map, so the token budget silently stops
+  // applying. "Not provided" must mean the default, at this seam as everywhere
+  // else in this function.
+  // Iterated over the DEFAULTS key set, not over the override object's own
+  // keys, so an unrecognised key cannot smuggle a field into `Config` — and so
+  // a key added to `Config` later is covered here without a second edit.
+  for (const key of Object.keys(DEFAULTS) as Array<keyof Config>) {
+    const value = overrides[key];
+    if (value !== undefined) Object.assign(cfg, { [key]: value });
+  }
+  return cfg;
 }

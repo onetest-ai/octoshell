@@ -52,4 +52,34 @@ describe("package conventions", () => {
     const offenders = sources.filter((f) => /\bDate\.now\s*\(|\bMath\.random\s*\(/.test(code(f)));
     expect(offenders).toEqual([]);
   });
+
+  /**
+   * Cross-package consumers read `dist/index.js` (package.json `exports`),
+   * never a deep path into `src/` — so a module that index.ts does not
+   * re-export does not exist outside this package, however complete it is.
+   * M2 built the whole analysis pipeline across four task PRs and none of them
+   * reached index.ts: `analyze`, `renderMap`, `impact` and `loadConfig` were
+   * importable only from inside the package's own tests, which is precisely why
+   * every per-task suite stayed green over the gap.
+   *
+   * Asserted on the source rather than by importing the built `dist/`, so the
+   * check does not depend on build order (see CLAUDE.md's dist-before-typecheck
+   * hazard).
+   */
+  it("re-exports the analysis pipeline from index.ts", () => {
+    const index = readFileSync(join(SRC, "index.ts"), "utf8");
+    for (const symbol of [
+      "harvest",
+      "loadConfig",
+      "analyze",
+      "renderMap",
+      "impact",
+      "declaredSpine",
+      "readGraphify",
+      "layerRanks",
+      "rollUp",
+    ]) {
+      expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
+    }
+  });
 });

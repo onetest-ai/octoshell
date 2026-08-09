@@ -142,6 +142,19 @@ describe("end-to-end: map.md stays within its token budget on a real, edge-heavy
     // dropping every module line also gets under the budget.
     expect(md).toContain("module(s) truncated to fit the token budget.");
     expect(md).toContain("coupling edge(s) truncated to fit the token budget.");
+
+    // And the trim leaves the map internally consistent. `analyze` guarantees
+    // every module a `moduleEdges` row names has a heading of its own (see
+    // analyze.test.ts's `expectNoDanglingModuleEdges`) — but that invariant is
+    // stated over `Analysis`, and the budget loop runs after it. Trimming the
+    // module list and the edge list independently reopened it in the one place
+    // it matters: the committed markdown. Measured on this exact fixture, the
+    // pre-fix render named `pkg/m2` and `pkg/m9` in the Coupling section with
+    // no heading anywhere in the file.
+    const headings = new Set([...md.matchAll(/^- \*\*(.+?)\*\*/gm)].map((m) => m[1]));
+    const endpoints = [...md.matchAll(/^- (\S+) [↔→] (\S+) \(/gm)].flatMap((m) => [m[1], m[2]]);
+    expect(endpoints.length).toBeGreaterThan(0);
+    expect(endpoints.filter((e) => !headings.has(e))).toEqual([]);
   });
 });
 

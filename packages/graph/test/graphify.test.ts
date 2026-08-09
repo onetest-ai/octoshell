@@ -124,6 +124,39 @@ describe("readGraphify", () => {
     expect(readGraphify(root, moduleOf)?.map((e) => e.from)).toEqual(["Zed/a", "alpha/b"]);
   });
 
+  /**
+   * The other producer of `Analysis.moduleEdges` is `rollUp`, which returns
+   * strongest-first — and their shared consumer, `renderMap`, trims the TAIL of
+   * that list to fit the token budget, documenting the survivors as the
+   * strongest edges. Ordered by name instead, the Graphify tier would surrender
+   * whatever sorts last in the alphabet, so the repo's single most-imported
+   * package could be the first line dropped from the committed map. One list,
+   * one ordering contract, whichever half built it.
+   */
+  it("returns edges strongest-first, as rollUp does", () => {
+    const root = repoWithGraph({
+      nodes: [
+        { id: "a", file: "pkg/aaa/x.ts" },
+        { id: "z", file: "pkg/zzz/x.ts" },
+        { id: "c", file: "pkg/core/x.ts" },
+        { id: "c2", file: "pkg/core/y.ts" },
+        { id: "c3", file: "pkg/core/z.ts" },
+      ],
+      edges: [
+        // One weak edge whose name sorts first...
+        { source: "a", target: "c", type: "imports" },
+        // ...and a three-times-heavier one whose name sorts last.
+        { source: "z", target: "c", type: "imports" },
+        { source: "z", target: "c2", type: "imports" },
+        { source: "z", target: "c3", type: "imports" },
+      ],
+    });
+    expect(readGraphify(root, moduleOf)).toEqual([
+      { from: "pkg/zzz", to: "pkg/core", weight: 3 },
+      { from: "pkg/aaa", to: "pkg/core", weight: 1 },
+    ]);
+  });
+
   // Graphify's paths are the one part of its output that reaches a committed
   // artifact, so they must land in the same repo-relative namespace `harvest`
   // reads out of git.

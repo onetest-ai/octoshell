@@ -78,6 +78,29 @@ describe("loadConfig", () => {
     expect(cfg.minSupport).toBe(5);
   });
 
+  /**
+   * `Partial<Config>` is exactly the shape a caller assembling CLI flags
+   * builds, and `{ budgetTokens: argv.budget }` is `{ budgetTokens: undefined }`
+   * when the flag is absent — not `{}`. A spread copies that explicit
+   * `undefined` over a perfectly good default, and `estimateTokens(md) >
+   * undefined` is false for every map, so the token budget silently stops
+   * applying to the committed artifact.
+   */
+  it("treats an explicitly-undefined override as absent, not as a value", () => {
+    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    writeFileSync(join(root, "octograph.yaml"), "budgetTokens: 900\n");
+    const cfg = loadConfig(root, { budgetTokens: undefined, minSupport: 7 });
+    // The file's value survives an absent flag...
+    expect(cfg.budgetTokens).toBe(900);
+    // ...and a real override in the same object still applies.
+    expect(cfg.minSupport).toBe(7);
+    // With no file either, the default survives.
+    const bare = mkdtempSync(join(tmpdir(), "cfg-"));
+    expect(loadConfig(bare, { halfLifeDays: undefined }).halfLifeDays).toBe(
+      DEFAULTS.halfLifeDays,
+    );
+  });
+
   it("reads values correctly with comments present", () => {
     const root = mkdtempSync(join(tmpdir(), "cfg-"));
     writeFileSync(

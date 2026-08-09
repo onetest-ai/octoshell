@@ -100,8 +100,21 @@ export function readGraphify(
     else acc.set(key, { from: ma, to: mb, weight: 1 });
   }
 
-  // Code-unit order, through the shared comparator — see `compare`. These edges
-  // sit beside `Spine.modules`, which plain `.sort()` orders by code unit; a
-  // locale collation here would order the two lists by different rules.
-  return [...acc.values()].sort((x, y) => compare(x.from, y.from) || compare(x.to, y.to));
+  // Strongest first, ties broken on raw code units through the shared
+  // comparator — byte-for-byte the order `rollUp` returns.
+  //
+  // Both are producers of `Analysis.moduleEdges`, and its consumer trims the
+  // TAIL of that list to fit the token budget, documenting the survivors as the
+  // strongest edges. Ordering one producer by weight and the other by name
+  // makes that claim true on the co-change tier and false on the Graphify tier,
+  // where the budget would instead drop whatever sorts last in the alphabet —
+  // the strongest declared dependency in the repo if it happens to start with
+  // "z". One list, one contract, whichever half built it.
+  //
+  // The code-unit tie-break is not optional either: `Spine.modules` sits beside
+  // this list and is ordered by plain `.sort()`, so a locale collation here
+  // would order the two by different rules (see `compare`).
+  return [...acc.values()].sort(
+    (x, y) => y.weight - x.weight || compare(x.from, y.from) || compare(x.to, y.to),
+  );
 }
