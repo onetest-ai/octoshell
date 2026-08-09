@@ -25,6 +25,73 @@ describe("end-to-end: map.md regenerates byte-identically from an unchanged comm
     // diff noise on every unrelated run.
     expect(mdSecond).toBe(mdFirst);
   });
+
+  /**
+   * The test above re-runs a pure computation over byte-identical inputs, so it
+   * is green for ANY implementation that does not read a clock, an RNG, or the
+   * environment — including one whose output order is a function of `Map`
+   * insertion order, because insertion order is itself reproduced exactly by
+   * the second run. It therefore cannot see the determinism defect that
+   * actually threatens a committed artifact: an iteration order that reaches
+   * output without being explicitly sorted, which is stable within a machine
+   * and differs across repos, clones and contributors.
+   *
+   * Measured, not assumed: deleting the module-name tie-break from `analyze`'s
+   * module sort (`b[1].length - a[1].length || compare(a[0], b[0])`) leaves the
+   * test above green and turns this one red.
+   *
+   * The permutation is the whole point. Commits carry no per-commit date here
+   * (all default to the same timestamp), so reversing history leaves every
+   * decayed weight, support count and nPMI numerically identical and changes
+   * exactly one thing: the order in which `harvest` discovers files, and so
+   * every node id, `Map` insertion order and `Set` iteration order downstream.
+   * Any ordering that reaches map.md and is not explicitly sorted moves.
+   */
+  it("renders the same bytes for the same history discovered in a different order", () => {
+    const modules = ["a", "b", "c", "d"];
+    const commits: CommitSpec[] = [];
+    for (const name of modules) {
+      for (let i = 0; i < 5; i++) {
+        commits.push({ files: [`pkg/${name}/x.ts`, `pkg/${name}/y.ts`, `pkg/${name}/z.ts`] });
+      }
+    }
+    // Cross-module churn, so the Dependencies section is non-empty and the
+    // comparison covers module-edge ordering too, not just module headings.
+    for (let i = 0; i < modules.length; i++) {
+      const from = modules[i];
+      const to = modules[(i + 1) % modules.length];
+      if (from === undefined || to === undefined) throw new Error("bad fixture");
+      for (let k = 0; k < 3; k++) {
+        commits.push({ files: [`pkg/${from}/x.ts`, `pkg/${to}/y.ts`] });
+      }
+    }
+
+    const forward = buildRepo(commits);
+    const reversed = buildRepo([...commits].reverse());
+    for (const root of [forward, reversed]) {
+      writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'pkg/*'\n");
+      for (const name of modules) {
+        writeFileSync(join(root, `pkg/${name}/package.json`), `{"name":"${name}"}\n`);
+      }
+    }
+
+    const first = analyze(forward, DEFAULTS, { now: NOW });
+    const second = analyze(reversed, DEFAULTS, { now: NOW });
+
+    // Preconditions — without these the assertion below is satisfied by any
+    // implementation at all, which is exactly the failure mode this test was
+    // added to close. The permutation must really have reached the engine...
+    expect(second.files).not.toEqual(first.files);
+    // ...the two runs must really describe the same repo...
+    expect([...second.files].sort()).toEqual([...first.files].sort());
+    // ...and both sections of the map must really have content to order.
+    expect(first.analysis.modules.length).toBeGreaterThan(1);
+    expect(first.analysis.moduleEdges.length).toBeGreaterThan(0);
+
+    const mdFirst = renderMap(first.analysis, DEFAULTS.budgetTokens);
+    const mdSecond = renderMap(second.analysis, DEFAULTS.budgetTokens);
+    expect(mdSecond).toBe(mdFirst);
+  });
 });
 
 describe("end-to-end: map.md stays within its token budget on a real, edge-heavy repo", () => {
@@ -55,11 +122,26 @@ describe("end-to-end: map.md stays within its token budget on a real, edge-heavy
     const { analysis } = analyze(root, config, { now: NOW });
 
     // Precondition: there is real content to trim, not an already-tiny map.
+    // `modules.length > 1` alone does NOT establish that — a map that already
+    // fits satisfies the budget assertion below for every implementation,
+    // including one that ignores the budget entirely. Pin the fixture as
+    // genuinely over budget by rendering it unbounded first.
     expect(analysis.modules.length).toBeGreaterThan(1);
+    expect(analysis.moduleEdges.length).toBeGreaterThan(0);
+    const untrimmed = renderMap(analysis, Number.MAX_SAFE_INTEGER);
+    expect(estimateTokens(untrimmed)).toBeGreaterThan(budgetTokens);
 
     const md = renderMap(analysis, budgetTokens);
     expect(estimateTokens(md)).toBeLessThanOrEqual(budgetTokens);
     expect(md).toContain("# Module map");
+
+    // Both sections give something up. Trimming only the module list leaves
+    // the dependency list — which is quadratic in the module count — whole,
+    // and that is the specific regression the truncation loop in render.ts
+    // exists to prevent; asserting the budget alone cannot see it, since
+    // dropping every module line also gets under the budget.
+    expect(md).toContain("module(s) truncated to fit the token budget.");
+    expect(md).toContain("dependency edge(s) truncated to fit the token budget.");
   });
 });
 
