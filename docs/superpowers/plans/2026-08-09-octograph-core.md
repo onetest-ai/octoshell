@@ -3080,7 +3080,7 @@ export function resolveOut(repoRoot: string, config: Config): string {
 }
 
 export function readArtifact(dir: string): StoredGraph | null {
-  const path = join(dir, "graph.json");
+  const path = join(dir, "clusters.json");
   if (!existsSync(path)) return null;
   try {
     return JSON.parse(readFileSync(path, "utf8")) as StoredGraph;
@@ -3097,7 +3097,7 @@ export function writeArtifact(dir: string, graph: StoredGraph): void {
     ordered[key] = [...(graph.clusters[key] ?? [])].sort();
   }
   writeFileSync(
-    join(dir, "graph.json"),
+    join(dir, "clusters.json"),
     JSON.stringify({ ...graph, clusters: ordered }, null, 2) + "\n",
   );
 }

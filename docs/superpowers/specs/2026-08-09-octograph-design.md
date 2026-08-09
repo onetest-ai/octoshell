@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-09
 **Status:** Draft (design)
-**Components:** new repo `arozumenko/octograph`; bridge in `apps/vscode-extension` (host + pack)
+**Components:** `packages/graph` in this monorepo; pack payload bundled by esbuild; bridge in `apps/vscode-extension` (host + pack)
 
 ---
 
@@ -109,7 +109,7 @@ These are load-bearing. Each one is a tarpit we are explicitly declining to ente
                                                 branches → task↔file
                                                           ↓
                                           .octobots/graph/map.md
-                                          .octobots/graph/graph.json
+                                          .octobots/graph/clusters.json
 ```
 
 Three inputs, one required. Each is a file read; none is a process dependency.
@@ -228,7 +228,7 @@ Port of `wikis/cluster_stability.py`:
 The 0.5 threshold requires more than half the union preserved — below it unrelated clusters get
 matched, above it minor membership churn breaks IDs.
 
-The elegant part: **the previous run's clusters come from the committed `graph.json` itself.** The
+The elegant part: **the previous run's clusters come from the committed `clusters.json` itself.** The
 artifact being in git is what makes its own stability computable. No state store needed.
 
 ### A5c — Module rollup (projection)
@@ -471,7 +471,7 @@ on a degraded graph.
 | Path | Content |
 |---|---|
 | `<out>/map.md` | Human- and agent-readable architecture map |
-| `<out>/graph.json` | Machine-readable full graph |
+| `<out>/clusters.json` | Machine-readable full graph |
 
 `<out>` resolves to `.octobots/graph/` when `.octobots/` exists, else `.octograph/`.
 
@@ -654,6 +654,6 @@ Deliberately **not** taken: FTS5/vector indexing, the JQL query language, the ex
 
 - Record this work on the Octobots board as a campaign with missions, via `mission-planner`.
 - MCP server exposing `map` / `impact` / `drift` as tools.
-- Extension-side map view rendering `.octobots/graph/graph.json`.
+- Extension-side map view rendering `.octobots/graph/clusters.json`.
 - External-tracker link field (`links:` on board entities) — needs modeling in **both**
   `packages/board/src/entity-schema.ts` and the pack's `entity-io.mjs`, per the dual-schema rule.
