@@ -5,7 +5,7 @@ import { detectHubs } from "./hubs.js";
 import { bridgeComponents } from "./components.js";
 import { louvain } from "./louvain.js";
 import { compare, nameCluster, rollUp, type ModuleEdge } from "./rollup.js";
-import { declaredSpine, type Spine } from "./spine.js";
+import { declaredSpine, filesByModule, type Spine } from "./spine.js";
 import { layerRanks } from "./layers.js";
 import type { Config } from "./config.js";
 
@@ -154,6 +154,39 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
     if (existing) existing.push(hub);
     else merged.set(name, [hub]);
   }
+
+  // Declared-identity backstop. A hub that DID get a vote (unlike the unvoted
+  // case just above) can still be reattached into a community named for a
+  // completely different declared module — a root-level file whose module is
+  // "." voted into whichever package it churns with most, say — and if no
+  // other file shares that hub's declared name, the name never becomes a key
+  // in `merged` at all: not missing a file, missing ENTIRELY. `moduleEdges`
+  // below has no such gap, because `rollUp`/`readGraphify` key every edge by
+  // `spine.moduleOf` over the FULL edge set, oblivious to which community won
+  // any hub — so the map would carry a dependency line to a module with no
+  // heading of its own. Reconcile by construction, not by chance: every name
+  // `filesByModule` can produce for a harvested file must end up a key here,
+  // pulling its files out of wherever a naming vote sent them if it has to.
+  // A name that already has a merged entry keeps whatever community(ies) chose
+  // it — communities merging under one declared name is the expected case
+  // (see the "two communities, one module" render test), and is left alone.
+  const homeOfId = new Map<number, string>();
+  for (const [name, ids] of merged) for (const id of ids) homeOfId.set(id, name);
+
+  for (const [name, ids] of filesByModule(table.files, spine.moduleOf)) {
+    if (merged.has(name)) continue;
+    for (const id of ids) {
+      const oldName = homeOfId.get(id);
+      if (oldName === undefined) continue;
+      const bucket = merged.get(oldName);
+      if (bucket === undefined) continue;
+      const idx = bucket.indexOf(id);
+      if (idx !== -1) bucket.splice(idx, 1);
+    }
+    merged.set(name, ids);
+  }
+  // A move above can empty a donor bucket; an empty module is not a module.
+  for (const [name, ids] of [...merged]) if (ids.length === 0) merged.delete(name);
 
   const modules: ModuleSummary[] = [...merged.entries()]
     // Code units through the shared comparator, never `localeCompare`: it

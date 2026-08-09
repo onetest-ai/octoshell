@@ -167,6 +167,32 @@ function twoSegmentModule(path: string): string {
   return parts.length <= 1 ? "." : parts.slice(0, Math.min(2, parts.length - 1)).join("/");
 }
 
+/**
+ * Group harvested files by the module the spine's OWN `moduleOf` names for
+ * them — the complete, authoritative answer to "what modules exist, and which
+ * files are in each one", independent of any downstream clustering.
+ *
+ * `Spine.modules` below and `analyze`'s module-identity backstop (the fix for
+ * the defect where a declared module could vanish from `Analysis.modules`
+ * while its `moduleEdges` endpoint survived — `moduleEdges` is keyed by
+ * `moduleOf` alone via `rollUp`/`readGraphify`, oblivious to any clustering)
+ * both read "what is a module" through this and only this, so the two can no
+ * longer diverge into two independent derivations the way they did before.
+ */
+export function filesByModule(
+  files: string[],
+  moduleOf: (path: string) => string,
+): Map<string, number[]> {
+  const byName = new Map<string, number[]>();
+  files.forEach((path, id) => {
+    const name = moduleOf(path);
+    const list = byName.get(name);
+    if (list) list.push(id);
+    else byName.set(name, [id]);
+  });
+  return byName;
+}
+
 export function declaredSpine(repoRoot: string, files: string[]): Spine {
   // 1. Pick the best available module BOUNDARY.
   const roots = workspaceRoots(repoRoot);
@@ -190,6 +216,6 @@ export function declaredSpine(repoRoot: string, files: string[]): Spine {
   const source: Spine["source"] =
     imports.length > 0 ? "graphify" : manifestBased ? "manifests" : "directories";
 
-  const modules = [...new Set(files.map(moduleOf))].sort();
+  const modules = [...filesByModule(files, moduleOf).keys()].sort();
   return { source, modules, moduleOf, imports };
 }

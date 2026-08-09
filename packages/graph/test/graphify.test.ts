@@ -63,6 +63,39 @@ describe("readGraphify", () => {
     },
   );
 
+  // `null` is valid JSON at the DOCUMENT level (covered above) and at the
+  // ELEMENT level too: `{"nodes":[null],"edges":[]}` passes the
+  // `Array.isArray` shape check and then throws on `raw.id` unless each
+  // element is guarded, not just the document. A truncated or
+  // partially-written Graphify run produces exactly this shape. Non-null junk
+  // elements (`{}`, a number, a string) already degrade gracefully — only a
+  // literal `null` element crashed pre-fix.
+  it("returns null rather than throwing when a nodes element is a bare null", () => {
+    const root = repoWithGraph({ nodes: [null], edges: [] });
+    expect(() => readGraphify(root, moduleOf)).not.toThrow();
+    expect(readGraphify(root, moduleOf)).toEqual([]);
+  });
+
+  it("returns null rather than throwing when an edges element is a bare null", () => {
+    const root = repoWithGraph({
+      nodes: [{ id: "1", file: "pkg/a/x.ts" }, { id: "2", file: "pkg/b/y.ts" }],
+      edges: [null],
+    });
+    expect(() => readGraphify(root, moduleOf)).not.toThrow();
+    expect(readGraphify(root, moduleOf)).toEqual([]);
+  });
+
+  // Non-null junk elements were never the problem, but pin them alongside the
+  // null case so a future change cannot narrow the guard back to "only null".
+  it("skips non-object junk elements in nodes and edges without throwing", () => {
+    const root = repoWithGraph({
+      nodes: [{}, 42, "oops", { id: "1", file: "pkg/a/x.ts" }, { id: "2", file: "pkg/b/y.ts" }],
+      edges: [{}, 42, "oops", { source: "1", target: "2", type: "imports" }],
+    });
+    expect(() => readGraphify(root, moduleOf)).not.toThrow();
+    expect(readGraphify(root, moduleOf)).toEqual([{ from: "pkg/a", to: "pkg/b", weight: 1 }]);
+  });
+
   it("drops edges whose endpoints name no known node", () => {
     const root = repoWithGraph({
       nodes: [{ id: "1", file: "pkg/a/x.ts" }],

@@ -11,6 +11,19 @@ interface RawEdge { source?: unknown; target?: unknown; type?: unknown; kind?: u
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 
+// `typeof null === "object"`, so a `null` ARRAY ELEMENT — what a truncated or
+// partially-written Graphify run may well leave behind, e.g. `{"nodes":[null],
+// "edges":[]}` — passes any `Array.isArray`/shape check on the document and
+// then throws on the property read below (`raw.id`, `raw.type`). That throw
+// escapes this function entirely, exactly like the bare document-level `null`
+// handled above: the guard is what keeps "never throws" true for a malformed
+// ELEMENT, not just a malformed document. Non-null junk (`{}`, a number, a
+// string) already degrades gracefully — `str()` returns null for a property
+// read off any of those without throwing — so only `null` (and, defensively,
+// `undefined`, which JSON.parse never produces but a hand-built caller might)
+// needs this check.
+const isNil = (v: unknown): v is null | undefined => v === null || v === undefined;
+
 /**
  * Read module-level import edges out of a Graphify graph.json, if one exists.
  * Never throws: absent or malformed output degrades the spine, it does not
@@ -43,6 +56,7 @@ export function readGraphify(
 
   const fileOf = new Map<string, string>();
   for (const raw of doc.nodes as RawNode[]) {
+    if (isNil(raw)) continue;
     const id = str(raw.id);
     const file = str(raw.file) ?? str(raw.path) ?? str(raw.file_path);
     if (!id || !file) continue;
@@ -60,6 +74,7 @@ export function readGraphify(
 
   const acc = new Map<string, ModuleEdge>();
   for (const raw of doc.edges as RawEdge[]) {
+    if (isNil(raw)) continue;
     const type = (str(raw.type) ?? str(raw.kind) ?? "").toLowerCase();
     if (!IMPORT_TYPES.has(type)) continue;
     const from = str(raw.source);
