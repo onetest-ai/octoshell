@@ -131,35 +131,47 @@ export interface CommitSpec {
   daysAgo?: number;
 }
 
-/** Build a throwaway git repo with a scripted history. Returns its path. */
-export function buildRepo(commits: CommitSpec[]): string {
-  const root = mkdtempSync(join(tmpdir(), "octograph-"));
-  const git = (args: string[], env: NodeJS.ProcessEnv = {}) =>
+function gitIn(root: string) {
+  return (args: string[], env: NodeJS.ProcessEnv = {}) =>
     execFileSync("git", args, {
       cwd: root,
       env: { ...process.env, ...env },
       stdio: "pipe",
     });
+}
 
-  git(["init", "-q", "-b", "main"]);
-  git(["config", "user.email", "test@example.com"]);
-  git(["config", "user.name", "Test"]);
-
+/**
+ * Add commits to an existing fixture repo. `seq` seeds file contents so a
+ * second call writes different bytes and git actually records a change.
+ */
+export function appendCommits(root: string, commits: CommitSpec[], seq = 1000): void {
+  const git = gitIn(root);
   commits.forEach((spec, i) => {
     for (const rel of spec.files) {
       const abs = join(root, rel);
       mkdirSync(dirname(abs), { recursive: true });
       // Content must change or git records no diff for the file.
-      writeFileSync(abs, `content ${i}\n`);
+      writeFileSync(abs, `content ${seq + i}\n`);
     }
     git(["add", "-A"]);
     const when = new Date(Date.UTC(2026, 0, 1) - (spec.daysAgo ?? 0) * 86400000).toISOString();
-    git(["commit", "-q", "-m", `commit ${i}`], {
+    git(["commit", "-q", "-m", `commit ${seq + i}`], {
       GIT_AUTHOR_DATE: when,
       GIT_COMMITTER_DATE: when,
     });
   });
+}
 
+/** Build a throwaway git repo with a scripted history. Returns its path. */
+export function buildRepo(commits: CommitSpec[]): string {
+  const root = mkdtempSync(join(tmpdir(), "octograph-"));
+  const git = gitIn(root);
+
+  git(["init", "-q", "-b", "main"]);
+  git(["config", "user.email", "test@example.com"]);
+  git(["config", "user.name", "Test"]);
+
+  appendCommits(root, commits, 0);
   return root;
 }
 ```
@@ -1534,6 +1546,21 @@ describe("layerRanks", () => {
     expect(ranks?.get("a")).toBe(ranks?.get("b"));
   });
 
+  it("ranks a module downstream of a cycle strictly deeper than the cycle", () => {
+    // a -> b, b <-> c (cycle), c -> d. `d` is not in the cycle and must not
+    // be flattened into it — a naive Kahn sweep stalls at the cycle and dumps
+    // everything downstream into one rank.
+    const ranks = layerRanks(["a", "b", "c", "d"], [
+      { from: "a", to: "b", weight: 1 },
+      { from: "b", to: "c", weight: 1 },
+      { from: "c", to: "b", weight: 1 },
+      { from: "c", to: "d", weight: 1 },
+    ]);
+    expect(ranks?.get("a")).toBe(0);
+    expect(ranks?.get("b")).toBe(ranks?.get("c"));
+    expect(ranks?.get("d")).toBeGreaterThan(ranks?.get("c") ?? 0);
+  });
+
   it("returns null with no import edges — ranks must not be guessed", () => {
     expect(layerRanks(["a", "b"], [])).toBeNull();
   });
@@ -1653,38 +1680,75 @@ export function layerRanks(
 ): Map<string, number> | null {
   if (imports.length === 0) return null;
 
-  const inDegree = new Map<string, number>(modules.map((m) => [m, 0]));
   const out = new Map<string, string[]>(modules.map((m) => [m, []]));
+  const inn = new Map<string, string[]>(modules.map((m) => [m, []]));
   for (const e of imports) {
-    if (!inDegree.has(e.to) || !out.has(e.from)) continue;
-    inDegree.set(e.to, (inDegree.get(e.to) ?? 0) + 1);
+    if (!out.has(e.from) || !inn.has(e.to)) continue;
     out.get(e.from)?.push(e.to);
+    inn.get(e.to)?.push(e.from);
   }
 
-  const rank = new Map<string, number>();
-  let frontier = modules.filter((m) => (inDegree.get(m) ?? 0) === 0).sort();
-  let depth = 0;
-  const remaining = new Set(modules);
+  // Contract strongly connected components first (Kosaraju). Without this, a
+  // naive Kahn sweep stalls at the first cycle and dumps the cycle AND
+  // everything downstream of it into one flat rank — so a module three hops
+  // past a cycle would rank identically to the cycle itself.
+  const order: string[] = [];
+  const seen = new Set<string>();
+  const visit = (n: string): void => {
+    if (seen.has(n)) return;
+    seen.add(n);
+    for (const to of (out.get(n) ?? []).slice().sort()) visit(to);
+    order.push(n);
+  };
+  for (const m of [...modules].sort()) visit(m);
 
+  const compOf = new Map<string, number>();
+  let comps = 0;
+  const assign = (n: string, id: number): void => {
+    if (compOf.has(n)) return;
+    compOf.set(n, id);
+    for (const from of (inn.get(n) ?? []).slice().sort()) assign(from, id);
+  };
+  for (const n of [...order].reverse()) {
+    if (!compOf.has(n)) assign(n, comps++);
+  }
+
+  // Kahn's algorithm over the condensation, which is a DAG by construction.
+  const compIn = new Array<number>(comps).fill(0);
+  const compOut: number[][] = Array.from({ length: comps }, () => []);
+  const seenEdge = new Set<string>();
+  for (const e of imports) {
+    const a = compOf.get(e.from);
+    const b = compOf.get(e.to);
+    if (a === undefined || b === undefined || a === b) continue;
+    const key = `${a}->${b}`;
+    if (seenEdge.has(key)) continue;
+    seenEdge.add(key);
+    compOut[a]?.push(b);
+    compIn[b] = (compIn[b] ?? 0) + 1;
+  }
+
+  const compRank = new Array<number>(comps).fill(0);
+  let frontier = compIn.map((d, i) => (d === 0 ? i : -1)).filter((i) => i >= 0);
+  let depth = 0;
   while (frontier.length > 0) {
-    for (const m of frontier) {
-      rank.set(m, depth);
-      remaining.delete(m);
-    }
-    const next: string[] = [];
-    for (const m of frontier) {
-      for (const to of out.get(m) ?? []) {
-        const d = (inDegree.get(to) ?? 0) - 1;
-        inDegree.set(to, d);
-        if (d === 0 && remaining.has(to)) next.push(to);
+    const next: number[] = [];
+    for (const c of frontier) {
+      compRank[c] = depth;
+      for (const to of compOut[c] ?? []) {
+        compIn[to] = (compIn[to] ?? 0) - 1;
+        if (compIn[to] === 0) next.push(to);
       }
     }
-    frontier = [...new Set(next)].sort();
+    frontier = [...new Set(next)].sort((a, b) => a - b);
     depth++;
   }
 
-  // Anything left is in a cycle: contract it to one rank below the acyclic part.
-  for (const m of [...remaining].sort()) rank.set(m, depth);
+  const rank = new Map<string, number>();
+  for (const m of modules) {
+    const c = compOf.get(m);
+    rank.set(m, c === undefined ? 0 : (compRank[c] ?? 0));
+  }
   return rank;
 }
 ```
@@ -1692,7 +1756,7 @@ export function layerRanks(
 - [ ] **Step 6: Run the tests**
 
 Run: `pnpm --filter @octoshell/graph test -- spine layers`
-Expected: PASS, 6 tests.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 7: Commit**
 
@@ -1860,33 +1924,64 @@ In `packages/graph/src/spine.ts`, add the import and consult Graphify first. Ins
 import { readGraphify } from "./graphify.js";
 ```
 
-and at the start of the function body:
+Then restructure the function so **boundaries and edges are chosen independently**. Graphify supplies
+precise *import edges*; it says nothing about module boundaries, so it must not downgrade them.
+Replace the whole body of `declaredSpine` with:
 
 ```ts
-  // Tier 1: Graphify's tree-sitter output, if it happens to be there.
-  const probe = twoSegmentModule;
-  const gfy = readGraphify(repoRoot, probe);
-  if (gfy && gfy.length > 0) {
-    const modules = [...new Set(files.map(probe))].sort();
-    return { source: "graphify", modules, moduleOf: probe, imports: gfy };
+export function declaredSpine(repoRoot: string, files: string[]): Spine {
+  // 1. Pick the best available module BOUNDARY.
+  const roots = workspaceRoots(repoRoot);
+  const manifestBased = roots.length > 1 || (roots.length === 1 && roots[0] !== ".");
+
+  let moduleOf: (path: string) => string;
+  if (manifestBased) {
+    const sorted = [...roots].sort((a, b) => b.length - a.length);
+    moduleOf = (path: string): string =>
+      sorted.find((r) => path === r || path.startsWith(`${r}/`)) ?? twoSegmentModule(path);
+  } else {
+    moduleOf = twoSegmentModule;
   }
+
+  // 2. Independently, pick the best available EDGE source. Graphify only wins
+  //    on edges — using its presence to also downgrade boundaries to the crude
+  //    two-segment heuristic would make the highest-fidelity tier produce the
+  //    worst module names in any repo whose packages sit deeper than two
+  //    segments (`services/team-a/api-gateway`).
+  const imports = readGraphify(repoRoot, moduleOf) ?? [];
+  const source: Spine["source"] =
+    imports.length > 0 ? "graphify" : manifestBased ? "manifests" : "directories";
+
+  const modules = [...new Set(files.map(moduleOf))].sort();
+  return { source, modules, moduleOf, imports };
+}
 ```
 
 - [ ] **Step 5: Add the precedence test to `spine.test.ts`**
 
 ```ts
-it("prefers graphify output over manifests when present", () => {
+it("takes edges from graphify while keeping manifest boundaries", () => {
   const root = repoWith({
-    "pnpm-workspace.yaml": "packages:\n  - 'packages/*'\n",
-    "packages/one/package.json": '{"name":"one"}',
+    "pnpm-workspace.yaml": "packages:\n  - 'services/*'\n",
+    "services/team-a/package.json": '{"name":"a"}',
+    "services/team-b/package.json": '{"name":"b"}',
     "graphify-out/graph.json": JSON.stringify({
-      nodes: [{ id: "1", file: "packages/one/a.ts" }, { id: "2", file: "packages/two/b.ts" }],
+      nodes: [
+        { id: "1", file: "services/team-a/src/x.ts" },
+        { id: "2", file: "services/team-b/src/y.ts" },
+      ],
       edges: [{ source: "1", target: "2", type: "imports" }],
     }),
   });
-  const spine = declaredSpine(root, ["packages/one/a.ts", "packages/two/b.ts"]);
+  const spine = declaredSpine(root, [
+    "services/team-a/src/x.ts",
+    "services/team-b/src/y.ts",
+  ]);
   expect(spine.source).toBe("graphify");
   expect(spine.imports.length).toBeGreaterThan(0);
+  // Boundaries still come from the manifest, NOT the two-segment fallback:
+  // "services/team-a", never "services/team".
+  expect(spine.moduleOf("services/team-a/src/x.ts")).toBe("services/team-a");
 });
 ```
 
@@ -2110,22 +2205,34 @@ export interface Analysis {
 export interface AnalyzeOptions {
   /** Reference time for decay. Passed in for determinism. */
   now: number;
-  /** Previous run's clusters, read back from the committed artifact. */
-  previousClusters?: Map<number, string[]>;
+  /** Passed straight through to `git log --since`. */
+  since?: string;
 }
 
 export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions): {
   analysis: Analysis;
   edges: Edge[];
   files: string[];
+  spine: Spine;
 } {
-  const commits = harvest(repoRoot, { maxCommitFiles: config.maxCommitFiles });
+  const commits = harvest(repoRoot, {
+    maxCommitFiles: config.maxCommitFiles,
+    since: opts.since,
+  });
   const table = countPairs(commits, { now: opts.now, halfLifeDays: config.halfLifeDays });
   const edges = weighEdges(table, { minSupport: config.minSupport });
 
   const hubIds = detectHubs(edges, table.files.length, { zThreshold: config.hubZThreshold });
-  const bridgedEdges = bridgeComponents(edges, table.files);
-  const synthetic = bridgedEdges.length - edges.length;
+
+  // Bridge the edge set that clustering will ACTUALLY see. A hub, by
+  // definition, touches much of the graph, so it is often the only thing
+  // holding two regions in one component. Bridging before hub removal would
+  // see a connected graph, add nothing, and then louvain would strip the hub
+  // edges and disconnect those regions anyway — reintroducing the long tail of
+  // junk single-file modules that A5e exists to prevent.
+  const clusterable = edges.filter((e) => !hubIds.has(e.a) && !hubIds.has(e.b));
+  const bridgedEdges = bridgeComponents(clusterable, table.files);
+  const synthetic = bridgedEdges.length - clusterable.length;
 
   const partition = louvain(bridgedEdges, { exclude: hubIds });
   const byCommunity = new Map<number, number[]>();
@@ -2141,22 +2248,60 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
     : rollUp(edges, table.files, spine.moduleOf);
   const ranks = layerRanks(spine.modules, spine.imports);
 
-  const modules: ModuleSummary[] = [...byCommunity.entries()]
-    .sort((a, b) => b[1].length - a[1].length || a[0] - b[0])
-    .map(([comm, members], i) => {
-      const names = nameCluster(members, bridgedEdges, table.files, 1);
-      const primary = names[0] ?? `cluster-${comm}`;
-      const name = spine.moduleOf(primary);
-      return {
-        id: i,
-        name,
-        members: members
-          .map((n) => table.files[n])
-          .filter((p): p is string => p !== undefined)
-          .sort(),
-        layer: ranks?.get(name) ?? null,
-      };
-    });
+  // A4, second half: hubs were excluded from clustering, now reattach them by
+  // plurality vote so real files do not silently vanish from the map.
+  const homeOf = new Map<number, number>();
+  for (const hub of hubIds) {
+    const votes = new Map<number, number>();
+    for (const e of edges) {
+      const other = e.a === hub ? e.b : e.b === hub ? e.a : -1;
+      if (other === -1 || hubIds.has(other)) continue;
+      const comm = partition.get(other);
+      if (comm === undefined) continue;
+      votes.set(comm, (votes.get(comm) ?? 0) + Math.max(0, e.npmi));
+    }
+    let best = -1;
+    let bestWeight = -1;
+    for (const [comm, w] of [...votes].sort((x, y) => x[0] - y[0])) {
+      if (w > bestWeight) {
+        best = comm;
+        bestWeight = w;
+      }
+    }
+    if (best !== -1) homeOf.set(hub, best);
+  }
+
+  const pathsOf = (ids: number[]): string[] =>
+    ids
+      .map((n) => table.files[n])
+      .filter((p): p is string => p !== undefined)
+      .sort();
+
+  // Name each community by its most central member, mapped through the spine.
+  // Two communities can resolve to the same declared module — which is the
+  // EXPECTED case, since declared and discovered structure disagreeing is the
+  // whole premise — so merge them rather than emitting duplicate headings.
+  const merged = new Map<string, number[]>();
+  for (const [comm, members] of [...byCommunity.entries()].sort(
+    (a, b) => b[1].length - a[1].length || a[0] - b[0],
+  )) {
+    const primary = nameCluster(members, bridgedEdges, table.files, 1)[0];
+    const name = primary === undefined ? `cluster-${comm}` : spine.moduleOf(primary);
+    const attached = [...members];
+    for (const [hub, home] of homeOf) if (home === comm) attached.push(hub);
+    const existing = merged.get(name);
+    if (existing) existing.push(...attached);
+    else merged.set(name, attached);
+  }
+
+  const modules: ModuleSummary[] = [...merged.entries()]
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+    .map(([name, members], i) => ({
+      id: i,
+      name,
+      members: pathsOf(members),
+      layer: ranks?.get(name) ?? null,
+    }));
 
   return {
     analysis: {
@@ -2165,20 +2310,20 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
       spineSource: spine.source,
       modules,
       moduleEdges,
-      hubs: [...hubIds]
-        .map((i) => table.files[i])
-        .filter((p): p is string => p !== undefined)
-        .sort(),
+      hubs: pathsOf([...hubIds]),
       bridged: synthetic,
       clusterIds: { kept: 0, fresh: modules.length },
     },
     edges,
     files: table.files,
+    spine,
   };
 }
 ```
 
-Note `clusterIds` is filled properly in Task 12's wiring; here it reports every cluster as fresh because no previous artifact has been read yet.
+Add `import type { Spine } from "./spine.js";` to the imports.
+
+`clusterIds` is a placeholder here — the stability remap runs in **Task 15**'s `cli.ts` `map` handler, against the artifact on disk, and overwrites it. `analyze()` itself is stateless.
 
 - [ ] **Step 6: Implement the renderer**
 
@@ -2218,7 +2363,8 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     edgeLines.push(`- ${e.from} → ${e.to} (${e.weight.toFixed(2)})`);
   }
 
-  // Trim from the tail: modules are already ordered most-central first.
+  // Trim from the tail. Modules are ordered by size (see analyze.ts), so the
+  // largest survive truncation; this is not a centrality ranking.
   let kept = lines.length;
   let out = "";
   for (;;) {
@@ -2645,7 +2791,7 @@ describe("test files in the pipeline", () => {
 - [ ] **Step 8: Run the tests**
 
 Run: `pnpm --filter @octoshell/graph test -- noise drift`
-Expected: PASS, 15 tests.
+Expected: PASS, 17 tests.
 
 - [ ] **Step 9: Commit**
 
@@ -2964,23 +3110,45 @@ import { doctor, exitCode } from "./doctor.js";
 import { drift } from "./drift.js";
 import { impact } from "./impact.js";
 import { renderMap } from "./render.js";
-import { declaredSpine } from "./spine.js";
 import { remapClusters } from "./stability.js";
 
-function numericFlag(argv: string[], name: string): number | undefined {
-  const i = argv.indexOf(`--${name}`);
-  if (i === -1) return undefined;
-  const raw = argv[i + 1];
-  const n = raw === undefined ? NaN : Number(raw);
-  return Number.isFinite(n) ? n : undefined;
+/**
+ * Flag names are declared explicitly, NOT derived from field names. Deriving
+ * them produced `--half-life-days` while the spec documents `--half-life`, and
+ * an unrecognised flag is silently ignored — so a CI script following the spec
+ * would quietly run with different settings and churn the artifact on every
+ * run, which is exactly what the committed config exists to prevent.
+ */
+const FLAGS: Array<[flag: string, key: keyof Config]> = [
+  ["--max-commit-files", "maxCommitFiles"],
+  ["--half-life", "halfLifeDays"],
+  ["--min-support", "minSupport"],
+  ["--min-commits", "minCommits"],
+  ["--budget", "budgetTokens"],
+];
+
+const KNOWN = new Set([...FLAGS.map(([f]) => f), "--out", "--since", "--json"]);
+
+function valueAfter(argv: string[], flag: string): string | undefined {
+  const i = argv.indexOf(flag);
+  return i === -1 ? undefined : argv[i + 1];
 }
 
-function overridesFrom(argv: string[]): Partial<Config> {
+/** Reject unknown `--flags` loudly rather than ignoring them. */
+export function unknownFlags(argv: string[]): string[] {
+  return argv.filter((a) => a.startsWith("--") && !KNOWN.has(a));
+}
+
+export function overridesFrom(argv: string[]): Partial<Config> {
   const out: Partial<Config> = {};
-  for (const key of ["maxCommitFiles", "halfLifeDays", "minSupport", "minCommits", "budgetTokens"] as const) {
-    const v = numericFlag(argv, key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`));
-    if (v !== undefined) out[key] = v;
+  for (const [flag, key] of FLAGS) {
+    const raw = valueAfter(argv, flag);
+    if (raw === undefined) continue;
+    const n = Number(raw);
+    if (Number.isFinite(n)) out[key] = n;
   }
+  const dir = valueAfter(argv, "--out");
+  if (dir !== undefined) out.out = dir;
   return out;
 }
 
@@ -2988,7 +3156,15 @@ export async function main(argv: string[]): Promise<number> {
   const command = argv[0] ?? "map";
   const repoRoot = process.cwd();
   const json = argv.includes("--json");
+
+  const bad = unknownFlags(argv);
+  if (bad.length > 0) {
+    process.stderr.write(`unknown flag(s): ${bad.join(", ")}\n`);
+    return 2;
+  }
+
   const config = loadConfig(repoRoot, overridesFrom(argv));
+  const since = valueAfter(argv, "--since");
 
   if (command === "doctor") {
     const report = doctor(repoRoot, config);
@@ -3006,7 +3182,7 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   const now = Number(process.env.OCTOGRAPH_NOW ?? Date.now());
-  const { analysis, edges, files } = analyze(repoRoot, config, { now });
+  const { analysis, edges, files, spine } = analyze(repoRoot, config, { now, since });
 
   if (command === "impact") {
     const target = argv.find((a) => !a.startsWith("--") && a !== "impact");
@@ -3023,7 +3199,9 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   if (command === "drift") {
-    const rows = drift(edges, files, declaredSpine(repoRoot, files));
+    // Uses the spine `analyze` already computed — one filesystem walk, and one
+    // Spine, so a future fix to declaredSpine cannot reach only half the calls.
+    const rows = drift(edges, files, spine);
     process.stdout.write(
       json ? JSON.stringify(rows, null, 2) + "\n"
            : rows.map((r) => `${r.npmi.toFixed(3)}  ${r.a}  <->  ${r.b}`).join("\n") + "\n",
@@ -3082,7 +3260,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { main } from "../src/cli.js";
-import { buildRepo } from "./fixtures/repo.js";
+import { appendCommits, buildRepo } from "./fixtures/repo.js";
 
 async function inRepo(repo: string, argv: string[]): Promise<number> {
   const cwd = process.cwd();
@@ -3114,7 +3292,108 @@ describe("cli map", () => {
     const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
     expect(await inRepo(repo, ["doctor"])).not.toBe(0);
   });
+
+  it("rejects an unknown flag instead of silently ignoring it", async () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
+    expect(await inRepo(repo, ["map", "--half-life-days", "90"])).toBe(2);
+  });
+
+  it("applies documented numeric flags", async () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
+    // --min-commits 1 clears the degraded bar that this thin repo would fail.
+    expect(await inRepo(repo, ["doctor", "--min-commits", "1"])).toBe(0);
+  });
 });
+
+/**
+ * THE test the spec calls the product's single point of failure.
+ *
+ * "map.md regenerates byte-identically from an unchanged commit" is far weaker
+ * than it sounds — any pure function satisfies it. The real risk is arbitrary
+ * Louvain relabelling on a graph that CHANGED, which would rewrite the whole
+ * artifact and destroy the "architecture drift shows up in code review" premise.
+ * So this evolves the repo and asserts the diff stays local.
+ */
+describe("cluster-id stability across an evolving repo (A5b)", () => {
+  it("keeps ids for untouched modules and confines the diff to what changed", async () => {
+    process.env.OCTOGRAPH_NOW = String(Date.UTC(2026, 0, 2));
+
+    const commits = [];
+    for (let i = 0; i < 8; i++) commits.push({ files: [`alpha/a${i}.ts`, `alpha/b${i}.ts`] });
+    for (let i = 0; i < 8; i++) commits.push({ files: [`beta/c${i}.ts`, `beta/d${i}.ts`] });
+    const repo = buildRepo(commits);
+
+    expect(await inRepo(repo, ["map"])).toBe(0);
+    const out = join(repo, ".octograph");
+    const firstMap = readFileSync(join(out, "map.md"), "utf8");
+    const firstIds = JSON.parse(readFileSync(join(out, "graph.json"), "utf8")) as {
+      clusters: Record<string, string[]>;
+    };
+
+    // Grow ONLY beta. alpha is untouched and must keep its identity.
+    appendCommits(repo, [
+      { files: ["beta/e1.ts", "beta/e2.ts"] },
+      { files: ["beta/e2.ts", "beta/e3.ts"] },
+    ]);
+
+    expect(await inRepo(repo, ["map"])).toBe(0);
+    const secondIds = JSON.parse(readFileSync(join(out, "graph.json"), "utf8")) as {
+      clusters: Record<string, string[]>;
+    };
+
+    const idOfAlpha = (doc: { clusters: Record<string, string[]> }) =>
+      Object.entries(doc.clusters).find(([, members]) =>
+        members.some((m) => m.startsWith("alpha/")),
+      )?.[0];
+
+    expect(idOfAlpha(secondIds)).toBe(idOfAlpha(firstIds));
+
+    // The rendered diff must be confined to the module that actually changed.
+    const secondMap = readFileSync(join(out, "map.md"), "utf8");
+    const changed = diffLines(firstMap, secondMap);
+    expect(changed.length).toBeGreaterThan(0); // something DID change
+    expect(changed.every((l) => !l.includes("alpha"))).toBe(true);
+  });
+});
+
+/** Lines present in one rendering but not the other, either direction. */
+function diffLines(a: string, b: string): string[] {
+  const bl = new Set(b.split("\n"));
+  const al = new Set(a.split("\n"));
+  return [
+    ...a.split("\n").filter((l) => l.trim() && !bl.has(l)),
+    ...b.split("\n").filter((l) => l.trim() && !al.has(l)),
+  ];
+}
+```
+
+- [ ] **Step 5b: Define the package's public surface**
+
+`CLAUDE.md`: *"Packages export their public API through `src/index.ts`."* Replace
+`packages/graph/src/index.ts` with the full surface — a consumer, and the later board-overlay plan,
+need all of it:
+
+```ts
+export { analyze, type Analysis, type AnalyzeOptions, type ModuleSummary } from "./analyze.js";
+export { readArtifact, resolveOut, writeArtifact, type StoredGraph } from "./artifact.js";
+export { countPairs, type DecayOptions, type PairStat, type PairTable } from "./cochange.js";
+export { bridgeComponents, findComponents } from "./components.js";
+export { DEFAULTS, loadConfig, type Config } from "./config.js";
+export { doctor, exitCode, type Check, type Report, type Status } from "./doctor.js";
+export { drift, type DriftRow } from "./drift.js";
+export { readGraphify } from "./graphify.js";
+export { harvest, type HarvestOptions } from "./harvest.js";
+export { detectHubs, type HubOptions } from "./hubs.js";
+export { impact, type ImpactRow } from "./impact.js";
+export { layerRanks } from "./layers.js";
+export { autoResolution, louvain, type LouvainOptions } from "./louvain.js";
+export { classifyPair, isTestPath, type PairClass } from "./noise.js";
+export { estimateTokens, renderMap } from "./render.js";
+export { nameCluster, pageRank, rollUp, type ModuleEdge } from "./rollup.js";
+export { declaredSpine, type Spine } from "./spine.js";
+export { jaccard, remapClusters, type RemapOptions } from "./stability.js";
+export type { Commit } from "./types.js";
+export { weighEdges, type Edge, type WeightOptions } from "./weights.js";
 ```
 
 - [ ] **Step 6: Add the bin entry and the bundler**
@@ -3211,6 +3490,44 @@ git commit -m "feat(graph): cli, committed artifact round-trip, and pack bundle"
 - **`setup`** — the interactive installer. The only component that mutates the user's machine, so it gets its own review.
 - **Extension bridge** — `src/host/octograph.ts`, the two VS Code commands, and the `primer.mjs` injection. Different package, different reviewers.
 
-## Open question for review
+## Tech-lead review — resolutions
 
-`analyze()` currently recomputes the spine inside `cli.ts` for `drift` (it calls `declaredSpine` a second time). That is a wasted filesystem walk. It is left as-is rather than prematurely restructured, because Task 13's tests pin the `drift(edges, files, spine)` signature and threading the spine out of `analyze` changes Task 11's return type. Worth Rio's call on whether to fold `spine` into the `analyze` return before implementation starts.
+Reviewed by Rio, 2026-08-09. Two blocking and eight should-fix findings, all applied above.
+
+| # | Finding | Resolution |
+|---|---|---|
+| B1 | The A5b stability test the spec calls "the product's single point of failure" was never written. The existing "stable across two runs" test re-ran on an *unchanged* repo — a property any pure function satisfies. | Task 15 now has an integration test that evolves the repo and asserts untouched modules keep their ids and the `map.md` diff stays confined to the changed module. |
+| B2 | Hub reattachment (A4's second half) was never implemented, so hub files vanished from every module. | `analyze()` now reattaches each hub by weighted plurality vote after clustering. |
+| S1 | `bridgeComponents` ran on the pre-hub-removal edge set, so it saw a connected graph, added nothing, and Louvain then disconnected regions whose only link was through a hub. | Bridging now runs on the edge set clustering actually sees. |
+| S2 | `overridesFrom` derived `--half-life-days` from the field name while the spec documents `--half-life`; unknown flags were silently ignored, and `--since`/`--out` were unwired. | Flag names are now declared explicitly, unknown flags exit 2, and both missing flags are wired. |
+| S3 | `layerRanks` flattened a cycle **and everything downstream of it** into one rank. *Verified empirically:* `a→b, b↔c, c→d` gave `d` rank 1, identical to the cycle. | Rewritten with Kosaraju SCC contraction. Re-verified: `a=0, b=c=1, d=2`. |
+| S4 | Two communities resolving to the same declared module produced duplicate headings — the *expected* case, since declared ≠ discovered is the premise. | Communities resolving to one name are merged. |
+| S5 | The Graphify tier discarded manifest boundaries, so the highest-fidelity input produced the crudest module names. | Boundaries and edges are now chosen independently; Graphify supplies only edges. |
+| S6 | `index.ts`'s public surface was unspecified despite the project convention. | Enumerated in Task 15, Step 5b. |
+| S7 | Task 13 claimed 15 tests; there are 17. | Corrected. |
+| S8 | A comment attributed the cluster-id remap to Task 12 (the `impact` query) instead of Task 15. | Corrected. |
+
+**Open question — decided.** `analyze()` now returns `spine`, and `cli.ts`'s `drift` branch consumes
+it instead of calling `declaredSpine` a second time. Rio's reasoning: it is a cheap additive change
+now and expensive to retrofit, it removes a duplicate filesystem walk that got more expensive once
+the Graphify read landed, and — the real point — one `Spine` computed once means a future fix to
+`declaredSpine` cannot reach only half the call sites. The dead `AnalyzeOptions.previousClusters`
+field is dropped as part of the same change; stability lives in `cli.ts` against the on-disk
+artifact.
+
+**Verified by Rio, do not change:** the nPMI formula and its `denom === 0` guard; `remapClusters`'
+uniqueness guarantee; `louvain`'s modularity-gain formula and its order-independent tie-break (all
+three hand-traced). Also confirmed: `vitest.workspace.ts`, `turbo.json` and `eslint.config.js` are
+glob-based over `packages/*`, so **no root config changes are needed** for this package.
+
+## Follow-ups (deliberately not in this plan)
+
+- **`louvain()` is single-level** — the aggregation/coarsening phase of canonical Louvain is not
+  implemented. It converges correctly on the test cases and is a legitimate v1 simplification, but
+  it is more prone to local optima on large hierarchical graphs than a multi-level implementation.
+  Noted so nobody assumes parity with the `wikis` reference or networkx.
+- **`pnpm coverage`** at the root is hardcoded to `coverage:board` + `coverage:pack` and will not
+  pick up `packages/graph`. CI runs only lint/build/typecheck/test today, so this gates nothing —
+  but it should be extended if coverage enforcement is wanted here.
+- **`remapClusters` is greedy, not globally optimal.** A bipartite matching (Hungarian) could
+  occasionally find a better overall assignment. Named trade-off, not an oversight.
