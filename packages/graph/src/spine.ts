@@ -82,6 +82,45 @@ function isDirectory(path: string): boolean {
   }
 }
 
+/** Single-package manifests that mark a directory as its own module, if found in bulk. */
+const MANIFEST_MARKERS = ["go.mod", "Cargo.toml", "pyproject.toml"];
+
+/** Directories the walk never descends into, even bounded by depth. */
+const IGNORED_DIR_NAMES = new Set(["node_modules", "vendor", ".git", "dist", "build", "target"]);
+
+/** How many directory levels below the repo root {@link discoverManifestRoots} will look. */
+const MANIFEST_SCAN_MAX_DEPTH = 3;
+
+/**
+ * Directories that carry a `go.mod`, `Cargo.toml`, or `pyproject.toml`, found by
+ * walking the tree (bounded depth, common noise directories skipped).
+ *
+ * A lone root-level marker is a fact about the repo, not a boundary set: every
+ * file would map to `"."`, `rollUp` would drop every edge as intra-module (all
+ * of them intra-`"."`), and the map would render one module with no
+ * dependencies. Only report roots once there are two or more real modules to
+ * draw a boundary between — callers ignore a single hit.
+ */
+function discoverManifestRoots(repoRoot: string): string[] {
+  const found: string[] = [];
+
+  function walk(relDir: string, depth: number): void {
+    const abs = insideRepo(repoRoot, relDir);
+    if (abs === null) return;
+    if (MANIFEST_MARKERS.some((marker) => existsSync(join(abs, marker)))) found.push(relDir);
+    if (depth >= MANIFEST_SCAN_MAX_DEPTH) return;
+    for (const entry of readdirSafe(abs)) {
+      if (entry.startsWith(".") || IGNORED_DIR_NAMES.has(entry)) continue;
+      if (isDirectory(join(abs, entry))) {
+        walk(relDir === "." ? entry : `${relDir}/${entry}`, depth + 1);
+      }
+    }
+  }
+
+  walk(".", 0);
+  return found;
+}
+
 /** Directories a workspace manifest names, e.g. `packages/*` -> packages/one, packages/two. */
 function workspaceRoots(repoRoot: string): string[] {
   const globs: string[] = [];
@@ -123,9 +162,11 @@ function workspaceRoots(repoRoot: string): string[] {
     }
   }
 
-  // Single-package repos with their own manifest still count as one module.
-  for (const marker of ["go.mod", "Cargo.toml", "pyproject.toml"]) {
-    if (out.length === 0 && existsSync(join(repoRoot, marker))) out.push(".");
+  // An explicit workspace manifest already answered the question; only fall
+  // back to marker discovery when it found nothing.
+  if (out.length === 0) {
+    const markerRoots = discoverManifestRoots(repoRoot);
+    if (markerRoots.length > 1) out.push(...markerRoots);
   }
 
   return [...new Set(out)].sort();

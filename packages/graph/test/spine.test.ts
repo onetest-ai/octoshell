@@ -103,4 +103,77 @@ describe("declaredSpine", () => {
     expect(spine.source).toBe("directories");
     expect(spine.modules).toEqual(["src/a"]);
   });
+
+  it("discovers two Go modules recursively and treats their directories as module boundaries", () => {
+    const root = repoWith({
+      "alpha/go.mod": "module alpha\n",
+      "beta/go.mod": "module beta\n",
+    });
+    const spine = declaredSpine(root, ["alpha/pkg/server/main.go", "beta/cmd/main.go"]);
+    expect(spine.source).toBe("manifests");
+    expect(spine.moduleOf("alpha/pkg/server/main.go")).toBe("alpha");
+    expect(spine.moduleOf("beta/cmd/main.go")).toBe("beta");
+  });
+
+  it("discovers two Rust crates recursively and treats their directories as module boundaries", () => {
+    const root = repoWith({
+      "crates/alpha/Cargo.toml": '[package]\nname = "alpha"\n',
+      "crates/beta/Cargo.toml": '[package]\nname = "beta"\n',
+    });
+    const spine = declaredSpine(root, ["crates/alpha/src/lib.rs", "crates/beta/src/lib.rs"]);
+    expect(spine.source).toBe("manifests");
+    expect(spine.moduleOf("crates/alpha/src/lib.rs")).toBe("crates/alpha");
+    expect(spine.moduleOf("crates/beta/src/lib.rs")).toBe("crates/beta");
+  });
+
+  it("discovers two Python packages recursively and treats their directories as module boundaries", () => {
+    const root = repoWith({
+      "apps/alpha/pyproject.toml": '[project]\nname = "alpha"\n',
+      "apps/beta/pyproject.toml": '[project]\nname = "beta"\n',
+    });
+    const spine = declaredSpine(root, ["apps/alpha/src/main.py", "apps/beta/src/main.py"]);
+    expect(spine.source).toBe("manifests");
+    expect(spine.moduleOf("apps/alpha/src/main.py")).toBe("apps/alpha");
+    expect(spine.moduleOf("apps/beta/src/main.py")).toBe("apps/beta");
+  });
+
+  it("treats a single root-level manifest marker as a fact, not a boundary set", () => {
+    // A lone `go.mod` at the repo root would otherwise map every file to ".",
+    // which makes `rollUp` drop every edge as intra-module and renders a
+    // one-node map with no dependencies. This is the deliberate behaviour —
+    // don't "fix" it back to pushing "." as a module root.
+    const root = repoWith({ "go.mod": "module solo\n" });
+    const spine = declaredSpine(root, ["main.go", "internal/util.go"]);
+    expect(spine.source).toBe("directories");
+  });
+
+  it("lets an explicit workspace manifest win over a nested go.mod", () => {
+    const root = repoWith({
+      "pnpm-workspace.yaml": "packages:\n  - 'packages/*'\n",
+      "packages/one/package.json": '{"name":"one"}',
+      "services/backend/api/go.mod": "module api\n",
+      "services/backend/api/main.go": "",
+    });
+    const spine = declaredSpine(root, [
+      "packages/one/a.ts",
+      "services/backend/api/main.go",
+    ]);
+    expect(spine.source).toBe("manifests");
+    expect(spine.moduleOf("packages/one/a.ts")).toBe("packages/one");
+    // The nested go.mod must not carve out its own boundary here — the file
+    // falls through to the two-segment convention, not "services/backend/api".
+    expect(spine.moduleOf("services/backend/api/main.go")).toBe("services/backend");
+  });
+
+  it("ignores a manifest marker inside node_modules or vendor", () => {
+    const root = repoWith({
+      "node_modules/some-dep/go.mod": "module dep\n",
+      "vendor/thing/Cargo.toml": '[package]\nname = "thing"\n',
+      "services/a/go.mod": "module a\n",
+    });
+    // Only one marker outside the ignored directories, so this must still
+    // read as a single module, not a boundary set.
+    const spine = declaredSpine(root, ["services/a/main.go"]);
+    expect(spine.source).toBe("directories");
+  });
 });
