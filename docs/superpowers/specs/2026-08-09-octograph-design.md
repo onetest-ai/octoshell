@@ -13,14 +13,44 @@ slow, token-expensive, and it only ever recovers what the source text *states*.
 
 Two categories of coupling are invisible to any source-text analysis:
 
-1. **Mirrored implementations.** In this very repo, `packages/board/src/entity-schema.ts` and
-   `apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/entity-io.mjs`
-   implement the same on-disk schema twice. They share **no import edge and never can** — the
+1. **Contracts across a boundary no import crosses.** Two verified cases:
+
+   **Cross-service (primary evidence).** In `octoweb` — 1,667 commits, 865 analysed —
+   `backend/agents/src/octoweb/agents/clients/conversations.py` and
+   `backend/conversations/src/octoweb/conversations/api/internal.py` co-change **8 times against
+   denominators of 11 and 12** (confidence 0.67, nPMI 0.845), across different top-level services.
+   They communicate over HTTP via `httpx` with a `base_url`; `octoweb.conversations` is imported
+   **nowhere** in `backend/agents/src/`. There is no AST-visible edge and there cannot be. This is
+   the canonical microservice failure — change the endpoint, forget the client — and no
+   source-text tool can see it.
+
+   **Mirrored implementations (secondary).** In this repo, `packages/board/src/entity-schema.ts`
+   and `apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/entity-io.mjs`
+   implement the same on-disk schema twice, sharing **no import edge and never able to** — the
    pack script is deliberately dependency-free. The coupling exists only as a comment. Breaking
-   the pair destroyed a campaign's decision record on 2026-07-27.
-   Git says: 4 commits touch one, 3 touch the other, **3 touch both** — confidence 1.0.
+   the pair destroyed a campaign's decision record on 2026-07-27. Git: 4 commits touch one, 3 the
+   other, **3 touch both**.
+   *Caveat, stated honestly:* this repo has 37 commits, an order of magnitude under the ~200 bar
+   `doctor` itself enforces, and a 3-of-3 "confidence 1.0" is unremarkable at that denominator. It
+   is a real example, not evidence of prevalence — which is why the octoweb case leads.
+
 2. **Intent.** Which mission owns a module; which acceptance criterion a file exists to satisfy;
    which external ticket it traces to. Nothing in the source records this.
+
+### What the evidence also showed — the signal hierarchy
+
+Prototyping the harvest against octoweb (1,667 commits) and QloApps (5,362) revealed that raw
+co-change strength is **dominated by couplings nobody needs reported**, in this order:
+
+| Rank | Pair type | Example | Verdict |
+|---|---|---|---|
+| 1 | test ↔ subject | `api/search.py` ↔ `tests/test_search_api.py` | Real, but derivable from naming. Excluded from clustering (A8); **down-ranked in `drift`**. |
+| 2 | manifest ↔ lockfile | `package.json` ↔ `pnpm-lock.yaml` (nPMI 1.000, conf 1.00) | Mechanical. **Must be filtered or it tops every ranking.** |
+| 3 | intra-module siblings | `db/repository.py` ↔ `schemas.py` | Real, but the declared spine already knows. |
+| 4 | **cross-boundary contracts** | the `httpx` client ↔ API pair above | **The signal `drift` exists to surface.** |
+
+This is a requirement, not a curiosity: without a noise floor that suppresses ranks 1–3, the
+finding that matters is buried. See A6.
 
 Meanwhile the Octobots board is **transient**: a task exists to be executed and is then dead
 weight, because nothing reads it after its PR merges. It has no read path after completion.
@@ -55,8 +85,8 @@ These are load-bearing. Each one is a tarpit we are explicitly declining to ente
 | D4 | Depend on Graphify? | **Optional file read** | Present → tree-sitter-precise import edges for free. Absent → fall back to manifests + directories. Never required. |
 | D5 | Where does it live? | **Separate repo, bridged** | Mirrors the `sdlc-skills` precedent: Octobots is a thin launcher, the library owns the truth. |
 | D6 | Library scope | **Standalone; board is an overlay** | Must run usefully in a repo with no `.octobots/`. This is an *architectural* constraint, not a release phase. |
-| D7 | Output location | **`.octobots/graph/` when a board exists**, neutral dir otherwise | Settled by precedent: `.octobots/` already holds five non-entity subdirectories (`tokenomics/`, `hooks/`, `teams/`, `pastes/`, `.trash/`). `board-model.ts:89` skips directories lacking a `<kind>.yaml`, so artifacts there are invisible to the parser. Never *creates* `.octobots/`. |
-| D8 | Release shape | **v1 and v2 planned together** | Early adopters are Octobots users; they all have boards. Shipping the standalone half alone would test the least-used surface first. |
+| D7 | Output location | **`.octobots/graph/` when a board exists**, neutral dir otherwise | Settled by precedent: `.octobots/` already holds five non-entity subdirectories (`tokenomics/`, `hooks/`, `teams/`, `pastes/`, `.trash/`). The parser cannot see them at all — `board-model.ts:83` goes straight to `join(root, "campaigns")` and **never enumerates `.octobots/`'s top-level children**. (An earlier draft cited `board-model.ts:89`, the per-campaign-folder skip; the conclusion was right, the mechanism named was not, and the real one is stronger.) Never *creates* `.octobots/`. |
+| D8 | Release shape | **Designed together; shipped along seams** | Early adopters are Octobots users with boards, so designing the overlay late would let the core engine's contract ignore it. That argues for designing as one — it does **not** argue for shipping atomically. The plan should split along the seams the input diagram already draws: (a) core engine — `map`, `impact`, `doctor` from git alone; (b) `drift` + the declared-spine precedence chain; (c) board overlay — `own`, `conflicts`; (d) `setup`, the only component that mutates the user's machine and so deserves its own review; (e) the extension bridge, which lives in a different repo with different reviewers and tests. |
 | D9 | Language | **Node, zero runtime deps** | Matches `npx github:` bridging, matches the pack's vendored `.mjs` convention, needs no venv or `uv`. |
 | D10 | Detect installed state? | **Yes — `doctor`**, deviating from sdlc-skills' Q4 "pure stateless launcher" | sdlc-skills installs files; success or failure is visible in the terminal. Octograph's failure mode is **silent degradation** — absent Graphify just makes `drift` blunter, thin history just makes the map sparse. Nothing announces itself, and a user cannot trace "this map looks useless" back to its cause. Detection is warranted exactly where failure is quiet. |
 | D11 | Where do health checks live? | **In octograph (`doctor`), not the extension** | Keeps the launcher thin per D5, and CLI users get identical diagnostics. The extension runs `doctor` and shows the terminal; it never re-implements the checks. |
@@ -245,14 +275,37 @@ Assertion strength depends on the spine: with Graphify, "nothing imports across 
 claim. Without it, the claim weakens to "they sit in different declared modules." `drift` degrades
 in precision, not in availability.
 
+**The noise floor is mandatory.** Empirically (see Problem § signal hierarchy), the top of an
+unfiltered ranking is entirely couplings the user already knows about. `drift` must suppress, in
+this order:
+
+1. **Test ↔ subject** — down-ranked, not dropped; recoverable from naming convention (A8).
+2. **Mechanical pairs** — manifest ↔ lockfile (`package.json`↔`pnpm-lock.yaml`,
+   `Cargo.toml`↔`Cargo.lock`, `pyproject.toml`↔`uv.lock`, …), generated-file ↔ source. A
+   configurable list, defaults shipped.
+3. **Intra-module pairs** — where the declared spine already asserts the relationship.
+
+What survives is cross-boundary coupling with no declared edge. A `drift` run whose top result is
+`package.json` ↔ a lockfile has failed, however high its nPMI.
+
 ### A7 — Board overlay
 
 - **Provenance** — task ↔ file from worklog + git. Rolled up to **mission ↔ module** ownership,
   which is stabler than task↔file because modules persist while files churn.
-- **Cold start** — a task that has never run has no commits. Attach it by lexical match of its
-  acceptance-criteria text against file paths and identifiers (tf-idf over identifier tokens).
-  This is the non-vector tier of `wikis`' three-tier orphan cascade; the vector tier is dropped
-  because it would require embeddings.
+- **Cold start is the modal case, not the fallback.** A task that has never run has no commits.
+  Attach it by lexical match of its acceptance-criteria text against file paths and identifiers
+  (tf-idf over identifier tokens) — the non-vector tier of `wikis`' three-tier orphan cascade, with
+  the vector tier dropped because it would need embeddings.
+
+  **This is the day-one path, not an edge case.** D8 targets Octobots users because "they all have
+  boards" — but a board accumulates worklog entries only as missions run. Verified on this repo,
+  2026-08-09: `.octobots/tokenomics/worklog.jsonl` holds **exactly one entry, mission-level**
+  (`{"mission":"M1",…}`, no `task` field), against 37 commits. And
+  `packages/tokenomics/src/estimates.ts:152` skips mission-level entries for task attribution, so
+  the usable task↔file provenance here is **zero**. Any repo adopting Octobots starts here.
+  Therefore `own` and `conflicts` must be *specified and tested* against a near-empty worklog, and
+  must state which mode produced an answer — `provenance` (from git) or `predicted` (from lexical
+  match) — never blurring the two.
 - **Conflict prediction** — score two tasks' predicted file sets by summed nPMI rather than raw
   overlap. Raw overlap is useless: every task touches `package.json`. This is what could let
   `workflow-designer` prove two tasks are disjoint and fan them out, replacing the current
@@ -299,10 +352,41 @@ Narrow on purpose. The compression *is* the product; a wide surface dilutes it.
 | `drift` | no | Hidden coupling and boundary erosion (A6). |
 | `own [<path>]` | **yes** | Which mission owns this module; which criterion this file exists to satisfy; linked external ticket. |
 | `conflicts <taskA> <taskB>` | **yes** | Collision score and the specific contended files. |
-| `doctor` | no | Preflight and postflight diagnostics (see below). Exit non-zero when a **required** input is missing; exit zero with warnings when an optional one is. |
+| `doctor` | no | Preflight and postflight diagnostics (see below). Three-state exit, defined below. |
 
 Global flags: `--out`, `--since`, `--max-commit-files`, `--half-life`, `--min-support`,
-`--budget`, `--json`.
+`--min-commits`, `--budget`, `--json`.
+
+### Who needs each command
+
+Stated explicitly, because a command without a named consumer is a command built for being
+interesting rather than needed.
+
+| Command | Consumer | Their need |
+|---|---|---|
+| `map` | Any agent landing in an unfamiliar repo | Orient before the first tool call, without thirty greps |
+| `impact` | A dev or `mission-execution` agent **before editing a file**; `mission-completion-gate` **choosing which tests to run** | "If I change this, what else moves?" — the question git blame can't answer |
+| `drift` | Tech lead in review; anyone auditing architecture | Catch the cross-boundary contract nobody imports (the octoweb case) |
+| `doctor` | Anyone whose output looks thin | Know *why* it's thin |
+| `own` | Reviewer or agent asking why code exists | Trace code to the criterion that motivated it |
+| `conflicts` | **Not yet established — see below** | — |
+
+**`conflicts` has no confirmed consumer.** Its rationale is conditional in its own description
+("this is what *could* let `workflow-designer` prove two tasks are disjoint"), and no
+`workflow-designer` requirement asks for it. Contrast `drift`, which is grounded in two verified
+incidents. It is retained here because the substrate makes it nearly free once `impact` exists —
+but it should be the **first thing cut** if the plan needs trimming, and it must not be built
+before `own` proves the board overlay works at all.
+
+### Configuration
+
+`map`/`drift` results depend on `--half-life`, `--min-support`, `--max-commit-files` and
+`--min-commits`. If a local run and a CI run use different values, the committed artifact churns on
+every CI run **regardless of A5b**, which would defeat the lockfile model entirely.
+
+So: an `octograph.json` at the repo root, committed, holding those values. CLI flags override it
+for experimentation; the artifact records which values produced it, and `doctor` warns when flags
+diverge from the committed config.
 
 ### `doctor` — the silent-degradation guard
 
@@ -328,7 +412,9 @@ octograph doctor
 
   Board overlay
   ✓ .octobots/           found
-  ✓ worklog.jsonl        142 entries
+  ⚠ worklog.jsonl        1 entry, mission-level — 0 usable task links
+                         → own/conflicts will answer in `predicted` mode
+                           (lexical), not `provenance` mode
   ✓ tasks with criteria  31
 
   Artifacts
@@ -347,7 +433,23 @@ bridged 4 disconnected components    cluster IDs: 12 kept, 2 new
 new IDs against an unchanged codebase means A5b regressed, and the committed artifact is about to
 churn.
 
-**Machine-readable:** `doctor --json` for CI, so a pipeline can fail on a degraded graph.
+**Three states, not two.** "Required input missing" and "optional input missing" do not cover the
+case the mockup itself shows: git history is *present but too thin to trust*. That is neither
+missing nor optional, and leaving it undefined would let two engineers ship opposite exit codes
+while CI-gating (below) depends on the distinction.
+
+| `status` | Meaning | Exit |
+|---|---|---|
+| `ok` | Every required input present and above threshold | 0 |
+| `degraded` | A required input is present but below threshold — **history depth < 200 analysable commits** (post mega-commit filtering) | **non-zero** |
+| `blocked` | A required input is absent — not a git repo, or no commits | non-zero |
+
+Missing **optional** inputs (Graphify, board, manifests) never change `status`; they are reported
+as warnings with their cost and fix. The 200-commit threshold is the one stated number that makes
+`degraded` checkable rather than a matter of taste; it is configurable via `--min-commits`.
+
+**Machine-readable:** `doctor --json` emits `status` plus per-input grades, so a pipeline can gate
+on a degraded graph.
 
 ---
 
@@ -359,6 +461,13 @@ churn.
 | `<out>/graph.json` | Machine-readable full graph |
 
 `<out>` resolves to `.octobots/graph/` when `.octobots/` exists, else `.octograph/`.
+
+**Both locations are meant to be committed**, for the same reasons below — the argument is about
+what the artifact *is*, not where it sits. `setup` offers to append the chosen `<out>` to
+`.gitignore` **only if the user declines**, and says plainly what they give up. If a board appears
+later and `<out>` moves from `.octograph/` to `.octobots/graph/`, `setup` detects the stale
+directory, migrates the artifacts (preserving cluster IDs so A5b's history survives the move), and
+removes the old path.
 
 **Committed to git, deliberately.** The consequences are the point:
 
@@ -395,7 +504,11 @@ itself, then builds and prints the postflight. The extension only opens a termin
 Safety rules:
 
 - **Prompt before installing anything.** Never install as a side effect of a build.
-- **Never pipe a remote script to a shell.** Graphify installs via `uv tool install graphifyy`;
+- **Never pipe a remote script to a shell.** Graphify installs via `uv tool install graphifyy`
+  — the double-`y` is deliberate and correct: the GitHub repo is `Graphify-Labs/graphify` but the
+  published package is `graphifyy` (confirmed against graphify.com and the project README's
+  `graphifyy[video]` extra). Do not "fix" it. A silently-broken install command would be exactly
+  the quiet failure D10 exists to prevent;
   if `uv` itself is absent, print its install URL and stop. Convenience does not justify
   `curl … | sh` on the user's machine.
 - **Never install into the repo.** Graphify is a user-level tool; `setup` touches no tracked file
@@ -404,8 +517,14 @@ Safety rules:
 ### Extension commands
 
 - `src/host/octograph.ts` — command-string construction and artifact-path resolution. Pure
-  functions, unit-tested. Mirrors `sdlc-bundles.ts`, including validating any interpolated argument
-  against a safe-slug pattern before it reaches a terminal.
+  functions, unit-tested. Mirrors `sdlc-bundles.ts`, but with **two distinct validators**, because
+  the arguments are not the same shape:
+  - **Task ids** (`conflicts <taskA> <taskB>`) — the safe-slug pattern from `sdlc-bundles.ts`.
+  - **Paths** (`impact <path>`) — a slug validator is wrong here: real paths contain `/`, `.`,
+    `-`, and sometimes spaces. Loosening the slug pattern to accept them would quietly gut the
+    injection guard it exists to provide. Instead: resolve the path, assert it stays inside the
+    workspace root, reject anything containing shell metacharacters, and pass it as a **separate
+    argv element** rather than interpolating it into a command string.
 - `src/host/octograph-command.ts` — thin VS Code glue registering two commands:
   - **"Octobots: Install Graph"** → `npx github:arozumenko/octograph setup` — first-run flow:
     health checks, prompted installs, initial build.
@@ -451,6 +570,14 @@ Vitest, matching the monorepo convention.
 - **Degradation paths** — every optional input absent: no Graphify, no board, no manifests,
   near-empty history. Each must produce useful output or an honest refusal, never a confident
   wrong answer.
+- **Noise floor (A6)** — a fixture whose strongest co-change pairs are a manifest↔lockfile and a
+  test↔subject. Assert neither reaches `drift`'s top 10 while a planted cross-boundary pair does.
+  This is the difference between a useful `drift` and one whose real finding is buried.
+- **Cold-start overlay (A7)** — a fixture board with an empty and a mission-only `worklog.jsonl`.
+  Assert `own` answers in `predicted` mode and labels itself as such, rather than reporting a
+  lexical guess as provenance.
+- **`doctor` states** — one fixture per state: `ok`, `degraded` (history below `--min-commits`),
+  `blocked` (not a git repo). Assert exit codes, since CI gating depends on them.
 - **Bridge** — pure functions in `octograph.ts` unit-tested host-side, per the sdlc-bundles
   precedent.
 
@@ -458,13 +585,28 @@ Vitest, matching the monorepo convention.
 
 ## Success criteria
 
+Each is independently pass/fail by someone who has not read the implementation.
+
 1. `map` on a cold checkout of this repo completes in under 2 seconds with no Graphify present.
-2. `drift` surfaces the `entity-schema.ts` ↔ `entity-io.mjs` pair, which no AST tool can find.
-3. Every command produces useful output with **no** `.octobots/` directory present.
-4. `map.md` fits a stated token budget and is regenerable byte-identically from the same commit.
-5. The Octobots bridge adds no runtime dependency to the extension.
-6. `doctor` correctly grades this repo as **degraded** (thin history, no Graphify) and names both
-   causes with their fixes — the failure this design is most likely to ship silently.
+2. Given octoweb's git history, `drift` ranks the cross-service pair
+   (`agents/clients/conversations.py`, `conversations/api/internal.py`) in the **top 10**
+   hidden-coupling results, in both `--json` and human output.
+3. Given octoweb's history, **no** manifest↔lockfile or test↔subject pair appears in `drift`'s
+   top 10 (the noise floor, A6).
+4. `map`, `impact`, `drift` and `doctor` each produce useful output with **no** `.octobots/`
+   directory present.
+5. With no `.octobots/` present, `own` and `conflicts` print
+   `no board found — run inside an Octobots workspace` and **exit 0**. (They are board-required by
+   design; this defines what "graceful" means for them, and is the carve-out to #4.)
+6. `map.md` stays within its stated token budget, measured by the same `chars/4` estimator the
+   tool uses, with the ±15% tolerance A9 states.
+7. `map.md` regenerates **byte-identically** from an unchanged commit.
+8. The Octobots bridge adds no runtime dependency to the extension.
+9. On this repo, `doctor --json` emits `status: "degraded"` and names both causes — history depth
+   and missing Graphify — each paired with a fix. This is the failure this design is most likely
+   to ship silently.
+10. `doctor` exits non-zero on this repo (required input present but graded `degraded`), so CI can
+    gate on it.
 
 ---
 
