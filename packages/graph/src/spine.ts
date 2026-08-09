@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import type { ModuleEdge } from "./rollup.js";
 
 export interface Spine {
@@ -10,17 +10,88 @@ export interface Spine {
   imports: ModuleEdge[];
 }
 
+/**
+ * The `packages:` list of a pnpm workspace file, without a YAML parser.
+ *
+ * Deliberately not a YAML parse: we need one list of strings, and the package
+ * must stay dependency-free. But it *is* scoped to that one key. A
+ * `pnpm-workspace.yaml` holds several other list-shaped keys —
+ * `onlyBuiltDependencies` (which pnpm 10 writes on its own),
+ * `ignoredBuiltDependencies`, `neverBuiltDependencies`, `publicHoistPattern` —
+ * and reading every `- item` line in the file turns a build dependency's *name*
+ * into a module root. In a repo with a `core/` directory,
+ * `onlyBuiltDependencies: [core]` then collapses every `core/**` file into one
+ * module instead of `core/<sub>`, and that wrong boundary propagates silently
+ * into the committed artifact through `rollUp`, which drops intra-module edges.
+ */
+function pnpmPackageGlobs(text: string): string[] {
+  const globs: string[] = [];
+  let inPackages = false;
+  for (const line of text.split("\n")) {
+    if (/^\s*(#|$)/.test(line)) continue;
+    if (/^(---|\.\.\.)\s*$/.test(line)) {
+      inPackages = false;
+      continue;
+    }
+    // A key at column 0 opens (or closes) the section we care about.
+    const key = /^([A-Za-z_][A-Za-z0-9_-]*)\s*:/.exec(line);
+    if (key) {
+      inPackages = key[1] === "packages";
+      continue;
+    }
+    if (!inPackages) continue;
+    // Quoted or bare item, with an optional trailing comment.
+    const item = /^\s*-\s*(?:'([^']*)'|"([^"]*)"|([^#\s][^#]*?))\s*(?:#.*)?$/.exec(line);
+    const value = item?.[1] ?? item?.[2] ?? item?.[3];
+    if (value) globs.push(value);
+  }
+  return globs;
+}
+
+/**
+ * Resolve a manifest-declared path inside the repo, or null if it escapes.
+ *
+ * A workspace file is repo content, so it must not be able to point the walk at
+ * a directory outside the root: `packages: ['../*']` would otherwise enumerate
+ * the repo's siblings and land their names in a committed artifact.
+ */
+function insideRepo(repoRoot: string, rel: string): string | null {
+  const root = resolve(repoRoot);
+  const abs = resolve(root, rel);
+  return abs === root || abs.startsWith(`${root}${sep}`) ? abs : null;
+}
+
+function readdirSafe(dir: string): string[] {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A dangling symlink under `packages/` — a stale worktree link, a removed local
+ * dependency — must not take the whole map down: `statSync` follows the link and
+ * throws ENOENT.
+ */
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** Directories a workspace manifest names, e.g. `packages/*` -> packages/one, packages/two. */
 function workspaceRoots(repoRoot: string): string[] {
   const globs: string[] = [];
 
   const ws = join(repoRoot, "pnpm-workspace.yaml");
   if (existsSync(ws)) {
-    // Deliberately not a YAML parse: we need one list of strings, and the
-    // package must stay dependency-free.
-    for (const line of readFileSync(ws, "utf8").split("\n")) {
-      const m = /^\s*-\s*['"]?([^'"]+)['"]?\s*$/.exec(line);
-      if (m?.[1]) globs.push(m[1]);
+    try {
+      globs.push(...pnpmPackageGlobs(readFileSync(ws, "utf8")));
+    } catch {
+      /* unreadable manifest is not fatal — fall through to directories */
     }
   }
 
@@ -38,14 +109,16 @@ function workspaceRoots(repoRoot: string): string[] {
 
   const out: string[] = [];
   for (const glob of globs) {
+    // `!pkg/private` is an exclusion, never a root of its own.
+    if (glob.startsWith("!")) continue;
     if (glob.endsWith("/*")) {
       const base = glob.slice(0, -2);
-      const dir = join(repoRoot, base);
-      if (!existsSync(dir)) continue;
-      for (const entry of readdirSync(dir)) {
-        if (statSync(join(dir, entry)).isDirectory()) out.push(`${base}/${entry}`);
+      const dir = insideRepo(repoRoot, base);
+      if (dir === null) continue;
+      for (const entry of readdirSafe(dir)) {
+        if (isDirectory(join(dir, entry))) out.push(`${base}/${entry}`);
       }
-    } else {
+    } else if (insideRepo(repoRoot, glob) !== null) {
       out.push(glob);
     }
   }
