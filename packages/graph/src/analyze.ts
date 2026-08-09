@@ -1,10 +1,10 @@
 import { harvest } from "./harvest.js";
 import { countPairs } from "./cochange.js";
-import { weighEdges, type Edge } from "./weights.js";
+import { edgeWeight, weighEdges, type Edge } from "./weights.js";
 import { detectHubs } from "./hubs.js";
 import { bridgeComponents } from "./components.js";
 import { louvain } from "./louvain.js";
-import { nameCluster, rollUp, type ModuleEdge } from "./rollup.js";
+import { compare, nameCluster, rollUp, type ModuleEdge } from "./rollup.js";
 import { declaredSpine, type Spine } from "./spine.js";
 import { layerRanks } from "./layers.js";
 import type { Config } from "./config.js";
@@ -75,15 +75,27 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
 
   // A4, second half: hubs were excluded from clustering, now reattach them by
   // plurality vote so real files do not silently vanish from the map.
+  //
+  // Hub ids are iterated in ascending order rather than in `Set` insertion
+  // order: the reattachment below feeds module membership, which reaches a
+  // committed artifact, so the order must be a property of the data and not of
+  // how `detectHubs` happened to fill its set.
   const homeOf = new Map<number, number>();
-  for (const hub of hubIds) {
+  /** Hubs no community voted for — see the declared-module fallback below. */
+  const unvoted: number[] = [];
+  for (const hub of [...hubIds].sort((x, y) => x - y)) {
     const votes = new Map<number, number>();
     for (const e of edges) {
       const other = e.a === hub ? e.b : e.b === hub ? e.a : -1;
       if (other === -1 || hubIds.has(other)) continue;
       const comm = partition.get(other);
       if (comm === undefined) continue;
-      votes.set(comm, (votes.get(comm) ?? 0) + Math.max(0, e.npmi));
+      // Through `edgeWeight`, exactly as louvain, detectHubs, bridgeComponents
+      // and rollUp read a weight. Open-coding the floor here would make this
+      // vote the one consumer measuring a different graph from the clustering
+      // it is voting into — the divergence that put negative-weight module
+      // edges into a committed artifact once already (see weights.ts).
+      votes.set(comm, (votes.get(comm) ?? 0) + edgeWeight(e));
     }
     let best = -1;
     let bestWeight = -1;
@@ -93,7 +105,8 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
         bestWeight = w;
       }
     }
-    if (best !== -1) homeOf.set(hub, best);
+    if (best === -1) unvoted.push(hub);
+    else homeOf.set(hub, best);
   }
 
   const pathsOf = (ids: number[]): string[] =>
@@ -119,8 +132,37 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
     else merged.set(name, attached);
   }
 
+  // A hub only gets a vote from a neighbour that *has* a community, and a
+  // neighbour only has one if it survived into `clusterable` — i.e. if it holds
+  // an edge that touches no hub. A file whose every co-change partner is
+  // quarantined therefore casts no vote, and a hub whose neighbours are all
+  // such files (a config file committed pairwise with each leaf it configures,
+  // and nothing else) collects none at all. The plurality vote alone then drops
+  // it silently: it is excluded from clustering, absent from every community,
+  // and reaches the artifact only as a name in `hubs` — the exact
+  // disappearance the vote exists to prevent.
+  //
+  // Fall back to the DECLARED module rather than to an arbitrary community.
+  // Co-change has no opinion about this file, so inventing one by parking it in
+  // the largest cluster would state a coupling no commit backs; the spine, on
+  // the other hand, already knows where the path lives.
+  for (const hub of unvoted) {
+    const path = table.files[hub];
+    if (path === undefined) continue;
+    const name = spine.moduleOf(path);
+    const existing = merged.get(name);
+    if (existing) existing.push(hub);
+    else merged.set(name, [hub]);
+  }
+
   const modules: ModuleSummary[] = [...merged.entries()]
-    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+    // Code units through the shared comparator, never `localeCompare`: it
+    // collates by the machine's default locale, so a committed artifact would
+    // reorder on nothing but a change of LANG, and it disagrees with the
+    // code-unit order used by `rollUp`, `readGraphify`, `Spine.modules` and
+    // `pathsOf` above wherever a module directory is capitalised. See
+    // `compare` in rollup.ts.
+    .sort((a, b) => b[1].length - a[1].length || compare(a[0], b[0]))
     .map(([name, members], i) => ({
       id: i,
       name,

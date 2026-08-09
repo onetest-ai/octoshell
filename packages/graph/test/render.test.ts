@@ -49,4 +49,36 @@ describe("renderMap", () => {
     };
     expect(renderMap(big, 300)).toContain("truncated");
   });
+
+  /**
+   * The dependency list is quadratic in the module count, so it — not the
+   * module list — is the section that overruns a real repo's budget. Trimming
+   * only modules left it whole: with 400 edges the map came out at ~3500 tokens
+   * against a 500-token budget however far the module list was cut back, which
+   * defeats the one thing the budget is for (keeping map.md loadable as agent
+   * context).
+   */
+  it("stays within the budget when the dependency section is the large one", () => {
+    const edgeHeavy: Analysis = {
+      ...analysis,
+      modules: [{ id: 0, name: "pkg/only", members: ["pkg/only/x.ts"], layer: null }],
+      moduleEdges: Array.from({ length: 400 }, (_, i) => ({
+        from: `pkg/from-${i}`,
+        to: `pkg/to-${i}`,
+        weight: 1.5,
+      })),
+    };
+    const md = renderMap(edgeHeavy, 500);
+    expect(estimateTokens(md)).toBeLessThanOrEqual(500);
+    expect(md).toContain("dependency edge(s) truncated");
+    // Trimming must not starve one section to pay for the other: the single
+    // module survives a cut that drops hundreds of edges.
+    expect(md).toContain("pkg/only");
+  });
+
+  it("degrades to the header rather than looping when the budget is unreachably small", () => {
+    const md = renderMap(analysis, 1);
+    expect(md).toContain("# Module map");
+    expect(md).not.toContain("packages/board");
+  });
 });
