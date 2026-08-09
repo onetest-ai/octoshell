@@ -83,11 +83,11 @@ These are load-bearing. Each one is a tarpit we are explicitly declining to ente
 | D2 | Anchor on work items or modules? | **Modules** | Work-item anchoring has a fatal cold start: an existing repo has no board history, so the graph is empty exactly when it is most needed. Modules give day-1 value; the board attaches to a spine that already stands. |
 | D3 | Declared or discovered structure? | **Declared spine + discovered delta** | The declared side is trustworthy; the discovered side reveals reality. **The delta between them is the artifact nobody else produces.** |
 | D4 | Depend on Graphify? | **Optional file read** | Present → tree-sitter-precise import edges for free. Absent → fall back to manifests + directories. Never required. |
-| D5 | Where does it live? | **Separate repo, bridged** | Mirrors the `sdlc-skills` precedent: Octobots is a thin launcher, the library owns the truth. |
+| D5 | Where does it live? | **`packages/graph` in this monorepo**, with the pack payload as a **build artifact** | A separate repo would put the code and the board that tracks it in different checkouts, breaking `mission-execution`'s "work in THIS repo checkout" rule. As a workspace package it sits beside `board` and `tokenomics` and the rule holds. **The pack `.mjs` is bundled by esbuild from `packages/graph`, never hand-written** — `tokenomics` demonstrates the alternative and its cost: `octobots-pack/tokenomics/rollup.mjs` (838 lines) and `packages/tokenomics/src/rollup.ts` (309) share no code and drift independently, the same hazard as `entity-schema.ts`/`entity-io.mjs`. One source, one bundle, no third instance of that trap. |
 | D6 | Library scope | **Standalone; board is an overlay** | Must run usefully in a repo with no `.octobots/`. This is an *architectural* constraint, not a release phase. |
 | D7 | Output location | **`.octobots/graph/` when a board exists**, neutral dir otherwise | Settled by precedent: `.octobots/` already holds five non-entity subdirectories (`tokenomics/`, `hooks/`, `teams/`, `pastes/`, `.trash/`). The parser cannot see them at all — `board-model.ts:83` goes straight to `join(root, "campaigns")` and **never enumerates `.octobots/`'s top-level children**. (An earlier draft cited `board-model.ts:89`, the per-campaign-folder skip; the conclusion was right, the mechanism named was not, and the real one is stronger.) Never *creates* `.octobots/`. |
-| D8 | Release shape | **Designed together; shipped along seams** | Early adopters are Octobots users with boards, so designing the overlay late would let the core engine's contract ignore it. That argues for designing as one — it does **not** argue for shipping atomically. The plan should split along the seams the input diagram already draws: (a) core engine — `map`, `impact`, `doctor` from git alone; (b) `drift` + the declared-spine precedence chain; (c) board overlay — `own`, `conflicts`; (d) `setup`, the only component that mutates the user's machine and so deserves its own review; (e) the extension bridge, which lives in a different repo with different reviewers and tests. |
-| D9 | Language | **Node, zero runtime deps** | Matches `npx github:` bridging, matches the pack's vendored `.mjs` convention, needs no venv or `uv`. |
+| D8 | Release shape | **Designed together; shipped along seams** | Early adopters are Octobots users with boards, so designing the overlay late would let the core engine's contract ignore it. That argues for designing as one — it does **not** argue for shipping atomically. The plan should split along the seams the input diagram already draws: (a) core engine — `map`, `impact`, `doctor` from git alone; (b) `drift` + the declared-spine precedence chain; (c) board overlay — `own`, `conflicts`; (d) `setup`, the only component that mutates the user's machine and so deserves its own review; (e) the extension bridge, which lives in `apps/vscode-extension` rather than `packages/graph` and so carries different reviewers and tests. |
+| D9 | Language | **TypeScript, zero runtime deps** | Matches the monorepo (`board`, `tokenomics`): ESM + NodeNext, `strict`, `noUncheckedIndexedAccess`, mandatory `.js` import extensions. Zero *runtime* dependencies still holds — it is what lets esbuild emit a single self-contained `.mjs` that runs under bare `node` in any workspace, with no install, no venv, no `uv`. |
 | D10 | Detect installed state? | **Yes — `doctor`**, deviating from sdlc-skills' Q4 "pure stateless launcher" | sdlc-skills installs files; success or failure is visible in the terminal. Octograph's failure mode is **silent degradation** — absent Graphify just makes `drift` blunter, thin history just makes the map sparse. Nothing announces itself, and a user cannot trace "this map looks useless" back to its cause. Detection is warranted exactly where failure is quiet. |
 | D11 | Where do health checks live? | **In octograph (`doctor`), not the extension** | Keeps the launcher thin per D5, and CLI users get identical diagnostics. The extension runs `doctor` and shows the terminal; it never re-implements the checks. |
 
@@ -539,9 +539,13 @@ Safety rules:
     workspace root, reject anything containing shell metacharacters, and pass it as a **separate
     argv element** rather than interpolating it into a command string.
 - `src/host/octograph-command.ts` — thin VS Code glue registering two commands:
-  - **"Octobots: Install Graph"** → `npx github:arozumenko/octograph setup` — first-run flow:
-    health checks, prompted installs, initial build.
-  - **"Octobots: Rebuild Graph"** → `npx github:arozumenko/octograph map` — the routine path.
+  - **"Octobots: Install Graph"** → `node .claude/skills/graph/octograph.mjs setup` — first-run
+    flow: health checks, prompted installs, initial build.
+  - **"Octobots: Rebuild Graph"** → `node .claude/skills/graph/octograph.mjs map` — routine path.
+
+  The bundle is the same artifact the pack installs into any workspace, so the extension and a
+  CLI agent in an unrelated repo run identical code. Bare `node` — no `npx`, no network, no
+  install.
 
   Both create a terminal, send the command, and show it. **No output capture, no state tracking, no
   post-run verification** — the terminal is the interface, and `doctor` is the only thing that
