@@ -12,6 +12,14 @@ export interface ModuleEdge {
  * Undirected specifically so hub-like nodes (touched by everything) and
  * authority-like nodes (everything touches them) rank comparably instead of one
  * drowning the other. From wikis' `select_central_symbols`.
+ *
+ * Scores the subgraph *induced by* `nodes`: an edge with an endpoint outside
+ * the set is not part of this graph and is dropped whole. Applying such an edge
+ * in only the direction whose endpoint happens to exist would push rank onto a
+ * node the iteration never visits, so that mass would leave the total instead
+ * of being redistributed — every node with an outbound edge to the outside
+ * would come out silently depressed, and the returned map would carry ids the
+ * caller never asked about.
  */
 export function pageRank(
   edges: Edge[],
@@ -23,10 +31,13 @@ export function pageRank(
   const strength = new Map<number, number>();
   for (const n of nodes) adj.set(n, []);
   for (const e of edges) {
+    const fromAdj = adj.get(e.a);
+    const toAdj = adj.get(e.b);
+    if (fromAdj === undefined || toAdj === undefined) continue;
     const w = Math.max(0, e.npmi);
     if (w === 0) continue;
-    adj.get(e.a)?.push([e.b, w]);
-    adj.get(e.b)?.push([e.a, w]);
+    fromAdj.push([e.b, w]);
+    toAdj.push([e.a, w]);
     strength.set(e.a, (strength.get(e.a) ?? 0) + w);
     strength.set(e.b, (strength.get(e.b) ?? 0) + w);
   }
@@ -88,12 +99,24 @@ export function rollUp(
     const mb = moduleOf(pb);
     if (ma === mb) continue;
     const [from, to] = ma < mb ? [ma, mb] : [mb, ma];
-    const key = `${from} ${to}`;
+    // NUL, not a space: module names come from real path segments, which may
+    // contain spaces. A space-joined key makes ("a", "b c") and ("a b", "c")
+    // collide, quietly summing two unrelated module edges into one. NUL is the
+    // one byte a POSIX path cannot hold.
+    const key = `${from}\u0000${to}`;
     const existing = acc.get(key);
     if (existing) existing.weight += e.npmi;
     else acc.set(key, { from, to, weight: e.npmi });
   }
+  // Ties break on raw code units — the same comparison that ordered the
+  // endpoints above. `localeCompare` would collate by the machine's default
+  // locale ("pkg/aa" sorts before "pkg/z" in en-US and after it in da-DK), so a
+  // committed artifact would churn on nothing but a change of LANG.
   return [...acc.values()].sort(
-    (x, y) => y.weight - x.weight || x.from.localeCompare(y.from) || x.to.localeCompare(y.to),
+    (x, y) => y.weight - x.weight || compare(x.from, y.from) || compare(x.to, y.to),
   );
+}
+
+function compare(x: string, y: string): number {
+  return x < y ? -1 : x > y ? 1 : 0;
 }
