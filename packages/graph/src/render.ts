@@ -15,6 +15,7 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     `- files: ${analysis.fileCount}`,
     `- declared spine: ${analysis.spineSource}`,
     `- hubs quarantined: ${analysis.hubs.length}`,
+    "- files never co-changed with another file: omitted below",
     "",
     "## Modules",
     "",
@@ -23,7 +24,7 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
   const lines: string[] = [];
   for (const m of analysis.modules) {
     const layer = m.layer === null ? "" : ` [layer ${m.layer}]`;
-    lines.push(`- **${m.name}**${layer} — ${m.members.length} files`);
+    lines.push(`- **${m.name}**${layer} — ${m.members.length} co-changed files`);
   }
 
   // An arrow is a claim, and only one of the two edge producers can back it.

@@ -195,10 +195,28 @@ function workspaceRoots(repoRoot: string): string[] {
   return [...new Set(out)].sort();
 }
 
+/**
+ * The bucket name for a root-level file (no `/` in its path) under the
+ * two-segment convention.
+ *
+ * A sentinel, not a path: it can never collide with a real repo-relative
+ * module boundary, because a colliding real path would require a literal
+ * directory named `(repo root)` — and parens are not a shape any of the
+ * boundary sources this function ever sees (workspace globs, manifest
+ * directories, plain directory names) can produce from a repo-relative walk.
+ * Deliberately not `"."` — that reads as a relative-path fragment (and this
+ * file uses literal `"."` elsewhere for exactly that, unrelated,
+ * filesystem-bookkeeping purpose in `discoverManifestRoots`/`expandGlob`/
+ * `workspaceRoots`), where a human reading a rendered module heading or edge
+ * endpoint would misread it as "no module" rather than "the repo root is
+ * itself a module".
+ */
+const ROOT_MODULE = "(repo root)";
+
 /** Two path segments: `src/host/x.ts` -> `src/host`. */
 function twoSegmentModule(path: string): string {
   const parts = path.split("/");
-  return parts.length <= 1 ? "." : parts.slice(0, Math.min(2, parts.length - 1)).join("/");
+  return parts.length <= 1 ? ROOT_MODULE : parts.slice(0, Math.min(2, parts.length - 1)).join("/");
 }
 
 /**

@@ -86,13 +86,14 @@ describe("analyze: hub reattachment", () => {
    *
    * `cfg.ts` here is a hub that DOES get a vote — unlike the star-centre case
    * above — so the "unvoted" fallback never fires for it. But `cfg.ts`'s own
-   * declared module is "." (root-level, two-segment fallback), no other file
-   * shares that name, and the vote sends it into whichever of r1/r2 it touches
-   * more. Pre-fix, "." never became a key in the merged map at all — not
-   * missing a member, missing ENTIRELY — while `rollUp` still emitted a
-   * moduleEdges row naming it (over the full, hub-inclusive edge set, oblivious
-   * to which community won the vote). A reader of map.md would see the
-   * strongest edge in the graph point at a module with no heading.
+   * declared module is "(repo root)" (root-level, two-segment fallback), no
+   * other file shares that name, and the vote sends it into whichever of
+   * r1/r2 it touches more. Pre-fix, "(repo root)" never became a key in the
+   * merged map at all — not missing a member, missing ENTIRELY — while
+   * `rollUp` still emitted a moduleEdges row naming it (over the full,
+   * hub-inclusive edge set, oblivious to which community won the vote). A
+   * reader of map.md would see the strongest edge in the graph point at a
+   * module with no heading.
    */
   it("keeps a hub's own declared module as a heading even when the naming vote sends its files elsewhere", () => {
     const commits: CommitSpec[] = [];
@@ -102,19 +103,22 @@ describe("analyze: hub reattachment", () => {
 
     const { analysis, spine } = analyze(buildRepo(commits), DEFAULTS, { now: NOW });
 
-    // Preconditions: cfg.ts really is a hub, and it really does declare ".".
+    // Preconditions: cfg.ts really is a hub, and it really does declare
+    // "(repo root)".
     expect(analysis.hubs).toContain("cfg.ts");
-    expect(spine.moduleOf("cfg.ts")).toBe(".");
+    expect(spine.moduleOf("cfg.ts")).toBe("(repo root)");
 
-    // Precondition: "." really is the strongest thing moduleEdges names here —
-    // without this the fix could be satisfied by an implementation that just
-    // drops the edge instead of adding the heading.
-    const dotEdges = analysis.moduleEdges.filter((e) => e.from === "." || e.to === ".");
+    // Precondition: "(repo root)" really is the strongest thing moduleEdges
+    // names here — without this the fix could be satisfied by an
+    // implementation that just drops the edge instead of adding the heading.
+    const dotEdges = analysis.moduleEdges.filter(
+      (e) => e.from === "(repo root)" || e.to === "(repo root)",
+    );
     expect(dotEdges.length).toBeGreaterThan(0);
 
     const names = analysis.modules.map((m) => m.name);
-    expect(names).toContain(".");
-    const dot = analysis.modules.find((m) => m.name === ".");
+    expect(names).toContain("(repo root)");
+    const dot = analysis.modules.find((m) => m.name === "(repo root)");
     expect(dot?.members).toContain("cfg.ts");
   });
 });

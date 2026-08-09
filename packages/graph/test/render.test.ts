@@ -84,4 +84,24 @@ describe("renderMap", () => {
     expect(md).toContain("# Module map");
     expect(md).not.toContain("packages/board");
   });
+
+  /**
+   * `modules[].members` counts files that survived `harvest`'s pair-bearing-
+   * commit filter, not "every file in the module" — a file only ever touched
+   * by single-file commits never reaches `table.files` at all and so is
+   * invisible to this count. The per-module line must say what it counts
+   * instead of reading as a total, and the header must tell a reader such
+   * files are omitted, or they are left wondering where roughly half a real
+   * repo's tracked files went.
+   */
+  it("labels the per-module count as co-changed files, not a module total", () => {
+    const md = renderMap(analysis, 2000);
+    expect(md).toContain("**packages/board** [layer 1] — 1 co-changed files");
+    expect(md).toContain("**apps/ext** [layer 0] — 1 co-changed files");
+  });
+
+  it("tells the reader that solo-commit files are absent from the graph entirely", () => {
+    const md = renderMap(analysis, 2000);
+    expect(md).toContain("- files never co-changed with another file: omitted below");
+  });
 });
