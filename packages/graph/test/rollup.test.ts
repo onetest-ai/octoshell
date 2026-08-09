@@ -79,6 +79,31 @@ describe("rollUp", () => {
     expect(rolled.map((m) => m.from)).toEqual(["pkg/B", "pkg/a"]);
   });
 
+  // Every other consumer of `Edge` floors nPMI at zero, because a negative one
+  // means the pair co-changes LESS than chance — evidence of separation, not a
+  // link that subtracts. `rollUp` summed the raw signed value, so an
+  // anti-correlated cross-module pair silently cancelled real coupling out of a
+  // committed artifact, and a module pair could surface carrying a negative or
+  // exactly-zero "dependency" weight the rest of the engine does not claim.
+  it("never lets an anti-correlated pair subtract from a module edge", () => {
+    const spread = ["pkg/a/x.ts", "pkg/b/y.ts", "pkg/a/z.ts", "pkg/b/w.ts"];
+    const rolled = rollUp([edge(0, 1, 0.5), edge(2, 3, -0.6)], spread, moduleOf);
+    expect(rolled).toHaveLength(1);
+    expect(rolled[0]?.weight).toBeCloseTo(0.5, 10);
+  });
+
+  it("emits no module edge at all when every crossing pair is non-positive", () => {
+    // The stronger half of the same property: with the raw sum these produced a
+    // `pkg/a -> pkg/b` edge weighing -0.9, -0.4 and 0 respectively — an
+    // architectural dependency asserted from evidence of its own absence.
+    const spread = ["pkg/a/x.ts", "pkg/b/y.ts", "pkg/a/z.ts", "pkg/b/w.ts"];
+    expect(rollUp([edge(0, 1, -0.9)], spread, moduleOf)).toEqual([]);
+    expect(rollUp([edge(0, 1, -0.9), edge(2, 3, 0.5)], spread, moduleOf)).toEqual([
+      { from: "pkg/a", to: "pkg/b", weight: 0.5 },
+    ]);
+    expect(rollUp([edge(0, 1, 0)], spread, moduleOf)).toEqual([]);
+  });
+
   it("keeps module pairs distinct when a module name contains a space", () => {
     // ("a", "b c") and ("a b", "c") share the string "a b c": a space-joined
     // accumulator key merges two unrelated module edges into one.

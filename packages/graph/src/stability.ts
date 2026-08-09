@@ -51,14 +51,27 @@ export function remapClusters(
   }
   candidates.sort((x, y) => y.score - x.score || x.newId - y.newId || x.oldId - y.oldId);
 
+  const assigned = new Map<number, number>();
   for (const { newId, oldId } of candidates) {
-    if (remap.has(newId) || claimed.has(oldId)) continue;
-    remap.set(newId, oldId);
+    if (assigned.has(newId) || claimed.has(oldId)) continue;
+    assigned.set(newId, oldId);
     claimed.add(oldId);
   }
 
-  for (const newId of [...newClusters.keys()].sort((a, b) => a - b)) {
-    if (!remap.has(newId)) remap.set(newId, nextId++);
+  const newIds = [...newClusters.keys()].sort((a, b) => a - b);
+  for (const newId of newIds) {
+    if (!assigned.has(newId)) assigned.set(newId, nextId++);
+  }
+
+  // Emit in ascending new-cluster order, not in the order the greedy pass
+  // happened to claim ids. `assigned`'s own order tracks Jaccard score, so a
+  // consumer iterating it writes the artifact in an order that reshuffles
+  // whenever any cluster's overlap shifts — churn indistinguishable from real
+  // change in a diff. `louvain` and `detectHubs` both pin ascending iteration
+  // order for the same reason; this is the third module in that contract.
+  for (const newId of newIds) {
+    const stable = assigned.get(newId);
+    if (stable !== undefined) remap.set(newId, stable);
   }
   return remap;
 }

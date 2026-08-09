@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { countPairs, type PairTable } from "../src/cochange.js";
-import { weighEdges, type Edge } from "../src/weights.js";
+import { edgeWeight, weighEdges, type Edge } from "../src/weights.js";
 import type { Commit } from "../src/types.js";
 
 const NOW = Date.UTC(2026, 0, 1);
@@ -152,5 +152,26 @@ describe("weighEdges", () => {
         minSupport: 1,
       });
     expect(build()).toEqual(build());
+  });
+});
+
+describe("edgeWeight", () => {
+  const at = (npmi: number): Edge => ({ a: 0, b: 1, support: 3, npmi, confidence: 0.5 });
+
+  // One function, five consumers: detectHubs, louvain, pageRank,
+  // bridgeComponents and rollUp all read weight through here. It exists as a
+  // named export precisely so a sixth consumer cannot quietly invent a sixth
+  // convention — rollUp did, and summed the raw signed value into a committed
+  // artifact.
+  it("floors a signed nPMI at zero", () => {
+    expect(edgeWeight(at(0.7))).toBe(0.7);
+    expect(edgeWeight(at(0))).toBe(0);
+    expect(edgeWeight(at(-0.9))).toBe(0);
+    expect(edgeWeight(at(-1))).toBe(0);
+  });
+
+  it("never returns a negative zero, which would print as `-0` in an artifact", () => {
+    expect(Object.is(edgeWeight(at(-0.5)), 0)).toBe(true);
+    expect(Object.is(edgeWeight(at(-0)), 0)).toBe(true);
   });
 });

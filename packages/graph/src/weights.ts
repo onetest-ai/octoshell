@@ -84,3 +84,23 @@ export function weighEdges(table: PairTable, opts: WeightOptions = {}): Edge[] {
 function clamp(value: number, low: number, high: number): number {
   return value < low ? low : value > high ? high : value;
 }
+
+/**
+ * The weight of an edge as every consumer in this package must read it.
+ *
+ * `Edge.npmi` is *signed*: a negative value means the pair co-changes LESS than
+ * chance would predict, which is evidence of separation — not of a link, and
+ * certainly not of a link that subtracts. Every consumer therefore floors it at
+ * zero: `detectHubs` sums it into weighted degree, `louvain` and `pageRank`
+ * build adjacency from it, `bridgeComponents` measures connectivity on it.
+ *
+ * This lives here, as one function, because it was previously open-coded at
+ * four call sites in three modules written by different hands — and the fifth
+ * consumer, `rollUp`, summed the raw signed value instead, emitting negative-
+ * and zero-weight module edges into a committed artifact. A convention that has
+ * to be remembered is a convention that gets forgotten; read the weight through
+ * this and it cannot be.
+ */
+export function edgeWeight(edge: Edge): number {
+  return edge.npmi > 0 ? edge.npmi : 0;
+}

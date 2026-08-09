@@ -1,4 +1,4 @@
-import type { Edge } from "./weights.js";
+import { edgeWeight, type Edge } from "./weights.js";
 
 export interface HubOptions {
   /** Standard deviations above mean strength before a node is a hub. */
@@ -32,9 +32,9 @@ export function detectHubs(
     // against the other high-churn files it seldom moves with, so the very
     // nodes quarantine exists to catch could cancel themselves back under the
     // threshold. Clamping at 0 also makes this the same graph the clustering
-    // downstream measures, which weights edges by `Math.max(0, npmi)` — a hub
-    // detector reading a different graph quarantines the wrong nodes.
-    const w = Math.max(0, e.npmi);
+    // downstream measures, which reads weights through the same `edgeWeight` —
+    // a hub detector reading a different graph quarantines the wrong nodes.
+    const w = edgeWeight(e);
     strength[e.a] = (strength[e.a] ?? 0) + w;
     strength[e.b] = (strength[e.b] ?? 0) + w;
   }

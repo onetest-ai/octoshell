@@ -1,4 +1,4 @@
-import type { Edge } from "./weights.js";
+import { edgeWeight, type Edge } from "./weights.js";
 
 export interface LouvainOptions {
   /** Nodes to leave out of clustering (hubs). */
@@ -43,7 +43,7 @@ export function louvain(edges: Edge[], opts: LouvainOptions = {}): Map<number, n
   const strength = new Map<number, number>();
   let totalWeight = 0;
   for (const e of kept) {
-    const w = Math.max(0, e.npmi);
+    const w = edgeWeight(e);
     if (w === 0) continue;
     for (const [u, v] of [[e.a, e.b], [e.b, e.a]] as const) {
       let row = adj.get(u);

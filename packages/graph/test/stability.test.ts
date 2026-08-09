@@ -76,6 +76,18 @@ describe("remapClusters", () => {
     expect(reversed.get(1)).toBe(3);
   });
 
+  // `louvain` and `detectHubs` both pin ascending iteration order so the
+  // artifact diffs line by line; the remap is the third module a renderer
+  // iterates. Built greedily best-first, its own order tracks Jaccard score, so
+  // an unrelated cluster gaining one file reorders every line downstream of it.
+  it("iterates in ascending new-cluster order, not in score order", () => {
+    const oldC = new Map([[10, ["a", "b", "c", "d"]], [11, ["x", "y", "z", "w"]]]);
+    // New cluster 1 matches perfectly (1.0); new cluster 0 matches at 0.6, so
+    // the greedy pass claims 1 first and a score-ordered map starts with it.
+    const newC = new Map([[0, ["a", "b", "c", "e"]], [1, ["x", "y", "z", "w"]]]);
+    expect([...remapClusters(oldC, newC).entries()]).toEqual([[0, 10], [1, 11]]);
+  });
+
   it("is stable when nothing changed at all", () => {
     const clusters = new Map([[0, ["a", "b"]], [1, ["c", "d"]]]);
     const remap = remapClusters(clusters, clusters);

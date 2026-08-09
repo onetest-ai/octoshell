@@ -3393,7 +3393,7 @@ export { nameCluster, pageRank, rollUp, type ModuleEdge } from "./rollup.js";
 export { declaredSpine, type Spine } from "./spine.js";
 export { jaccard, remapClusters, type RemapOptions } from "./stability.js";
 export type { Commit } from "./types.js";
-export { weighEdges, type Edge, type WeightOptions } from "./weights.js";
+export { edgeWeight, weighEdges, type Edge, type WeightOptions } from "./weights.js";
 ```
 
 - [ ] **Step 6: Add the bin entry and the bundler**

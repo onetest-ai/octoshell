@@ -1,4 +1,4 @@
-import type { Edge } from "./weights.js";
+import { edgeWeight, type Edge } from "./weights.js";
 
 export interface ModuleEdge {
   from: string;
@@ -34,7 +34,7 @@ export function pageRank(
     const fromAdj = adj.get(e.a);
     const toAdj = adj.get(e.b);
     if (fromAdj === undefined || toAdj === undefined) continue;
-    const w = Math.max(0, e.npmi);
+    const w = edgeWeight(e);
     if (w === 0) continue;
     fromAdj.push([e.b, w]);
     toAdj.push([e.a, w]);
@@ -84,6 +84,17 @@ export function nameCluster(
  * module, drop self-loops (intra-module churn is not a signal), sum weights.
  * The shape of wikis' `architectural_projection`, with symbol->parent replaced
  * by file->module.
+ *
+ * Weights are read through `edgeWeight`, exactly as `pageRank`, `louvain`,
+ * `detectHubs` and `bridgeComponents` read them. Summing the raw signed `npmi`
+ * instead lets an anti-correlated pair *subtract* from a module edge, so a
+ * module pair can surface in the committed artifact carrying a negative or
+ * exactly-zero "dependency" weight — a claim the rest of the engine, which
+ * treats a non-positive nPMI as evidence of separation, does not make.
+ *
+ * `edges` is the *weighted* edge list (Task 3), not the *bridged* one (Task 7):
+ * a synthetic bridge is a clustering aid backed by no commit (`support === 0`),
+ * and rolling one up would invent an inter-module dependency out of nothing.
  */
 export function rollUp(
   edges: Edge[],
@@ -92,6 +103,8 @@ export function rollUp(
 ): ModuleEdge[] {
   const acc = new Map<string, ModuleEdge>();
   for (const e of edges) {
+    const weight = edgeWeight(e);
+    if (weight === 0) continue;
     const pa = files[e.a];
     const pb = files[e.b];
     if (pa === undefined || pb === undefined) continue;
@@ -105,8 +118,8 @@ export function rollUp(
     // one byte a POSIX path cannot hold.
     const key = `${from}\u0000${to}`;
     const existing = acc.get(key);
-    if (existing) existing.weight += e.npmi;
-    else acc.set(key, { from, to, weight: e.npmi });
+    if (existing) existing.weight += weight;
+    else acc.set(key, { from, to, weight });
   }
   // Ties break on raw code units — the same comparison that ordered the
   // endpoints above. `localeCompare` would collate by the machine's default

@@ -1,4 +1,4 @@
-import type { Edge } from "./weights.js";
+import { edgeWeight, type Edge } from "./weights.js";
 
 /** Weight given to synthetic bridge edges: enough to connect, too little to cluster. */
 const BRIDGE_WEIGHT = 0.01;
@@ -70,13 +70,13 @@ function similarity(a: Map<string, number>, b: Map<string, number>): number {
 export function bridgeComponents(edges: Edge[], files: string[]): Edge[] {
   const nodes = [...new Set(edges.flatMap((e) => [e.a, e.b]))].sort((a, b) => a - b);
   // Connectivity has to be measured on the same graph the clustering measures.
-  // Louvain weights every edge by `Math.max(0, npmi)` and drops the zero ones,
-  // because a non-positive nPMI means the pair co-changes *less* than chance —
+  // Louvain reads weights through `edgeWeight` and drops the zero ones, because
+  // a non-positive nPMI means the pair co-changes *less* than chance —
   // evidence of separation, not a link. Counting those edges here would call a
   // node "already connected" and skip the bridge, leaving it a singleton
   // community downstream: precisely the junk module this function exists to
   // absorb. (Same invariant hubs.ts documents for strength.)
-  const linked = edges.filter((e) => e.npmi > 0);
+  const linked = edges.filter((e) => edgeWeight(e) > 0);
   const comps = findComponents(linked, nodes);
   if (comps.length <= 1) return edges;
 
