@@ -8,6 +8,7 @@ import { compare, nameCluster, rollUp, type ModuleEdge } from "./rollup.js";
 import { declaredSpine, filesByModule, type Spine } from "./spine.js";
 import { layerRanks } from "./layers.js";
 import { isTestPath } from "./noise.js";
+import { remapClusters } from "./stability.js";
 import type { Config } from "./config.js";
 
 export interface ModuleSummary {
@@ -39,6 +40,20 @@ export interface Analysis {
   moduleEdgesDirected: boolean;
   hubs: string[];
   bridged: number;
+  /**
+   * How many of this run's modules inherited a previous run's id through the
+   * Jaccard remap (`stability.ts`), versus how many were minted fresh.
+   *
+   * Sourced from `remapClusters` and `opts.previousClusters` alone — never a
+   * placeholder. A module's id counts as "kept" exactly when the remap
+   * matched it to an old id (`opts.previousClusters` has that id as a key);
+   * `remapClusters` mints every fresh id strictly above `max(old ids)`, so a
+   * fresh id can never coincide with an old one and this check cannot
+   * misclassify either way. With no `previousClusters` (a first run, or a
+   * caller that opts out), every module is fresh by construction — the same
+   * behaviour this option replaces.
+   */
+  clusterIds: { kept: number; fresh: number };
 }
 
 export interface AnalyzeOptions {
@@ -46,6 +61,22 @@ export interface AnalyzeOptions {
   now: number;
   /** Passed straight through to `git log --since`. */
   since?: string;
+  /**
+   * The previous run's cluster membership — module id -> member file paths —
+   * typically the `clusters` map read back from a committed `clusters.json`
+   * via `readArtifact` (see artifact.ts). Fed to `remapClusters` so this run's
+   * module ids pin onto the previous run's rather than following whatever
+   * order this run's Louvain partition and module sort happen to produce.
+   *
+   * Deliberately a `Map`, matching `remapClusters`'s own signature, not
+   * `StoredGraph` — analyze.ts stays free of file I/O; a caller reading
+   * `clusters.json` converts its `Record<number, string[]>` to a `Map` itself.
+   *
+   * Omitted (or empty) on a first run: every module then gets a fresh id
+   * counting up from 0, exactly as `analyze()` behaved before this option
+   * existed.
+   */
+  previousClusters?: Map<number, string[]>;
 }
 
 export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions): {
@@ -250,7 +281,7 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
   // the first thing the token budget drops.
   for (const name of spine.modules) if (!merged.has(name)) merged.set(name, []);
 
-  const modules: ModuleSummary[] = [...merged.entries()]
+  const preliminary = [...merged.entries()]
     // Code units through the shared comparator, never `localeCompare`: it
     // collates by the machine's default locale, so a committed artifact would
     // reorder on nothing but a change of LANG, and it disagrees with the
@@ -272,6 +303,26 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
       layer: ranks?.get(name) ?? null,
     }));
 
+  // Pin this run's module ids onto the previous run's, so a rerun that
+  // changes nothing (or changes one unrelated module) does not relabel every
+  // OTHER module just because the size-then-name sort above put it in a
+  // different array position. `preliminary`'s own `id` (the sort position) is
+  // exactly the "arbitrary insertion order" `remapClusters`'s own doc comment
+  // warns about — a real id, but not a STABLE one — so it is used here only as
+  // a throwaway key into the remap, never surfaced.
+  const previousClusters = opts.previousClusters ?? new Map<number, string[]>();
+  const freshClusters = new Map<number, string[]>(preliminary.map((m) => [m.id, m.members]));
+  const remap = remapClusters(previousClusters, freshClusters);
+
+  let kept = 0;
+  let fresh = 0;
+  const modules: ModuleSummary[] = preliminary.map((m) => {
+    const stableId = remap.get(m.id) ?? m.id;
+    if (previousClusters.has(stableId)) kept++;
+    else fresh++;
+    return { ...m, id: stableId };
+  });
+
   return {
     analysis: {
       commitCount: commits.length,
@@ -282,6 +333,7 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
       moduleEdgesDirected,
       hubs: pathsOf([...hubIds]),
       bridged: synthetic,
+      clusterIds: { kept, fresh },
     },
     edges,
     files: table.files,
