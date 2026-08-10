@@ -105,6 +105,58 @@ describe("renderMap", () => {
   });
 
   /**
+   * Spec A8 (amended 2026-08-10): test files stay in `members`, so the
+   * per-module count must distinguish source from test rather than presenting
+   * one mixed total — a mixed total is the file-count defect over again, a
+   * number true of nothing a reader would name.
+   */
+  describe("A8: source/test split in the per-module count", () => {
+    it("reports both parts, with correct numbers, for a module with source and test members", () => {
+      const mixed: Analysis = {
+        ...analysis,
+        modules: [
+          {
+            id: 0,
+            name: "packages/board",
+            members: [
+              "packages/board/src/a.ts",
+              "packages/board/src/b.ts",
+              "packages/board/test/a.test.ts",
+            ],
+            layer: 1,
+          },
+        ],
+      };
+      const md = renderMap(mixed, 2000);
+      expect(md).toContain("**packages/board** [layer 1] — 2 source, 1 test co-changed files");
+    });
+
+    it("renders no '0 test' noise for a module with no test members — the common case", () => {
+      const md = renderMap(analysis, 2000);
+      // Existing, unmodified wording for the all-source case (pinned above)
+      // must still hold, and must not gain a spurious "0 test" clause.
+      expect(md).toContain("**packages/board** [layer 1] — 1 co-changed files");
+      expect(md).not.toContain("0 test");
+    });
+
+    it("names an all-test module explicitly, rather than omitting the zero source count", () => {
+      const allTest: Analysis = {
+        ...analysis,
+        modules: [
+          {
+            id: 0,
+            name: "packages/board",
+            members: ["packages/board/test/a.test.ts", "packages/board/test/b.test.ts"],
+            layer: 1,
+          },
+        ],
+      };
+      const md = renderMap(allTest, 2000);
+      expect(md).toContain("**packages/board** [layer 1] — 0 source, 2 test co-changed files");
+    });
+  });
+
+  /**
    * `Analysis.fileCount` is `PairTable.files.length` — the files that appear in
    * an analysable commit touching two or more paths, which on this repo is a
    * third of the tracked tree. Rendered as a bare "files: N" it reads as a repo

@@ -7,6 +7,7 @@ import { louvain } from "./louvain.js";
 import { compare, nameCluster, rollUp, type ModuleEdge } from "./rollup.js";
 import { declaredSpine, filesByModule, type Spine } from "./spine.js";
 import { layerRanks } from "./layers.js";
+import { isTestPath } from "./noise.js";
 import type { Config } from "./config.js";
 
 export interface ModuleSummary {
@@ -62,17 +63,38 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
 
   const hubIds = detectHubs(edges, table.files.length, { zThreshold: config.hubZThreshold });
 
+  // A8: tests are excluded from clustering (community detection) ONLY — they
+  // stay in `edges`, stay in `impact()`, and stay in `ModuleSummary.members`
+  // (declared identity, sourced independently below via `filesByModule`, is
+  // untouched by anything clustering does). Left in, they would form
+  // test-shaped communities and drag module boundaries toward the test tree:
+  // a test co-changes with its subject constantly, and two different
+  // modules' test suites tend to co-change with EACH OTHER too (shared CI
+  // fixtures, a refactor that touches every `*.test.ts`), which is exactly
+  // the kind of bridge that would merge two unrelated modules into one
+  // community for a reason that has nothing to do with architecture.
+  const testIds = new Set<number>();
+  table.files.forEach((path, id) => {
+    if (isTestPath(path)) testIds.add(id);
+  });
+
   // Bridge the edge set that clustering will ACTUALLY see. A hub, by
   // definition, touches much of the graph, so it is often the only thing
   // holding two regions in one component. Bridging before hub removal would
   // see a connected graph, add nothing, and then louvain would strip the hub
   // edges and disconnect those regions anyway — reintroducing the long tail of
-  // junk single-file modules that A5e exists to prevent.
-  const clusterable = edges.filter((e) => !hubIds.has(e.a) && !hubIds.has(e.b));
+  // junk single-file modules that A5e exists to prevent. Test ids are excluded
+  // for the same reason as hubs, at the same point: bridging AFTER excluding
+  // them would waste a synthetic edge connecting two components that
+  // clustering immediately re-splits when the test ids underneath the bridge
+  // are stripped out below.
+  const clusterable = edges.filter(
+    (e) => !hubIds.has(e.a) && !hubIds.has(e.b) && !testIds.has(e.a) && !testIds.has(e.b),
+  );
   const bridgedEdges = bridgeComponents(clusterable, table.files);
   const synthetic = bridgedEdges.length - clusterable.length;
 
-  const partition = louvain(bridgedEdges, { exclude: hubIds });
+  const partition = louvain(bridgedEdges, { exclude: new Set([...hubIds, ...testIds]) });
   const byCommunity = new Map<number, number[]>();
   for (const [node, comm] of partition) {
     const list = byCommunity.get(comm);
