@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTestPath } from "../src/noise.js";
+import { classifyPair, isTestPath } from "../src/noise.js";
 
 describe("isTestPath", () => {
   it("matches a path segment equal to test/tests/__tests__", () => {
@@ -69,5 +69,34 @@ describe("isTestPath", () => {
     expect(isTestPath("docs/superpowers/specs/2026-08-09-octograph-design.md")).toBe(false);
     // The filename-suffix form is unambiguous and still matches.
     expect(isTestPath("src/foo.spec.ts")).toBe(true);
+  });
+});
+
+describe("classifyPair", () => {
+  it("classifies a manifest and its lockfile as mechanical", () => {
+    expect(classifyPair("package.json", "pnpm-lock.yaml")).toBe("mechanical");
+    expect(classifyPair("Cargo.toml", "Cargo.lock")).toBe("mechanical");
+  });
+
+  it("classifies a manifest/lockfile pair as mechanical even inside a fixtures directory", () => {
+    expect(classifyPair("test/fixtures/repo/package.json", "test/fixtures/repo/pnpm-lock.yaml")).toBe(
+      "mechanical",
+    );
+  });
+
+  it("checks mechanical before test, so a lockfile under a test dir is still mechanical, not test-subject", () => {
+    // Both members are under test/, which would otherwise satisfy isTestPath — mechanical
+    // must be graded first so this doesn't fall through to test-subject.
+    expect(classifyPair("test/fixtures/package.json", "test/fixtures/pnpm-lock.yaml")).toBe(
+      "mechanical",
+    );
+  });
+
+  it("classifies a test and any other file as test-subject", () => {
+    expect(classifyPair("src/a.ts", "src/a.test.ts")).toBe("test-subject");
+  });
+
+  it("classifies everything else as a candidate", () => {
+    expect(classifyPair("a/one.ts", "b/two.ts")).toBe("candidate");
   });
 });

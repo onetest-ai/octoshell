@@ -48,3 +48,34 @@ export function isTestPath(path: string): boolean {
 
   return false;
 }
+
+/** Manifest -> lockfile pairs whose coupling is mechanical and already known. */
+const LOCK_PAIRS: Array<[RegExp, RegExp]> = [
+  [/(^|\/)package\.json$/, /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/],
+  [/(^|\/)Cargo\.toml$/, /(^|\/)Cargo\.lock$/],
+  [/(^|\/)pyproject\.toml$/, /(^|\/)(uv\.lock|poetry\.lock)$/],
+  [/(^|\/)go\.mod$/, /(^|\/)go\.sum$/],
+  [/(^|\/)Gemfile$/, /(^|\/)Gemfile\.lock$/],
+];
+
+export type PairClass = "test-subject" | "mechanical" | "intra-module" | "candidate";
+
+/**
+ * Grade a pair against the noise floor.
+ *
+ * Order matters: mechanical is checked before test, so a lockfile inside a test
+ * fixture directory is still reported as mechanical, not test-subject.
+ *
+ * `"intra-module"` is not produced here — that grade depends on a `Spine`,
+ * which this function does not take. `drift` (drift.ts) applies it as a
+ * second filter, after this one, once it has resolved each path to a module.
+ */
+export function classifyPair(a: string, b: string): PairClass {
+  for (const [left, right] of LOCK_PAIRS) {
+    if ((left.test(a) && right.test(b)) || (left.test(b) && right.test(a))) {
+      return "mechanical";
+    }
+  }
+  if (isTestPath(a) || isTestPath(b)) return "test-subject";
+  return "candidate";
+}
