@@ -118,17 +118,18 @@ describe("renderMap", () => {
   });
 
   /**
-   * A module row's members are its co-change CLUSTER's members: `analyze` names
-   * each Louvain community by the declared module of its most central file, so
-   * a row can hold files declared under a different module (measured on this
-   * repo: three of `packages/tokenomics`' four members are
-   * `apps/vscode-extension` files). Without a scope line the count reads as
-   * "this module contains N files".
+   * A module row's members are that module's DECLARED membership
+   * (`filesByModule`), not the Louvain community that won the row's name —
+   * `analyze` names a row for its community's most central file, but a
+   * community can sweep in files declared under a different module (measured
+   * on this repo before the fix: three of `packages/tokenomics`' four listed
+   * members were `apps/vscode-extension` files). Without a scope line the
+   * count reads as "this module contains N files" without saying whose N.
    */
   it("states what a module row's file count actually counts", () => {
     const md = renderMap(analysis, 2000);
-    expect(md).toContain("co-change cluster's members");
-    expect(md).toContain("declared under another module");
+    expect(md).toContain("declared module's own membership");
+    expect(md).toContain("declared rows instead");
   });
 
   /**

@@ -24,17 +24,20 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     "",
     "## Modules",
     "",
-    // What a module row actually counts. `analyze` names each Louvain community
-    // by the declared module of its most central file and merges communities
-    // that resolve to the same name, so a row's members are that CLUSTER's
-    // files — which can include files declared under a different module (on
-    // this repo, three of `packages/tokenomics`' four members are
-    // `apps/vscode-extension` files). Without this line the count reads as
-    // "this module contains N files", which is a claim the grouping does not
-    // make.
-    "_A row's files are its co-change cluster's members, named for the declared"
-      + " module of the cluster's most central file; a cluster can hold files"
-      + " declared under another module._",
+    // What a module row actually counts. `analyze` names each row for a
+    // Louvain community's most central file (or a hub's own declared module,
+    // or a Graphify-only endpoint — see analyze.ts), but the FILES listed
+    // under it are that module's declared membership
+    // (`filesByModule(table.files, spine.moduleOf)`), per spec A5c: "module
+    // identity comes from the declared spine when present." A community can
+    // sweep in files declared under a different module than the one whose
+    // name it won; those files stay listed under their own declared row, not
+    // under whichever heading absorbed their community. Without this line the
+    // count reads as "this module contains N files" without saying which N.
+    "_A row's files are the declared module's own membership; the row is named"
+      + " for the community that won the naming vote, but that community's"
+      + " other members are not counted here — see each of THEIR declared"
+      + " rows instead._",
     "",
   ];
 

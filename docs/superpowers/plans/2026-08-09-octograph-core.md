@@ -2187,7 +2187,7 @@ import { detectHubs } from "./hubs.js";
 import { bridgeComponents } from "./components.js";
 import { louvain } from "./louvain.js";
 import { nameCluster, rollUp, type ModuleEdge } from "./rollup.js";
-import { declaredSpine } from "./spine.js";
+import { declaredSpine, filesByModule } from "./spine.js";
 import { layerRanks } from "./layers.js";
 import type { Config } from "./config.js";
 
@@ -2288,6 +2288,14 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
   // Two communities can resolve to the same declared module — which is the
   // EXPECTED case, since declared and discovered structure disagreeing is the
   // whole premise — so merge them rather than emitting duplicate headings.
+  //
+  // Communities decide GROUPING and NAMING only. Per spec A5c ("module
+  // identity comes from the declared spine when present"), a row's `members`
+  // are the module's DECLARED files — `filesByModule`, computed once below —
+  // never the community's accumulated id list. A community can (and on real
+  // repos routinely does) sweep in files declared under a different module
+  // than the one whose name it won; those files stay listed under their own
+  // declared module, not under whichever heading absorbed their community.
   const merged = new Map<string, number[]>();
   for (const [comm, members] of [...byCommunity.entries()].sort(
     (a, b) => b[1].length - a[1].length || a[0] - b[0],
@@ -2301,12 +2309,19 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
     else merged.set(name, attached);
   }
 
+  // The one true derivation of "what files does a declared module contain" —
+  // independent of which community happened to win the row's name.
+  const declaredMembers = filesByModule(table.files, spine.moduleOf);
+
   const modules: ModuleSummary[] = [...merged.entries()]
+    // Still ordered by the community's accumulated size, not by declared
+    // membership count — a real (if now cosmetic) value; reconciling the two
+    // is a separate, deliberately out-of-scope follow-up.
     .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
-    .map(([name, members], i) => ({
+    .map(([name], i) => ({
       id: i,
       name,
-      members: pathsOf(members),
+      members: pathsOf(declaredMembers.get(name) ?? []),
       layer: ranks?.get(name) ?? null,
     }));
 

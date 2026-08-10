@@ -293,3 +293,65 @@ describe("analyze: no fabricated fields", () => {
     expect("clusterIds" in analysis).toBe(false);
   });
 });
+
+describe("analyze: members come from the declared spine, not the naming community", () => {
+  /**
+   * The regression this test exists for (M2 bug: "members lists a Louvain
+   * community's files under a declared module's heading").
+   *
+   * `pkg/A/leak.ts` is declared under `pkg/A`, but co-changes heavily with
+   * `pkg/B`'s files and barely at all with `pkg/A`'s own — so Louvain groups
+   * it into the community that resolves to the "pkg/B" heading. Pre-fix,
+   * `members` came straight from that community's accumulated id list, so
+   * `leak.ts` was listed under **pkg/B** (a module it is not declared in) and
+   * silently absent from **pkg/A** (the module that actually declares it) —
+   * measured on this repo, the same defect put 3 of `packages/tokenomics`'s
+   * 4 listed files under a heading none of them are declared in.
+   *
+   * Spec A5c: "Module identity comes from the declared spine when present."
+   * A heading naming a declared module must list that module's declared
+   * files — `filesByModule(table.files, spine.moduleOf)` — regardless of
+   * which community happened to win the vote for that name. Communities
+   * decide GROUPING and NAMING where no declared boundary exists; they do
+   * not decide what a declared module contains.
+   */
+  it("keeps a file under its declared module's row even when co-change groups it elsewhere", () => {
+    const commits: CommitSpec[] = [];
+    // pkg/A's own internal churn — dense enough to form its own community.
+    for (let i = 0; i < 10; i++) commits.push({ files: ["pkg/A/a1.ts", "pkg/A/a2.ts"] });
+    // pkg/B's own internal churn — stronger than leak's ties to it, so a
+    // real pkg/B file (not leak.ts) wins the naming vote for the community.
+    for (let i = 0; i < 10; i++) commits.push({ files: ["pkg/B/b1.ts", "pkg/B/b2.ts"] });
+    // leak.ts is declared under pkg/A but never once co-changes with pkg/A's
+    // own files — only with pkg/B's, which is what pulls it into pkg/B's
+    // Louvain community.
+    for (let i = 0; i < 4; i++) {
+      commits.push({ files: ["pkg/A/leak.ts", "pkg/B/b1.ts", "pkg/B/b2.ts"] });
+    }
+
+    const root = buildRepo(commits);
+    writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'pkg/*'\n");
+    for (const p of ["A", "B"]) {
+      mkdirSync(join(root, `pkg/${p}`), { recursive: true });
+      writeFileSync(join(root, `pkg/${p}/package.json`), `{"name":"${p}"}\n`);
+    }
+
+    const { analysis, spine } = analyze(root, DEFAULTS, { now: NOW });
+
+    // Preconditions: the declared boundary really does put leak.ts under
+    // pkg/A, and co-change really did cluster it away from pkg/A's own
+    // files — without both, the assertions below hold for any
+    // implementation, fixed or not.
+    expect(spine.moduleOf("pkg/A/leak.ts")).toBe("pkg/A");
+    const a = analysis.modules.find((m) => m.name === "pkg/A");
+    const b = analysis.modules.find((m) => m.name === "pkg/B");
+    expect(a).toBeDefined();
+    expect(b).toBeDefined();
+
+    // The declared module lists its own file...
+    expect(a?.members).toContain("pkg/A/leak.ts");
+    // ...and the module that merely won the naming vote for leak's community
+    // does not inherit it just because co-change grouped it there.
+    expect(b?.members).not.toContain("pkg/A/leak.ts");
+  });
+});

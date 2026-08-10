@@ -190,7 +190,14 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
   const homeOfId = new Map<number, string>();
   for (const [name, ids] of merged) for (const id of ids) homeOfId.set(id, name);
 
-  for (const [name, ids] of filesByModule(table.files, spine.moduleOf)) {
+  // The one true derivation of "what files does a declared module contain" —
+  // computed once and read by both the reconciliation backstop below and the
+  // final `members` field, so the two cannot answer that question two
+  // different ways (see the fix for the sibling bug: a row's `members` must
+  // be this, not the Louvain community that happened to win the row's name).
+  const declaredMembers = filesByModule(table.files, spine.moduleOf);
+
+  for (const [name, ids] of declaredMembers) {
     if (merged.has(name)) continue;
     for (const id of ids) {
       const oldName = homeOfId.get(id);
@@ -229,10 +236,17 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
     // `pathsOf` above wherever a module directory is capitalised. See
     // `compare` in rollup.ts.
     .sort((a, b) => b[1].length - a[1].length || compare(a[0], b[0]))
-    .map(([name, members], i) => ({
+    // `members` is the DECLARED membership (`declaredMembers.get(name)`), not
+    // the community-accumulated id list `merged` sorted just above — see the
+    // fix for "members lists a Louvain community's files under a declared
+    // module's heading". The sort above still orders by the community count
+    // (a real, if now cosmetic, value — see the bug's notes for why that
+    // inconsistency is an intentional, separately-tracked follow-up, not a
+    // defect this fix corrects).
+    .map(([name], i) => ({
       id: i,
       name,
-      members: pathsOf(members),
+      members: pathsOf(declaredMembers.get(name) ?? []),
       layer: ranks?.get(name) ?? null,
     }));
 
