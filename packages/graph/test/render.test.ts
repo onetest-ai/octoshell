@@ -568,6 +568,43 @@ describe("renderMap", () => {
       expect(rendered).toBe(claimed);
     });
 
+    /**
+     * The other way a header's count can disagree with the lines beneath it,
+     * and the only one that survives "slice by SET, never by line": the PATH
+     * itself carries a line break.
+     *
+     * POSIX forbids exactly two bytes in a path, `/` and NUL, so this is legal
+     * on disk and `harvest` reads it faithfully on purpose (`git log -z`,
+     * "under `-z` a file name may legally contain one" — and it hardens its
+     * record separator against a filename forging a commit header, so hostile
+     * filenames are already in this package's threat model). The Working sets
+     * section is the first thing in map.md to render a raw file PATH, so it is
+     * the first place that freedom reaches the artifact.
+     *
+     * The crafted name below does not merely corrupt a line: it injects a
+     * member the set does not contain, into a committed file an agent loads as
+     * architecture truth. Measured before the fix: three member lines under a
+     * header claiming two.
+     */
+    it("cannot have a member path break the line count or inject a member it does not contain", () => {
+      const phantom = "packages/board/src/entity-schema.ts";
+      const crafted = `b/evil.ts\n  - ${phantom}`;
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", crafted] },
+      ];
+      const out = renderMap({ ...analysis, workingSets: sets }, 4000);
+      const section = out.slice(out.indexOf("## Working sets"));
+
+      const header = section.match(/- \*\*.+?\*\* — (\d+) files across /);
+      expect(header).not.toBeNull();
+      const rendered = section.split("\n").filter((l) => l.startsWith("  - "));
+      expect(rendered).toHaveLength(Number(header?.[1]));
+      expect(rendered.some((l) => l === `  - ${phantom}`)).toBe(false);
+      // The path is still there, faithfully and greppably — escaped, not
+      // dropped, so the entry keeps identifying the file it names.
+      expect(section).toContain("b/evil.ts\\x0a");
+    });
+
     it("stays within the token budget when the working sets section is the large one", () => {
       const heavySets: WorkingSet[] = Array.from({ length: 40 }, (_, i) => ({
         name: `pkg/set-${i}/x.ts`,

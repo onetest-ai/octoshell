@@ -10,6 +10,31 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/**
+ * A path or module name, forced onto ONE line before it is interpolated into
+ * markdown.
+ *
+ * POSIX forbids exactly two bytes in a path — `/` and NUL — so a repo-relative
+ * path may legally contain a newline, and `harvest` goes out of its way to
+ * read those faithfully (it passes `git log -z` precisely because "under `-z`
+ * a file name may legally contain one", and hardens its record separator
+ * against a filename forging a commit header). Markdown is line-oriented, so
+ * an unescaped one breaks two claims this file makes at once: a working set's
+ * header claims `N files` above N+1 rendered lines, and a path crafted as
+ * `x\n  - packages/board/src/entity-schema.ts` injects a member the set does
+ * not contain — into a committed artifact an agent loads as architecture
+ * truth. Verified: that exact path renders three member lines under a header
+ * claiming two.
+ *
+ * Escaped, not dropped or truncated: the entry stays a faithful, greppable
+ * identifier of the file it names. Applied to every path and module name this
+ * renderer emits, not only to the working-set section, because a module
+ * directory is a prefix of the same paths and inherits the same freedom.
+ */
+const oneLine = (s: string): string =>
+  // eslint-disable-next-line no-control-regex
+  s.replace(/[\u0000-\u001f\u007f]/gu, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
+
 export function renderMap(analysis: Analysis, budgetTokens: number): string {
   const header = [
     "# Module map",
@@ -86,7 +111,7 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
   const lines: string[] = [];
   for (const m of ranked) {
     const layer = m.layer === null ? "" : ` [layer ${m.layer}]`;
-    lines.push(`- **${m.name}**${layer} — ${countLabel(m.members)}`);
+    lines.push(`- **${oneLine(m.name)}**${layer} — ${countLabel(m.members)}`);
   }
 
   // An arrow is a claim, and only one of the two edge producers can back it.
@@ -132,7 +157,7 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     const shown = shownModules(keptModules);
     return analysis.moduleEdges
       .filter((e) => shown.has(e.from) && shown.has(e.to))
-      .map((e) => `- ${e.from} ${link} ${e.to} (${e.weight.toFixed(2)})`);
+      .map((e) => `- ${oneLine(e.from)} ${link} ${oneLine(e.to)} (${e.weight.toFixed(2)})`);
   };
 
   const note = (dropped: number, unit: string): string[] =>
@@ -174,8 +199,11 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
   // comment already guards, reintroduced at a new surface.
   const setLines = (sets: WorkingSet[]): string[] =>
     sets.flatMap((w) => [
-      `- **${w.name}** — ${w.files.length} files across ${w.modules.join(", ")}`,
-      ...w.files.map((f) => `  - ${f}`),
+      // `w.files.length`, never the rendered lines' length: the count is the
+      // claim about the COMMUNITY, and `oneLine` must not be able to change it
+      // — which is exactly why it exists (see its own comment).
+      `- **${oneLine(w.name)}** — ${w.files.length} files across ${w.modules.map(oneLine).join(", ")}`,
+      ...w.files.map((f) => `  - ${oneLine(f)}`),
     ]);
 
   /** The sets this pair of counters actually renders — read by `compose` and by
