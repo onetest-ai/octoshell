@@ -36,11 +36,19 @@ halfLifeDays: 180
 minSupport: 2
 
 # Minimum number of analysable commits (after maxCommitFiles filtering)
-# before the co-change signal is considered meaningful. Below this the
-# doctor/setup check reports the analysis as degraded/thin — a shallow
-# clone or a repo that recently squashed its history won't have enough
-# commits for co-change counting to mean anything. 200 was chosen as the
-# rough point where enough pairs have repeated for noise to average out.
+# before the co-change signal is considered meaningful. A shallow clone or a
+# repo that recently squashed its history won't have enough commits for
+# co-change counting to mean anything. 200 was chosen as the rough point
+# where enough pairs have repeated for noise to average out.
+#
+# Two things key off it, not one:
+#  - the doctor/setup check reports the analysis as degraded/thin;
+#  - the "Working sets" section is omitted from map.md ENTIRELY (no heading,
+#    no caveat). Below this threshold community detection invents structure
+#    out of noise, and an absent section cannot be misread the way a
+#    caveated one can. Note this is measured against the commits the run
+#    actually harvested, so `--since <recent>` can omit the section on a repo
+#    `octograph doctor` grades ok.
 minCommits: 200
 
 # How many standard deviations above the mean weighted degree a file's
@@ -56,9 +64,13 @@ hubZThreshold: 3
 
 # Token budget for the rendered module map (packages/graph/src/render.ts),
 # estimated at roughly chars/4. The map is meant to be loaded as context by
-# a coding agent, so it must fit comfortably in a prompt — modules and
-# dependency edges are trimmed from the tail (weakest/smallest first) once
-# the budget is exceeded. 2000 tokens keeps the map small enough to load
+# a coding agent, so it must fit comfortably in a prompt — modules,
+# dependency edges and working sets are trimmed from the tail
+# (weakest/smallest first) once the budget is exceeded, whichever of the
+# three currently occupies the most lines giving up the next slice, so no
+# section is starved to pay for the others. A working set is trimmed whole:
+# a header claiming "N files" is never rendered above fewer than N of them.
+# 2000 tokens keeps the map small enough to load
 # alongside other context without dominating it. Raise it for a large repo
 # where a useful map genuinely needs more room.
 budgetTokens: 2000

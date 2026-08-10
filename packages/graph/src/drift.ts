@@ -1,3 +1,4 @@
+import { isSyntheticBridge } from "./components.js";
 import { classifyPair } from "./noise.js";
 import { compare } from "./rollup.js";
 import { edgeWeight, type Edge } from "./weights.js";
@@ -82,7 +83,7 @@ export function drift(edges: Edge[], files: string[], spine: Spine, limit = 20):
 
   const scored: Array<{ row: DriftRow; weight: number }> = [];
   for (const e of edges) {
-    if (e.support === 0) continue; // synthetic bridge, not evidence
+    if (isSyntheticBridge(e)) continue; // no commit backs it — see components.ts
     const weight = edgeWeight(e);
     if (weight <= 0) continue;
 

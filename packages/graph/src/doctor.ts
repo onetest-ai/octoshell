@@ -5,7 +5,7 @@ import { hasBoard } from "./artifact.js";
 import { graphifyGraphPath } from "./graphify.js";
 import { declaredSpine } from "./spine.js";
 import { compare } from "./rollup.js";
-import type { Config } from "./config.js";
+import { historyIsThin, type Config } from "./config.js";
 
 export type CheckState = "ok" | "warn" | "missing";
 export type Status = "ok" | "degraded" | "blocked";
@@ -86,7 +86,7 @@ export function doctor(repoRoot: string, config: Config): Report {
   }
   checks.push({ name: "repository", state: "ok", detail: repoRoot, required: true });
 
-  const thin = analysable < config.minCommits;
+  const thin = historyIsThin(analysable, config);
   checks.push({
     name: "history depth",
     state: thin ? "warn" : "ok",
@@ -147,6 +147,23 @@ export function doctor(repoRoot: string, config: Config): Report {
     required: false,
   });
 
+  // Exactly two checks are `required: true` today — "repository" (always `ok`
+  // on any branch that reaches this line; the two `blocked` returns above are
+  // the only way it is not) and "history depth" (graded by `historyIsThin`,
+  // config.ts). That is WHY `degraded <=> historyIsThin(analysable, config)`
+  // holds — it is not a property this function states, it is a coincidence of
+  // there being only one required check that can actually fail. Promoting
+  // "graphify" or "board" to `required: true` breaks that equivalence: a repo
+  // could then grade `degraded` for a reason `historyIsThin` has never heard
+  // of, and M7's criterion 3 ("workingSets absent whenever doctor says
+  // degraded") would start failing silently. Revisit `analyze()`'s
+  // suppression call in the same change that adds a third required check.
+  //
+  // Note the equivalence is over THIS function's `analysable` — the full
+  // harvest, since `doctor` grades the repository and takes no `--since`.
+  // `analyze` applies the same rule to its own (possibly narrower) window, so
+  // criterion 3's implication holds while its converse does not; that is
+  // stated once, on `historyIsThin`.
   const degraded = checks.some((c) => c.required && c.state !== "ok");
   return { status: degraded ? "degraded" : "ok", checks };
 }

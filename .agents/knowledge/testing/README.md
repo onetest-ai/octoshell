@@ -8,6 +8,23 @@ already current as of 2026-08-09.
 
 ## Index
 
-_Empty — no notes yet. `AGENTS.md` § Testing covers Vitest structure, the two coverage gates
-(`coverage:board` vitest, `coverage:pack` c8 90/90/90/70), and the happy-dom + `attachInternals`
-polyfill; a note here should go beyond that, e.g. a verified flaky spot once one is found._
+- [graph-fixture-map-output-must-be-gitignored-before-a-second-run.md](graph-fixture-map-output-must-be-gitignored-before-a-second-run.md)
+  — a second `analyze()`/map run in a fixture repo must `.gitignore` the first
+  run's own output before `git add -A`, or the tool's own artifact becomes a
+  bogus module in the next commit's history.
+- [graph-ci-checkout-is-shallow-live-history-tests-return-empty.md](graph-ci-checkout-is-shallow-live-history-tests-return-empty.md)
+  — `packages/graph` tests that call `analyze()`/`harvest()` against
+  `REPO_ROOT`'s real git log see only 1 commit on CI (`actions/checkout@v4`
+  default `fetch-depth`), not this repo's full history; verified by forcing a
+  real shallow clone locally and reproducing the same failure.
+- [graph-fixture-two-module-boundary-needs-a-third-unrelated-component.md](graph-fixture-two-module-boundary-needs-a-third-unrelated-component.md)
+  — a fixture with only two modules joined by one co-change edge won't
+  exercise Louvain's boundary-crossing detection (`workingSets`); Louvain
+  trivially merges a two-node one-edge graph into a single community, so add
+  a third, unrelated background component (the suite's own `backgroundChurn`
+  pattern).
+- [graph-e2e-heaviest-fixture-flaked-once-on-ci-pull-request-run.md](graph-e2e-heaviest-fixture-flaked-once-on-ci-pull-request-run.md)
+  — single-instance CI-only failure in `e2e.test.ts`'s heaviest (most
+  git-subprocess-intensive) fixture; same-commit `push` run and a manual
+  rerun both went green. Logged as one data point, not a confirmed recurring
+  flake — read before re-investigating from scratch if it recurs.

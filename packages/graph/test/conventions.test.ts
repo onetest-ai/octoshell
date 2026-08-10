@@ -42,6 +42,38 @@ function testCode(file: string): string {
   return stripped(readFileSync(join(TEST, file), "utf8"));
 }
 
+/**
+ * Whether `text` compares something against `minCommits` — the thin-history
+ * rule open-coded instead of called. Both operand orders, and every ordering
+ * operator, because a divergent second call site is free to pick any of them.
+ *
+ * The `(?<![=!])` guards the arrow `=>` (and `!=`), so `() => minCommits` — a
+ * read, not a comparison — is not mistaken for `> minCommits`. Assignment
+ * (`overrides.minCommits = n`) is deliberately legal: cli.ts writes the flag.
+ */
+function comparesAgainstMinCommits(text: string): boolean {
+  return (
+    /(?<![=!])[<>]=?\s*\w*\.?minCommits\b/.test(text) || /\bminCommits\s*[<>]=?/.test(text)
+  );
+}
+
+/**
+ * Whether `text` decides "is this edge a synthetic bridge" by comparing an
+ * edge's `support` against zero, instead of calling `isSyntheticBridge`.
+ *
+ * Both operand orders and every ordering operator, for the same reason
+ * `comparesAgainstMinCommits` above takes them all: a divergent second call
+ * site is free to pick any of them, and `support > 0` is exactly as much a
+ * spelling of the rule as `support === 0` is. `stat.support < minSupport`
+ * (weights.ts's evidence floor) is a DIFFERENT rule against a different
+ * operand and is not matched — only a literal `0` is.
+ */
+function comparesSupportToZero(text: string): boolean {
+  return (
+    /\bsupport\s*(?:[<>]=?|[=!]==?)\s*0\b/.test(text) || /\b0\s*(?:[<>]=?|[=!]==?)\s*\w*\.?support\b/.test(text)
+  );
+}
+
 /** All `.ts` files under `dir`, recursively — this suite's test tree is flat
  *  enough (one `fixtures/` subdirectory) that a full walk costs nothing. */
 function listTs(dir: string, relPrefix = ""): string[] {
@@ -154,8 +186,135 @@ describe("package conventions", () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * A sixth single-spelling rule: whether history is too thin for clustering
+   * to mean anything lives in `historyIsThin` (config.ts) and nowhere else.
+   * `doctor` grades a repo `degraded` on it and `analyze` suppresses
+   * `workingSets` on it — two surfaces that MUST agree, because mission
+   * criterion 3 is written as "absent whenever doctor says degraded". An
+   * open-coded `analysable < config.minCommits` at a second call site is the
+   * `edgeWeight` divergence again: free to drift the day either threshold or
+   * comparison direction changes, and silent when it does.
+   *
+   * Matched with comments/strings stripped (`code()`) against a COMPARISON in
+   * either direction and with any of `<`, `<=`, `>`, `>=` — not against the
+   * bare identifier `minCommits`, which cli.ts's `overrides.minCommits = n`
+   * flag write legitimately contains, and not against only the `<` form the
+   * extracted rule happens to be written with. A guard that recognises just
+   * the spelling already in the tree recognises nothing: the two ways a second
+   * call site actually drifts are `analysable <= config.minCommits` (an
+   * off-by-one that changes the threshold by one commit and reads as correct)
+   * and `config.minCommits > analysable` (the same rule with its operands
+   * swapped), and the original `<\s*\w*\.?minCommits` matched neither.
+   */
+  it("spells the thin-history rule only in config.ts — every consumer calls historyIsThin()", () => {
+    const offenders = sources.filter((f) => f !== "config.ts" && comparesAgainstMinCommits(code(f)));
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The guard above is a regex, so the set of divergences it can see is a
+   * claim in its own right — and an unexercised one, because the only thing
+   * that ever runs it is a tree with zero offenders in it. Pin the spellings
+   * it must catch, and the non-comparisons it must not.
+   */
+  it("recognises every spelling of the thin-history comparison, not just the one config.ts uses", () => {
+    for (const violation of [
+      "const thin = analysable < config.minCommits;",
+      "const thin = analysable <= config.minCommits;",
+      "const thin = config.minCommits > analysable;",
+      "const thin = config.minCommits >= analysable;",
+      "const { minCommits } = config; const thin = commits.length < minCommits;",
+      "if (commits.length<cfg.minCommits) return [];",
+      "const enough = (n: number) => n >= config.minCommits;",
+    ]) {
+      expect([violation, comparesAgainstMinCommits(violation)]).toEqual([violation, true]);
+    }
+    for (const legal of [
+      // cli.ts's `--min-commits` flag write: assignment, not comparison.
+      "overrides.minCommits = n;",
+      "const cfg = { ...DEFAULTS, minCommits: 200 };",
+      "historyIsThin(commits.length, config)",
+      // An arrow function whose body is the threshold: the `=>` is why the
+      // reversed-operand half of the pattern cannot simply match a bare `>`.
+      "const threshold = () => minCommits;",
+    ]) {
+      expect([legal, comparesAgainstMinCommits(legal)]).toEqual([legal, false]);
+    }
+  });
+
+  /**
+   * A seventh single-spelling rule: "this edge is backed by no commit" lives
+   * in `isSyntheticBridge` (components.ts, next to the code that mints the
+   * marker) and nowhere else.
+   *
+   * Three surfaces publish a cross-module co-change claim and all three must
+   * exclude a bridge: `rollUp` refuses the bridged edge set wholesale,
+   * `drift` skipped it with its own `e.support === 0`, and `workingSets` —
+   * which MUST read `bridgedEdges`, because that is the graph the partition
+   * came from — did not exclude it at all, and rendered "N files across a, b"
+   * for two files that appear together in no commit. That is the shape of the
+   * divergence: one surface's open-coded copy is invisible evidence that the
+   * next surface will simply forget the rule exists.
+   */
+  it("decides a synthetic bridge only through isSyntheticBridge — never a second support-vs-zero test", () => {
+    const offenders = sources.filter(
+      (f) => f !== "components.ts" && comparesSupportToZero(code(f)),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  /** The guard above is a regex, so what it can see is a claim of its own —
+   *  and one nothing exercises, since the tree it runs against has no
+   *  offenders. Pin the spellings it must catch and the ones it must not. */
+  it("recognises every spelling of the synthetic-bridge test, and no unrelated support comparison", () => {
+    for (const violation of [
+      "if (e.support === 0) continue;",
+      "if (e.support == 0) continue;",
+      "if (e.support !== 0) keep(e);",
+      "const real = edges.filter((e) => e.support > 0);",
+      "const real = edges.filter((e) => 0 < e.support);",
+      "const { support } = e; if (support === 0) return;",
+    ]) {
+      expect([violation, comparesSupportToZero(violation)]).toEqual([violation, true]);
+    }
+    for (const legal of [
+      "if (stat.support < minSupport) continue;",
+      "stat.support += 1;",
+      "support: stat.support,",
+      "if (isSyntheticBridge(e)) continue;",
+      "support: 0, // synthetic: no commit backs this edge",
+    ]) {
+      expect([legal, comparesSupportToZero(legal)]).toEqual([legal, false]);
+    }
+  });
+
   it("never reads a clock or an RNG in graph computation", () => {
     const offenders = sources.filter((f) => /\bDate\.now\s*\(|\bMath\.random\s*\(/.test(code(f)));
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The same rule, on the other side of the call. `analyze`, `countPairs` and
+   * `runCli` all take `now` as a REQUIRED parameter precisely so the clock
+   * cannot get into the computation (see cli.ts) — but a test is free to hand
+   * them `Date.now()`, and one did: the T7.1 live-history assertion, which
+   * measures this repo's own decayed co-change graph and therefore its Louvain
+   * partition, from wherever the wall clock happened to be. Nothing about that
+   * failure is visible in a green run; it simply means the suite is asserting
+   * a slightly different graph every day, and the day the drift crosses a
+   * threshold the failure looks like a code regression and is not one.
+   *
+   * The whole suite already pins an epoch (`Date.UTC(2026, 0, 1)`, per file),
+   * which the clock guard here does not touch — `Date.UTC` is a pure function
+   * of its arguments. This makes that convention structural instead of
+   * remembered. `Math.random` is banned for the same reason: a fixture built
+   * from random paths reproduces nothing when it fails.
+   */
+  it("pins a fixed epoch in tests rather than reading the wall clock", () => {
+    const offenders = testFiles.filter((f) =>
+      /\bDate\.now\s*\(|\bMath\.random\s*\(/.test(testCode(f)),
+    );
     expect(offenders).toEqual([]);
   });
 
@@ -223,6 +382,17 @@ describe("package conventions", () => {
       "writeArtifact",
       "hasBoard",
       "runCli",
+      // M7's own surface, added in the same commit that added it to index.ts —
+      // which is the point of a hardcoded list. `workingSets` is the first
+      // thing M7 computes and the thing every later task in the mission
+      // renders; a consumer outside this package reaches it through
+      // `dist/index.js` or not at all.
+      "workingSets",
+      // T7.2's own surface: the single spelling of "history is too thin for
+      // clustering to mean anything" — a consumer that wants to know why
+      // `workingSets` came back empty (thin history vs. genuine agreement
+      // with the declared spine) needs this, not just `doctor`'s report.
+      "historyIsThin",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }

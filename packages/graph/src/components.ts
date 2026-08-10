@@ -60,6 +60,26 @@ function similarity(a: Map<string, number>, b: Map<string, number>): number {
 }
 
 /**
+ * Whether an edge is a synthetic bridge — minted by {@link bridgeComponents}
+ * below, and backed by NO commit (`support: 0`, the marker it writes).
+ *
+ * The single spelling of "this edge is not evidence", in the same sense as
+ * `edgeWeight` (weights.ts) and `compare` (rollup.ts). A bridge exists only to
+ * stop Louvain emitting a junk community per connected component; it asserts
+ * nothing about the repository. Every surface that publishes a co-change claim
+ * must therefore exclude it, and there are three: `rollUp` refuses the bridged
+ * edge set wholesale (rollup.ts's own doc — "rolling one up would invent an
+ * inter-module dependency out of nothing"), `drift` skips it per edge, and
+ * `workingSets` — which must read `bridgedEdges`, because that is the graph
+ * clustering saw — must not read a bridge as proof that two modules move
+ * together. Open-coded at a second call site this is the `edgeWeight`
+ * divergence again: `conventions.test.ts` pins it here.
+ */
+export function isSyntheticBridge(e: Edge): boolean {
+  return e.support === 0;
+}
+
+/**
  * Connect isolated components via directory proximity.
  *
  * Louvain emits at least one community per connected component regardless of

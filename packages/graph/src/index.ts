@@ -7,8 +7,9 @@
 export { harvest, type HarvestOptions } from "./harvest.js";
 export type { Commit } from "./types.js";
 
-export { loadConfig, DEFAULTS, type Config } from "./config.js";
+export { loadConfig, DEFAULTS, historyIsThin, type Config } from "./config.js";
 export { analyze, type Analysis, type AnalyzeOptions, type ModuleSummary } from "./analyze.js";
+export { workingSets, type WorkingSet } from "./working-sets.js";
 export { renderMap, estimateTokens } from "./render.js";
 export { impact, type ImpactRow } from "./impact.js";
 export { declaredSpine, filesByModule, type Spine } from "./spine.js";

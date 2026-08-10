@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { estimateTokens, renderMap } from "../src/render.js";
 import type { Analysis } from "../src/analyze.js";
+import type { WorkingSet } from "../src/working-sets.js";
 
 const analysis: Analysis = {
   commitCount: 400,
@@ -15,6 +16,7 @@ const analysis: Analysis = {
   hubs: ["package.json"],
   bridged: 0,
   clusterIds: { kept: 2, fresh: 0 },
+  workingSets: [],
 };
 
 describe("renderMap", () => {
@@ -357,5 +359,271 @@ describe("renderMap", () => {
     // alone is not centrality.
     const survivingLeaves = leaves.filter((l) => md.includes(`**${l.name}**`));
     expect(survivingLeaves.length).toBeLessThan(leaves.length);
+  });
+
+  /**
+   * T7.3: the read-only "discovered delta" section (spec D3). `analysis.
+   * workingSets` is already suppressed to `[]` at the analysis layer (T7.2)
+   * whenever history is too thin to cluster, so the renderer's only job is:
+   * say nothing when there is nothing, and when there IS something, say
+   * exactly what was observed — never a recommendation.
+   */
+  describe("Working sets", () => {
+    it("omits the section entirely when there are no working sets", () => {
+      const out = renderMap({ ...analysis, workingSets: [] }, 4000);
+      expect(out).not.toContain("## Working sets");
+    });
+
+    it("names the modules a working set spans and lists its files", () => {
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
+      ];
+      const out = renderMap({ ...analysis, workingSets: sets }, 4000);
+      expect(out).toContain("## Working sets");
+      expect(out).toContain("2 files across apps/ext, packages/board");
+      expect(out).toContain("  - a/x.ts");
+      expect(out).toContain("  - b/y.ts");
+    });
+
+    it("states no recommendation", () => {
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
+      ];
+      const out = renderMap({ ...analysis, workingSets: sets }, 4000);
+      const section = out.slice(out.indexOf("## Working sets")).toLowerCase();
+      for (const word of ["should", "consider", "recommend", "merge these", "split", "refactor"]) {
+        expect(section).not.toContain(word);
+      }
+    });
+
+    /**
+     * The claim the section is allowed to make. `WorkingSet.files` is exactly
+     * one Louvain community's membership, and `analyze` holds quarantined hubs
+     * and test files out of the edge set BEFORE clustering runs (A8 + the hub
+     * quarantine) — so working-sets.ts's own doc comment states the only claim
+     * the field supports: "these N files form one community", never "these are
+     * all the files that move together". The first rendered wording asserted
+     * the second: "_Files that move together across declared module
+     * boundaries._" above a count, with nothing saying the count is narrower
+     * than that sentence. Same partial-presented-as-total defect the Modules
+     * header and `- files in the co-change graph:` already guard for their own
+     * counts, at a third surface — and the one the whole campaign keeps
+     * re-shipping, because it always passes its tests.
+     */
+    it("does not present a set's file list as every file that moves with it", () => {
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
+      ];
+      const out = renderMap({ ...analysis, workingSets: sets }, 4000);
+      const section = out.slice(out.indexOf("## Working sets"));
+      const note = (section.split("\n").find((l) => l.startsWith("_")) ?? "").toLowerCase();
+      expect(note).not.toBe("");
+      // The two exclusions that make the count narrower than the prose, named
+      // where the count is published — not only in the producing module.
+      expect(note).toContain("hub");
+      expect(note).toContain("test file");
+    });
+
+    it("renders after the Modules section and the edge section", () => {
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
+      ];
+      const out = renderMap({ ...analysis, workingSets: sets }, 4000);
+      const at = out.indexOf("## Working sets");
+      expect(at).toBeGreaterThan(out.indexOf("## Modules"));
+      expect(at).toBeGreaterThan(out.indexOf("## Coupling (undirected co-change)"));
+    });
+
+    it("is byte-identical across runs when working sets are present", () => {
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
+      ];
+      const withSets = { ...analysis, workingSets: sets };
+      expect(renderMap(withSets, 4000)).toBe(renderMap(withSets, 4000));
+    });
+
+    /**
+     * Criterion 4 / criterion 6 (dangling reference), restated at this new
+     * surface exactly as `visibleEdges`' own regression block does above for
+     * edges. `analyze` never guarantees a working set's modules survive the
+     * budget — only `analyze.test.ts`'s module-identity backstop guarantees
+     * that for edge endpoints — so this invariant is entirely `render.ts`'s
+     * to hold: a working set naming a module whose heading the budget just
+     * cut is a dangling reference in the committed artifact.
+     */
+    it("never renders a working set naming a module truncated out of the Modules section", () => {
+      const many: Analysis = {
+        ...analysis,
+        // Equal-sized modules, so the budget cuts strictly from the tail —
+        // same shape as the edge dangling-reference fixture above.
+        modules: Array.from({ length: 16 }, (_, i) => ({
+          id: i,
+          name: `pkg/m${i}`,
+          members: [`pkg/m${i}/x.ts`],
+          layer: null,
+        })),
+        moduleEdges: [],
+        // Spans a module deep in the tail, so a budget that keeps only the
+        // head of the module list must also drop this set.
+        workingSets: [
+          {
+            name: "pkg/m15/x.ts",
+            modules: ["pkg/m0", "pkg/m15"],
+            files: ["pkg/m0/x.ts", "pkg/m15/x.ts"],
+          },
+        ],
+      };
+
+      const budget = 190;
+      // Precondition: the map really is over budget, so the trim really runs.
+      expect(estimateTokens(renderMap(many, Number.MAX_SAFE_INTEGER))).toBeGreaterThan(budget);
+
+      const md = renderMap(many, budget);
+      expect(estimateTokens(md)).toBeLessThanOrEqual(budget);
+
+      const headings = new Set([...md.matchAll(/^- \*\*(.+?)\*\*/gm)].map((m) => m[1]));
+      // Precondition: pkg/m15 really was dropped — otherwise nothing can
+      // dangle and this assertion is satisfied by any implementation at all.
+      expect(headings.has("pkg/m15")).toBe(false);
+      expect(md).not.toContain("## Working sets");
+    });
+
+    /**
+     * The shrink loop weighs LINES, not items. A working set is a header plus
+     * N file lines, so its COUNT is not its cost — and the first version of
+     * this loop compared `keptSets` (a count of sets) against `keptModules`
+     * and `shownEdges` (counts of lines). One 200-file set therefore weighed
+     * "1" against a 16-line module list, lost every tiebreak, and the loop
+     * gutted the Modules section down to a single row to pay for a section it
+     * then dropped anyway — the dangling filter removes the set the moment the
+     * modules it names lose their headings. Measured: 1 of 16 modules kept,
+     * zero working sets, 167 tokens rendered against a 292-token budget the
+     * full 16-module list (272) fit inside.
+     */
+    it("shrinks the working sets section before the module list it outweighs", () => {
+      const modules = Array.from({ length: 16 }, (_, i) => ({
+        id: i,
+        // Zero-padded: no module edges means equal PageRank, so `ranked` falls
+        // through to `compare(name)` and m00/m01 — the modules the set spans —
+        // are the two the budget cuts LAST. The set therefore survives the
+        // dangling filter for as long as any sane budget keeps modules at all,
+        // which is what makes this a test of the loop's choice and not of the
+        // filter.
+        name: `pkg/m${String(i).padStart(2, "0")}`,
+        members: [`pkg/m${String(i).padStart(2, "0")}/x.ts`],
+        layer: null,
+      }));
+      const heavy: Analysis = {
+        ...analysis,
+        modules,
+        moduleEdges: [],
+        workingSets: [
+          {
+            name: "pkg/m00/x.ts",
+            modules: ["pkg/m00", "pkg/m01"],
+            files: Array.from({ length: 200 }, (_, i) => `pkg/m00/file-${i}.ts`),
+          },
+        ],
+      };
+
+      const withoutSets = renderMap({ ...heavy, workingSets: [] }, Number.MAX_SAFE_INTEGER);
+      // A budget the whole module list fits inside, with room for the
+      // truncation note that replaces the dropped section — and nowhere near
+      // enough for the 201-line set.
+      const budget = estimateTokens(withoutSets) + 30;
+      // Precondition: the set really is what blows the budget.
+      expect(estimateTokens(renderMap(heavy, Number.MAX_SAFE_INTEGER))).toBeGreaterThan(budget);
+
+      const md = renderMap(heavy, budget);
+      expect(estimateTokens(md)).toBeLessThanOrEqual(budget);
+      const headings = [...md.matchAll(/^- \*\*(.+?)\*\*/gm)].map((m) => m[1]);
+      // Every module survives: the section that occupies the most lines paid.
+      expect(headings).toEqual(modules.map((m) => m.name));
+      expect(md).not.toContain("## Working sets");
+      expect(md).toContain("1 working set(s) truncated");
+      expect(md).not.toContain("module(s) truncated");
+    });
+
+    /**
+     * The enforcement test for "slice by SET, never by line" (task brief):
+     * whatever budget renders a working set at all, the file count its
+     * header claims must equal the member lines actually shown beneath it —
+     * never a header claiming "N files" above fewer than N lines.
+     */
+    it("never renders a working set header above a partial file list", () => {
+      const bigSet: WorkingSet = {
+        name: "pkg/big/x.ts",
+        modules: ["apps/ext", "packages/board"],
+        files: Array.from({ length: 50 }, (_, i) => `pkg/big/file-${i}.ts`),
+      };
+      const out = renderMap({ ...analysis, workingSets: [bigSet] }, 4000);
+      const header = out.match(/- \*\*.+\*\* — (\d+) files across /);
+      expect(header).not.toBeNull();
+      const claimed = Number(header?.[1]);
+      const rendered = out
+        .slice(out.indexOf(header?.[0] ?? ""))
+        .split("\n")
+        .slice(1)
+        .filter((l) => l.startsWith("  - ")).length;
+      expect(rendered).toBe(claimed);
+    });
+
+    /**
+     * The other way a header's count can disagree with the lines beneath it,
+     * and the only one that survives "slice by SET, never by line": the PATH
+     * itself carries a line break.
+     *
+     * POSIX forbids exactly two bytes in a path, `/` and NUL, so this is legal
+     * on disk and `harvest` reads it faithfully on purpose (`git log -z`,
+     * "under `-z` a file name may legally contain one" — and it hardens its
+     * record separator against a filename forging a commit header, so hostile
+     * filenames are already in this package's threat model). The Working sets
+     * section is the first thing in map.md to render a raw file PATH, so it is
+     * the first place that freedom reaches the artifact.
+     *
+     * The crafted name below does not merely corrupt a line: it injects a
+     * member the set does not contain, into a committed file an agent loads as
+     * architecture truth. Measured before the fix: three member lines under a
+     * header claiming two.
+     */
+    it("cannot have a member path break the line count or inject a member it does not contain", () => {
+      const phantom = "packages/board/src/entity-schema.ts";
+      const crafted = `b/evil.ts\n  - ${phantom}`;
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", crafted] },
+      ];
+      const out = renderMap({ ...analysis, workingSets: sets }, 4000);
+      const section = out.slice(out.indexOf("## Working sets"));
+
+      const header = section.match(/- \*\*.+?\*\* — (\d+) files across /);
+      expect(header).not.toBeNull();
+      const rendered = section.split("\n").filter((l) => l.startsWith("  - "));
+      expect(rendered).toHaveLength(Number(header?.[1]));
+      expect(rendered.some((l) => l === `  - ${phantom}`)).toBe(false);
+      // The path is still there, faithfully and greppably — escaped, not
+      // dropped, so the entry keeps identifying the file it names.
+      expect(section).toContain("b/evil.ts\\x0a");
+    });
+
+    it("stays within the token budget when the working sets section is the large one", () => {
+      const heavySets: WorkingSet[] = Array.from({ length: 40 }, (_, i) => ({
+        name: `pkg/set-${i}/x.ts`,
+        modules: ["apps/ext", "packages/board"],
+        files: Array.from({ length: 10 }, (_, j) => `pkg/set-${i}/file-${j}.ts`),
+      }));
+      const heavy: Analysis = { ...analysis, workingSets: heavySets };
+
+      const budget = 500;
+      // Precondition: the map really is over budget, so the trim really runs.
+      expect(estimateTokens(renderMap(heavy, Number.MAX_SAFE_INTEGER))).toBeGreaterThan(budget);
+
+      const md = renderMap(heavy, budget);
+      expect(estimateTokens(md)).toBeLessThanOrEqual(budget);
+      // Trimming the sets list must not starve the modules it names.
+      expect(md).toContain("packages/board");
+      expect(md).toContain("apps/ext");
+      expect(md).toContain("working set(s) truncated");
+      expect(renderMap(heavy, budget)).toBe(renderMap(heavy, budget));
+    });
   });
 });
