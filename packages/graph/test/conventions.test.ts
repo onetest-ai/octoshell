@@ -57,6 +57,23 @@ function comparesAgainstMinCommits(text: string): boolean {
   );
 }
 
+/**
+ * Whether `text` decides "is this edge a synthetic bridge" by comparing an
+ * edge's `support` against zero, instead of calling `isSyntheticBridge`.
+ *
+ * Both operand orders and every ordering operator, for the same reason
+ * `comparesAgainstMinCommits` above takes them all: a divergent second call
+ * site is free to pick any of them, and `support > 0` is exactly as much a
+ * spelling of the rule as `support === 0` is. `stat.support < minSupport`
+ * (weights.ts's evidence floor) is a DIFFERENT rule against a different
+ * operand and is not matched — only a literal `0` is.
+ */
+function comparesSupportToZero(text: string): boolean {
+  return (
+    /\bsupport\s*(?:[<>]=?|[=!]==?)\s*0\b/.test(text) || /\b0\s*(?:[<>]=?|[=!]==?)\s*\w*\.?support\b/.test(text)
+  );
+}
+
 /** All `.ts` files under `dir`, recursively — this suite's test tree is flat
  *  enough (one `fixtures/` subdirectory) that a full walk costs nothing. */
 function listTs(dir: string, relPrefix = ""): string[] {
@@ -223,6 +240,52 @@ describe("package conventions", () => {
       "const threshold = () => minCommits;",
     ]) {
       expect([legal, comparesAgainstMinCommits(legal)]).toEqual([legal, false]);
+    }
+  });
+
+  /**
+   * A seventh single-spelling rule: "this edge is backed by no commit" lives
+   * in `isSyntheticBridge` (components.ts, next to the code that mints the
+   * marker) and nowhere else.
+   *
+   * Three surfaces publish a cross-module co-change claim and all three must
+   * exclude a bridge: `rollUp` refuses the bridged edge set wholesale,
+   * `drift` skipped it with its own `e.support === 0`, and `workingSets` —
+   * which MUST read `bridgedEdges`, because that is the graph the partition
+   * came from — did not exclude it at all, and rendered "N files across a, b"
+   * for two files that appear together in no commit. That is the shape of the
+   * divergence: one surface's open-coded copy is invisible evidence that the
+   * next surface will simply forget the rule exists.
+   */
+  it("decides a synthetic bridge only through isSyntheticBridge — never a second support-vs-zero test", () => {
+    const offenders = sources.filter(
+      (f) => f !== "components.ts" && comparesSupportToZero(code(f)),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  /** The guard above is a regex, so what it can see is a claim of its own —
+   *  and one nothing exercises, since the tree it runs against has no
+   *  offenders. Pin the spellings it must catch and the ones it must not. */
+  it("recognises every spelling of the synthetic-bridge test, and no unrelated support comparison", () => {
+    for (const violation of [
+      "if (e.support === 0) continue;",
+      "if (e.support == 0) continue;",
+      "if (e.support !== 0) keep(e);",
+      "const real = edges.filter((e) => e.support > 0);",
+      "const real = edges.filter((e) => 0 < e.support);",
+      "const { support } = e; if (support === 0) return;",
+    ]) {
+      expect([violation, comparesSupportToZero(violation)]).toEqual([violation, true]);
+    }
+    for (const legal of [
+      "if (stat.support < minSupport) continue;",
+      "stat.support += 1;",
+      "support: stat.support,",
+      "if (isSyntheticBridge(e)) continue;",
+      "support: 0, // synthetic: no commit backs this edge",
+    ]) {
+      expect([legal, comparesSupportToZero(legal)]).toEqual([legal, false]);
     }
   });
 

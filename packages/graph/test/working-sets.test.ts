@@ -3,6 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { workingSets } from "../src/working-sets.js";
 import { analyze } from "../src/analyze.js";
+import { bridgeComponents } from "../src/components.js";
+import { louvain } from "../src/louvain.js";
 import { loadConfig } from "../src/config.js";
 // Imported through the package's PUBLIC entry point on purpose, alongside the
 // deep `../src/working-sets.js` import above: a cross-package consumer reads
@@ -32,6 +34,13 @@ const NOW = Date.UTC(2026, 0, 1);
 /** A co-change edge strong enough to carry PageRank mass. */
 const edge = (a: number, b: number): Edge => ({ a, b, support: 3, npmi: 0.9, confidence: 0.9 });
 
+/**
+ * A SYNTHETIC bridge, exactly as `bridgeComponents` mints one: `support: 0`
+ * (no commit backs it) at `BRIDGE_WEIGHT`. Present in `bridgedEdges` — the
+ * edge set `workingSets` is required to read — and evidence of nothing.
+ */
+const bridge = (a: number, b: number): Edge => ({ a, b, support: 0, npmi: 0.01, confidence: 0 });
+
 describe("workingSets", () => {
   it("drops a community whose files all fall inside one declared module", () => {
     const files = ["a/one.ts", "a/two.ts", "a/three.ts"];
@@ -42,7 +51,10 @@ describe("workingSets", () => {
   it("keeps a community spanning two declared modules and names the span", () => {
     const files = ["a/one.ts", "b/two.ts"];
     const byCommunity = new Map([[7, [0, 1]]]);
-    const [set] = workingSets(byCommunity, [], files, moduleOf);
+    // The real co-change edge that put these two in one community. Passing
+    // `[]` here would assert a cross-module span with no observation behind
+    // it — the thing the span check exists to refuse.
+    const [set] = workingSets(byCommunity, [edge(0, 1)], files, moduleOf);
     expect(set?.modules).toEqual(["a", "b"]);
     expect(set?.files).toEqual(["a/one.ts", "b/two.ts"]);
   });
@@ -56,7 +68,97 @@ describe("workingSets", () => {
   it("keeps a larger set that merely contains a lockfile", () => {
     const files = ["a/x.ts", "b/y.ts", "pnpm-lock.yaml"];
     const mod = (p: string): string => (p.startsWith("a/") ? "a" : p.startsWith("b/") ? "b" : "root");
-    expect(workingSets(new Map([[9, [0, 1, 2]]]), [], files, mod)).toHaveLength(1);
+    const edges = [edge(0, 1), edge(1, 2)];
+    expect(workingSets(new Map([[9, [0, 1, 2]]]), edges, files, mod)).toHaveLength(1);
+  });
+
+  /**
+   * The regression this whole file existed to make impossible and did not:
+   * a rendered claim with nothing behind it.
+   *
+   * `bridgeComponents` mints a `support: 0` edge to stop Louvain emitting a
+   * junk community per connected component. It is backed by NO commit —
+   * `rollUp` refuses the bridged edge set wholesale for exactly that reason,
+   * and `drift` skips it per edge. `workingSets` MUST read `bridgedEdges`
+   * (that is the graph the partition came from), so it is the one consumer
+   * that can mistake a bridge for evidence, and it did: two files joined by
+   * nothing but a bridge rendered as "2 files across a, b" under a note
+   * reading "Observed from commit history".
+   *
+   * Every other fixture in this file uses edges at nPMI 0.9, so none of them
+   * could ever exhibit it.
+   */
+  it("does not report a set whose only cross-module link is a synthetic bridge", () => {
+    const files = ["a/one.ts", "b/one.ts"];
+    expect(workingSets(new Map([[3, [0, 1]]]), [bridge(0, 1)], files, moduleOf)).toEqual([]);
+  });
+
+  /**
+   * The same rule where it actually bites: a set that IS backed by real
+   * co-change across one boundary, but names a third module attached to it by
+   * a bridge alone. The span claim is per-module, so the whole set goes — its
+   * `files` are documented as exactly the community's membership, and a
+   * narrowed span above an unnarrowed file list is the same lie, quieter.
+   */
+  it("does not report a set that names a third module only a synthetic bridge reaches", () => {
+    const files = ["a/one.ts", "b/one.ts", "c/one.ts"];
+    const mod = (p: string): string => p.split("/")[0] ?? "root";
+    const edges = [edge(0, 1), bridge(1, 2)];
+    expect(workingSets(new Map([[3, [0, 1, 2]]]), edges, files, mod)).toEqual([]);
+    // …and the same community minus the bridged member is still reported, so
+    // the rule is scoped to the unbacked span and not to bridges in general.
+    expect(workingSets(new Map([[3, [0, 1]]]), edges, files, mod)).toHaveLength(1);
+  });
+
+  /**
+   * An edge with a non-positive nPMI is evidence of SEPARATION — every other
+   * consumer in this package reads weight through `edgeWeight` so such a pair
+   * never counts as coupling (weights.ts, and `conventions.test.ts`'s npmi
+   * guard). A span held up by one of those is as unbacked as a bridged one.
+   */
+  it("does not count a non-positively-correlated pair as evidence of a span", () => {
+    const files = ["a/one.ts", "b/one.ts"];
+    const anti: Edge = { a: 0, b: 1, support: 5, npmi: -0.4, confidence: 0.2 };
+    expect(workingSets(new Map([[3, [0, 1]]]), [anti], files, moduleOf)).toEqual([]);
+  });
+
+  /**
+   * Reachability, through the real `bridgeComponents` + `louvain` rather than
+   * a hand-written bridge: `BRIDGE_WEIGHT` is 0.01, documented as "enough to
+   * connect, too little to cluster" — which holds only while the real edges
+   * around it are stronger than that. nPMI is normalised to [-1, 1] and a pair
+   * co-changing at almost exactly chance scores just above zero, so a repo
+   * with weak-but-repeated pairings lets the bridge win modularity outright.
+   *
+   * Two components, one wholly inside module `a` and one wholly inside `b`,
+   * at nPMI 0.001: Louvain merges the two bridge endpoints into a community of
+   * their own. Neither component crosses a boundary on its own, and no commit
+   * in the fixture touches an `a/` file and a `b/` file together — so the only
+   * boundary-crossing community here is the one the clustering aid invented.
+   */
+  it("reports nothing when the bridge outweighs real co-change and invents a cross-module community", () => {
+    const files = ["a/one.ts", "a/two.ts", "a/three.ts", "b/one.ts", "b/two.ts", "b/three.ts"];
+    const weak = (a: number, b: number): Edge => ({ a, b, support: 2, npmi: 0.001, confidence: 0.5 });
+    const real = [weak(0, 1), weak(1, 2), weak(0, 2), weak(3, 4), weak(4, 5), weak(3, 5)];
+
+    const bridged = bridgeComponents(real, files);
+    // Precondition: a bridge really was minted, and Louvain really did merge
+    // across it. Without this the assertion below passes for a partition that
+    // never crossed a boundary at all.
+    expect(bridged.length).toBeGreaterThan(real.length);
+    const partition = louvain(bridged, { exclude: new Set<number>() });
+    const byCommunity = new Map<number, number[]>();
+    for (const [node, comm] of partition) {
+      const list = byCommunity.get(comm);
+      if (list) list.push(node);
+      else byCommunity.set(comm, [node]);
+    }
+    const spans = [...byCommunity.values()].filter(
+      (m) => new Set(m.map((n) => moduleOf(files[n] ?? ""))).size > 1,
+    );
+    expect(spans.length).toBeGreaterThan(0);
+
+    expect(workingSets(byCommunity, bridged, files, moduleOf)).toEqual([]);
   });
 
   /**
@@ -100,7 +202,7 @@ describe("workingSets", () => {
   it("orders modules and files by compare, not by the order they were encountered", () => {
     const files = ["z/two.ts", "a/one.ts"];
     const mod = (p: string): string => p.split("/")[0] ?? "root";
-    const [set] = workingSets(new Map([[7, [0, 1]]]), [], files, mod);
+    const [set] = workingSets(new Map([[7, [0, 1]]]), [edge(0, 1)], files, mod);
     expect(set?.modules).toEqual(["a", "z"]);
     expect(set?.files).toEqual(["a/one.ts", "z/two.ts"]);
   });
@@ -126,10 +228,12 @@ describe("workingSets", () => {
       [9, [2, 3, 4]],
       [2, [0, 1]],
     ]);
+    // Real co-change inside each community, crossing the a/b boundary in both.
+    const edges = [edge(0, 1), edge(2, 3), edge(3, 4)];
 
-    const first = workingSets(forward, [], files, moduleOf);
-    expect(workingSets(forward, [], files, moduleOf)).toEqual(first);
-    expect(workingSets(reversed, [], files, moduleOf)).toEqual(first);
+    const first = workingSets(forward, edges, files, moduleOf);
+    expect(workingSets(forward, edges, files, moduleOf)).toEqual(first);
+    expect(workingSets(reversed, edges, files, moduleOf)).toEqual(first);
     // Descending size, so the three-file community leads regardless of which
     // community id was inserted first.
     expect(first.map((w) => w.files.length)).toEqual([3, 2]);

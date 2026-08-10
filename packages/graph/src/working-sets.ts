@@ -1,6 +1,7 @@
+import { isSyntheticBridge } from "./components.js";
 import { classifyPair } from "./noise.js";
 import { compare, nameCluster } from "./rollup.js";
-import type { Edge } from "./weights.js";
+import { edgeWeight, type Edge } from "./weights.js";
 
 export interface WorkingSet {
   /** The set's own name: its most central member's file path. NOT a module
@@ -36,7 +37,10 @@ export interface WorkingSet {
  *
  * `edges` MUST be `bridgedEdges` — the edge set clustering actually saw — not
  * the full weighted `edges`, so `nameCluster`'s centrality measures the same
- * graph the partition came from.
+ * graph the partition came from. It is also what the span check below reads:
+ * the bridged set is the only one that contains BOTH the real evidence and the
+ * synthetic edges that must not count as evidence, so both questions can be
+ * answered from one argument.
  *
  * Pure: takes the partition and the spine's `moduleOf`, touches no disk.
  */
@@ -56,6 +60,50 @@ export function workingSets(
       .sort(compare);
     const modules = [...new Set(paths.map(moduleOf))].sort(compare);
     if (modules.length < 2) continue; // agrees with the declared structure — not a delta
+
+    // Every module this set names must be joined to another one by a REAL
+    // co-change edge — a commit that touched a file on each side. Membership
+    // is the community's, but the SPAN is the claim the section publishes
+    // ("N files across a, b"), and a span is only observable if something
+    // observed it.
+    //
+    // Two edges inside a community can fail that. A synthetic bridge
+    // (`isSyntheticBridge`, components.ts) is backed by no commit at all, and
+    // `bridgeComponents` weights it at 0.01 — "enough to connect, too little
+    // to cluster" — which holds only while the real edges around it are
+    // stronger than that. They are not always: nPMI is normalised to [-1, 1]
+    // and a pair that co-changes at almost exactly chance scores just above
+    // zero, so a repo with weak-but-repeated pairings lets the bridge dominate
+    // modularity and Louvain merges its two endpoints into a community of
+    // their own. Verified: two 3-file components, one wholly inside module `a`
+    // and one wholly inside `b`, at nPMI 0.001 produce the community
+    // {a/one.ts, b/one.ts} — two files that appear together in no commit,
+    // rendered as "2 files across a, b". An edge whose `edgeWeight` is zero is
+    // excluded for the reason it is excluded everywhere else in this package:
+    // a non-positive nPMI is evidence of separation, not of coupling.
+    //
+    // This is the same rule `rollUp` applies by refusing the bridged edge set
+    // wholesale and `drift` applies per edge — three surfaces publishing
+    // cross-module co-change, one spelling of what counts as evidence. Drop
+    // the whole set rather than re-scoping `modules` to the linked subset:
+    // `files` is documented as exactly the community's membership, and a
+    // narrowed span above an unnarrowed file list is a subtler version of the
+    // same lie.
+    const memberIds = new Set(members);
+    const linked = new Set<string>();
+    for (const e of edges) {
+      if (isSyntheticBridge(e) || edgeWeight(e) === 0) continue;
+      if (!memberIds.has(e.a) || !memberIds.has(e.b)) continue;
+      const pa = files[e.a];
+      const pb = files[e.b];
+      if (pa === undefined || pb === undefined) continue;
+      const ma = moduleOf(pa);
+      const mb = moduleOf(pb);
+      if (ma === mb) continue;
+      linked.add(ma);
+      linked.add(mb);
+    }
+    if (modules.some((m) => !linked.has(m))) continue;
 
     // A set of exactly two files that `classifyPair` does not call a real
     // candidate IS that noise pair and nothing else — in practice a lockfile
