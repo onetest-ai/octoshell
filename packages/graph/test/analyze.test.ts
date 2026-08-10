@@ -7,6 +7,7 @@ import { analyze, type ModuleSummary } from "../src/analyze.js";
 import { renderMap } from "../src/render.js";
 import { DEFAULTS } from "../src/config.js";
 import { readArtifact, writeArtifact } from "../src/artifact.js";
+import { doctor } from "../src/doctor.js";
 
 const NOW = Date.UTC(2026, 0, 30);
 
@@ -649,5 +650,56 @@ describe("analyze: A8 — test files are excluded from clustering, not from memb
     // moves if the exclusion in analyze.ts is ever deleted — membership above
     // does not, by design (see the block comment above this describe).
     expect(analysis.bridged).toBe(14);
+  });
+});
+
+describe("analyze: T7.2 — working sets are suppressed at exactly the threshold doctor grades degraded on", () => {
+  /**
+   * A cross-module co-change pattern strong enough to earn its own Louvain
+   * community spanning two declared modules (`a` and `b`, via the
+   * two-segment directory fallback — no manifest in this fixture). Background
+   * churn dilutes the marginal probability of `a/one.ts`/`b/two.ts` the same
+   * way every other hub-adjacent fixture in this file does, and gives the
+   * graph other components to bridge, so this isn't a degenerate single-edge
+   * repo that would pass for reasons unrelated to what's under test.
+   */
+  function crossModuleRepo(): string {
+    const commits: CommitSpec[] = [];
+    for (let i = 0; i < 12; i++) commits.push({ files: ["a/one.ts", "b/two.ts"] });
+    commits.push(...backgroundChurn(15));
+    return buildRepo(commits);
+  }
+
+  it("reports no working sets when history is below the doctor threshold", () => {
+    const repo = crossModuleRepo();
+    const thin = { ...DEFAULTS, minCommits: 1000 };
+    expect(analyze(repo, thin, { now: NOW }).analysis.workingSets).toEqual([]);
+  });
+
+  it("returns the non-empty working sets T7.1 computes once history clears the threshold — suppression is conditional, not a permanent silencing", () => {
+    const repo = crossModuleRepo();
+    const clear = { ...DEFAULTS, minCommits: 5 };
+    const { analysis } = analyze(repo, clear, { now: NOW });
+    expect(analysis.workingSets.length).toBeGreaterThan(0);
+    expect(analysis.workingSets.some((w) => w.modules.includes("a") && w.modules.includes("b"))).toBe(
+      true,
+    );
+  });
+
+  /**
+   * Criterion 3 is written as "absent whenever doctor says degraded", not
+   * "absent whenever analysableCommits < minCommits" — those happen to
+   * coincide today only because `doctor`'s two `required: true` checks are
+   * "repository" (always `ok` on any branch that reaches the grade) and
+   * "history depth" (graded by the same `historyIsThin` this suppression
+   * calls). Asserting through `minCommits` alone would stay green even if a
+   * future `required: true` check broke that coincidence — this test goes
+   * through `doctor()` itself so it actually proves the criterion.
+   */
+  it("suppresses working sets on exactly the repos doctor grades degraded — asserted through doctor(), not minCommits", () => {
+    const repo = crossModuleRepo();
+    const thin = { ...DEFAULTS, minCommits: 1000 };
+    expect(doctor(repo, thin).status).toBe("degraded");
+    expect(analyze(repo, thin, { now: NOW }).analysis.workingSets).toEqual([]);
   });
 });

@@ -154,6 +154,30 @@ describe("package conventions", () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * A sixth single-spelling rule: whether history is too thin for clustering
+   * to mean anything lives in `historyIsThin` (config.ts) and nowhere else.
+   * `doctor` grades a repo `degraded` on it and `analyze` suppresses
+   * `workingSets` on it — two surfaces that MUST agree, because mission
+   * criterion 3 is written as "absent whenever doctor says degraded". An
+   * open-coded `analysable < config.minCommits` at a second call site is the
+   * `edgeWeight` divergence again: free to drift the day either threshold or
+   * comparison direction changes, and silent when it does.
+   *
+   * Matched with comments/strings stripped (`code()`), against the shape a
+   * real comparison actually takes on disk (`< config.minCommits`,
+   * `<foo.minCommits`, or bare `< minCommits` after destructuring) — not
+   * against the bare identifier `minCommits`, which `historyIsThin`'s own
+   * parameter list and every caller passing `config.minCommits` through
+   * legitimately contain.
+   */
+  it("spells the thin-history rule only in config.ts — every consumer calls historyIsThin()", () => {
+    const offenders = sources.filter(
+      (f) => f !== "config.ts" && /<\s*\w*\.?minCommits\b/.test(code(f)),
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it("never reads a clock or an RNG in graph computation", () => {
     const offenders = sources.filter((f) => /\bDate\.now\s*\(|\bMath\.random\s*\(/.test(code(f)));
     expect(offenders).toEqual([]);
@@ -253,6 +277,11 @@ describe("package conventions", () => {
       // renders; a consumer outside this package reaches it through
       // `dist/index.js` or not at all.
       "workingSets",
+      // T7.2's own surface: the single spelling of "history is too thin for
+      // clustering to mean anything" — a consumer that wants to know why
+      // `workingSets` came back empty (thin history vs. genuine agreement
+      // with the declared spine) needs this, not just `doctor`'s report.
+      "historyIsThin",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }

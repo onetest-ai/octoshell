@@ -83,3 +83,17 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
   }
   return cfg;
 }
+
+/**
+ * The one rule for "this history is too thin for clustering to mean
+ * anything". `doctor` grades a repo `degraded` on it (its "history depth"
+ * check) and `analyze` suppresses `workingSets` on it — two surfaces that
+ * MUST agree, because mission criterion 3 (M7) is written as "absent
+ * whenever doctor says degraded". Two spellings of this would let map.md
+ * publish invented community structure on a repo doctor is calling
+ * untrustworthy in the same breath. `test/conventions.test.ts` enforces this
+ * is the only place a commit count is compared against `minCommits`.
+ */
+export function historyIsThin(analysableCommits: number, config: Config): boolean {
+  return analysableCommits < config.minCommits;
+}
