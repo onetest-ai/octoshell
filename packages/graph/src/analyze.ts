@@ -9,6 +9,7 @@ import { declaredSpine, filesByModule, type Spine } from "./spine.js";
 import { layerRanks } from "./layers.js";
 import { isTestPath } from "./noise.js";
 import { remapClusters } from "./stability.js";
+import { workingSets, type WorkingSet } from "./working-sets.js";
 import type { Config } from "./config.js";
 
 export interface ModuleSummary {
@@ -54,6 +55,16 @@ export interface Analysis {
    * behaviour this option replaces.
    */
   clusterIds: { kept: number; fresh: number };
+  /**
+   * The Louvain communities that DISAGREE with the declared spine — spec D3's
+   * "discovered" half. Declared module identity and membership (`modules`
+   * above) are untouched by this: a working set is a second, independent read
+   * of the same partition, never a mutation of the first.
+   *
+   * Not yet suppressed for thin history here — that lands in a later task,
+   * at this same layer, so every consumer of `Analysis` sees one answer.
+   */
+  workingSets: WorkingSet[];
 }
 
 export interface AnalyzeOptions {
@@ -134,6 +145,13 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
   }
 
   const spine = declaredSpine(repoRoot, table.files);
+
+  // The discovered delta: the same `byCommunity` partition read a second way,
+  // against `bridgedEdges` — the edge set clustering actually saw, so
+  // `nameCluster`'s centrality inside `workingSets` measures the same graph
+  // the partition came from, not the fuller (and differently-connected) raw
+  // `edges`.
+  const workingSetList = workingSets(byCommunity, bridgedEdges, table.files, spine.moduleOf);
   // One expression decides both which edges are reported and whether they carry
   // a direction — see `Analysis.moduleEdgesDirected`. Splitting the two apart
   // is how a renderer ends up drawing an arrow on a symmetric edge.
@@ -334,6 +352,7 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
       hubs: pathsOf([...hubIds]),
       bridged: synthetic,
       clusterIds: { kept, fresh },
+      workingSets: workingSetList,
     },
     edges,
     files: table.files,
