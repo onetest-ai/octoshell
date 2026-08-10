@@ -8,7 +8,18 @@ export interface WorkingSet {
   name: string;
   /** Declared modules this set spans, ascending by `compare`. Always >= 2. */
   modules: string[];
-  /** Member file paths, ascending by `compare`. */
+  /**
+   * Member file paths, ascending by `compare`.
+   *
+   * Exactly the Louvain community's membership — which is NOT every file that
+   * co-changes with this set. `analyze` excludes hubs and test files from
+   * clustering before `louvain` runs (A8, and the hub quarantine above it), so
+   * a hub that churns with every member of this set is absent from it. That is
+   * the honest reading of the partition and it is what a renderer may claim:
+   * "these N files form one community", never "these are all the files that
+   * move together". Stating the second from this field would be a claim the
+   * computation does not support.
+   */
   files: string[];
 }
 
@@ -50,10 +61,14 @@ export function workingSets(
     // candidate IS that noise pair and nothing else — in practice a lockfile
     // moving with its manifest. Suppress it.
     //
-    // Only the mechanical case can actually arrive here: A8 strips test ids
-    // from the edge set BEFORE `louvain()` runs (analyze.ts), so no test file
-    // ever reaches a community, and `intra-module` cannot span two declared
-    // modules by definition. `classifyPair` is still the right call rather
+    // Only the mechanical case can actually arrive here. `classifyPair`'s
+    // range is `"mechanical" | "test-subject" | "candidate"` — it never
+    // returns `"intra-module"` at all, which needs a `Spine` it does not take
+    // (see its own doc; `drift` applies that grade separately) — and
+    // `"test-subject"` cannot reach this line either: A8 strips test ids from
+    // the edge set BEFORE `louvain()` runs (analyze.ts) and excludes them from
+    // the partition on top of that, so no test file ever lands in a community.
+    // `classifyPair` is still the right call rather
     // than an open-coded manifest test — it is this package's single spelling
     // of "mechanical co-change" — but do not read this as handling
     // test-subject pairs. It does not, because it cannot.

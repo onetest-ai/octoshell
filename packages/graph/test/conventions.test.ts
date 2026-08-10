@@ -160,6 +160,30 @@ describe("package conventions", () => {
   });
 
   /**
+   * The same rule, on the other side of the call. `analyze`, `countPairs` and
+   * `runCli` all take `now` as a REQUIRED parameter precisely so the clock
+   * cannot get into the computation (see cli.ts) — but a test is free to hand
+   * them `Date.now()`, and one did: the T7.1 live-history assertion, which
+   * measures this repo's own decayed co-change graph and therefore its Louvain
+   * partition, from wherever the wall clock happened to be. Nothing about that
+   * failure is visible in a green run; it simply means the suite is asserting
+   * a slightly different graph every day, and the day the drift crosses a
+   * threshold the failure looks like a code regression and is not one.
+   *
+   * The whole suite already pins an epoch (`Date.UTC(2026, 0, 1)`, per file),
+   * which the clock guard here does not touch — `Date.UTC` is a pure function
+   * of its arguments. This makes that convention structural instead of
+   * remembered. `Math.random` is banned for the same reason: a fixture built
+   * from random paths reproduces nothing when it fails.
+   */
+  it("pins a fixed epoch in tests rather than reading the wall clock", () => {
+    const offenders = testFiles.filter((f) =>
+      /\bDate\.now\s*\(|\bMath\.random\s*\(/.test(testCode(f)),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  /**
    * Cross-package consumers read `dist/index.js` (package.json `exports`),
    * never a deep path into `src/` — so a module that index.ts does not
    * re-export does not exist outside this package, however complete it is.
@@ -223,6 +247,12 @@ describe("package conventions", () => {
       "writeArtifact",
       "hasBoard",
       "runCli",
+      // M7's own surface, added in the same commit that added it to index.ts —
+      // which is the point of a hardcoded list. `workingSets` is the first
+      // thing M7 computes and the thing every later task in the mission
+      // renders; a consumer outside this package reaches it through
+      // `dist/index.js` or not at all.
+      "workingSets",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }
