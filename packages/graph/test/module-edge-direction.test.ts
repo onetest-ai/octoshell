@@ -37,6 +37,7 @@ const base: Omit<Analysis, "moduleEdges" | "moduleEdgesDirected" | "spineSource"
   hubs: [],
   bridged: 0,
   clusterIds: { kept: 0, fresh: 2 },
+  workingSets: [],
 };
 
 describe("renderMap: an arrow is a claim only a declared spine can back", () => {
