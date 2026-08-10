@@ -19,3 +19,4 @@ export { edgeWeight, weighEdges, type Edge, type WeightOptions } from "./weights
 export { countPairs, type PairTable, type PairStat, type DecayOptions } from "./cochange.js";
 export { isTestPath, classifyPair, type PairClass } from "./noise.js";
 export { drift, type DriftRow } from "./drift.js";
+export { doctor, exitCode, type Check, type CheckState, type Report, type Status } from "./doctor.js";
