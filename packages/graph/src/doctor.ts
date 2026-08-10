@@ -158,6 +158,12 @@ export function doctor(repoRoot: string, config: Config): Report {
   // of, and M7's criterion 3 ("workingSets absent whenever doctor says
   // degraded") would start failing silently. Revisit `analyze()`'s
   // suppression call in the same change that adds a third required check.
+  //
+  // Note the equivalence is over THIS function's `analysable` — the full
+  // harvest, since `doctor` grades the repository and takes no `--since`.
+  // `analyze` applies the same rule to its own (possibly narrower) window, so
+  // criterion 3's implication holds while its converse does not; that is
+  // stated once, on `historyIsThin`.
   const degraded = checks.some((c) => c.required && c.state !== "ok");
   return { status: degraded ? "degraded" : "ok", checks };
 }

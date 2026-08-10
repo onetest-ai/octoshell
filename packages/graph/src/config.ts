@@ -87,12 +87,26 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
 /**
  * The one rule for "this history is too thin for clustering to mean
  * anything". `doctor` grades a repo `degraded` on it (its "history depth"
- * check) and `analyze` suppresses `workingSets` on it — two surfaces that
- * MUST agree, because mission criterion 3 (M7) is written as "absent
- * whenever doctor says degraded". Two spellings of this would let map.md
- * publish invented community structure on a repo doctor is calling
- * untrustworthy in the same breath. `test/conventions.test.ts` enforces this
- * is the only place a commit count is compared against `minCommits`.
+ * check) and `analyze` suppresses `workingSets` on it. Two spellings of the
+ * RULE would let map.md publish invented community structure on a repo doctor
+ * is calling untrustworthy in the same breath, which is why it lives here and
+ * nowhere else; `test/conventions.test.ts` enforces that.
+ *
+ * The two callers deliberately feed it DIFFERENT counts, and the asymmetry is
+ * load-bearing rather than an oversight: `doctor` grades the *repository*, so
+ * it passes the full harvest, while `analyze` guards a partition it computed
+ * from the `--since` window alone, so it passes that window's commit count.
+ * A window is a subset of full history, so the implication runs one way:
+ *
+ *     doctor(repo, cfg).status === "degraded"
+ *        =>  analyze(repo, cfg, …).analysis.workingSets is []
+ *
+ * which is the direction M7's criterion 3 ("absent whenever doctor says
+ * degraded") is written in. The CONVERSE does not hold and must not be
+ * claimed: `octograph map --since <recent>` legitimately suppresses on a repo
+ * `octograph doctor` grades `ok`, because the clustering being suppressed was
+ * computed from exactly those windowed commits and from nothing else.
+ * `test/analyze.test.ts` pins both the implication and its non-converse.
  */
 export function historyIsThin(analysableCommits: number, config: Config): boolean {
   return analysableCommits < config.minCommits;
