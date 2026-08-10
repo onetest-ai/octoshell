@@ -4,36 +4,11 @@ import { copyFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildRepo } from "./fixtures/repo.js";
+import { runNode } from "./fixtures/run-node.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const PKG_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BUNDLE_PATH = join(PKG_ROOT, "dist", "octograph.mjs");
-
-interface Run {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-/** `execFileSync` throws on a non-zero exit — `doctor` legitimately exits
- *  non-zero for a thin-history fixture, so this captures the exit code
- *  instead of treating it as a test failure. `stderr` is captured too: the
- *  failure this test guards against (an un-inlined dependency) shows up as an
- *  empty stdout and an ERR_MODULE_NOT_FOUND on stderr, and an assertion that
- *  can only say "expected '' to contain 'status:'" hides the reason. */
-function runNode(args: string[], cwd: string): Run {
-  try {
-    const stdout = execFileSync("node", args, { cwd, stdio: "pipe" }).toString();
-    return { code: 0, stdout, stderr: "" };
-  } catch (err) {
-    const e = err as { status: number | null; stdout: Buffer; stderr: Buffer };
-    return {
-      code: e.status ?? 1,
-      stdout: e.stdout?.toString() ?? "",
-      stderr: e.stderr?.toString() ?? "",
-    };
-  }
-}
 
 describe("scripts/bundle.mjs", () => {
   it(
