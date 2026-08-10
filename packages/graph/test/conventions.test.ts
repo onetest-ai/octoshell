@@ -42,6 +42,21 @@ function testCode(file: string): string {
   return stripped(readFileSync(join(TEST, file), "utf8"));
 }
 
+/**
+ * Whether `text` compares something against `minCommits` — the thin-history
+ * rule open-coded instead of called. Both operand orders, and every ordering
+ * operator, because a divergent second call site is free to pick any of them.
+ *
+ * The `(?<![=!])` guards the arrow `=>` (and `!=`), so `() => minCommits` — a
+ * read, not a comparison — is not mistaken for `> minCommits`. Assignment
+ * (`overrides.minCommits = n`) is deliberately legal: cli.ts writes the flag.
+ */
+function comparesAgainstMinCommits(text: string): boolean {
+  return (
+    /(?<![=!])[<>]=?\s*\w*\.?minCommits\b/.test(text) || /\bminCommits\s*[<>]=?/.test(text)
+  );
+}
+
 /** All `.ts` files under `dir`, recursively — this suite's test tree is flat
  *  enough (one `fixtures/` subdirectory) that a full walk costs nothing. */
 function listTs(dir: string, relPrefix = ""): string[] {
@@ -154,6 +169,63 @@ describe("package conventions", () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * A sixth single-spelling rule: whether history is too thin for clustering
+   * to mean anything lives in `historyIsThin` (config.ts) and nowhere else.
+   * `doctor` grades a repo `degraded` on it and `analyze` suppresses
+   * `workingSets` on it — two surfaces that MUST agree, because mission
+   * criterion 3 is written as "absent whenever doctor says degraded". An
+   * open-coded `analysable < config.minCommits` at a second call site is the
+   * `edgeWeight` divergence again: free to drift the day either threshold or
+   * comparison direction changes, and silent when it does.
+   *
+   * Matched with comments/strings stripped (`code()`) against a COMPARISON in
+   * either direction and with any of `<`, `<=`, `>`, `>=` — not against the
+   * bare identifier `minCommits`, which cli.ts's `overrides.minCommits = n`
+   * flag write legitimately contains, and not against only the `<` form the
+   * extracted rule happens to be written with. A guard that recognises just
+   * the spelling already in the tree recognises nothing: the two ways a second
+   * call site actually drifts are `analysable <= config.minCommits` (an
+   * off-by-one that changes the threshold by one commit and reads as correct)
+   * and `config.minCommits > analysable` (the same rule with its operands
+   * swapped), and the original `<\s*\w*\.?minCommits` matched neither.
+   */
+  it("spells the thin-history rule only in config.ts — every consumer calls historyIsThin()", () => {
+    const offenders = sources.filter((f) => f !== "config.ts" && comparesAgainstMinCommits(code(f)));
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The guard above is a regex, so the set of divergences it can see is a
+   * claim in its own right — and an unexercised one, because the only thing
+   * that ever runs it is a tree with zero offenders in it. Pin the spellings
+   * it must catch, and the non-comparisons it must not.
+   */
+  it("recognises every spelling of the thin-history comparison, not just the one config.ts uses", () => {
+    for (const violation of [
+      "const thin = analysable < config.minCommits;",
+      "const thin = analysable <= config.minCommits;",
+      "const thin = config.minCommits > analysable;",
+      "const thin = config.minCommits >= analysable;",
+      "const { minCommits } = config; const thin = commits.length < minCommits;",
+      "if (commits.length<cfg.minCommits) return [];",
+      "const enough = (n: number) => n >= config.minCommits;",
+    ]) {
+      expect([violation, comparesAgainstMinCommits(violation)]).toEqual([violation, true]);
+    }
+    for (const legal of [
+      // cli.ts's `--min-commits` flag write: assignment, not comparison.
+      "overrides.minCommits = n;",
+      "const cfg = { ...DEFAULTS, minCommits: 200 };",
+      "historyIsThin(commits.length, config)",
+      // An arrow function whose body is the threshold: the `=>` is why the
+      // reversed-operand half of the pattern cannot simply match a bare `>`.
+      "const threshold = () => minCommits;",
+    ]) {
+      expect([legal, comparesAgainstMinCommits(legal)]).toEqual([legal, false]);
+    }
+  });
+
   it("never reads a clock or an RNG in graph computation", () => {
     const offenders = sources.filter((f) => /\bDate\.now\s*\(|\bMath\.random\s*\(/.test(code(f)));
     expect(offenders).toEqual([]);
@@ -253,6 +325,11 @@ describe("package conventions", () => {
       // renders; a consumer outside this package reaches it through
       // `dist/index.js` or not at all.
       "workingSets",
+      // T7.2's own surface: the single spelling of "history is too thin for
+      // clustering to mean anything" — a consumer that wants to know why
+      // `workingSets` came back empty (thin history vs. genuine agreement
+      // with the declared spine) needs this, not just `doctor`'s report.
+      "historyIsThin",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }

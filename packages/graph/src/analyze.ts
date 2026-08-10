@@ -10,7 +10,7 @@ import { layerRanks } from "./layers.js";
 import { isTestPath } from "./noise.js";
 import { remapClusters } from "./stability.js";
 import { workingSets, type WorkingSet } from "./working-sets.js";
-import type { Config } from "./config.js";
+import { historyIsThin, type Config } from "./config.js";
 
 export interface ModuleSummary {
   id: number;
@@ -61,8 +61,19 @@ export interface Analysis {
    * above) are untouched by this: a working set is a second, independent read
    * of the same partition, never a mutation of the first.
    *
-   * Not yet suppressed for thin history here — that lands in a later task,
-   * at this same layer, so every consumer of `Analysis` sees one answer.
+   * Suppressed to `[]` wholesale when `historyIsThin` (config.ts) says the
+   * history THIS RUN HARVESTED is too thin for clustering to mean anything —
+   * at THIS layer, not in a renderer, so map.md, the artifact and M6's future
+   * bridge all inherit one suppression rather than each carrying a copy. An
+   * empty array means either "nothing to report" or "history too thin to
+   * say" — criterion 3 requires the section to be absent, not caveated, so
+   * nothing downstream needs to tell those two apart.
+   *
+   * "This run harvested" is `commitCount` above, i.e. the `--since` window
+   * when `opts.since` is set — not the repository's full history, which is
+   * what `doctor` grades. `doctor` degraded therefore implies this is `[]`,
+   * but not the reverse; see `historyIsThin`'s own doc comment for why that
+   * asymmetry is the correct one and where it is pinned.
    */
   workingSets: WorkingSet[];
 }
@@ -150,8 +161,18 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
   // against `bridgedEdges` — the edge set clustering actually saw, so
   // `nameCluster`'s centrality inside `workingSets` measures the same graph
   // the partition came from, not the fuller (and differently-connected) raw
-  // `edges`.
-  const workingSetList = workingSets(byCommunity, bridgedEdges, table.files, spine.moduleOf);
+  // `edges`. Suppressed wholesale when `historyIsThin` — see the doc comment
+  // on `Analysis.workingSets` for why this is the right layer for the check.
+  //
+  // Measured on `commits.length` — the commits THIS run harvested, i.e. the
+  // `--since` window — and not on the repository's full history, because the
+  // partition being suppressed was computed from exactly these commits. That
+  // makes the suppression at least as often as `doctor`'s `degraded` grade
+  // and sometimes more often; `historyIsThin` documents which direction is
+  // guaranteed.
+  const workingSetList = historyIsThin(commits.length, config)
+    ? []
+    : workingSets(byCommunity, bridgedEdges, table.files, spine.moduleOf);
   // One expression decides both which edges are reported and whether they carry
   // a direction — see `Analysis.moduleEdgesDirected`. Splitting the two apart
   // is how a renderer ends up drawing an arrow on a symmetric edge.
