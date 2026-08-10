@@ -272,3 +272,24 @@ describe("analyze: determinism", () => {
     expect(JSON.stringify(second.analysis)).toBe(JSON.stringify(first.analysis));
   });
 });
+
+describe("analyze: no fabricated fields", () => {
+  /**
+   * The regression this test exists for (M3 bug).
+   *
+   * `clusterIds` was `{ kept: 0, fresh: modules.length }` — `kept` was ALWAYS
+   * 0, produced by no computation at all. `remapClusters` (stability.ts) is
+   * the real stability remap and is never called from `analyze()`; wiring it
+   * in belongs to Task 15, once a previously-committed artifact exists to
+   * diff against. Until then, no field should stand in for a number nobody
+   * computed — `analyze()`'s return must not carry `clusterIds` at all.
+   */
+  it("does not carry a clusterIds field nobody computed", () => {
+    const commits: CommitSpec[] = [];
+    for (let i = 0; i < 6; i++) commits.push({ files: ["pkg/a/a1.ts", "pkg/a/a2.ts"] });
+    for (let i = 0; i < 6; i++) commits.push({ files: ["pkg/b/b1.ts", "pkg/b/b2.ts"] });
+
+    const { analysis } = analyze(buildRepo(commits), DEFAULTS, { now: NOW });
+    expect("clusterIds" in analysis).toBe(false);
+  });
+});

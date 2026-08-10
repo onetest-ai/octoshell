@@ -38,7 +38,6 @@ export interface Analysis {
   moduleEdgesDirected: boolean;
   hubs: string[];
   bridged: number;
-  clusterIds: { kept: number; fresh: number };
 }
 
 export interface AnalyzeOptions {
@@ -247,7 +246,6 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
       moduleEdgesDirected,
       hubs: pathsOf([...hubIds]),
       bridged: synthetic,
-      clusterIds: { kept: 0, fresh: modules.length },
     },
     edges,
     files: table.files,
