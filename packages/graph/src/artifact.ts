@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./config.js";
+import { insideRepo } from "./paths.js";
+import { compare } from "./rollup.js";
 
 export interface StoredGraph {
   version: 1;
@@ -12,54 +14,122 @@ export interface StoredGraph {
 
 /**
  * `.octobots/graph/` when a board exists, else `.octograph/`. An explicit
- * `config.out` always wins, even when a board exists — set by `loadConfig`
- * from `octograph.yaml`, already containment-checked there via `insideRepo`,
- * so it is not re-validated here.
+ * `config.out` wins over both, even when a board exists.
+ *
+ * `out` is containment-checked HERE, through the same `insideRepo` helper
+ * `loadConfig` and `readGraphify` use, and not on the strength of an earlier
+ * check. `loadConfig` validates the `octograph.yaml` spelling of `out` but its
+ * override loop does not — and the override loop is exactly what the documented
+ * `--out` CLI flag feeds, so `octograph map --out ../../../tmp` reaches this
+ * function with an escaping value that has passed no check at all. This is the
+ * one place `out` becomes a filesystem location a write lands in, so the check
+ * belongs at this seam rather than upstream of some of its callers. An escaping
+ * value degrades to the default location — the same "skip the assignment rather
+ * than throw" convention `loadConfig` applies to every other bad setting.
+ *
+ * The containment check is a gate only: the returned path is the plain
+ * `join(repoRoot, out)`, not `insideRepo`'s realpath-resolved form, so the
+ * caller still gets a path in the namespace it passed in.
  *
  * Never creates `.octobots/` in a repo that has no board: this only reads
  * with `existsSync`, and the caller (`writeArtifact`) only ever `mkdirSync`s
  * the resolved `graph`/`.octograph` leaf, never `.octobots` itself.
  */
 export function resolveOut(repoRoot: string, config: Config): string {
-  if (config.out) return join(repoRoot, config.out);
+  if (config.out && insideRepo(repoRoot, config.out) !== null) return join(repoRoot, config.out);
   if (existsSync(join(repoRoot, ".octobots"))) return join(repoRoot, ".octobots", "graph");
   return join(repoRoot, ".octograph");
 }
 
 /**
  * Reads back the committed `clusters.json` under `dir`, or `null` if nothing
- * has been written yet (never `{}`, never a throw) — a caller like
+ * usable has been written yet (never `{}`, never a throw) — a caller like
  * `remapClusters` needs to tell "no previous run" apart from "previous run
  * produced nothing", and an empty object would collapse that distinction.
- * A malformed file (partial write, hand-edited) degrades to `null` the same
- * way rather than crashing the run.
+ *
+ * "Never a throw" has to cover the CALLER too, or it buys nothing: the artifact
+ * is a committed file that survives merges and hand edits, and a `clusters.json`
+ * holding valid JSON of the wrong shape (`{}`, a bare number, a v2 written by a
+ * later octograph) would otherwise be handed back verbatim and crash the run at
+ * `Object.entries(previous.clusters)` one frame up. So the parsed document is
+ * shape-checked before it is returned, and anything that is not a v1
+ * `StoredGraph` degrades to `null` exactly like an unparseable file — the run
+ * then treats it as "no previous run", re-mints cluster ids once, and rewrites
+ * a good artifact.
  */
 export function readArtifact(dir: string): StoredGraph | null {
   const path = join(dir, "clusters.json");
   if (!existsSync(path)) return null;
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as StoredGraph;
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+    return isStoredGraph(parsed) ? parsed : null;
   } catch {
     return null;
   }
 }
 
 /**
+ * The half of {@link StoredGraph} a consumer actually reads: `version`, and a
+ * `clusters` map of id -> string members. `config` is deliberately NOT
+ * validated — nothing computes from it (it exists so a settings change is
+ * visible in the diff), and a strict check there would reject every artifact
+ * written before a new `Config` key was added, throwing away cluster ids for a
+ * field no caller reads.
+ */
+function isStoredGraph(value: unknown): value is StoredGraph {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const doc = value as { version?: unknown; clusters?: unknown };
+  if (doc.version !== 1) return false;
+  const clusters = doc.clusters;
+  if (clusters === null || typeof clusters !== "object" || Array.isArray(clusters)) return false;
+  for (const members of Object.values(clusters as Record<string, unknown>)) {
+    if (!Array.isArray(members)) return false;
+    if (members.some((m) => typeof m !== "string")) return false;
+  }
+  return true;
+}
+
+/**
  * Writes `clusters.json` under `dir` with a stable key/member order so two
- * writes of identical input are byte-identical and a committed diff shows
- * only real change. Cluster ids are sorted numerically (object key order is
- * otherwise insertion order, which callers must not be trusted to hold
- * stable), and each cluster's members are sorted with the default string
- * comparator — never `localeCompare`, which reorders under a changed `LANG`.
+ * writes of equal input are byte-identical and a committed diff shows only real
+ * change. Every order that reaches the file is explicit:
+ *
+ *  - cluster ids sorted numerically;
+ *  - each cluster's members sorted with `compare`, this package's one ordering
+ *    rule — never `localeCompare`, which reorders under a changed `LANG`;
+ *  - the top-level keys, and `config`'s keys, sorted the same way. Those two
+ *    would otherwise follow the INSERTION order of the object literal the
+ *    caller assembled and of the `Config` literal in config.ts — neither of
+ *    which is part of the artifact's meaning, and either of which reorders the
+ *    whole committed file on a refactor that changed nothing. Unknown keys are
+ *    carried through rather than dropped, so a field added to `StoredGraph`
+ *    later cannot be silently lost here.
  */
 export function writeArtifact(dir: string, graph: StoredGraph): void {
   mkdirSync(dir, { recursive: true });
   const ordered: Record<number, string[]> = {};
   for (const key of Object.keys(graph.clusters).map(Number).sort((a, b) => a - b)) {
-    ordered[key] = [...(graph.clusters[key] ?? [])].sort();
+    ordered[key] = [...(graph.clusters[key] ?? [])].sort(compare);
   }
-  writeFileSync(
-    join(dir, "clusters.json"),
-    JSON.stringify({ ...graph, clusters: ordered }, null, 2) + "\n",
-  );
+  const payload = withSortedKeys({
+    ...graph,
+    clusters: ordered,
+    config: withSortedKeys(graph.config),
+  });
+  writeFileSync(join(dir, "clusters.json"), JSON.stringify(payload, null, 2) + "\n");
+}
+
+/**
+ * A shallow copy of `record` with its own keys in `compare` order.
+ *
+ * `clusters` is passed through by reference, NOT re-sorted here: its keys are
+ * integer-like, and JS own-property order already emits those ascending
+ * numerically, which is the order `writeArtifact` built. Running them through a
+ * string comparator instead would put "10" before "2".
+ */
+function withSortedKeys(record: object): Record<string, unknown> {
+  const source = record as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(source).sort(compare)) out[key] = source[key];
+  return out;
 }
