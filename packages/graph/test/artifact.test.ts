@@ -142,6 +142,24 @@ describe("artifact round-trip", () => {
     ["clusters of the wrong type", '{"version":1,"clusters":[]}'],
     ["a cluster whose members are not strings", '{"version":1,"clusters":{"0":[1,2]}}'],
     ["a cluster that is not a list", '{"version":1,"clusters":{"0":"a.ts"}}'],
+    // A cluster id is arithmetic input, not a label: `cli.ts` does `Number(id)`
+    // and `remapClusters` mints fresh ids from `Math.max(...oldIds) + 1`. One
+    // key that does not parse turns that into `NaN`, every unmatched module is
+    // assigned the id `NaN`, and the run writes ALL of them back under the
+    // single key "NaN" — a committed artifact that has lost every module but
+    // one, reported as `{ kept: <all>, fresh: 0 }` because `Map.has(NaN)` is
+    // true, and re-read as the previous run next time so it never recovers.
+    // Reproduced end to end before this guard (see cli.test.ts).
+    ["a non-numeric cluster id", '{"version":1,"clusters":{"cluster-a":["a.ts"]}}'],
+    ["an empty cluster id", '{"version":1,"clusters":{"":["a.ts"]}}'],
+    // Every one of these survives `Number()` but is not a key `writeArtifact`
+    // can produce, so accepting it would round-trip the id onto a DIFFERENT key
+    // on the next write — churn in the diff of a file that did not change.
+    ["a float cluster id", '{"version":1,"clusters":{"1.0":["a.ts"]}}'],
+    ["a negative cluster id", '{"version":1,"clusters":{"-1":["a.ts"]}}'],
+    ["a space-padded cluster id", '{"version":1,"clusters":{" 1":["a.ts"]}}'],
+    ["a zero-padded cluster id", '{"version":1,"clusters":{"01":["a.ts"]}}'],
+    ["an exponent-notation cluster id", '{"version":1,"clusters":{"1e3":["a.ts"]}}'],
   ])("returns null for %s rather than a value that crashes its consumer", (_name, body) => {
     const dir = mkdtempClean("art-");
     writeFileSync(join(dir, "clusters.json"), body);

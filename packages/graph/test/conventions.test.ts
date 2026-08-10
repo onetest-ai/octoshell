@@ -124,6 +124,36 @@ describe("package conventions", () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * A fifth single-spelling rule, and the one M3 shipped broken: whether a repo
+   * has an Octobots board lives in `hasBoard` (artifact.ts) and nowhere else.
+   *
+   * Two modules ask that question and they must never disagree — `resolveOut`
+   * decides where the committed artifact is WRITTEN on the strength of it, and
+   * `doctor` grades its "board" check on the strength of it. They arrived from
+   * two different task PRs (T3.3 and T3.2) each with its own `existsSync(join(
+   * repoRoot, ".octobots"))`, which is the `edgeWeight` divergence again: free
+   * to drift the day the directory is renamed or the predicate is tightened,
+   * and silent when it does (doctor says "board found"; `map` writes into
+   * `.octograph/`).
+   *
+   * Matched against the BARE path literal — `".octobots"` between quotes —
+   * with comments stripped and string literals kept. Prose that names the
+   * directory for a human (`".octobots/ found"`, `"plan work onto an
+   * .octobots/ board"`) is a message, not a path spelling, and is deliberately
+   * not caught: the character after the segment there is `/`, never a quote.
+   */
+  it("spells the board directory only in artifact.ts", () => {
+    const withoutComments = (file: string): string =>
+      readFileSync(join(SRC, file), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/\/\/[^\n]*/g, " ");
+    const offenders = sources.filter(
+      (f) => f !== "artifact.ts" && /["'`]\.octobots["'`]/.test(withoutComments(f)),
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it("never reads a clock or an RNG in graph computation", () => {
     const offenders = sources.filter((f) => /\bDate\.now\s*\(|\bMath\.random\s*\(/.test(code(f)));
     expect(offenders).toEqual([]);
@@ -179,6 +209,20 @@ describe("package conventions", () => {
       "readGraphify",
       "layerRanks",
       "rollUp",
+      // M3's own surface. The list above was M2's, and it is a HARDCODED list:
+      // it could not notice that M3 added `drift`, `doctor` and the artifact
+      // and CLI entry points, and `runCli` in fact reached this file only in
+      // review — the third time this package shipped a module its own
+      // consumers could not import. A symbol added to the package's public
+      // surface belongs here, in the same commit.
+      "drift",
+      "doctor",
+      "classifyPair",
+      "readArtifact",
+      "resolveOut",
+      "writeArtifact",
+      "hasBoard",
+      "runCli",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }

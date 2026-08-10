@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { resolveOut } from "../src/artifact.js";
 import { DEFAULTS } from "../src/config.js";
 import { doctor, exitCode, type Report } from "../src/doctor.js";
 import { buildRepo } from "./fixtures/repo.js";
@@ -160,5 +161,32 @@ describe("doctor", () => {
     expect(graphify?.detail).toContain("1 declared import edges");
     expect(graphify?.fix).toBeUndefined();
     expect(report.status).toBe("ok");
+  });
+
+  /**
+   * doctor's "board" check and `resolveOut`'s choice of output directory are
+   * the same question asked twice — and M3 shipped them as two independent
+   * `existsSync(join(repoRoot, ".octobots"))` calls, written in two different
+   * task PRs. Nothing behavioural could tell them apart while they agreed, and
+   * the day they stopped agreeing doctor would report "board found" for a run
+   * that writes into `.octograph/` (or the reverse) with no error anywhere.
+   *
+   * `test/conventions.test.ts` enforces the single spelling structurally; this
+   * asserts the property that spelling exists to protect, in both directions,
+   * so the pair cannot be re-split by a refactor that keeps one literal.
+   */
+  it.each([true, false])("agrees with resolveOut about whether a board exists (board: %s)", (withBoard) => {
+    const repo = healthyRepo();
+    if (withBoard) mkdirSync(join(repo, ".octobots"), { recursive: true });
+
+    const config = { ...DEFAULTS, minCommits: 10 };
+    const board = check(doctor(repo, config), "board");
+    const out = resolveOut(repo, config);
+
+    expect(board?.state).toBe(withBoard ? "ok" : "missing");
+    expect(out).toBe(withBoard ? join(repo, ".octobots", "graph") : join(repo, ".octograph"));
+    // Stated as one biconditional, not two independent expectations: the
+    // defect is the two answers DIVERGING, whichever way.
+    expect(board?.state === "ok").toBe(out === join(repo, ".octobots", "graph"));
   });
 });

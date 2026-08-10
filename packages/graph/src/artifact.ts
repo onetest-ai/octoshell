@@ -13,6 +13,25 @@ export interface StoredGraph {
 }
 
 /**
+ * Whether this repo has an Octobots board — the ONE place that question is
+ * asked of the filesystem.
+ *
+ * Two consumers ask it and they must never disagree: `resolveOut` below picks
+ * where the artifact is written on the strength of it, and `doctor` grades a
+ * "board" check on the strength of it. Spelled independently in the two
+ * modules (which is how it arrived — `artifact.ts` from T3.3, `doctor.ts` from
+ * T3.2), they are free to drift the day the directory is renamed or the
+ * predicate is tightened, and the failure is silent and confusing in exactly
+ * the way this package's other single-spelling rules were: doctor reports
+ * "board found" while `map` writes into `.octograph/`, or the reverse. Same
+ * treatment as `graphifyGraphPath` (graphify.ts) — one producer, two readers,
+ * enforced structurally by `test/conventions.test.ts`.
+ */
+export function hasBoard(repoRoot: string): boolean {
+  return existsSync(join(repoRoot, ".octobots"));
+}
+
+/**
  * `.octobots/graph/` when a board exists, else `.octograph/`. An explicit
  * `config.out` wins over both, even when a board exists.
  *
@@ -50,7 +69,7 @@ export function resolveOut(repoRoot: string, config: Config): string {
   if (config.out && insideRepo(repoRoot, config.out) !== null) {
     return resolve(repoRoot, config.out);
   }
-  if (existsSync(join(repoRoot, ".octobots"))) return join(repoRoot, ".octobots", "graph");
+  if (hasBoard(repoRoot)) return join(repoRoot, ".octobots", "graph");
   return join(repoRoot, ".octograph");
 }
 
@@ -82,12 +101,41 @@ export function readArtifact(dir: string): StoredGraph | null {
 }
 
 /**
+ * A cluster id as it can legally appear as a JSON object key: the canonical
+ * decimal spelling of a non-negative integer, and nothing else.
+ *
+ * `StoredGraph.clusters` is typed `Record<number, string[]>`, but JSON has no
+ * integer keys — every key on disk is a string, and TypeScript vouches for
+ * none of them. The gap is not cosmetic. `cli.ts` converts each key with
+ * `Number(id)` and `remapClusters` then computes `Math.max(...oldIds) + 1` to
+ * mint fresh ids: one key that does not parse makes that arithmetic `NaN`,
+ * every unmatched module is assigned the id `NaN`, and `analysisToClusters`
+ * collapses ALL of them onto the single object key `"NaN"` — a committed
+ * artifact that has silently lost every module but one, while `clusterIds`
+ * reports `{ kept: <all>, fresh: 0 }` because `Map.has(NaN)` is true. The next
+ * run reads that artifact back and stays broken, so the damage is
+ * self-perpetuating. Reproduced end to end before this guard existed.
+ *
+ * Canonical spelling specifically, not "parses as a number": `"1.0"`, `" 1"`,
+ * `"+1"`, `"0x2"` and `"1e3"` all survive `Number()` and none of them is a key
+ * `writeArtifact` can ever produce (it writes integer object keys, which JS
+ * stringifies canonically). Accepting them would round-trip an id to a
+ * DIFFERENT key on the next write — churn in a committed diff for a file that
+ * did not change.
+ */
+const CLUSTER_KEY = /^(0|[1-9][0-9]*)$/;
+
+/**
  * The half of {@link StoredGraph} a consumer actually reads: `version`, and a
  * `clusters` map of id -> string members. `config` is deliberately NOT
  * validated — nothing computes from it (it exists so a settings change is
  * visible in the diff), and a strict check there would reject every artifact
  * written before a new `Config` key was added, throwing away cluster ids for a
  * field no caller reads.
+ *
+ * `clusters`' KEYS are validated as strictly as its values, for the reason
+ * spelled out on {@link CLUSTER_KEY}: they are arithmetic input one frame up,
+ * not labels.
  */
 function isStoredGraph(value: unknown): value is StoredGraph {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
@@ -95,7 +143,8 @@ function isStoredGraph(value: unknown): value is StoredGraph {
   if (doc.version !== 1) return false;
   const clusters = doc.clusters;
   if (clusters === null || typeof clusters !== "object" || Array.isArray(clusters)) return false;
-  for (const members of Object.values(clusters as Record<string, unknown>)) {
+  for (const [id, members] of Object.entries(clusters as Record<string, unknown>)) {
+    if (!CLUSTER_KEY.test(id)) return false;
     if (!Array.isArray(members)) return false;
     if (members.some((m) => typeof m !== "string")) return false;
   }

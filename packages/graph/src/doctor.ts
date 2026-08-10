@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { harvest } from "./harvest.js";
+import { hasBoard } from "./artifact.js";
 import { graphifyGraphPath } from "./graphify.js";
 import { declaredSpine } from "./spine.js";
 import { compare } from "./rollup.js";
@@ -130,13 +131,19 @@ export function doctor(repoRoot: string, config: Config): Report {
     required: false,
   });
 
-  const hasBoard = existsSync(join(repoRoot, ".octobots"));
+  // Through `hasBoard` (artifact.ts), never a second `existsSync` of the same
+  // directory: `resolveOut` decides where the artifact is WRITTEN on exactly
+  // this predicate, so a doctor that spells it independently is free to report
+  // "board found" for a run that then writes into `.octograph/`. Same
+  // one-producer-two-readers rule as `graphifyGraphPath` above, enforced by
+  // `test/conventions.test.ts`.
+  const board = hasBoard(repoRoot);
   checks.push({
     name: "board",
-    state: hasBoard ? "ok" : "missing",
-    detail: hasBoard ? ".octobots/ found" : "no board — own/conflicts unavailable",
+    state: board ? "ok" : "missing",
+    detail: board ? ".octobots/ found" : "no board — own/conflicts unavailable",
     // Every non-ok check names a fix — see the invariant on `doctor` above.
-    fix: hasBoard ? undefined : "plan work onto an .octobots/ board, or ignore this",
+    fix: board ? undefined : "plan work onto an .octobots/ board, or ignore this",
     required: false,
   });
 

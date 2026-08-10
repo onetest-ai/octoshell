@@ -69,10 +69,24 @@ export function remapClusters(
   opts: RemapOptions = {},
 ): Map<number, number> {
   const threshold = opts.threshold ?? 0.5;
-  const oldSets = new Map<number, Set<string>>();
-  for (const [id, members] of oldClusters) oldSets.set(id, new Set(members));
 
-  let nextId = oldClusters.size === 0 ? 0 : Math.max(...oldClusters.keys()) + 1;
+  // An old id that is not a non-negative integer cannot be inherited and must
+  // not reach the arithmetic below. `analyze`'s `previousClusters` is a public
+  // option (index.ts) whose keys typically come from `Number()`-ing a
+  // `clusters.json` object key, and one unparseable key makes `Math.max` yield
+  // `NaN` — after which `nextId++` stays `NaN` and EVERY unmatched cluster is
+  // handed the same id, collapsing the whole partition onto one entry when the
+  // caller writes it back. `artifact.ts`'s `CLUSTER_KEY` guard closes that at
+  // the disk seam; this closes it for any other caller, since a cluster with an
+  // id that cannot be represented is indistinguishable from no previous cluster
+  // at all.
+  const oldSets = new Map<number, Set<string>>();
+  for (const [id, members] of oldClusters) {
+    if (!Number.isInteger(id) || id < 0) continue;
+    oldSets.set(id, new Set(members));
+  }
+
+  let nextId = oldSets.size === 0 ? 0 : Math.max(...oldSets.keys()) + 1;
   const claimed = new Set<number>();
   const remap = new Map<number, number>();
 

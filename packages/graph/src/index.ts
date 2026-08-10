@@ -20,4 +20,18 @@ export { countPairs, type PairTable, type PairStat, type DecayOptions } from "./
 export { isTestPath, classifyPair, type PairClass } from "./noise.js";
 export { drift, type DriftRow } from "./drift.js";
 export { doctor, exitCode, type Check, type CheckState, type Report, type Status } from "./doctor.js";
-export { readArtifact, resolveOut, writeArtifact, type StoredGraph } from "./artifact.js";
+export {
+  hasBoard,
+  readArtifact,
+  resolveOut,
+  writeArtifact,
+  type StoredGraph,
+} from "./artifact.js";
+// The CLI is a library entry, not just a bin: `runCli` deliberately returns its
+// exit code and output text rather than touching `process` (see cli.ts), which
+// is precisely so an in-process caller — M6's VS Code commands — can run a
+// command without spawning one. M3 built it across two task PRs and neither
+// reached this file, the identical gap the comment at the top of this module
+// records for M2's analysis pipeline; `test/conventions.test.ts` now names
+// these symbols so the third recurrence fails the build instead of review.
+export { runCli, parseArgs, type CliResult, type Command } from "./cli.js";

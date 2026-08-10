@@ -132,4 +132,43 @@ describe("remapClusters", () => {
     const remap = remapClusters(new Map([[2, ["a", "b"]]]), new Map([[0, []]]));
     expect(remap.get(0)).toBe(3);
   });
+
+  /**
+   * `nextId` was `Math.max(...oldClusters.keys()) + 1`, over the keys exactly
+   * as handed in. `analyze`'s `previousClusters` is a public option whose keys
+   * normally come from `Number()`-ing a `clusters.json` object key, so one key
+   * that does not parse arrives here as `NaN` — after which `Math.max` is
+   * `NaN`, `nextId++` stays `NaN`, and EVERY unmatched cluster is assigned the
+   * same id. A caller writing that back collapses its whole partition onto one
+   * entry, and (because `Map.has(NaN)` is true) reports every module as a KEPT
+   * id while it does so.
+   *
+   * `artifact.ts`'s `CLUSTER_KEY` guard stops such a document reaching a
+   * caller at all; this is the same defect closed for any other caller, and
+   * it asserts the property that actually matters: fresh ids are finite and
+   * DISTINCT.
+   */
+  it.each([
+    ["NaN", NaN],
+    ["a fraction", 1.5],
+    ["a negative id", -3],
+    ["Infinity", Number.POSITIVE_INFINITY],
+  ])("mints distinct finite ids when an old id is %s", (_name, poison) => {
+    const oldC = new Map<number, string[]>([[poison, ["p"]], [4, ["a", "b"]]]);
+    const newC = new Map<number, string[]>([
+      [0, ["a", "b"]], // matches old 4
+      [1, ["x"]],
+      [2, ["y"]],
+    ]);
+    const remap = remapClusters(oldC, newC);
+
+    expect(remap.get(0)).toBe(4);
+    const minted = [remap.get(1), remap.get(2)];
+    for (const id of minted) {
+      expect(Number.isInteger(id)).toBe(true);
+      expect(id).toBeGreaterThan(4);
+    }
+    // The whole point: two clusters, two ids. The bug gave both the same one.
+    expect(new Set([...remap.values()]).size).toBe(3);
+  });
 });

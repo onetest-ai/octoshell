@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runCli } from "../src/cli.js";
 import { appendCommits, buildRepo } from "./fixtures/repo.js";
@@ -305,6 +305,81 @@ describe("runCli — commands", () => {
       members.includes("modA/a.ts"),
     )?.[0];
     expect(idForA2).toBe(idForA);
+  });
+
+  /**
+   * The whole-mission integration defect: three task PRs each held up their own
+   * half of the contract and the seam between them did not.
+   *
+   * T3.3's `readArtifact` validates a `clusters.json` document's shape and
+   * documents that "anything that is not a v1 StoredGraph degrades to null" —
+   * but it validated only the VALUES, never the keys, while `StoredGraph`
+   * types them `Record<number, string[]>` and JSON can hold no such thing.
+   * T3.5's `clustersToMap` then does `Number(id)`, and T3.4's `remapClusters`
+   * mints fresh ids from `Math.max(...oldIds) + 1`. One key that does not parse
+   * — a merge-conflict resolution, a hand edit, a future writer — makes that
+   * `NaN`, so every module in the run is assigned the id `NaN` and
+   * `analysisToClusters` writes ALL of them back under the single object key
+   * "NaN". Reproduced against this exact fixture: three modules in, one
+   * `"NaN"` entry out, exit code 0, `clusterIds` reporting `{kept: 3, fresh: 0}`
+   * because `Map.has(NaN)` is true. And because the run re-reads its own
+   * artifact next time, it never recovers on its own.
+   *
+   * Asserted through the real CLI and off the real file, not against
+   * `readArtifact` in isolation: the unit-level guard is in artifact.test.ts,
+   * and it was the *composition* that shipped broken.
+   */
+  it("survives a clusters.json whose cluster id is not a number, rather than collapsing every module onto one", () => {
+    const repo = buildRepo([
+      { files: ["modA/a.ts", "modA/b.ts"] },
+      { files: ["modA/a.ts", "modA/b.ts"], daysAgo: 1 },
+      { files: ["modB/c.ts", "modB/d.ts"] },
+      { files: ["modB/c.ts", "modB/d.ts"], daysAgo: 1 },
+      { files: ["modC/e.ts", "modC/f.ts"] },
+      { files: ["modC/e.ts", "modC/f.ts"], daysAgo: 1 },
+    ]);
+    const clustersPath = join(repo, ".octograph", "clusters.json");
+
+    const first = runCli(["map", "--json"], repo, NOW);
+    expect(first.code).toBe(0);
+    const moduleCount = (JSON.parse(first.stdout) as { modules: number }).modules;
+    expect(moduleCount).toBeGreaterThan(1);
+
+    // Corrupt exactly one thing: a cluster id that is not a number.
+    const stored = JSON.parse(readFileSync(clustersPath, "utf8")) as {
+      version: number;
+      clusters: Record<string, string[]>;
+      config: unknown;
+    };
+    const firstMembers = Object.values(stored.clusters)[0] ?? [];
+    writeFileSync(
+      clustersPath,
+      JSON.stringify({ ...stored, clusters: { "cluster-a": firstMembers } }, null, 2) + "\n",
+    );
+
+    const second = runCli(["map", "--json"], repo, NOW);
+    expect(second.code).toBe(0);
+    const rewritten = JSON.parse(readFileSync(clustersPath, "utf8")) as {
+      clusters: Record<string, string[]>;
+    };
+
+    // One entry per module analyse() produced — not one "NaN" entry for all of
+    // them, and no "NaN" key anywhere.
+    expect(Object.keys(rewritten.clusters)).toHaveLength(moduleCount);
+    expect(Object.keys(rewritten.clusters)).not.toContain("NaN");
+    for (const id of Object.keys(rewritten.clusters)) expect(id).toMatch(/^(0|[1-9][0-9]*)$/);
+
+    // And it says so honestly: an unreadable previous artifact is NO previous
+    // artifact, so every id is fresh. The bug claimed all of them were kept.
+    expect((JSON.parse(second.stdout) as { clusterIds: { kept: number; fresh: number } }).clusterIds)
+      .toEqual({ kept: 0, fresh: moduleCount });
+
+    // Self-healing: the artifact it just wrote is readable again, so a third
+    // run pins onto it rather than re-minting forever.
+    const third = runCli(["map", "--json"], repo, NOW);
+    expect(
+      (JSON.parse(third.stdout) as { clusterIds: { kept: number; fresh: number } }).clusterIds,
+    ).toEqual({ kept: moduleCount, fresh: 0 });
   });
 
   it("impact ranks coupled files by nPMI and returns nothing for an unknown path", () => {
