@@ -39,6 +39,35 @@ describe("runCli — flag parsing", () => {
     expect(result.code).toBe(2);
   });
 
+  it("names an unrecognised flag as unrecognised even when it is last on the line", () => {
+    // The regression: the value lookup used to run ABOVE the switch, so a
+    // flag nothing recognises was reported as `--verbose requires a value`
+    // whenever nothing followed it — an error message asserting that
+    // `--verbose` is a real flag of this CLI. Exit 2 either way, which is why
+    // an exit-code-only assertion (the one this suite already had, two cases
+    // up) cannot see it.
+    const last = runCli(["doctor", "--verbose"], tinyRepo(), NOW);
+    expect(last.code).toBe(2);
+    expect(last.stderr).toContain("unrecognised flag: --verbose");
+    expect(last.stderr).not.toContain("requires a value");
+
+    // Same verdict, same wording, whether or not a token follows it.
+    const followed = runCli(["doctor", "--verbose", "1"], tinyRepo(), NOW);
+    expect(followed.stderr).toContain("unrecognised flag: --verbose");
+  });
+
+  it("refuses to swallow the next flag as a value", () => {
+    // `map --out --json` used to consume `--json` as the out directory: the
+    // artifacts landed in a directory literally named `--json` and the
+    // documented `--json` flag was silently dropped — the exact quiet
+    // failure explicit flag declaration exists to prevent.
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    const result = runCli(["map", "--out", "--json"], repo, NOW);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("--out requires a value");
+    expect(existsSync(join(repo, "--json"))).toBe(false);
+  });
+
   it("exits 2 when a numeric flag is given a non-numeric value", () => {
     const result = runCli(["doctor", "--min-commits", "not-a-number"], tinyRepo(), NOW);
     expect(result.code).toBe(2);
@@ -183,6 +212,40 @@ describe("runCli — each documented flag changes the behaviour it names", () =>
     expect(existsSync(join(repo, "custom-graph", "map.md"))).toBe(true);
     expect(existsSync(join(repo, "custom-graph", "clusters.json"))).toBe(true);
     expect(existsSync(join(repo, ".octograph"))).toBe(false);
+  });
+
+  it("--out writes where an ABSOLUTE in-repo path names, not nested under the root", () => {
+    // The regression: `resolveOut` gated on `insideRepo` (which an absolute
+    // in-repo path passes, correctly) and then returned `join(repoRoot,
+    // out)`, which CONCATENATES rather than recognising the path as already
+    // absolute. `--out <repo>/build/graph` therefore wrote to
+    // `<repo>/<repo>/build/graph` — a bogus tree mirroring the whole absolute
+    // path inside the repo — and then reported that location as if the user
+    // had asked for it. Every previous `--out` test passed a relative value,
+    // where `join` and `resolve` agree, so nothing saw it. An absolute path
+    // is what a caller that resolved the directory itself passes: the M6 VS
+    // Code commands, or any script expanding `$PWD`.
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    const absolute = join(repo, "build", "graph");
+
+    const result = runCli(["map", "--out", absolute, "--json"], repo, NOW);
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).outDir).toBe(join("build", "graph"));
+    expect(existsSync(join(absolute, "map.md"))).toBe(true);
+    // `join(repo, absolute)` IS the path the old concatenation produced.
+    expect(existsSync(join(repo, absolute))).toBe(false);
+  });
+
+  it("--out . writes at the repo root and says so, rather than claiming /map.md", () => {
+    // `insideRepo` admits the root itself, so `--out .` resolves there — and
+    // `relative(repoRoot, repoRoot)` is "", which rendered as "wrote
+    // /map.md and /clusters.json": a claim about two files at the filesystem
+    // root, not about the two that were actually written.
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    const result = runCli(["map", "--out", "."], repo, NOW);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("wrote ./map.md and ./clusters.json");
+    expect(existsSync(join(repo, "map.md"))).toBe(true);
   });
 
   it("--out escaping the repo root falls back to the default via insideRepo", () => {

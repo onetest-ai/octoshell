@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { Config } from "./config.js";
 import { insideRepo } from "./paths.js";
 import { compare } from "./rollup.js";
@@ -27,16 +27,29 @@ export interface StoredGraph {
  * value degrades to the default location — the same "skip the assignment rather
  * than throw" convention `loadConfig` applies to every other bad setting.
  *
- * The containment check is a gate only: the returned path is the plain
- * `join(repoRoot, out)`, not `insideRepo`'s realpath-resolved form, so the
+ * The containment check is a gate only: the returned path is
+ * `resolve(repoRoot, out)`, not `insideRepo`'s realpath-resolved form, so the
  * caller still gets a path in the namespace it passed in.
+ *
+ * `resolve`, not `join`. `join(repoRoot, out)` CONCATENATES an absolute `out`
+ * onto the root — `--out /Users/me/proj/build/graph` inside `/Users/me/proj`
+ * passed the containment gate (the path really is inside the repo) and then
+ * wrote to `/Users/me/proj/Users/me/proj/build/graph`, a bogus tree nested
+ * under the repo that the user never named and the run then reported as the
+ * place it wrote. An absolute path is exactly what a caller that resolved the
+ * directory itself hands over — the VS Code commands in M6, or any script
+ * that expands `$PWD` — so this is the ordinary case, not a corner. `resolve`
+ * returns an absolute `out` unchanged and joins a relative one, which is the
+ * behaviour both spellings of `out` (the flag and octograph.yaml's key) mean.
  *
  * Never creates `.octobots/` in a repo that has no board: this only reads
  * with `existsSync`, and the caller (`writeArtifact`) only ever `mkdirSync`s
  * the resolved `graph`/`.octograph` leaf, never `.octobots` itself.
  */
 export function resolveOut(repoRoot: string, config: Config): string {
-  if (config.out && insideRepo(repoRoot, config.out) !== null) return join(repoRoot, config.out);
+  if (config.out && insideRepo(repoRoot, config.out) !== null) {
+    return resolve(repoRoot, config.out);
+  }
   if (existsSync(join(repoRoot, ".octobots"))) return join(repoRoot, ".octobots", "graph");
   return join(repoRoot, ".octograph");
 }

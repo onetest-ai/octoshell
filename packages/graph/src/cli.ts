@@ -76,44 +76,84 @@ export function parseArgs(argv: string[]): ParseResult {
       continue;
     }
 
-    const value = rest[i + 1];
-    if (value === undefined) return { ok: false, error: `${arg} requires a value` };
-    i += 1;
+    // RECOGNITION FIRST, CONSUMPTION SECOND. Reading `rest[i + 1]` above the
+    // switch made an unrecognised flag report itself as a KNOWN flag missing
+    // its value whenever it happened to be last on the line: `octograph
+    // doctor --verbose` answered "--verbose requires a value", which tells a
+    // user that `--verbose` exists and they merely typed it wrong. The exit
+    // code was right and the message was a lie about this CLI's own surface —
+    // the same quiet-failure class as swallowing the flag outright, just
+    // louder. `takeValue` is only ever called from a `case` that has already
+    // matched a literal flag string, so an unknown flag reaches `default` and
+    // is named as unknown no matter what does or does not follow it.
+    //
+    // A `--`-prefixed token is never a value: `octograph map --out --json`
+    // otherwise wrote the artifacts into a directory literally named
+    // `--json` and dropped the `--json` flag on the floor — silently ignoring
+    // a documented flag, which is precisely what this parser exists to make
+    // impossible.
+    const takeValue = (): string | null => {
+      const v = rest[i + 1];
+      if (v === undefined || v.startsWith("--")) return null;
+      i += 1;
+      return v;
+    };
+    const missingValue = (): ParseResult => ({ ok: false, error: `${arg} requires a value` });
+    const notANumber = (v: string): ParseResult => ({
+      ok: false,
+      error: `${arg} expects a number, got "${v}"`,
+    });
 
     switch (arg) {
-      case "--out":
+      case "--out": {
+        const value = takeValue();
+        if (value === null) return missingValue();
         overrides.out = value;
         break;
-      case "--since":
+      }
+      case "--since": {
+        const value = takeValue();
+        if (value === null) return missingValue();
         since = value;
         break;
+      }
       case "--max-commit-files": {
+        const value = takeValue();
+        if (value === null) return missingValue();
         const n = toFiniteNumber(value);
-        if (n === null) return { ok: false, error: `--max-commit-files expects a number, got "${value}"` };
+        if (n === null) return notANumber(value);
         overrides.maxCommitFiles = n;
         break;
       }
       case "--half-life": {
+        const value = takeValue();
+        if (value === null) return missingValue();
         const n = toFiniteNumber(value);
-        if (n === null) return { ok: false, error: `--half-life expects a number, got "${value}"` };
+        if (n === null) return notANumber(value);
         overrides.halfLifeDays = n;
         break;
       }
       case "--min-support": {
+        const value = takeValue();
+        if (value === null) return missingValue();
         const n = toFiniteNumber(value);
-        if (n === null) return { ok: false, error: `--min-support expects a number, got "${value}"` };
+        if (n === null) return notANumber(value);
         overrides.minSupport = n;
         break;
       }
       case "--min-commits": {
+        const value = takeValue();
+        if (value === null) return missingValue();
         const n = toFiniteNumber(value);
-        if (n === null) return { ok: false, error: `--min-commits expects a number, got "${value}"` };
+        if (n === null) return notANumber(value);
         overrides.minCommits = n;
         break;
       }
       case "--budget": {
+        const value = takeValue();
+        if (value === null) return missingValue();
         const n = toFiniteNumber(value);
-        if (n === null) return { ok: false, error: `--budget expects a number, got "${value}"` };
+        if (n === null) return notANumber(value);
         overrides.budgetTokens = n;
         break;
       }
@@ -141,14 +181,17 @@ function runtimeError(err: unknown): CliResult {
   return { code: 1, stdout: "", stderr: `octograph: ${message}\n` };
 }
 
-function formatCheck(state: string): string {
-  return state === "ok" ? "ok" : state === "warn" ? "warn" : "missing";
-}
-
 function formatDoctor(report: Report): string {
   const lines = [`status: ${report.status}`, ""];
   for (const c of report.checks) {
-    lines.push(`[${formatCheck(c.state)}] ${c.name}: ${c.detail}`);
+    // `c.state` verbatim, never re-mapped. A `formatCheck` helper here spelled
+    // the three `CheckState`s back out as themselves and folded everything
+    // else onto "missing" — an identity map whose only possible effect was to
+    // mislabel a fourth state added to `CheckState` later as the one state
+    // that means "this input is not there at all". A label printed next to a
+    // check is a claim about that check's grade; the only safe way to make it
+    // is to print the grade.
+    lines.push(`[${c.state}] ${c.name}: ${c.detail}`);
     if (c.fix !== undefined) lines.push(`  fix: ${c.fix}`);
   }
   return lines.join("\n") + "\n";
@@ -229,7 +272,12 @@ function runMapCommand(
   writeFileSync(join(outDir, "map.md"), mapText);
   writeArtifact(outDir, { version: 1, clusters: analysisToClusters(analysis), config });
 
-  const relOut = relative(repoRoot, outDir);
+  // `relative()` answers "" when the out directory IS the repo root (`--out .`
+  // resolves there, and `insideRepo` admits the root itself), which renders as
+  // "wrote /map.md" — a claim about an absolute path at the filesystem root,
+  // not about the file that was actually written. "." is the same location
+  // spelled truthfully.
+  const relOut = relative(repoRoot, outDir) || ".";
   const stdout = json
     ? JSON.stringify({
         outDir: relOut,

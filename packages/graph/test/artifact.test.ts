@@ -28,10 +28,29 @@ describe("resolveOut", () => {
     expect(resolveOut(root, { ...DEFAULTS, out: "custom" })).toBe(join(root, "custom"));
   });
 
+  it("returns an ABSOLUTE in-repo out unchanged rather than nesting it under the root", () => {
+    // `join(root, "/abs/in/repo")` concatenates: it yields
+    // `<root>/abs/in/repo`, a tree mirroring the whole absolute path inside
+    // the repo. The containment gate passes (the path really is inside), so
+    // the write lands somewhere the caller never named and every "wrote …"
+    // line then reports that invented location. Only `resolve` distinguishes
+    // an already-absolute out from a relative one — and every other case in
+    // this describe passes a relative value, where the two agree.
+    const root = mkdtempClean("art-");
+    const absolute = join(root, "build", "graph");
+    expect(resolveOut(root, { ...DEFAULTS, out: absolute })).toBe(absolute);
+  });
+
   it("rejects an out that escapes the repo root and falls back to the default", () => {
     const root = mkdtempClean("art-");
     const escaped = resolveOut(root, { ...DEFAULTS, out: "../../../tmp/octograph-escape" });
     expect(escaped).toBe(join(root, ".octograph"));
+  });
+
+  it("rejects an ABSOLUTE out outside the repo root too", () => {
+    const root = mkdtempClean("art-");
+    const other = mkdtempClean("art-elsewhere-");
+    expect(resolveOut(root, { ...DEFAULTS, out: other })).toBe(join(root, ".octograph"));
   });
 
   /**
