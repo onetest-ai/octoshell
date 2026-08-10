@@ -111,6 +111,16 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     ? "_Weight is the number of declared import edges between the two modules._"
     : "_Weight is summed decayed nPMI over co-changed file pairs, not a count._";
 
+  // "Which modules still have a heading after the budget cut the list" — one
+  // spelling, read by every section that names a module. Both dangling-
+  // reference filters below are the SAME rule applied to two payloads; spelling
+  // the slice twice is how they drift the day the module list stops being a
+  // prefix of `ranked` (a pinned module, a minimum, a second sort), and a
+  // renderer whose two filters disagree emits exactly the dangling reference
+  // they exist to prevent.
+  const shownModules = (keptModules: number): Set<string> =>
+    new Set(ranked.slice(0, keptModules).map((m) => m.name));
+
   // Only edges whose BOTH endpoints still have a heading. Truncation below cuts
   // the module list, and an edge naming a module that was cut is a dangling
   // reference in a committed artifact — the same defect `analyze`'s
@@ -119,7 +129,7 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
   // has a heading BEFORE the budget runs; keeping that true after it is this
   // function's half of the invariant.
   const visibleEdges = (keptModules: number): string[] => {
-    const shown = new Set(ranked.slice(0, keptModules).map((m) => m.name));
+    const shown = shownModules(keptModules);
     return analysis.moduleEdges
       .filter((e) => shown.has(e.from) && shown.has(e.to))
       .map((e) => `- ${e.from} ${link} ${e.to} (${e.weight.toFixed(2)})`);
@@ -128,9 +138,23 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
   const note = (dropped: number, unit: string): string[] =>
     dropped > 0 ? ["", `_${dropped} ${unit}(s) truncated to fit the token budget._`] : [];
 
+  // What a working set's file list actually IS, stated at the surface that
+  // publishes it. `WorkingSet.files` is exactly one Louvain community's
+  // membership, and `analyze` strips quarantined hubs and test files from the
+  // edge set BEFORE clustering runs (A8 and the hub quarantine) — so a hub that
+  // churns with every member, and every test that covers them, are absent by
+  // construction. working-sets.ts's own doc comment names the only claim this
+  // field supports — "these N files form one community", never "these are all
+  // the files that move together" — and an unqualified "files that move
+  // together" above a count is the second claim: the partial-presented-as-total
+  // defect the Modules header and `- files in the co-change graph:` already
+  // guard for their own narrower counts, at a third surface.
   const WORKING_SETS_NOTE =
-    "_Files that move together across declared module boundaries. Observed from commit"
-    + " history; a working set is evidence of coupling, not a proposal to change any boundary._";
+    "_Each entry is one co-change community whose files span two or more declared modules."
+    + " Observed from commit history; a working set is evidence of coupling, not a proposal"
+    + " to change any boundary. Membership is the community's own: quarantined hubs and test"
+    + " files are held out of clustering, so a file that moves with the set can be absent"
+    + " from its list and its count._";
 
   // Criterion 6, and the third surface this invariant has had to be pinned at
   // (in-memory Analysis, then the Graphify branch, then rendered markdown).
@@ -138,7 +162,7 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
   // is a dangling reference in a committed artifact. Pinned at the boundary
   // the harm crosses — the rendered file — not at the layer it was found in.
   const visibleSets = (keptModules: number): WorkingSet[] => {
-    const shown = new Set(ranked.slice(0, keptModules).map((m) => m.name));
+    const shown = shownModules(keptModules);
     return analysis.workingSets.filter((w) => w.modules.every((m) => shown.has(m)));
   };
 
@@ -154,9 +178,14 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
       ...w.files.map((f) => `  - ${f}`),
     ]);
 
+  /** The sets this pair of counters actually renders — read by `compose` and by
+   *  the shrink loop, so the loop weighs the section it is really emitting. */
+  const shownSetsFor = (keptModules: number, keptSets: number): WorkingSet[] =>
+    visibleSets(keptModules).slice(0, Math.max(0, keptSets));
+
   const compose = (keptModules: number, keptEdges: number, keptSets: number): string => {
     const shownEdges = visibleEdges(keptModules).slice(0, Math.max(0, keptEdges));
-    const shownSets = visibleSets(keptModules).slice(0, Math.max(0, keptSets));
+    const shownSets = shownSetsFor(keptModules, keptSets);
     return (
       [
         ...header,
@@ -214,12 +243,28 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     // what makes the loop terminate — every branch strictly decreases one of
     // the three, and all three bottom out at zero.
     const shownEdges = Math.min(keptEdges, visibleEdges(keptModules).length);
-    const shownSets = Math.min(keptSets, visibleSets(keptModules).length);
+    const sets = shownSetsFor(keptModules, keptSets);
+    const shownSets = sets.length;
+    // Compare LINES, never items. A module row and an edge are one line each,
+    // so the original two-counter loop could compare the counters directly; a
+    // working set is a header plus N file lines, so its COUNT is not its cost.
+    // Comparing counts made one 200-file set (201 lines) lose every tiebreak
+    // to a 16-line module list, which then shrank to a single row — under a
+    // budget the full module list fit inside — and the set was dropped by the
+    // dangling filter anyway once the modules it names lost their headings.
+    // The section that occupies the most lines pays; that is what "no section
+    // is starved to pay for the others" has to mean when one of them renders
+    // more than one line per item.
+    const setLineCount = setLines(sets).length;
     if (keptModules + shownEdges + shownSets === 0) break;
-    // Whichever of the three is currently largest gives up the next slice, so
-    // no section is starved to pay for the other two.
-    if (keptModules >= shownEdges && keptModules >= shownSets) keptModules = shrink(keptModules);
-    else if (shownEdges >= keptModules && shownEdges >= shownSets) keptEdges = shrink(shownEdges);
+    // Whichever of the three currently occupies the most LINES gives up the
+    // next slice, so no section is starved to pay for the other two. Each
+    // branch still strictly decreases its own counter: the branch below is
+    // reachable only when `setLineCount` exceeds one of the other two, and a
+    // non-zero line count implies at least one shown set, so `shrink` always
+    // has something to take.
+    if (keptModules >= shownEdges && keptModules >= setLineCount) keptModules = shrink(keptModules);
+    else if (shownEdges >= keptModules && shownEdges >= setLineCount) keptEdges = shrink(shownEdges);
     else keptSets = shrink(shownSets);
     out = compose(keptModules, keptEdges, keptSets);
   }

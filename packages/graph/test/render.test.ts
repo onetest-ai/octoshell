@@ -396,6 +396,44 @@ describe("renderMap", () => {
       }
     });
 
+    /**
+     * The claim the section is allowed to make. `WorkingSet.files` is exactly
+     * one Louvain community's membership, and `analyze` holds quarantined hubs
+     * and test files out of the edge set BEFORE clustering runs (A8 + the hub
+     * quarantine) — so working-sets.ts's own doc comment states the only claim
+     * the field supports: "these N files form one community", never "these are
+     * all the files that move together". The first rendered wording asserted
+     * the second: "_Files that move together across declared module
+     * boundaries._" above a count, with nothing saying the count is narrower
+     * than that sentence. Same partial-presented-as-total defect the Modules
+     * header and `- files in the co-change graph:` already guard for their own
+     * counts, at a third surface — and the one the whole campaign keeps
+     * re-shipping, because it always passes its tests.
+     */
+    it("does not present a set's file list as every file that moves with it", () => {
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
+      ];
+      const out = renderMap({ ...analysis, workingSets: sets }, 4000);
+      const section = out.slice(out.indexOf("## Working sets"));
+      const note = (section.split("\n").find((l) => l.startsWith("_")) ?? "").toLowerCase();
+      expect(note).not.toBe("");
+      // The two exclusions that make the count narrower than the prose, named
+      // where the count is published — not only in the producing module.
+      expect(note).toContain("hub");
+      expect(note).toContain("test file");
+    });
+
+    it("renders after the Modules section and the edge section", () => {
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
+      ];
+      const out = renderMap({ ...analysis, workingSets: sets }, 4000);
+      const at = out.indexOf("## Working sets");
+      expect(at).toBeGreaterThan(out.indexOf("## Modules"));
+      expect(at).toBeGreaterThan(out.indexOf("## Coupling (undirected co-change)"));
+    });
+
     it("is byte-identical across runs when working sets are present", () => {
       const sets: WorkingSet[] = [
         { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
@@ -448,6 +486,62 @@ describe("renderMap", () => {
       // dangle and this assertion is satisfied by any implementation at all.
       expect(headings.has("pkg/m15")).toBe(false);
       expect(md).not.toContain("## Working sets");
+    });
+
+    /**
+     * The shrink loop weighs LINES, not items. A working set is a header plus
+     * N file lines, so its COUNT is not its cost — and the first version of
+     * this loop compared `keptSets` (a count of sets) against `keptModules`
+     * and `shownEdges` (counts of lines). One 200-file set therefore weighed
+     * "1" against a 16-line module list, lost every tiebreak, and the loop
+     * gutted the Modules section down to a single row to pay for a section it
+     * then dropped anyway — the dangling filter removes the set the moment the
+     * modules it names lose their headings. Measured: 1 of 16 modules kept,
+     * zero working sets, 167 tokens rendered against a 292-token budget the
+     * full 16-module list (272) fit inside.
+     */
+    it("shrinks the working sets section before the module list it outweighs", () => {
+      const modules = Array.from({ length: 16 }, (_, i) => ({
+        id: i,
+        // Zero-padded: no module edges means equal PageRank, so `ranked` falls
+        // through to `compare(name)` and m00/m01 — the modules the set spans —
+        // are the two the budget cuts LAST. The set therefore survives the
+        // dangling filter for as long as any sane budget keeps modules at all,
+        // which is what makes this a test of the loop's choice and not of the
+        // filter.
+        name: `pkg/m${String(i).padStart(2, "0")}`,
+        members: [`pkg/m${String(i).padStart(2, "0")}/x.ts`],
+        layer: null,
+      }));
+      const heavy: Analysis = {
+        ...analysis,
+        modules,
+        moduleEdges: [],
+        workingSets: [
+          {
+            name: "pkg/m00/x.ts",
+            modules: ["pkg/m00", "pkg/m01"],
+            files: Array.from({ length: 200 }, (_, i) => `pkg/m00/file-${i}.ts`),
+          },
+        ],
+      };
+
+      const withoutSets = renderMap({ ...heavy, workingSets: [] }, Number.MAX_SAFE_INTEGER);
+      // A budget the whole module list fits inside, with room for the
+      // truncation note that replaces the dropped section — and nowhere near
+      // enough for the 201-line set.
+      const budget = estimateTokens(withoutSets) + 30;
+      // Precondition: the set really is what blows the budget.
+      expect(estimateTokens(renderMap(heavy, Number.MAX_SAFE_INTEGER))).toBeGreaterThan(budget);
+
+      const md = renderMap(heavy, budget);
+      expect(estimateTokens(md)).toBeLessThanOrEqual(budget);
+      const headings = [...md.matchAll(/^- \*\*(.+?)\*\*/gm)].map((m) => m[1]);
+      // Every module survives: the section that occupies the most lines paid.
+      expect(headings).toEqual(modules.map((m) => m.name));
+      expect(md).not.toContain("## Working sets");
+      expect(md).toContain("1 working set(s) truncated");
+      expect(md).not.toContain("module(s) truncated");
     });
 
     /**
