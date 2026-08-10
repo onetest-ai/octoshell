@@ -13,10 +13,36 @@ export interface DriftRow {
   confidence: number;
 }
 
-/** Separator for a declared-pair set key. Arbitrary but must not itself be
- *  producible by joining two module names some other way. "->" never occurs
- *  inside a path or a Graphify-declared module name. */
-const PAIR_SEP = "->";
+/**
+ * The declared module pairs, as a lookup with NO composite key at all.
+ *
+ * A module name is a repo-relative path fragment, so it can legally hold any
+ * byte a POSIX path can hold — which is every byte except NUL. Joining two of
+ * them into one string therefore has no safe separator short of NUL itself
+ * (the choice `rollUp` makes, and documents, for its accumulator key): any
+ * printable separator can appear inside a name, and the moment it does, two
+ * different pairs collide on one key. With "->" as the separator, a declared
+ * edge `a -> b->c` produced the key `a->b->c`, which is also what the pair
+ * (`a->b`, `c`) produces — so a real drift finding between `a->b` and `c` was
+ * silently suppressed as "already declared".
+ *
+ * Nesting the sets removes the question instead of answering it: the two names
+ * never meet in one string, so no separator has to be safe. Membership is only
+ * ever TESTED here, never iterated, so no `Map`/`Set` ordering reaches output.
+ */
+function declaredPairs(imports: Spine["imports"]): Map<string, Set<string>> {
+  const byModule = new Map<string, Set<string>>();
+  const relate = (from: string, to: string): void => {
+    const peers = byModule.get(from);
+    if (peers) peers.add(to);
+    else byModule.set(from, new Set([to]));
+  };
+  for (const e of imports) {
+    relate(e.from, e.to);
+    relate(e.to, e.from);
+  }
+  return byModule;
+}
 
 /**
  * Coupling the declared structure does not explain.
@@ -37,14 +63,22 @@ const PAIR_SEP = "->";
  * weights.ts and this package's `conventions.test.ts`), so a
  * negatively-correlated pair — evidence of separation, not of coupling —
  * never ranks as drift. Ties are broken through `compare` (rollup.ts), never
- * `localeCompare`, so the ordering is stable across machines and locales.
+ * `localeCompare`, so the ordering is stable across machines and locales — and
+ * each row's own two endpoints are ordered by the same `compare` before the
+ * tie-break reads them, so neither the row nor the ranking inherits the
+ * git-log-dependent order of `Edge.a`/`Edge.b` (see the loop below).
+ *
+ * `limit` is a count of rows to KEEP, so it is floored at zero rather than
+ * handed to `slice` raw. `slice(0, -1)` does not mean "no limit" and does not
+ * mean "nothing" — it drops the last row and returns the rest, i.e. it hides
+ * the weakest finding and reports the others as if the list were complete.
+ * This is a public export (index.ts) that a CLI `--limit` will feed, and "-1
+ * means unlimited" is a common enough CLI convention that the value will
+ * arrive eventually.
  */
 export function drift(edges: Edge[], files: string[], spine: Spine, limit = 20): DriftRow[] {
-  const declared = new Set<string>();
-  for (const e of spine.imports) {
-    declared.add(`${e.from}${PAIR_SEP}${e.to}`);
-    declared.add(`${e.to}${PAIR_SEP}${e.from}`);
-  }
+  const declared = declaredPairs(spine.imports);
+  const keep = limit > 0 ? limit : 0;
 
   const scored: Array<{ row: DriftRow; weight: number }> = [];
   for (const e of edges) {
@@ -52,15 +86,28 @@ export function drift(edges: Edge[], files: string[], spine: Spine, limit = 20):
     const weight = edgeWeight(e);
     if (weight <= 0) continue;
 
-    const pa = files[e.a];
-    const pb = files[e.b];
-    if (pa === undefined || pb === undefined) continue;
+    const left = files[e.a];
+    const right = files[e.b];
+    if (left === undefined || right === undefined) continue;
+    // Canonical endpoint orientation, exactly as `rollUp` orders a module
+    // edge's endpoints before keying it. A co-change pair is UNDIRECTED, but
+    // `Edge.a`/`Edge.b` are file IDS, and an id is assigned by first appearance
+    // in `git log` output — newest commit first. So which of the two paths
+    // lands in `DriftRow.a` is decided by which file some unrelated later
+    // commit happened to touch most recently: commit anything that mentions
+    // only `svc/b/api.ts` and this row silently flips to `api.ts <-> client.ts`
+    // on the next run, and the equal-weight tie-break below re-sorts with it.
+    // Both orientations state the same true fact, which is precisely why the
+    // churn is invisible in review and lands in a committed artifact anyway.
+    const swapped = compare(left, right) > 0;
+    const pa = swapped ? right : left;
+    const pb = swapped ? left : right;
     if (classifyPair(pa, pb) !== "candidate") continue;
 
     const ma = spine.moduleOf(pa);
     const mb = spine.moduleOf(pb);
     if (ma === mb) continue; // intra-module
-    if (declared.has(`${ma}${PAIR_SEP}${mb}`)) continue; // already declared
+    if (declared.get(ma)?.has(mb) === true) continue; // already declared
 
     scored.push({
       row: {
@@ -79,5 +126,5 @@ export function drift(edges: Edge[], files: string[], spine: Spine, limit = 20):
   scored.sort(
     (x, y) => y.weight - x.weight || compare(x.row.a, y.row.a) || compare(x.row.b, y.row.b),
   );
-  return scored.slice(0, limit).map((s) => s.row);
+  return scored.slice(0, keep).map((s) => s.row);
 }
