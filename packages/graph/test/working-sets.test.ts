@@ -142,7 +142,16 @@ describe("workingSets", () => {
   // for a broken instance of this test is to re-measure and decide, not to
   // delete it.
   it("finds the dual-schema working set on this repo's own history", () => {
-    const { analysis } = analyze(REPO_ROOT, loadConfig(REPO_ROOT, {}), { now: NOW });
+    // `minCommits: 1` pins thin-history suppression off. `analyze()` returns
+    // `workingSets: []` whenever this repo's analysable commit count is below
+    // `config.minCommits` (default 200, comfortably above what this repo has),
+    // and that policy is not what this test verifies — it exists to check
+    // that `workingSets()` computes the right thing from real history, not to
+    // re-check the suppression threshold. Suppression has its own tests where
+    // it's implemented; do not "simplify" this back to the default config, or
+    // this test silently starts asserting against an empty array again.
+    const config = { ...loadConfig(REPO_ROOT, {}), minCommits: 1 };
+    const { analysis } = analyze(REPO_ROOT, config, { now: NOW });
     const set: WorkingSet | undefined = analysis.workingSets.find((w) =>
       w.files.includes("packages/board/src/entity-schema.ts"));
     expect(set?.files.some((f) => f.endsWith("entity-io.mjs"))).toBe(true);
@@ -168,7 +177,12 @@ describe("workingSets", () => {
     // throughout because every test imported them by deep path.
     expect(publicWorkingSets).toBe(workingSets);
 
-    const { analysis, spine } = analyze(REPO_ROOT, loadConfig(REPO_ROOT, {}), { now: NOW });
+    // Same `minCommits: 1` pin as the test above, and for the same reason:
+    // this test verifies what a `WorkingSet` claims about real history, not
+    // whether thin-history suppression fires. Leave it pinned below this
+    // repo's analysable commit count — the default (200) is not.
+    const config = { ...loadConfig(REPO_ROOT, {}), minCommits: 1 };
+    const { analysis, spine } = analyze(REPO_ROOT, config, { now: NOW });
     expect(analysis.workingSets.length).toBeGreaterThan(0);
 
     for (const set of analysis.workingSets) {
