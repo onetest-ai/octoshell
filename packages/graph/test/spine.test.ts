@@ -313,6 +313,36 @@ describe("declaredSpine", () => {
     expect(spine.moduleOf("apps/one/a.ts")).toBe("apps/one");
   });
 
+  /**
+   * The regression this test exists for (M2 bug: `insideRepo` did not
+   * resolve symlinks).
+   *
+   * Exercises the real call site, not just the unit-level `insideRepo`
+   * check: `discoverManifestRoots`'s walk calls `existsSync(join(abs,
+   * marker))` for every directory it visits, and `existsSync` follows
+   * symlinks. The repo declares only ONE real marker (`alpha/go.mod`) —
+   * alone, that must read as a single-module repo, not a manifest-boundary
+   * one (see "treats a single root-level manifest marker as a fact, not a
+   * boundary set" above). Pre-fix, `insideRepo(repoRoot, "escape")` passed
+   * containment on string math alone, so the walk followed the symlink,
+   * found the OUTSIDE directory's `go.mod`, and counted it as a SECOND
+   * marker — flipping `spine.source` from "directories" to "manifests" on
+   * the strength of content that was never part of the repo, and would have
+   * gone on to `readdirSync` that outside directory's structure too.
+   */
+  it("does not let a symlinked directory that escapes the repo contribute a manifest-marker module boundary", () => {
+    const outside = mkdtempSync(join(tmpdir(), "spine-outside-"));
+    writeFileSync(join(outside, "go.mod"), "module escaped\n");
+
+    const root = repoWith({ "alpha/go.mod": "module alpha\n" });
+    symlinkSync(outside, join(root, "escape"));
+
+    const spine = declaredSpine(root, ["alpha/pkg/main.go"]);
+    expect(spine.source).toBe("directories");
+    // The escaping symlink must not have become a recognised module root.
+    expect(spine.modules).not.toContain("escape");
+  });
+
   it("degrades to the directories tier on malformed YAML instead of throwing", () => {
     const root = repoWith({
       // Unbalanced flow-sequence bracket: a genuine YAML parse error.
