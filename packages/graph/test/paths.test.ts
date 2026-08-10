@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { insideRepo, repoRelative } from "../src/paths.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 /** The root through the SAME resolved namespace `insideRepo` compares
  *  against — the OS temp dir itself can sit behind a symlink (macOS's `/var`
@@ -14,14 +14,14 @@ function realRoot(root: string): string {
 
 describe("insideRepo", () => {
   it("resolves a plain relative path inside the repo", () => {
-    const root = mkdtempSync(join(tmpdir(), "octograph-paths-"));
+    const root = mkdtempClean("octograph-paths-");
     expect(insideRepo(root, "packages/a/x.ts")).toBe(
       resolve(realRoot(root), "packages/a/x.ts"),
     );
   });
 
   it("rejects a plain relative path that escapes via '..'", () => {
-    const root = mkdtempSync(join(tmpdir(), "octograph-paths-"));
+    const root = mkdtempClean("octograph-paths-");
     expect(insideRepo(root, "../outside")).toBeNull();
   });
 
@@ -32,7 +32,7 @@ describe("insideRepo", () => {
     // escape. The repo ROOT itself is still resolved (it is expected to
     // exist), so the expectation is built from the root's real path, not a
     // literal `resolve(root, ...)`.
-    const root = mkdtempSync(join(tmpdir(), "octograph-paths-"));
+    const root = mkdtempClean("octograph-paths-");
     expect(insideRepo(root, "no/such/file.ts")).toBe(
       resolve(realRoot(root), "no/such/file.ts"),
     );
@@ -50,9 +50,9 @@ describe("insideRepo", () => {
    * `statSync`/`readdirSync` in spine.ts's directory walks.
    */
   it("rejects a path reached through a symlink that escapes the repo root", () => {
-    const outside = mkdtempSync(join(tmpdir(), "octograph-outside-"));
+    const outside = mkdtempClean("octograph-outside-");
     writeFileSync(join(outside, "secret.txt"), "outside content\n");
-    const root = mkdtempSync(join(tmpdir(), "octograph-paths-"));
+    const root = mkdtempClean("octograph-paths-");
     mkdirSync(join(root, "packages"), { recursive: true });
     symlinkSync(outside, join(root, "packages", "escape"));
 
@@ -72,7 +72,7 @@ describe("insideRepo", () => {
    * any path with a symlink component outright.
    */
   it("resolves a symlink inside the repo that points to another location inside the repo", () => {
-    const root = mkdtempSync(join(tmpdir(), "octograph-paths-"));
+    const root = mkdtempClean("octograph-paths-");
     mkdirSync(join(root, "packages", "real"), { recursive: true });
     mkdirSync(join(root, "node_modules"), { recursive: true });
     symlinkSync(join(root, "packages", "real"), join(root, "node_modules", "linked"));
@@ -89,14 +89,14 @@ describe("insideRepo", () => {
 
 describe("repoRelative", () => {
   it("normalizes an inside path to a forward-slash repo-relative path", () => {
-    const root = mkdtempSync(join(tmpdir(), "octograph-paths-"));
+    const root = mkdtempClean("octograph-paths-");
     expect(repoRelative(root, "packages/a/x.ts")).toBe("packages/a/x.ts");
   });
 
   it("returns null for a path escaping through a symlink", () => {
-    const outside = mkdtempSync(join(tmpdir(), "octograph-outside-"));
+    const outside = mkdtempClean("octograph-outside-");
     writeFileSync(join(outside, "file.ts"), "outside content\n");
-    const root = mkdtempSync(join(tmpdir(), "octograph-paths-"));
+    const root = mkdtempClean("octograph-paths-");
     symlinkSync(outside, join(root, "escape"));
     expect(repoRelative(root, "escape/file.ts")).toBeNull();
   });

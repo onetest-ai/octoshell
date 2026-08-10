@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { declaredSpine } from "../src/spine.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 function repoWith(files: Record<string, string>): string {
-  const root = mkdtempSync(join(tmpdir(), "spine-"));
+  const root = mkdtempClean("spine-");
   for (const [rel, body] of Object.entries(files)) {
     const abs = join(root, rel);
     mkdirSync(join(abs, ".."), { recursive: true });
@@ -331,7 +331,7 @@ describe("declaredSpine", () => {
    * gone on to `readdirSync` that outside directory's structure too.
    */
   it("does not let a symlinked directory that escapes the repo contribute a manifest-marker module boundary", () => {
-    const outside = mkdtempSync(join(tmpdir(), "spine-outside-"));
+    const outside = mkdtempClean("spine-outside-");
     writeFileSync(join(outside, "go.mod"), "module escaped\n");
 
     const root = repoWith({ "alpha/go.mod": "module alpha\n" });

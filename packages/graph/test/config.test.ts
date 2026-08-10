@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULTS, loadConfig } from "../src/config.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 describe("loadConfig", () => {
   it("returns defaults when no config file exists", () => {
-    expect(loadConfig(mkdtempSync(join(tmpdir(), "cfg-")))).toEqual(DEFAULTS);
+    expect(loadConfig(mkdtempClean("cfg-"))).toEqual(DEFAULTS);
   });
 
   it("merges octograph.yaml over the defaults", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "halfLifeDays: 90\n");
     const cfg = loadConfig(root);
     expect(cfg.halfLifeDays).toBe(90);
@@ -18,54 +18,54 @@ describe("loadConfig", () => {
   });
 
   it("lets explicit overrides beat the file", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "halfLifeDays: 90\n");
     expect(loadConfig(root, { halfLifeDays: 30 }).halfLifeDays).toBe(30);
   });
 
   it("ignores a malformed config rather than crashing", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "{oops");
     expect(loadConfig(root)).toEqual(DEFAULTS);
   });
 
   it("degrades to defaults on invalid YAML syntax, never throws", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "halfLifeDays: [unterminated\n");
     expect(() => loadConfig(root)).not.toThrow();
     expect(loadConfig(root)).toEqual(DEFAULTS);
   });
 
   it("degrades to defaults on an empty file, never throws", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "");
     expect(() => loadConfig(root)).not.toThrow();
     expect(loadConfig(root)).toEqual(DEFAULTS);
   });
 
   it("degrades to defaults on a bare scalar top level, never throws", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "42\n");
     expect(() => loadConfig(root)).not.toThrow();
     expect(loadConfig(root)).toEqual(DEFAULTS);
   });
 
   it("degrades to defaults on a bare string scalar top level, never throws", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "hello\n");
     expect(() => loadConfig(root)).not.toThrow();
     expect(loadConfig(root)).toEqual(DEFAULTS);
   });
 
   it("degrades to defaults on a bare sequence top level, never throws", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "- a\n- b\n");
     expect(() => loadConfig(root)).not.toThrow();
     expect(loadConfig(root)).toEqual(DEFAULTS);
   });
 
   it("ignores wrong-typed values (string and boolean) but still applies a valid sibling key in the same file", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(
       join(root, "octograph.yaml"),
       ["halfLifeDays: \"180\"", "budgetTokens: true", "minSupport: 5"].join("\n") + "\n",
@@ -87,7 +87,7 @@ describe("loadConfig", () => {
    * applying to the committed artifact.
    */
   it("treats an explicitly-undefined override as absent, not as a value", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "budgetTokens: 900\n");
     const cfg = loadConfig(root, { budgetTokens: undefined, minSupport: 7 });
     // The file's value survives an absent flag...
@@ -95,7 +95,7 @@ describe("loadConfig", () => {
     // ...and a real override in the same object still applies.
     expect(cfg.minSupport).toBe(7);
     // With no file either, the default survives.
-    const bare = mkdtempSync(join(tmpdir(), "cfg-"));
+    const bare = mkdtempClean("cfg-");
     expect(loadConfig(bare, { halfLifeDays: undefined }).halfLifeDays).toBe(
       DEFAULTS.halfLifeDays,
     );
@@ -113,19 +113,19 @@ describe("loadConfig", () => {
    * the repo.
    */
   it("falls back to the default out path when octograph.yaml's out escapes the repo root", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "out: '../../..'\n");
     expect(loadConfig(root).out).toBe(DEFAULTS.out);
   });
 
   it("accepts a legitimate in-repo out path from octograph.yaml", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "out: graphify-out\n");
     expect(loadConfig(root).out).toBe("graphify-out");
   });
 
   it("reads values correctly with comments present", () => {
-    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    const root = mkdtempClean("cfg-");
     writeFileSync(
       join(root, "octograph.yaml"),
       [

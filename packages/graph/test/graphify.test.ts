@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readGraphify } from "../src/graphify.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const moduleOf = (p: string) => p.split("/").slice(0, 2).join("/");
 
 function repoWithGraph(graph: unknown): string {
-  const root = mkdtempSync(join(tmpdir(), "gfy-"));
+  const root = mkdtempClean("gfy-");
   mkdirSync(join(root, "graphify-out"), { recursive: true });
   writeFileSync(join(root, "graphify-out", "graph.json"), JSON.stringify(graph));
   return root;
@@ -15,7 +15,7 @@ function repoWithGraph(graph: unknown): string {
 
 describe("readGraphify", () => {
   it("returns null when graphify has not run", () => {
-    expect(readGraphify(mkdtempSync(join(tmpdir(), "none-")), moduleOf)).toBeNull();
+    expect(readGraphify(mkdtempClean("none-"), moduleOf)).toBeNull();
   });
 
   it("extracts module-level import edges and drops self-loops", () => {
@@ -43,7 +43,7 @@ describe("readGraphify", () => {
   });
 
   it("returns null rather than throwing on malformed json", () => {
-    const root = mkdtempSync(join(tmpdir(), "bad-"));
+    const root = mkdtempClean("bad-");
     mkdirSync(join(root, "graphify-out"), { recursive: true });
     writeFileSync(join(root, "graphify-out", "graph.json"), "{not json");
     expect(readGraphify(root, moduleOf)).toBeNull();
@@ -55,7 +55,7 @@ describe("readGraphify", () => {
   it.each(["null", "123", '"a string"'])(
     "returns null rather than throwing when graph.json holds the bare value %s",
     (body) => {
-      const root = mkdtempSync(join(tmpdir(), "bare-"));
+      const root = mkdtempClean("bare-");
       mkdirSync(join(root, "graphify-out"), { recursive: true });
       writeFileSync(join(root, "graphify-out", "graph.json"), body);
       expect(() => readGraphify(root, moduleOf)).not.toThrow();
@@ -173,7 +173,7 @@ describe("readGraphify", () => {
   });
 
   it("normalizes absolute in-repo paths so modules are not named for the checkout", () => {
-    const root = mkdtempSync(join(tmpdir(), "abs-"));
+    const root = mkdtempClean("abs-");
     mkdirSync(join(root, "graphify-out"), { recursive: true });
     writeFileSync(
       join(root, "graphify-out", "graph.json"),

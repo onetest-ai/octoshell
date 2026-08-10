@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { mkdtempClean } from "./tmpdir.js";
 
 export interface CommitSpec {
   /** Repo-relative paths touched by this commit. */
@@ -52,7 +52,7 @@ export function appendCommits(root: string, commits: CommitSpec[], seq = 1000): 
 
 /** Build a throwaway git repo with a scripted history. Returns its path. */
 export function buildRepo(commits: CommitSpec[]): string {
-  const root = mkdtempSync(join(tmpdir(), "octograph-"));
+  const root = mkdtempClean("octograph-");
   const git = gitIn(root);
 
   git(["init", "-q", "-b", "main"]);
