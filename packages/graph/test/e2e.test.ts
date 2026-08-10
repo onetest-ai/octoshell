@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { appendCommits, buildRepo } from "./fixtures/repo.js";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { appendCommits, buildRepo, type CommitSpec } from "./fixtures/repo.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
+import { runNode } from "./fixtures/run-node.js";
 import { harvest } from "../src/harvest.js";
 import { countPairs } from "../src/cochange.js";
 import { weighEdges, type Edge } from "../src/weights.js";
@@ -7,17 +13,24 @@ import { detectHubs } from "../src/hubs.js";
 import { bridgeComponents } from "../src/components.js";
 import { louvain } from "../src/louvain.js";
 import { remapClusters } from "../src/stability.js";
+import { runCli } from "../src/cli.js";
+import { estimateTokens } from "../src/render.js";
+import type { Report } from "../src/doctor.js";
 
 /**
  * End-to-end proof of the engine's three load-bearing properties, which no
  * single task's unit tests exercise together: determinism, hub suppression,
- * and cluster-id survival across a changed graph. map.md rendering and the
- * CLI arrive in M2/M3 — out of scope here.
+ * and cluster-id survival across a changed graph.
  *
  * `runPipeline` wires the M1 modules exactly as the (future, config/spine
  * aware) analysis pipeline will: weight, quarantine hubs out of clustering,
  * bridge disconnected components, then cluster. It is test-only — no
  * production module is added by this task.
+ *
+ * T7.4 (below, "end-to-end: Working sets…") is this file's second kind of
+ * end-to-end proof: the mission's own verification task, run through the real
+ * CLI (`runCli`) against `map.md` as it is actually written to disk — never
+ * against an in-memory `Analysis`, which is what M2 got wrong three times.
  */
 interface PipelineResult {
   files: string[];
@@ -256,4 +269,196 @@ describe("end-to-end: cluster id survival", () => {
       [...(oldClusters.get(oldR1Id) ?? [])].sort(),
     );
   });
+});
+
+/**
+ * T7.4 — the mission's own verification task. Every unit-level suite already
+ * covers its own layer in isolation: `working-sets.test.ts` the filter,
+ * `render.test.ts` the section (against a hand-written `Analysis`),
+ * `analyze.test.ts` the suppression (against `analyze()`'s return value
+ * directly). None of those prove the section actually reaches a `map.md`
+ * written to disk by the real CLI — which is exactly the gap M2 left three
+ * times over (the mission note this task is named after). Every assertion
+ * below reads the RENDERED file back off disk after a `runCli(...)` call;
+ * none reads `Analysis`.
+ */
+describe("end-to-end: Working sets in the RENDERED map.md, driven through the real CLI", () => {
+  const T4_NOW = Date.UTC(2026, 0, 30);
+
+  /**
+   * Background churn that touches none of the files under test — dilutes
+   * marginal probability the same way `analyze.test.ts`'s own helper of the
+   * same name does, and gives the graph other components to bridge so a
+   * cross-module pair's community isn't a degenerate single-edge graph (see
+   * `.agents/knowledge/testing/graph-fixture-two-module-boundary-needs-a-
+   * third-unrelated-component.md`). Duplicated here rather than imported: it
+   * is fixture scaffolding local to each test file, not one of the
+   * single-spelled production rules `conventions.test.ts` guards.
+   */
+  function backgroundChurn(pairs: number): CommitSpec[] {
+    const out: CommitSpec[] = [];
+    for (let i = 0; i < pairs; i++) {
+      out.push({ files: [`bg/${i}a.ts`, `bg/${i}b.ts`] });
+      out.push({ files: [`bg/${i}a.ts`, `bg/${i}b.ts`] });
+    }
+    return out;
+  }
+
+  /**
+   * One cross-module co-change pattern (`a/one.ts` <-> `b/two.ts`, the
+   * two-segment directory fallback — no manifest in this fixture) strong
+   * enough to earn its own Louvain community, plus background churn. 42
+   * commits total — comfortably below the default `minCommits` (200), so
+   * this fixture doubles as both "history too thin" (used as-is) and "history
+   * cleared" (used with `--min-commits` overridden low) depending on the
+   * flags a test passes to `runCli`.
+   */
+  function crossModuleRepo(): string {
+    const commits: CommitSpec[] = [];
+    for (let i = 0; i < 12; i++) commits.push({ files: ["a/one.ts", "b/two.ts"] });
+    commits.push(...backgroundChurn(15));
+    return buildRepo(commits);
+  }
+
+  function readMap(repo: string): string {
+    return readFileSync(join(repo, ".octograph", "map.md"), "utf8");
+  }
+
+  it("(a) writes no '## Working sets' heading at all when the repo is below the doctor threshold", () => {
+    const repo = crossModuleRepo();
+
+    // Precondition, through the CLI: this repo really is what `doctor`
+    // grades degraded, not merely a repo with few commits.
+    const doctorResult = runCli(["doctor", "--json"], repo, T4_NOW);
+    const doctorReport = JSON.parse(doctorResult.stdout) as Report;
+    expect(doctorReport.status).toBe("degraded");
+
+    const mapResult = runCli(["map"], repo, T4_NOW);
+    expect(mapResult.code).toBe(0);
+
+    // Not "an empty section" — no heading at all. Criterion 3 is written as
+    // "absent, not caveated" (config.ts's own doc comment on
+    // `historyIsThin`), and this is the rendered artifact's half of that.
+    expect(readMap(repo)).not.toContain("## Working sets");
+  });
+
+  it("(b) renders the section once history clears the threshold, and every module it names has a heading in Modules", () => {
+    const repo = crossModuleRepo();
+    const mapResult = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
+    expect(mapResult.code).toBe(0);
+
+    const rendered = readMap(repo);
+    expect(rendered).toContain("## Working sets");
+
+    const section = rendered.slice(rendered.indexOf("## Working sets"));
+    const namedModules = new Set<string>();
+    for (const m of section.matchAll(/files across (.+)$/gm)) {
+      const list = m[1];
+      if (list === undefined) continue;
+      for (const name of list.split(", ")) namedModules.add(name);
+    }
+    // Precondition: the section really does name at least one module —
+    // otherwise the loop below is vacuously true of any renderer at all.
+    expect(namedModules.size).toBeGreaterThan(0);
+
+    const moduleHeadings = new Set(
+      [...rendered.matchAll(/^- \*\*(.+?)\*\*/gm)].map((mm) => mm[1]),
+    );
+    for (const name of namedModules) {
+      expect(moduleHeadings.has(name), `"${name}" named in Working sets but not in Modules`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("(c) the rendered section contains no recommendation vocabulary", () => {
+    const repo = crossModuleRepo();
+    const mapResult = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
+    expect(mapResult.code).toBe(0);
+
+    const rendered = readMap(repo);
+    expect(rendered).toContain("## Working sets");
+    const section = rendered.slice(rendered.indexOf("## Working sets")).toLowerCase();
+    // Same vocabulary list `render.test.ts` pins at the unit level — this
+    // test proves the same property survives the real CLI and a real file.
+    for (const word of ["should", "consider", "recommend", "merge these", "split", "refactor"]) {
+      expect(section).not.toContain(word);
+    }
+  });
+
+  it("(d) writes byte-identical map.md across two runs over an unchanged commit, section present in both", () => {
+    const repo = crossModuleRepo();
+
+    const first = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
+    expect(first.code).toBe(0);
+    const firstText = readMap(repo);
+    expect(firstText).toContain("## Working sets");
+
+    // No commits added between runs — the CLI is invoked a second time over
+    // the exact same history, exactly as a real "run octograph again" would.
+    const second = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
+    expect(second.code).toBe(0);
+    const secondText = readMap(repo);
+    expect(secondText).toContain("## Working sets");
+
+    expect(secondText).toBe(firstText);
+  });
+
+  it("(e) keeps the rendered map.md within budgetTokens on a fixture producing many working sets", () => {
+    const commits: CommitSpec[] = [];
+    // 20 independent cross-module pairs — each its own component, each
+    // spanning two declared modules — plus background churn so no single
+    // pair's community is a degenerate single-edge graph.
+    for (let i = 0; i < 20; i++) {
+      commits.push({ files: [`a${i}/one.ts`, `b${i}/two.ts`] });
+      commits.push({ files: [`a${i}/one.ts`, `b${i}/two.ts`] });
+    }
+    commits.push(...backgroundChurn(15));
+    const repo = buildRepo(commits);
+
+    // First, a generous budget: proves the fixture really produces MANY
+    // working sets, not just one or two — otherwise the tight-budget
+    // assertion below would pass trivially for a renderer with no
+    // truncation logic at all.
+    const generous = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
+    expect(generous.code).toBe(0);
+    const generousText = readMap(repo);
+    const setEntries = [...generousText.matchAll(/^- \*\*(.+?)\*\* — \d+ files across/gm)];
+    expect(setEntries.length).toBeGreaterThanOrEqual(10);
+    expect(estimateTokens(generousText)).toBeGreaterThan(400);
+
+    // Now a tight budget, over the same history: the written file must obey
+    // it, read back off disk exactly as a real consumer would read it.
+    const tight = runCli(["map", "--min-commits", "5", "--budget", "400"], repo, T4_NOW);
+    expect(tight.code).toBe(0);
+    const tightText = readMap(repo);
+    expect(estimateTokens(tightText)).toBeLessThanOrEqual(400);
+  });
+
+  it(
+    "(f) the esbuild pack bundle runs under bare node with no node_modules, and its map command emits the section",
+    () => {
+      const PKG_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+      // Built straight into this test's own temp directory — never into
+      // `dist/octograph.mjs` (that path has exactly one writer,
+      // `bundle.test.ts`; Vitest runs test files in parallel, and building it
+      // here too would race that file's own build/copy over the same bytes).
+      const isolated = join(mkdtempClean("octograph-t4-bundle-"), "octograph.mjs");
+      execFileSync("node", ["scripts/bundle.mjs", isolated], { cwd: PKG_ROOT, stdio: "pipe" });
+
+      const repo = crossModuleRepo();
+      // Under the OS temp dir there is no `node_modules` anywhere up the
+      // chain — the same self-containment precondition `bundle.test.ts`
+      // checks for its own fixture.
+      expect(existsSync(join(repo, "node_modules"))).toBe(false);
+
+      const result = runNode([isolated, "map", "--min-commits", "5"], repo);
+      expect(result.stderr).not.toContain("ERR_MODULE_NOT_FOUND");
+      expect(result.code, `octograph exited ${result.code}: ${result.stderr}`).toBe(0);
+
+      const rendered = readMap(repo);
+      expect(rendered).toContain("## Working sets");
+    },
+    30_000,
+  );
 });
