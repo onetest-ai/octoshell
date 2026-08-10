@@ -6,7 +6,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 — packages/graph mines `git log` (co-change graph over
+      # this repo's own commit history). The default shallow (1-commit)
+      # checkout doesn't just make its tests flaky, it makes them meaningless:
+      # `harvest()` sees ~1 commit, so `analysis.workingSets` comes back empty
+      # and the live-history tests fail deterministically, every run.
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 9.7.0 }
       - uses: actions/setup-node@v4
