@@ -54,6 +54,13 @@ fact gets written down at all, even before the folder has its first note.
   schema is implemented twice with no import edge; both copies must change together.
 - [`practices/dist-before-typecheck.md`](practices/dist-before-typecheck.md) — dependents read a
   package's built `dist/`, not its `src/`; rebuild before typecheck/test after a public-type change.
+- [`practices/graph-module-sort-uses-community-not-declared-count.md`](practices/graph-module-sort-uses-community-not-declared-count.md) —
+  `packages/graph`'s `analyze()` orders `modules[]` by Louvain-community size, not the declared
+  membership that ends up in `.members`; growing declared membership alone never reorders it.
+- [`testing/graph-fixture-map-output-must-be-gitignored-before-a-second-run.md`](testing/graph-fixture-map-output-must-be-gitignored-before-a-second-run.md) —
+  a `packages/graph` test fixture that runs `map` twice with `appendCommits` in between must
+  gitignore the out directory first, or the first run's own output becomes a bogus module in the
+  second (`git add -A`'s doing).
 
 ## Curation
 
