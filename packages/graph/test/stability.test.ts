@@ -8,6 +8,9 @@ describe("jaccard", () => {
   });
 
   it("treats two empty sets as 0 rather than NaN", () => {
+    // Arithmetic only. Whether two MEMBERLESS clusters are the same cluster is
+    // a remap policy decided in `remapClusters` (see the memberless test
+    // below), not something this function is asked.
     expect(jaccard(new Set(), new Set())).toBe(0);
   });
 });
@@ -93,5 +96,40 @@ describe("remapClusters", () => {
     const remap = remapClusters(clusters, clusters);
     expect(remap.get(0)).toBe(0);
     expect(remap.get(1)).toBe(1);
+  });
+
+  /**
+   * `analyze()` emits memberless clusters — a Graphify-declared module with no
+   * churn inside the harvest window (see analyze.test.ts's own
+   * "a declared module the harvest window never touched" case). Scored by raw
+   * Jaccard those overlap their own previous self by 0, so they re-minted an id
+   * on EVERY run and the committed artifact churned forever with nothing
+   * changing. `remapClusters` scores overlap through `overlap`, which counts
+   * two memberless clusters as a full match.
+   */
+  it("keeps a memberless cluster's id instead of re-minting it every run", () => {
+    const clusters = new Map([[0, ["a", "b"]], [1, []]]);
+    const once = remapClusters(clusters, clusters);
+    expect([...once.entries()]).toEqual([[0, 0], [1, 1]]);
+
+    // Applied twice, as consecutive runs of an unchanged repo would: an id
+    // that only survives one round is still churn.
+    const twice = remapClusters(new Map([[0, ["a", "b"]], [1, []]]), clusters);
+    expect([...twice.entries()]).toEqual([[0, 0], [1, 1]]);
+  });
+
+  it("never gives one old memberless id to two new memberless clusters", () => {
+    const oldC = new Map([[4, []]]);
+    const newC = new Map([[0, []], [1, []]]);
+    const remap = remapClusters(oldC, newC);
+    expect(remap.get(0)).toBe(4);
+    // The second one has no old id left to inherit, so it mints above max(old)
+    // rather than colliding with the first.
+    expect(remap.get(1)).toBe(5);
+  });
+
+  it("never lets a memberless cluster claim an old id that has members", () => {
+    const remap = remapClusters(new Map([[2, ["a", "b"]]]), new Map([[0, []]]));
+    expect(remap.get(0)).toBe(3);
   });
 });

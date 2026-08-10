@@ -441,6 +441,83 @@ describe("analyze: cluster id stability, wired to the Jaccard remap", () => {
     expect(analysis.clusterIds).toEqual({ kept: 1, fresh: 1 });
   });
 
+  /**
+   * The regression this test exists for (found reviewing this task).
+   *
+   * `analyze()` emits real modules with NO members: a module Graphify declares
+   * — a genuine `moduleEdges` endpoint that gets its own heading — whose files
+   * no analysable commit touched inside the harvest window (see "holds when
+   * Graphify names a module the harvest window never touched" above, and
+   * `spine.modules`). Fed to the remap, such a cluster scored 0 against its own
+   * previous self, because raw Jaccard answers "no shared union" for two empty
+   * sets. So it fell under the threshold and minted a FRESH id on every run:
+   * pkg/c came back 2, then 3, then 4, … on three consecutive runs of a repo
+   * whose history never moved — the committed-artifact churn A5b exists to
+   * prevent, straight through the mitigation for it. The same miscount also
+   * made `clusterIds` claim `{ kept: 2, fresh: 1 }` for a rerun with nothing
+   * fresh in it.
+   *
+   * Three runs, not two: a two-run check would also pass an implementation
+   * that merely offset the id once.
+   */
+  it("a declared module the harvest window never touched keeps its id across reruns", () => {
+    const commits: CommitSpec[] = [];
+    for (let i = 0; i < 6; i++) commits.push({ files: ["pkg/a/a1.ts", "pkg/a/a2.ts"] });
+    for (let i = 0; i < 6; i++) commits.push({ files: ["pkg/b/b1.ts", "pkg/b/b2.ts"] });
+    const root = buildRepo(commits);
+    writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'pkg/*'\n");
+    for (const p of ["a", "b", "c"]) {
+      mkdirSync(join(root, `pkg/${p}`), { recursive: true });
+      writeFileSync(join(root, `pkg/${p}/package.json`), `{"name":"${p}"}\n`);
+    }
+    mkdirSync(join(root, "graphify-out"), { recursive: true });
+    writeFileSync(
+      join(root, "graphify-out/graph.json"),
+      JSON.stringify({
+        nodes: [
+          { id: "a", file: "pkg/a/a1.ts" },
+          { id: "b", file: "pkg/b/b1.ts" },
+          // Declared, imported — and never touched by an analysable commit.
+          { id: "c", file: "pkg/c/c1.ts" },
+        ],
+        edges: [
+          { source: "a", target: "b", type: "imports" },
+          { source: "b", target: "c", type: "imports" },
+        ],
+      }),
+    );
+
+    const dir = mkdtempClean("octograph-artifact-");
+    /** One run, through the artifact a real caller would have committed. */
+    const run = (previous: Map<number, string[]> | undefined) => {
+      const { analysis } = analyze(root, DEFAULTS, { now: NOW, previousClusters: previous });
+      writeArtifact(dir, { version: 1, clusters: clustersOf(analysis.modules), config: DEFAULTS });
+      const stored = readArtifact(dir);
+      if (stored === null) throw new Error("expected writeArtifact's own file to read back");
+      return { analysis, clusters: toClusterMap(stored.clusters) };
+    };
+
+    const first = run(undefined);
+    // Preconditions: the Graphify tier really is in play and pkg/c really is
+    // the memberless module — without both, the reruns below prove nothing.
+    expect(first.analysis.spineSource).toBe("graphify");
+    const c1 = first.analysis.modules.find((m) => m.name === "pkg/c");
+    expect(c1?.members).toEqual([]);
+
+    // Nothing whatsoever changes between runs — no commit is appended, the
+    // same `now` is passed — so every id must survive both reruns, the
+    // memberless one included, and no run may report a fresh cluster.
+    const second = run(first.clusters);
+    const third = run(second.clusters);
+
+    const idsOf = (a: typeof first.analysis) =>
+      Object.fromEntries(a.modules.map((m) => [m.name, m.id]));
+    expect(idsOf(second.analysis)).toEqual(idsOf(first.analysis));
+    expect(idsOf(third.analysis)).toEqual(idsOf(first.analysis));
+    expect(second.analysis.clusterIds).toEqual({ kept: 3, fresh: 0 });
+    expect(third.analysis.clusterIds).toEqual({ kept: 3, fresh: 0 });
+  });
+
   it("first run with no previous clusters mints every id fresh, exactly as before this option existed", () => {
     const commits: CommitSpec[] = [];
     for (let i = 0; i < 6; i++) commits.push({ files: ["pkg/a/a1.ts", "pkg/a/a2.ts"] });
