@@ -330,6 +330,19 @@ Detection is path-based: a set of independently-compiled regexes over directory 
 suffixes (`wikis/cluster_constants.py:_TEST_PATH_PATTERNS` ships 17). Deterministic and
 language-agnostic; no parsing.
 
+**Amended 2026-08-10 — tests are MARKED in the module list, not withheld from it.**
+An earlier reading of this rule also barred test files from a module's rendered member list. That
+conflated two independent things. Excluding tests from *clustering* is what this rule is for, and
+it stands. Excluding them from *membership* threw away a real answer: **which tests cover this
+module** is a question the map should be able to answer, and it is the same data that makes
+`impact` useful to the completion gate.
+
+So: tests are members, and the rendered count distinguishes them (`8 source, 13 test`) rather than
+presenting one total that silently mixes both. A count that mixes them is the file-count defect
+again — a number that is true of nothing a reader would name.
+
+The clustering exclusion is unchanged, and remains the thing this rule exists for.
+
 ### A9 — Token budgeting
 
 `map.md` targets a stated budget (default ~2k tokens). Since octograph has no runtime

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildRepo, type CommitSpec } from "./fixtures/repo.js";
-import { analyze } from "../src/analyze.js";
+import { appendCommits, buildRepo, type CommitSpec } from "./fixtures/repo.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
+import { analyze, type ModuleSummary } from "../src/analyze.js";
 import { renderMap } from "../src/render.js";
 import { DEFAULTS } from "../src/config.js";
+import { readArtifact, writeArtifact } from "../src/artifact.js";
 
 const NOW = Date.UTC(2026, 0, 30);
 
@@ -273,24 +275,257 @@ describe("analyze: determinism", () => {
   });
 });
 
-describe("analyze: no fabricated fields", () => {
+/** `StoredGraph.clusters`' shape, keyed by each module's own id. */
+function clustersOf(modules: ModuleSummary[]): Record<number, string[]> {
+  const clusters: Record<number, string[]> = {};
+  for (const m of modules) clusters[m.id] = m.members;
+  return clusters;
+}
+
+/** The inverse of the `Record` `readArtifact` hands back: `remapClusters`'s own `Map` shape. */
+function toClusterMap(clusters: Record<number, string[]>): Map<number, string[]> {
+  return new Map(Object.entries(clusters).map(([k, v]) => [Number(k), v]));
+}
+
+describe("analyze: cluster id stability, wired to the Jaccard remap", () => {
   /**
-   * The regression this test exists for (M3 bug).
+   * The regression this block replaces (M3 bug, see git history for
+   * a6b790d9).
    *
-   * `clusterIds` was `{ kept: 0, fresh: modules.length }` — `kept` was ALWAYS
-   * 0, produced by no computation at all. `remapClusters` (stability.ts) is
-   * the real stability remap and is never called from `analyze()`; wiring it
-   * in belongs to Task 15, once a previously-committed artifact exists to
-   * diff against. Until then, no field should stand in for a number nobody
-   * computed — `analyze()`'s return must not carry `clusterIds` at all.
+   * `clusterIds` used to be `{ kept: 0, fresh: modules.length }` — `kept` was
+   * ALWAYS 0, produced by no computation at all — so it was deleted rather
+   * than shipped as a placeholder. `remapClusters` (stability.ts) is the real
+   * stability remap; this block proves `analyze()` actually calls it, using
+   * the previous run's clusters as they really arrive: round-tripped through
+   * `writeArtifact`/`readArtifact` (see artifact.ts / T3.3), never an
+   * in-memory value the current run just happened to hold.
+   *
+   * A single-run check cannot catch a hardcoded constant back — a constant
+   * satisfies it trivially — so every test below drives analyze() at least
+   * twice: once to establish the "previous" run, once (or twice) more to
+   * observe what changes and what does not.
    */
-  it("does not carry a clusterIds field nobody computed", () => {
+  it("an unchanged rerun keeps every id (kept > 0) while an altered-history rerun mints a fresh one for the new module", () => {
+    const commits: CommitSpec[] = [];
+    for (let i = 0; i < 8; i++) commits.push({ files: ["pkg/a/a1.ts", "pkg/a/a2.ts"] });
+    for (let i = 0; i < 8; i++) commits.push({ files: ["pkg/b/b1.ts", "pkg/b/b2.ts"] });
+    for (let i = 0; i < 8; i++) commits.push({ files: ["pkg/c/c1.ts", "pkg/c/c2.ts"] });
+    const root = buildRepo(commits);
+
+    const first = analyze(root, DEFAULTS, { now: NOW });
+    expect(first.analysis.modules).toHaveLength(3);
+
+    // The previous run's clusters, as a real caller would actually have them:
+    // written to disk, then read back — not the in-memory `first.analysis`.
+    // A separate directory, not `resolveOut(root, ...)`: writing the
+    // artifact INTO the repo would sit untracked until the next commit, and
+    // `appendCommits` below stages with `git add -A` — it would silently
+    // become a tracked file (and a spurious extra module) the moment history
+    // moves on. Real callers resolve a path with `resolveOut`; that path
+    // resolution is T3.3's own contract (artifact.test.ts), not this task's.
+    const dir = mkdtempClean("octograph-artifact-");
+    writeArtifact(dir, { version: 1, clusters: clustersOf(first.analysis.modules), config: DEFAULTS });
+    const stored = readArtifact(dir);
+    if (stored === null) throw new Error("expected writeArtifact's own file to read back");
+    const previousClusters = toClusterMap(stored.clusters);
+
+    // Unchanged rerun: every module's declared membership is identical to the
+    // previous run's, so every one of them should match its own old id
+    // (jaccard 1.0) — `kept` must be the module count, not 0.
+    const same = analyze(root, DEFAULTS, { now: NOW, previousClusters });
+    expect(same.analysis.clusterIds).toEqual({ kept: 3, fresh: 0 });
+
+    // Altered-history rerun: append commits for a brand new module that
+    // shares no path at all with any previous cluster. The three original
+    // modules are untouched and still match their old ids; the new one can
+    // only mint a fresh id, since nothing in `previousClusters` overlaps it.
+    appendCommits(
+      root,
+      Array.from({ length: 8 }, () => ({ files: ["pkg/d/d1.ts", "pkg/d/d2.ts"] })),
+    );
+    const altered = analyze(root, DEFAULTS, { now: NOW, previousClusters });
+    expect(altered.analysis.modules).toHaveLength(4);
+    expect(altered.analysis.clusterIds).toEqual({ kept: 3, fresh: 1 });
+
+    // The pair a hardcoded constant could still slip past individually (e.g.
+    // `fresh` tracking `modules.length` while `kept` stays a fixed 0) is
+    // exactly the pair this asserts differs as a whole.
+    expect(altered.analysis.clusterIds).not.toEqual(same.analysis.clusterIds);
+  });
+
+  it("an untouched module keeps its previous id even when growing another module reorders the array", () => {
+    const commits: CommitSpec[] = [];
+    for (let i = 0; i < 8; i++) commits.push({ files: ["pkg/a/a1.ts", "pkg/a/a2.ts"] });
+    for (let i = 0; i < 8; i++) commits.push({ files: ["pkg/z/z1.ts", "pkg/z/z2.ts"] });
+    const root = buildRepo(commits);
+
+    const first = analyze(root, DEFAULTS, { now: NOW });
+    const a = first.analysis.modules.find((m) => m.name === "pkg/a");
+    const z = first.analysis.modules.find((m) => m.name === "pkg/z");
+    if (a === undefined || z === undefined) throw new Error("expected both pkg/a and pkg/z");
+    // Precondition: equal member counts, so the name tie-break put pkg/a
+    // first — without this the reorder below proves nothing.
+    expect(a.id).toBe(0);
+    expect(z.id).toBe(1);
+
+    // A separate directory, not `resolveOut(root, ...)`: writing the
+    // artifact INTO the repo would sit untracked until the next commit, and
+    // `appendCommits` below stages with `git add -A` — it would silently
+    // become a tracked file (and a spurious extra module) the moment history
+    // moves on. Real callers resolve a path with `resolveOut`; that path
+    // resolution is T3.3's own contract (artifact.test.ts), not this task's.
+    const dir = mkdtempClean("octograph-artifact-");
+    writeArtifact(dir, { version: 1, clusters: clustersOf(first.analysis.modules), config: DEFAULTS });
+    const stored = readArtifact(dir);
+    if (stored === null) throw new Error("expected writeArtifact's own file to read back");
+    const previousClusters = toClusterMap(stored.clusters);
+
+    // Touch pkg/z ONLY: give it ten more declared members, nothing under
+    // pkg/a. Each new pair is committed twice — the sort tie-break above
+    // reads community size, and a pair below `minSupport` (2) never earns an
+    // edge, so it would never join a community or move the sort at all (see
+    // the sort's own comment in analyze.ts). With real support, pkg/z's
+    // community — and so its position — genuinely outsizes pkg/a's, the exact
+    // reordering that, without the remap, would relabel pkg/a too.
+    const growth: CommitSpec[] = [];
+    for (let i = 0; i < 5; i++) {
+      const pair = [`pkg/z/extra${2 * i}.ts`, `pkg/z/extra${2 * i + 1}.ts`];
+      growth.push({ files: pair }, { files: pair });
+    }
+    appendCommits(root, growth);
+    const second = analyze(root, DEFAULTS, { now: NOW, previousClusters });
+
+    // Precondition: the reorder genuinely happened.
+    expect(second.analysis.modules[0]?.name).toBe("pkg/z");
+
+    const a2 = second.analysis.modules.find((m) => m.name === "pkg/a");
+    const z2 = second.analysis.modules.find((m) => m.name === "pkg/z");
+    if (a2 === undefined || z2 === undefined) throw new Error("expected both pkg/a and pkg/z");
+
+    // The untouched module keeps the id it had in the previously written
+    // clusters.json, despite no longer sitting at array position 0.
+    expect(a2.id).toBe(0);
+    // The touched module's membership overlap with its old self dropped well
+    // under the 0.5 threshold (2 of 12 members), so it is free to change —
+    // and does, minting the next id above the old max.
+    expect(z2.id).toBe(2);
+    expect(z2.id).not.toBe(a2.id);
+  });
+
+  it("wires the greedy tie-break: two equally-good new clusters never both claim one old id", () => {
+    // A previous run's single cluster (fabricated id 9) whose members are
+    // split evenly across two NEW declared modules this run — jaccard 0.5
+    // against each, an exact tie at the threshold.
+    const previousClusters = new Map<number, string[]>([
+      [9, ["pkg/p/a.ts", "pkg/p/b.ts", "pkg/q/a.ts", "pkg/q/b.ts"]],
+    ]);
+
+    const commits: CommitSpec[] = [];
+    for (let i = 0; i < 8; i++) commits.push({ files: ["pkg/p/a.ts", "pkg/p/b.ts"] });
+    for (let i = 0; i < 8; i++) commits.push({ files: ["pkg/q/a.ts", "pkg/q/b.ts"] });
+    const root = buildRepo(commits);
+
+    const { analysis } = analyze(root, DEFAULTS, { now: NOW, previousClusters });
+    const p = analysis.modules.find((m) => m.name === "pkg/p");
+    const q = analysis.modules.find((m) => m.name === "pkg/q");
+    if (p === undefined || q === undefined) throw new Error("expected both pkg/p and pkg/q");
+
+    // Lower positional id wins a contested tie (see stability.test.ts's own
+    // "gives a contested old id to the strongest overlap" test for the same
+    // rule at the unit level) — pkg/p sorts first alphabetically.
+    expect(p.id).toBe(9);
+    // The loser is never left unclaimed against the SAME old id — it mints
+    // a fresh one instead, strictly above the old maximum.
+    expect(q.id).toBe(10);
+    expect(q.id).not.toBe(p.id);
+    expect(analysis.clusterIds).toEqual({ kept: 1, fresh: 1 });
+  });
+
+  /**
+   * The regression this test exists for (found reviewing this task).
+   *
+   * `analyze()` emits real modules with NO members: a module Graphify declares
+   * — a genuine `moduleEdges` endpoint that gets its own heading — whose files
+   * no analysable commit touched inside the harvest window (see "holds when
+   * Graphify names a module the harvest window never touched" above, and
+   * `spine.modules`). Fed to the remap, such a cluster scored 0 against its own
+   * previous self, because raw Jaccard answers "no shared union" for two empty
+   * sets. So it fell under the threshold and minted a FRESH id on every run:
+   * pkg/c came back 2, then 3, then 4, … on three consecutive runs of a repo
+   * whose history never moved — the committed-artifact churn A5b exists to
+   * prevent, straight through the mitigation for it. The same miscount also
+   * made `clusterIds` claim `{ kept: 2, fresh: 1 }` for a rerun with nothing
+   * fresh in it.
+   *
+   * Three runs, not two: a two-run check would also pass an implementation
+   * that merely offset the id once.
+   */
+  it("a declared module the harvest window never touched keeps its id across reruns", () => {
+    const commits: CommitSpec[] = [];
+    for (let i = 0; i < 6; i++) commits.push({ files: ["pkg/a/a1.ts", "pkg/a/a2.ts"] });
+    for (let i = 0; i < 6; i++) commits.push({ files: ["pkg/b/b1.ts", "pkg/b/b2.ts"] });
+    const root = buildRepo(commits);
+    writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'pkg/*'\n");
+    for (const p of ["a", "b", "c"]) {
+      mkdirSync(join(root, `pkg/${p}`), { recursive: true });
+      writeFileSync(join(root, `pkg/${p}/package.json`), `{"name":"${p}"}\n`);
+    }
+    mkdirSync(join(root, "graphify-out"), { recursive: true });
+    writeFileSync(
+      join(root, "graphify-out/graph.json"),
+      JSON.stringify({
+        nodes: [
+          { id: "a", file: "pkg/a/a1.ts" },
+          { id: "b", file: "pkg/b/b1.ts" },
+          // Declared, imported — and never touched by an analysable commit.
+          { id: "c", file: "pkg/c/c1.ts" },
+        ],
+        edges: [
+          { source: "a", target: "b", type: "imports" },
+          { source: "b", target: "c", type: "imports" },
+        ],
+      }),
+    );
+
+    const dir = mkdtempClean("octograph-artifact-");
+    /** One run, through the artifact a real caller would have committed. */
+    const run = (previous: Map<number, string[]> | undefined) => {
+      const { analysis } = analyze(root, DEFAULTS, { now: NOW, previousClusters: previous });
+      writeArtifact(dir, { version: 1, clusters: clustersOf(analysis.modules), config: DEFAULTS });
+      const stored = readArtifact(dir);
+      if (stored === null) throw new Error("expected writeArtifact's own file to read back");
+      return { analysis, clusters: toClusterMap(stored.clusters) };
+    };
+
+    const first = run(undefined);
+    // Preconditions: the Graphify tier really is in play and pkg/c really is
+    // the memberless module — without both, the reruns below prove nothing.
+    expect(first.analysis.spineSource).toBe("graphify");
+    const c1 = first.analysis.modules.find((m) => m.name === "pkg/c");
+    expect(c1?.members).toEqual([]);
+
+    // Nothing whatsoever changes between runs — no commit is appended, the
+    // same `now` is passed — so every id must survive both reruns, the
+    // memberless one included, and no run may report a fresh cluster.
+    const second = run(first.clusters);
+    const third = run(second.clusters);
+
+    const idsOf = (a: typeof first.analysis) =>
+      Object.fromEntries(a.modules.map((m) => [m.name, m.id]));
+    expect(idsOf(second.analysis)).toEqual(idsOf(first.analysis));
+    expect(idsOf(third.analysis)).toEqual(idsOf(first.analysis));
+    expect(second.analysis.clusterIds).toEqual({ kept: 3, fresh: 0 });
+    expect(third.analysis.clusterIds).toEqual({ kept: 3, fresh: 0 });
+  });
+
+  it("first run with no previous clusters mints every id fresh, exactly as before this option existed", () => {
     const commits: CommitSpec[] = [];
     for (let i = 0; i < 6; i++) commits.push({ files: ["pkg/a/a1.ts", "pkg/a/a2.ts"] });
     for (let i = 0; i < 6; i++) commits.push({ files: ["pkg/b/b1.ts", "pkg/b/b2.ts"] });
 
     const { analysis } = analyze(buildRepo(commits), DEFAULTS, { now: NOW });
-    expect("clusterIds" in analysis).toBe(false);
+    expect(analysis.clusterIds).toEqual({ kept: 0, fresh: 2 });
+    expect(analysis.modules.map((m) => m.id).sort((x, y) => x - y)).toEqual([0, 1]);
   });
 });
 

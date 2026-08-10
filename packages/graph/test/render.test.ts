@@ -14,6 +14,7 @@ const analysis: Analysis = {
   moduleEdgesDirected: false,
   hubs: ["package.json"],
   bridged: 0,
+  clusterIds: { kept: 2, fresh: 0 },
 };
 
 describe("renderMap", () => {
