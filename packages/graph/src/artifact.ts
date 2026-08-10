@@ -10,6 +10,19 @@ export interface StoredGraph {
   clusters: Record<number, string[]>;
   /** The config that produced this artifact, so drift in settings is visible. */
   config: Config;
+  /**
+   * The --since window this artifact's git history was harvested with, or
+   * `null` for a full-history run. NOT part of Config: it's a per-invocation
+   * query (git log --since), never an octograph.yaml setting, so folding it
+   * into `config` would misrepresent it as project configuration.
+   *
+   * OPTIONAL, not required: every clusters.json written before this field
+   * existed lacks the key entirely, and that absence is a real "we don't
+   * know" state — distinct from a confirmed `null` (we know it was full
+   * history). A caller comparing provenance across runs must tell the two
+   * apart rather than assuming an old artifact was full-history.
+   */
+  since?: string | null;
 }
 
 /**
@@ -131,7 +144,11 @@ const CLUSTER_KEY = /^(0|[1-9][0-9]*)$/;
  * validated — nothing computes from it (it exists so a settings change is
  * visible in the diff), and a strict check there would reject every artifact
  * written before a new `Config` key was added, throwing away cluster ids for a
- * field no caller reads.
+ * field no caller reads. `since` gets the same treatment for the same reason:
+ * it is optional precisely so a pre-fix artifact missing the key entirely
+ * still passes, and `parsed` is returned as-is (never reconstructed field by
+ * field), so a present `since` — a string, or an explicit `null` — survives
+ * untouched without this function needing to know its shape.
  *
  * `clusters`' KEYS are validated as strictly as its values, for the reason
  * spelled out on {@link CLUSTER_KEY}: they are arithmetic input one frame up,

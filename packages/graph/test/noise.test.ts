@@ -115,6 +115,14 @@ describe("classifyPair", () => {
   it("classifies a manifest and its lockfile as mechanical", () => {
     expect(classifyPair("package.json", "pnpm-lock.yaml")).toBe("mechanical");
     expect(classifyPair("Cargo.toml", "Cargo.lock")).toBe("mechanical");
+    // All five LOCK_PAIRS families named explicitly, not just sampled: three
+    // of five used to be asserted here (plus pyproject.toml/uv.lock below, in
+    // "pairs a manifest only with a lockfile that governs it"), which let
+    // go.mod/go.sum, Gemfile/Gemfile.lock and the yarn.lock alternate drop out
+    // of LOCK_PAIRS without failing a single test.
+    expect(classifyPair("go.mod", "go.sum")).toBe("mechanical");
+    expect(classifyPair("Gemfile", "Gemfile.lock")).toBe("mechanical");
+    expect(classifyPair("package.json", "yarn.lock")).toBe("mechanical");
   });
 
   it("classifies a manifest/lockfile pair as mechanical even inside a fixtures directory", () => {

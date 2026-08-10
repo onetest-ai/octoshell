@@ -173,6 +173,68 @@ describe("artifact round-trip", () => {
   });
 });
 
+describe("since provenance", () => {
+  /**
+   * The bug this whole describe exists for: `--since 2026-01-01` and a
+   * full-history run wrote byte-identical `config` blocks, because `--since`
+   * was never part of `Config` and never recorded anywhere. `since` is a
+   * SIBLING field on `StoredGraph`, not folded into `config` — the round
+   * trip below is the honesty check that field exists to satisfy.
+   */
+  it("round-trips a --since window through writeArtifact/readArtifact", () => {
+    const dir = mkdtempClean("art-");
+    writeArtifact(dir, {
+      version: 1,
+      clusters: { 0: ["a.ts"] },
+      config: DEFAULTS,
+      since: "2026-01-01",
+    });
+    expect(readArtifact(dir)?.since).toBe("2026-01-01");
+  });
+
+  it("round-trips an explicit full-history since: null through writeArtifact/readArtifact", () => {
+    const dir = mkdtempClean("art-");
+    writeArtifact(dir, { version: 1, clusters: { 0: ["a.ts"] }, config: DEFAULTS, since: null });
+    expect(readArtifact(dir)?.since).toBeNull();
+  });
+
+  /**
+   * `since` is OPTIONAL specifically so a pre-fix artifact — every
+   * clusters.json ever written before this field existed — reads back with
+   * the key simply absent. That absence must survive as `undefined`, never
+   * collapse to `null`: `null` means "we know this was full history", and an
+   * old artifact carries no such knowledge. `sinceMismatchWarning` in cli.ts
+   * relies on telling the two apart.
+   */
+  it("reads back since as undefined, not null, for a legacy artifact written before this field existed", () => {
+    const dir = mkdtempClean("art-");
+    writeFileSync(
+      join(dir, "clusters.json"),
+      JSON.stringify({ version: 1, clusters: { 0: ["a.ts"] }, config: DEFAULTS }),
+    );
+    expect(readArtifact(dir)?.since).toBeUndefined();
+  });
+
+  /** Mirrors the "carries an unknown top-level key through" test above, but
+   *  for the field this task actually adds — `since` is a real top-level key
+   *  on `StoredGraph`, not an unknown one, and it must survive the same
+   *  sorted-keys pass just as certainly. */
+  it("carries since through the sorted-keys pass without dropping it", () => {
+    const dir = mkdtempClean("art-");
+    writeArtifact(dir, {
+      version: 1,
+      clusters: { 1: ["a.ts"] },
+      config: DEFAULTS,
+      since: "2026-02-01",
+    });
+    const raw = JSON.parse(readFileSync(join(dir, "clusters.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    expect(raw.since).toBe("2026-02-01");
+  });
+});
+
 describe("byte stability of the committed artifact", () => {
   it("writes byte-identical output for two writes of identical input", () => {
     const dir = mkdtempClean("art-");

@@ -410,3 +410,83 @@ describe("runCli — commands", () => {
     expect(result.stdout).toContain("blocked");
   });
 });
+
+describe("runCli — map records --since provenance and warns on a mismatched history window", () => {
+  it("records the --since window on clusters.json", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    const result = runCli(["map", "--since", "2026-01-01"], repo, NOW);
+    expect(result.code).toBe(0);
+    const stored = JSON.parse(readFileSync(join(repo, ".octograph", "clusters.json"), "utf8")) as {
+      since: unknown;
+    };
+    expect(stored.since).toBe("2026-01-01");
+  });
+
+  it("records since: null for a full-history run (no --since given)", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    const result = runCli(["map"], repo, NOW);
+    expect(result.code).toBe(0);
+    const stored = JSON.parse(readFileSync(join(repo, ".octograph", "clusters.json"), "utf8")) as {
+      since: unknown;
+    };
+    expect(stored.since).toBeNull();
+  });
+
+  it("stays silent across two runs with the same --since", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    runCli(["map", "--since", "2026-01-01"], repo, NOW);
+    const second = runCli(["map", "--since", "2026-01-01"], repo, NOW);
+    expect(second.code).toBe(0);
+    expect(second.stderr).toBe("");
+  });
+
+  it("stays silent across two full-history runs (no --since either time)", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    runCli(["map"], repo, NOW);
+    const second = runCli(["map"], repo, NOW);
+    expect(second.code).toBe(0);
+    expect(second.stderr).toBe("");
+  });
+
+  /**
+   * The actual harm the bug names: `remapClusters` reads `clusters.json` back
+   * to pin cluster ids, and that comparison is meaningless once the two runs
+   * harvested different history windows. This is a WARNING, not a failure —
+   * consistent with this package's degrade-don't-throw convention elsewhere
+   * (`resolveOut`, `loadConfig`) — so exit code stays 0 and the artifact is
+   * still written correctly, but stderr says so.
+   */
+  it("warns on stderr, but stays exit 0 and still writes clusters.json, when --since differs from the previous run", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    runCli(["map", "--since", "2026-01-01"], repo, NOW);
+    const second = runCli(["map", "--since", "2026-02-01"], repo, NOW);
+    expect(second.code).toBe(0);
+    expect(second.stderr).toContain("2026-01-01");
+    expect(second.stderr).toContain("2026-02-01");
+    expect(second.stderr).toContain("not meaningful");
+    const stored = JSON.parse(readFileSync(join(repo, ".octograph", "clusters.json"), "utf8")) as {
+      since: unknown;
+    };
+    expect(stored.since).toBe("2026-02-01");
+  });
+
+  /**
+   * `previous.since === undefined` — a legacy artifact predating this fix —
+   * says NOTHING, not "full history": there is no reliable provenance to
+   * compare, and claiming a mismatch (or a match) that cannot actually be
+   * verified is exactly the false-claim class this bug is about.
+   */
+  it("says nothing when the previous clusters.json has no since key at all, regardless of --since", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    const first = runCli(["map"], repo, NOW);
+    expect(first.code).toBe(0);
+    const clustersPath = join(repo, ".octograph", "clusters.json");
+    const stored = JSON.parse(readFileSync(clustersPath, "utf8")) as Record<string, unknown>;
+    delete stored.since;
+    writeFileSync(clustersPath, JSON.stringify(stored, null, 2) + "\n");
+
+    const second = runCli(["map", "--since", "2026-01-01"], repo, NOW);
+    expect(second.code).toBe(0);
+    expect(second.stderr).toBe("");
+  });
+});

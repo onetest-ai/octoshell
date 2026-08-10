@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { analyze, type Analysis } from "./analyze.js";
-import { readArtifact, resolveOut, writeArtifact } from "./artifact.js";
+import { readArtifact, resolveOut, writeArtifact, type StoredGraph } from "./artifact.js";
 import { loadConfig, type Config } from "./config.js";
 import { doctor, exitCode, type Report } from "./doctor.js";
 import { drift as computeDrift, type DriftRow } from "./drift.js";
@@ -247,6 +247,42 @@ function analysisToClusters(analysis: Analysis): Record<number, string[]> {
   return clusters;
 }
 
+/** Human phrasing of a `since` window for {@link sinceMismatchWarning} —
+ *  `null` reads as "full history", never as the literal string "null". */
+function describeSince(since: string | null): string {
+  return since === null ? "full history" : `--since ${since}`;
+}
+
+/**
+ * Non-fatal stderr warning for `runMapCommand`: `clusters.json` is READ BACK
+ * to pin cluster ids across runs (`remapClusters`, via `previousClusters`
+ * below), and that comparison means nothing once the previous run and this
+ * one harvested different slices of history — the harm `StoredGraph.since`
+ * (artifact.ts) exists to make visible.
+ *
+ * `previous.since === undefined` — a legacy artifact written before that
+ * field existed, or `previous === null` (no prior run at all) — says
+ * NOTHING, not "full history": there is no reliable provenance to compare,
+ * and claiming a mismatch (or a match) this function cannot actually verify
+ * is exactly the false-claim class the bug is about.
+ *
+ * A warning, not a failure: the run still produces a good artifact, so this
+ * degrades the same way `resolveOut`/`loadConfig` degrade a bad setting
+ * rather than throwing — the caller wires the return value into stderr, exit
+ * code stays 0.
+ */
+function sinceMismatchWarning(previous: StoredGraph | null, since: string | undefined): string {
+  if (previous === null || previous.since === undefined) return "";
+  const previousSince = previous.since;
+  const currentSince = since ?? null;
+  if (previousSince === currentSince) return "";
+  return (
+    `octograph: warning: clusters.json was built with ${describeSince(previousSince)}, ` +
+    `this run uses ${describeSince(currentSince)} — cluster-id stability across mismatched ` +
+    `history windows is not meaningful\n`
+  );
+}
+
 function runMapCommand(
   repoRoot: string,
   config: Config,
@@ -264,13 +300,25 @@ function runMapCommand(
 
   const previous = readArtifact(outDir);
   const previousClusters = previous ? clustersToMap(previous.clusters) : new Map<number, string[]>();
+  // Computed against the run `writeArtifact` below is about to REPLACE, not
+  // against the artifact this run itself produces.
+  const sinceWarning = sinceMismatchWarning(previous, since);
 
   const { analysis } = analyze(repoRoot, config, { now, since, previousClusters });
   const mapText = renderMap(analysis, config.budgetTokens);
 
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, "map.md"), mapText);
-  writeArtifact(outDir, { version: 1, clusters: analysisToClusters(analysis), config });
+  writeArtifact(outDir, {
+    version: 1,
+    clusters: analysisToClusters(analysis),
+    config,
+    // Every NEW artifact this CLI writes records its own provenance
+    // explicitly — `null` for full history, never left `undefined`. That
+    // spelling is reserved for artifacts written before this field existed
+    // (see StoredGraph.since); this run always knows the answer.
+    since: since ?? null,
+  });
 
   // `relative()` answers "" when the out directory IS the repo root (`--out .`
   // resolves there, and `insideRepo` admits the root itself), which renders as
@@ -288,7 +336,7 @@ function runMapCommand(
     : `wrote ${relOut}/map.md and ${relOut}/clusters.json — ${analysis.modules.length} modules,` +
       ` ${analysis.moduleEdges.length} edges (${analysis.clusterIds.kept} kept,` +
       ` ${analysis.clusterIds.fresh} fresh cluster ids)\n`;
-  return { code: 0, stdout, stderr: "" };
+  return { code: 0, stdout, stderr: sinceWarning };
 }
 
 function runImpactCommand(
