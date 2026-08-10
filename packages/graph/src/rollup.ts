@@ -62,6 +62,67 @@ export function pageRank(
   return rank;
 }
 
+/**
+ * PageRank over the undirected module graph, for ranking MODULES rather than
+ * files.
+ *
+ * A sibling of {@link pageRank}, not a caller of it: `pageRank` reads numeric
+ * node ids and `Edge[]`, whose weight is read through `edgeWeight` because
+ * `Edge.npmi` is a raw signed value that still needs its floor applied.
+ * `ModuleEdge` has neither of those — its nodes are module NAMES (strings)
+ * and its `weight` is already a resolved, non-negative number (see
+ * `rollUp`/`readGraphify`), so there is no floor left to apply and genericising
+ * `pageRank` over both node-id shapes would cost more type complexity than the
+ * ~15 lines this duplicates. Kept as its own function rather than sharing code
+ * so the two cannot silently drift onto different node/weight shapes — mirror
+ * `pageRank`'s algorithm exactly (same damping walk, same "no outgoing weight"
+ * redistribution) if either changes.
+ *
+ * Scores the subgraph *induced by* `modules`, exactly as `pageRank` does for
+ * `nodes`: an edge with an endpoint outside the set is dropped whole rather
+ * than applied one-sided, so mass is never pushed onto (or leaked from) a
+ * module the caller did not ask about.
+ */
+export function modulePageRank(
+  edges: ModuleEdge[],
+  modules: string[],
+  damping = 0.85,
+  iterations = 40,
+): Map<string, number> {
+  const adj = new Map<string, Array<[string, number]>>();
+  const strength = new Map<string, number>();
+  for (const m of modules) adj.set(m, []);
+  for (const e of edges) {
+    const fromAdj = adj.get(e.from);
+    const toAdj = adj.get(e.to);
+    if (fromAdj === undefined || toAdj === undefined) continue;
+    if (e.weight === 0) continue;
+    fromAdj.push([e.to, e.weight]);
+    toAdj.push([e.from, e.weight]);
+    strength.set(e.from, (strength.get(e.from) ?? 0) + e.weight);
+    strength.set(e.to, (strength.get(e.to) ?? 0) + e.weight);
+  }
+
+  const n = modules.length;
+  let rank = new Map(modules.map((x) => [x, 1 / n]));
+  for (let it = 0; it < iterations; it++) {
+    const next = new Map(modules.map((x) => [x, (1 - damping) / n]));
+    for (const node of modules) {
+      const share = (rank.get(node) ?? 0) * damping;
+      const total = strength.get(node) ?? 0;
+      if (total === 0) {
+        for (const other of modules) next.set(other, (next.get(other) ?? 0) + share / n);
+        continue;
+      }
+      for (const [nb, w] of adj.get(node) ?? []) {
+        next.set(nb, (next.get(nb) ?? 0) + (share * w) / total);
+      }
+    }
+    rank = next;
+  }
+  return rank;
+}
+
 /** Label a community by its most central members. A cluster has no name of its own. */
 export function nameCluster(
   members: number[],

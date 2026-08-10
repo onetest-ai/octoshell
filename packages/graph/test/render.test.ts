@@ -192,20 +192,117 @@ describe("renderMap", () => {
     expect(endpoints.filter((e) => !headings.has(e))).toEqual([]);
   });
 
+  /**
+   * Fixture updated for the PageRank truncation fix (M2 bug: spec A9).
+   *
+   * The original fixture connected exactly one pair of modules by one edge
+   * among many fully isolated peers — a shape a real centrality ranking
+   * cannot ever hide, because a single edge always outranks zero edges,
+   * regardless of the edge's own weight (a two-node component's PageRank
+   * doesn't depend on the magnitude of its one edge; weight only matters when
+   * a node has to split its rank across more than one neighbour). A `hub`
+   * genuinely more central than `pkg/m0`/`pkg/m15` — connected to three
+   * spokes rather than one peer — is what lets the budget cut a real edge's
+   * endpoint while a more central one survives, which is the invariant this
+   * test exists to pin: an edge hidden because its endpoint lost the
+   * truncation cut is still counted, never silently dropped.
+   */
   it("counts an edge hidden with its module against the truncation note", () => {
+    const hub = { id: 0, name: "pkg/hub", members: ["pkg/hub/x.ts"], layer: null };
+    const spokes = Array.from({ length: 3 }, (_, i) => ({
+      id: 1 + i,
+      name: `pkg/spoke-${i}`,
+      members: [`pkg/spoke-${i}/x.ts`],
+      layer: null,
+    }));
+    const pair = ["pkg/m0", "pkg/m15"].map((name, i) => ({
+      id: 10 + i,
+      name,
+      members: [`${name}/x.ts`],
+      layer: null,
+    }));
+    const isolated = Array.from({ length: 10 }, (_, i) => ({
+      id: 20 + i,
+      name: `pkg/iso-${i}`,
+      members: [`pkg/iso-${i}/x.ts`],
+      layer: null,
+    }));
+
     const many: Analysis = {
       ...analysis,
-      modules: Array.from({ length: 16 }, (_, i) => ({
-        id: i,
-        name: `pkg/m${i}`,
-        members: [`pkg/m${i}/x.ts`],
-        layer: null,
-      })),
-      moduleEdges: [{ from: "pkg/m0", to: "pkg/m15", weight: 9.5 }],
+      modules: [hub, ...spokes, ...pair, ...isolated],
+      moduleEdges: [
+        { from: "pkg/hub", to: "pkg/spoke-0", weight: 50 },
+        { from: "pkg/hub", to: "pkg/spoke-1", weight: 50 },
+        { from: "pkg/hub", to: "pkg/spoke-2", weight: 50 },
+        { from: "pkg/m0", to: "pkg/m15", weight: 9.5 },
+      ],
     };
-    const md = renderMap(many, 190);
-    // The one edge is not rendered (its endpoint lost its heading), so the
-    // reader is told it is missing rather than left to assume there were none.
+
+    const md = renderMap(many, 228);
+    // `pkg/spoke-2` is the one truncated out — the reader is told its edge
+    // is missing rather than left to assume there were none.
     expect(md).toContain("1 coupling edge(s) truncated to fit the token budget.");
+  });
+
+  /**
+   * The regression this block exists for (M2 bug: spec A9 requires descending
+   * PageRank, render.ts truncated by member count).
+   *
+   * `hub` has only one member but is strongly coupled to three other modules
+   * — the small, heavily-depended-on module spec A9 exists to keep visible.
+   * `leaf-0`..`leaf-4` each have many members but zero moduleEdges — bulk
+   * with no centrality at all. Fixture order mirrors what `analyze()` itself
+   * produces (member count descending, then `compare(name)`), so a
+   * member-count-ranked truncation — the pre-fix behaviour — cuts `hub` long
+   * before any `leaf-*` row, exactly backwards from what the map exists to
+   * convey.
+   */
+  it("keeps a small, central module and drops a large, disconnected one when truncating", () => {
+    const leaves = Array.from({ length: 5 }, (_, i) => ({
+      id: i,
+      name: `leaf-${i}`,
+      members: Array.from({ length: 6 }, (_, j) => `leaf-${i}/f${j}.ts`),
+      layer: null,
+    }));
+    const spokes = Array.from({ length: 5 }, (_, i) => ({
+      id: 100 + i,
+      name: `spoke-${i}`,
+      members: [`spoke-${i}/x.ts`],
+      layer: null,
+    }));
+    const hub = { id: 200, name: "hub", members: ["hub/x.ts"], layer: null };
+
+    const central: Analysis = {
+      ...analysis,
+      // Member-count descending, then name — the order `analyze()` actually
+      // produces. `hub` (1 member) sorts before the alphabetically later
+      // spokes, but after every 6-member leaf.
+      modules: [...leaves, hub, ...spokes],
+      moduleEdges: [
+        { from: "hub", to: "spoke-0", weight: 50 },
+        { from: "hub", to: "spoke-1", weight: 50 },
+        { from: "hub", to: "spoke-2", weight: 50 },
+      ],
+    };
+
+    // Chosen so member-count-ranked truncation (the pre-fix behaviour) lands
+    // exactly on the boundary between the 5 leaves and `hub`: all 5 leaves
+    // fit, `hub` (and every spoke) does not.
+    const budget = 205;
+    // Precondition: there is real content to trim.
+    expect(estimateTokens(renderMap(central, Number.MAX_SAFE_INTEGER))).toBeGreaterThan(budget);
+    // Precondition: member-count order really does put `hub` behind every
+    // leaf — otherwise this fixture can't distinguish the two rankings.
+    const byCount = [...central.modules].sort((a, b) => b.members.length - a.members.length);
+    expect(byCount.slice(0, leaves.length).every((m) => m.name.startsWith("leaf-"))).toBe(true);
+    expect(byCount.findIndex((m) => m.name === "hub")).toBe(leaves.length);
+
+    const md = renderMap(central, budget);
+    expect(md).toContain("**hub**");
+    // At least one large, disconnected leaf must not survive the cut — bulk
+    // alone is not centrality.
+    const survivingLeaves = leaves.filter((l) => md.includes(`**${l.name}**`));
+    expect(survivingLeaves.length).toBeLessThan(leaves.length);
   });
 });

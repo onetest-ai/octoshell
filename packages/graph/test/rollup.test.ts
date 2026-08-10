@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { nameCluster, pageRank, rollUp } from "../src/rollup.js";
+import { modulePageRank, nameCluster, pageRank, rollUp } from "../src/rollup.js";
 import type { Edge } from "../src/weights.js";
+import type { ModuleEdge } from "../src/rollup.js";
 
 const edge = (a: number, b: number, npmi = 0.5): Edge => ({
   a, b, support: 4, npmi, confidence: 0.5,
@@ -30,6 +31,29 @@ describe("pageRank", () => {
     expect([...pr.values()].reduce((s, v) => s + v, 0)).toBeCloseTo(1, 10);
     // Both nodes are isolated in the induced subgraph, so neither outranks the other.
     expect(pr.get(0) ?? 0).toBeCloseTo(pr.get(1) ?? 0, 10);
+  });
+});
+
+describe("modulePageRank", () => {
+  const me = (from: string, to: string, weight: number): ModuleEdge => ({ from, to, weight });
+
+  it("ranks a well-connected module above one connected to it only weakly", () => {
+    const edges = [me("a", "b", 10), me("b", "c", 1)];
+    const pr = modulePageRank(edges, ["a", "b", "c"]);
+    expect(pr.get("b") ?? 0).toBeGreaterThan(pr.get("a") ?? 0);
+    expect(pr.get("b") ?? 0).toBeGreaterThan(pr.get("c") ?? 0);
+  });
+
+  it("scores only the requested modules and conserves the whole rank mass", () => {
+    const pr = modulePageRank([me("a", "b", 1)], ["a", "b", "c"]);
+    expect([...pr.keys()]).toEqual(["a", "b", "c"]);
+    expect([...pr.values()].reduce((s, v) => s + v, 0)).toBeCloseTo(1, 10);
+  });
+
+  it("gives isolated modules with no edges an equal, non-zero score", () => {
+    const pr = modulePageRank([], ["x", "y"]);
+    expect(pr.get("x") ?? 0).toBeCloseTo(pr.get("y") ?? 0, 10);
+    expect(pr.get("x") ?? 0).toBeGreaterThan(0);
   });
 });
 
