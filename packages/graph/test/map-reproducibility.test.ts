@@ -101,10 +101,20 @@ describe("end-to-end: map.md stays within its token budget on a real, edge-heavy
     // cross-module churn below — enough real content that an untrimmed
     // render would blow a modest budget, exactly the shape the truncation
     // loop in render.ts exists to bound.
+    //
+    // Two commits per intra-module pair, not more: `DEFAULTS.minSupport` is
+    // 2, so that is the minimum that clears the co-change threshold at all,
+    // and this fixture's git-invocation count (`buildRepo` shells out to a
+    // real `git` process per commit) is the heaviest in this suite — the
+    // first to exhaust a resource-constrained CI runner's temp filesystem
+    // when fixture cleanup is missing. Measured after reducing from 4: the
+    // preconditions below (genuinely over budget, both sections truncated,
+    // no dangling endpoint) still hold — the threshold, not the margin above
+    // it, is what this fixture needs.
     const commits: CommitSpec[] = [];
     const names = Array.from({ length: 16 }, (_, i) => `m${i}`);
     for (const name of names) {
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 2; i++) {
         commits.push({ files: [`pkg/${name}/x.ts`, `pkg/${name}/y.ts`] });
       }
     }

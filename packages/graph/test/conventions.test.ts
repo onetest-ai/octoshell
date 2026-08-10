@@ -17,11 +17,12 @@ import { dirname, join } from "node:path";
  * helper" a rule the build enforces rather than a rule reviewers must remember.
  */
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+const TEST = dirname(fileURLToPath(import.meta.url));
 
-/** Source with comments and string literals removed, so prose about a rule is
- *  not mistaken for a violation of it. */
-function code(file: string): string {
-  return readFileSync(join(SRC, file), "utf8")
+/** Comments and string literals stripped, so prose about a rule is not
+ *  mistaken for a violation of it. */
+function stripped(text: string): string {
+  return text
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/\/\/[^\n]*/g, " ")
     .replace(/`(?:[^`\\]|\\.)*`/g, "``")
@@ -29,7 +30,32 @@ function code(file: string): string {
     .replace(/'(?:[^'\\]|\\.)*'/g, "''");
 }
 
+/** Source with comments and string literals removed, so prose about a rule is
+ *  not mistaken for a violation of it. */
+function code(file: string): string {
+  return stripped(readFileSync(join(SRC, file), "utf8"));
+}
+
+/** Same, for a file under `test/` — `file` may include a subdirectory
+ *  (`fixtures/repo.ts`), since `listTs` below walks recursively. */
+function testCode(file: string): string {
+  return stripped(readFileSync(join(TEST, file), "utf8"));
+}
+
+/** All `.ts` files under `dir`, recursively — this suite's test tree is flat
+ *  enough (one `fixtures/` subdirectory) that a full walk costs nothing. */
+function listTs(dir: string, relPrefix = ""): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = relPrefix === "" ? entry.name : join(relPrefix, entry.name);
+    if (entry.isDirectory()) out.push(...listTs(join(dir, entry.name), rel));
+    else if (entry.name.endsWith(".ts")) out.push(rel);
+  }
+  return out;
+}
+
 const sources = readdirSync(SRC).filter((f) => f.endsWith(".ts"));
+const testFiles = listTs(TEST);
 
 describe("package conventions", () => {
   it("has sources to check", () => {
@@ -66,6 +92,31 @@ describe("package conventions", () => {
    * check does not depend on build order (see CLAUDE.md's dist-before-typecheck
    * hazard).
    */
+  /**
+   * The regression this test exists for: NOTHING in this suite ever removed a
+   * fixture repo it built. 31 `buildRepo` call sites plus several more direct
+   * `mkdtempSync` calls each leave behind their own `.git` object database,
+   * forever — invisible on a dev machine's large, never-inspected temp
+   * filesystem, fatal on CI's bounded one, where `git add`'s own temporary
+   * index file eventually fails to create ("No such file or directory").
+   *
+   * The fix is `fixtures/tmpdir.ts`'s `mkdtempClean`, which registers its own
+   * `onTestFinished` removal at the point of creation — cleanup becomes a
+   * property of creating the directory, not a step 31+ call sites (and every
+   * future one) must remember to add. This is that guarantee's structural
+   * backstop: a call to raw `mkdtempSync` anywhere else in this suite is
+   * exactly the kind of divergence `edgeWeight`/`compare` above exist to
+   * catch, and cannot be caught behaviourally — an un-cleaned fixture passes
+   * every assertion the test that built it makes.
+   */
+  it("creates a scratch directory only through fixtures/tmpdir.ts's mkdtempClean", () => {
+    const guardFile = join("fixtures", "tmpdir.ts");
+    const offenders = testFiles.filter(
+      (f) => f !== guardFile && /\bmkdtempSync\s*\(/.test(testCode(f)),
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it("re-exports the analysis pipeline from index.ts", () => {
     const index = readFileSync(join(SRC, "index.ts"), "utf8");
     for (const symbol of [

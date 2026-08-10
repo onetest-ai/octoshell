@@ -221,15 +221,27 @@ function twoSegmentModule(path: string): string {
 
 /**
  * Group harvested files by the module the spine's OWN `moduleOf` names for
- * them — the complete, authoritative answer to "what modules exist, and which
- * files are in each one", independent of any downstream clustering.
+ * them — the authoritative answer to "which module does this file belong
+ * to", independent of any downstream clustering.
+ *
+ * Authoritative about IDENTITY, not complete about MEMBERSHIP: `files` is
+ * `harvest`'s output, which only ever contains a path that appeared in an
+ * analysable commit touching two or more files (see `PairTable.files`). A
+ * file touched only by single-file commits has a real module identity —
+ * `moduleOf` will name one for it — but never enters `files` at all, so it
+ * never shows up as anyone's member here. The same partial-not-total gap
+ * `render.ts` states explicitly for the map's per-module count line
+ * ("files never co-changed with another file: omitted below").
  *
  * `Spine.modules` below and `analyze`'s module-identity backstop (the fix for
  * the defect where a declared module could vanish from `Analysis.modules`
  * while its `moduleEdges` endpoint survived — `moduleEdges` is keyed by
- * `moduleOf` alone via `rollUp`/`readGraphify`, oblivious to any clustering)
- * both read "what is a module" through this and only this, so the two can no
- * longer diverge into two independent derivations the way they did before.
+ * `moduleOf` alone via `rollUp`/`readGraphify`, oblivious to any clustering),
+ * plus `analyze`'s `ModuleSummary.members` (which module identity, not
+ * clustering, now decides — see the `members lists a Louvain community's
+ * files` bug), all read "what is a module, and what does it contain" through
+ * this and only this, so they cannot diverge into independent derivations the
+ * way they did before.
  */
 export function filesByModule(
   files: string[],

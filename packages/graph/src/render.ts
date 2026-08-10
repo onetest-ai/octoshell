@@ -1,4 +1,5 @@
 import type { Analysis } from "./analyze.js";
+import { compare, modulePageRank } from "./rollup.js";
 
 /** chars/4, the same fallback wikis' token_counter uses without tiktoken.
  *  Exact enough: the budget decides how many module and dependency lines to
@@ -24,22 +25,41 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     "",
     "## Modules",
     "",
-    // What a module row actually counts. `analyze` names each Louvain community
-    // by the declared module of its most central file and merges communities
-    // that resolve to the same name, so a row's members are that CLUSTER's
-    // files — which can include files declared under a different module (on
-    // this repo, three of `packages/tokenomics`' four members are
-    // `apps/vscode-extension` files). Without this line the count reads as
-    // "this module contains N files", which is a claim the grouping does not
-    // make.
-    "_A row's files are its co-change cluster's members, named for the declared"
-      + " module of the cluster's most central file; a cluster can hold files"
-      + " declared under another module._",
+    // What a module row actually counts. `analyze` names each row for a
+    // Louvain community's most central file (or a hub's own declared module,
+    // or a Graphify-only endpoint — see analyze.ts), but the FILES listed
+    // under it are that module's declared membership
+    // (`filesByModule(table.files, spine.moduleOf)`), per spec A5c: "module
+    // identity comes from the declared spine when present." A community can
+    // sweep in files declared under a different module than the one whose
+    // name it won; those files stay listed under their own declared row, not
+    // under whichever heading absorbed their community. Without this line the
+    // count reads as "this module contains N files" without saying which N.
+    "_A row's files are the declared module's own membership; the row is named"
+      + " for the community that won the naming vote, but that community's"
+      + " other members are not counted here — see each of THEIR declared"
+      + " rows instead._",
     "",
   ];
 
+  // Spec A9: truncation must keep the most CENTRAL modules, not the biggest
+  // ones — centrality is the signal the map exists to convey. Rank every
+  // module by descending PageRank over the module graph before building
+  // anything below, and read `ranked` (never `analysis.modules`) from here
+  // on, so the module list, the truncation slice and the edge-endpoint
+  // "shown" set all agree on one order. Ties (isolated modules with no
+  // moduleEdges all score identically) break on `compare(name)` — the same
+  // comparator every other ordering in this package uses — for determinism.
+  const scores = modulePageRank(
+    analysis.moduleEdges,
+    analysis.modules.map((m) => m.name),
+  );
+  const ranked = [...analysis.modules].sort(
+    (a, b) => (scores.get(b.name) ?? 0) - (scores.get(a.name) ?? 0) || compare(a.name, b.name),
+  );
+
   const lines: string[] = [];
-  for (const m of analysis.modules) {
+  for (const m of ranked) {
     const layer = m.layer === null ? "" : ` [layer ${m.layer}]`;
     lines.push(`- **${m.name}**${layer} — ${m.members.length} co-changed files`);
   }
@@ -74,7 +94,7 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
   // has a heading BEFORE the budget runs; keeping that true after it is this
   // function's half of the invariant.
   const visibleEdges = (keptModules: number): string[] => {
-    const shown = new Set(analysis.modules.slice(0, keptModules).map((m) => m.name));
+    const shown = new Set(ranked.slice(0, keptModules).map((m) => m.name));
     return analysis.moduleEdges
       .filter((e) => shown.has(e.from) && shown.has(e.to))
       .map((e) => `- ${e.from} ${link} ${e.to} (${e.weight.toFixed(2)})`);
@@ -108,9 +128,10 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
   /** Geometric shrink: ~12% of what is left, at least one line. */
   const shrink = (n: number): number => Math.max(0, n - Math.max(1, Math.ceil(n / 8)));
 
-  // Trim from the tail of BOTH lists. Modules are ordered by size and edges by
-  // weight (see analyze.ts / rollUp), so the largest and strongest survive
-  // truncation; this is not a centrality ranking.
+  // Trim from the tail of BOTH lists. `lines` (built from `ranked` above) is
+  // ordered by descending module PageRank, and edges are ordered by weight
+  // (see analyze.ts / rollUp), so the most CENTRAL modules and the strongest
+  // couplings survive truncation — the ranking spec A9 requires.
   //
   // The dependency list has to be bounded too, not just the module list: it is
   // quadratic in the module count, so a repo with a few dozen modules can emit
