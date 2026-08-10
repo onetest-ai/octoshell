@@ -17,3 +17,9 @@ already current as of 2026-08-09.
   `REPO_ROOT`'s real git log see only 1 commit on CI (`actions/checkout@v4`
   default `fetch-depth`), not this repo's full history; verified by forcing a
   real shallow clone locally and reproducing the same failure.
+- [graph-fixture-two-module-boundary-needs-a-third-unrelated-component.md](graph-fixture-two-module-boundary-needs-a-third-unrelated-component.md)
+  — a fixture with only two modules joined by one co-change edge won't
+  exercise Louvain's boundary-crossing detection (`workingSets`); Louvain
+  trivially merges a two-node one-edge graph into a single community, so add
+  a third, unrelated background component (the suite's own `backgroundChurn`
+  pattern).
