@@ -25,6 +25,21 @@ const str = (v: unknown): string | null => (typeof v === "string" && v ? v : nul
 const isNil = (v: unknown): v is null | undefined => v === null || v === undefined;
 
 /**
+ * Where a Graphify run leaves its output, spelled ONCE.
+ *
+ * `doctor` has to answer a different question about the same file than this
+ * module does — "is one there at all", so it can tell a Graphify that was
+ * never installed apart from one whose run produced nothing usable — and
+ * open-coding the path there put the same rule in two modules, which is how
+ * the nPMI floor ended up disagreeing with itself across four call sites (see
+ * `edgeWeight` in weights.ts). One producer of the path, two readers.
+ * `test/conventions.test.ts` enforces that structurally.
+ */
+export function graphifyGraphPath(repoRoot: string): string {
+  return join(repoRoot, "graphify-out", "graph.json");
+}
+
+/**
  * Read module-level import edges out of a Graphify graph.json, if one exists.
  * Never throws: absent or malformed output degrades the spine, it does not
  * break the tool.
@@ -33,7 +48,7 @@ export function readGraphify(
   repoRoot: string,
   moduleOf: (path: string) => string,
 ): ModuleEdge[] | null {
-  const path = join(repoRoot, "graphify-out", "graph.json");
+  const path = graphifyGraphPath(repoRoot);
   if (!existsSync(path)) return null;
 
   let parsed: unknown;

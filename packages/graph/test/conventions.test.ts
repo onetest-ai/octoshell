@@ -99,6 +99,31 @@ describe("package conventions", () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * A fourth single-spelling rule: where Graphify leaves its output lives in
+   * `graphifyGraphPath` (graphify.ts) and nowhere else. `doctor` asks a
+   * different question about that same file than `readGraphify` does — "is one
+   * there at all", to tell an uninstalled Graphify apart from a run that
+   * produced nothing usable — and answered it by re-spelling the path, which
+   * is the `edgeWeight` divergence in miniature: two modules, one rule, free
+   * to drift the day the output directory is renamed or made configurable.
+   *
+   * Matched against the raw source with COMMENTS stripped but string literals
+   * KEPT — the opposite of `code()` above, because here the literal *is* the
+   * violation. Prose about the path (this suite's own fixtures aside) stays
+   * exempt.
+   */
+  it("spells the graphify output path only in graphify.ts", () => {
+    const withoutComments = (file: string): string =>
+      readFileSync(join(SRC, file), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/\/\/[^\n]*/g, " ");
+    const offenders = sources.filter(
+      (f) => f !== "graphify.ts" && /graphify-out/.test(withoutComments(f)),
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it("never reads a clock or an RNG in graph computation", () => {
     const offenders = sources.filter((f) => /\bDate\.now\s*\(|\bMath\.random\s*\(/.test(code(f)));
     expect(offenders).toEqual([]);
