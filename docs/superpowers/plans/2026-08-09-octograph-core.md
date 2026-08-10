@@ -2644,12 +2644,26 @@ Expected: FAIL — modules not found.
 
 - [ ] **Step 4: Implement the noise floor**
 
+**Corrected 2026-08-10** — check `packages/graph/src/noise.ts` before writing this step: M2's A8
+bug fix (test-files-appear-as-module-members) pulled `isTestPath` forward into that file ahead of
+this mission, precisely because A8's clustering exclusion needed it. If it already exists by the
+time this task runs, **import and reuse it — do not re-author `isTestPath` here.** A second
+hand-rolled copy is exactly the "duplicated single-spelling rule" class of defect
+`conventions.test.ts` exists to catch (see the guard added alongside the A8 fix); `drift`'s
+noise floor needs `LOCK_PAIRS`/`gradePair` below either way, but the test-path half is done.
+
+The `TEST_PATTERNS` list below also originally included a bare `specs?` directory-segment match.
+That was found to false-positive on this very repo — `docs/superpowers/specs/` is a
+*specifications* directory (design docs), not an RSpec `spec/` tree, and a bare segment match
+cannot tell the two apart. Dropped from the list actually shipped in `noise.ts`; the `.spec.ts`
+*filename*-suffix pattern two lines down is unambiguous and stays.
+
 `packages/graph/src/noise.ts`:
 
 ```ts
 /** Independently-compiled path heuristics. Deterministic, language-agnostic, no parsing. */
 const TEST_PATTERNS: RegExp[] = [
-  /(^|\/)(tests?|__tests__|specs?|e2e|fixtures)\//i,
+  /(^|\/)(tests?|__tests__|e2e|fixtures)\//i,
   /\.(test|spec)\.[a-z0-9]+$/i,
   /(^|\/)test_[^/]+$/i,
   /(^|\/)[^/]+_test\.[a-z0-9]+$/i,
