@@ -14,9 +14,23 @@
 // will not exist at the run site.
 import { build } from "esbuild";
 
+// Optional argv[2]: where to write the bundle. `dist/octograph.mjs` is the
+// shipped location and stays the default, so `pnpm --filter @octoshell/graph
+// bundle` is unchanged.
+//
+// A caller passes its own path when it needs bytes nobody else is writing.
+// Vitest runs test FILES in parallel, and two of them build this bundle
+// (`bundle.test.ts`, which checks the shipped default output, and
+// `e2e-gate.test.ts`, which runs it against this repo): pointed at one path,
+// they interleave an esbuild write with the other's read of the same file —
+// a torn or half-written .mjs, on whichever machine happens to schedule them
+// together. That is a failure nobody can reproduce locally and everybody sees
+// on CI, the same shape as the fixture-repo leak `mkdtempClean` closed.
+const outfile = process.argv[2] ?? "dist/octograph.mjs";
+
 await build({
   entryPoints: ["bin/octograph.mjs"],
-  outfile: "dist/octograph.mjs",
+  outfile,
   bundle: true,
   platform: "node",
   format: "esm",
