@@ -11,3 +11,5 @@ belongs nowhere, it's assumed).
   `dist/`, not its `src/`; rebuild before typecheck/test after a public-type change, especially
   when running a per-package command outside turbo's `^build` dependency graph.
 - [`grep-goes-binary-on-nul-bytes.md`](grep-goes-binary-on-nul-bytes.md) — one NUL byte makes `grep` treat a text file as binary and print nothing at all (exit 1), which reads exactly like "no matches"; use `grep -a` to confirm, then remove the NUL.
+- [`octograph-design-md-snippets-vs-conventions-test.md`](octograph-design-md-snippets-vs-conventions-test.md) — `packages/graph/test/conventions.test.ts` bans `.npmi` reads outside `weights.ts` and `localeCompare` anywhere in `src/`; some M2 `design.md` task snippets predate that guard and fail lint if copied verbatim.
+- [`js-yaml-empty-doc-and-bool-parsing.md`](js-yaml-empty-doc-and-bool-parsing.md) — this repo's pinned js-yaml 5.2.2 throws on an empty/whitespace/comment-only document instead of returning `undefined`, and only literal `true`/`false` parse as booleans (`yes`/`no`/`on`/`off` stay strings).

@@ -15,10 +15,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test"
   },
-  "dependencies": {},
+  "dependencies": {
+    "js-yaml": "^5.2.2"
+  },
   "devDependencies": {
     "vitest": "^2.0.0",
     "@vitest/coverage-v8": "^2.0.0",
+    "@types/js-yaml": "^4.0.9",
     "typescript": "^5.5.0",
     "eslint": "^9.0.0"
   }

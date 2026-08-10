@@ -1629,9 +1629,16 @@ function workspaceRoots(repoRoot: string): string[] {
     }
   }
 
-  // Single-package repos with their own manifest still count as one module.
-  for (const marker of ["go.mod", "Cargo.toml", "pyproject.toml"]) {
-    if (out.length === 0 && existsSync(join(repoRoot, marker))) out.push(".");
+  // A lone root-level go.mod / Cargo.toml / pyproject.toml is a FACT about the repo, but it is
+  // not a BOUNDARY SET: one module means moduleOf returns "." for everything, rollUp drops every
+  // edge as intra-module, and map.md renders one node with no dependencies. So discover those
+  // markers RECURSIVELY (depth-capped, skipping node_modules/vendor/.git/dist/build/target and
+  // dot-dirs) and only treat them as boundaries when TWO OR MORE turn up — `services/a/go.mod`
+  // plus `services/b/go.mod` is the case worth getting right. Fewer than two: fall through to
+  // directories, which is the honest answer rather than a fallback.
+  if (out.length === 0) {
+    const discovered = discoverManifestRoots(repoRoot);   // see Task 9 step 4
+    if (discovered.length >= 2) out.push(...discovered);
   }
 
   return [...new Set(out)].sort();
@@ -3073,7 +3080,7 @@ export function resolveOut(repoRoot: string, config: Config): string {
 }
 
 export function readArtifact(dir: string): StoredGraph | null {
-  const path = join(dir, "graph.json");
+  const path = join(dir, "clusters.json");
   if (!existsSync(path)) return null;
   try {
     return JSON.parse(readFileSync(path, "utf8")) as StoredGraph;
@@ -3090,7 +3097,7 @@ export function writeArtifact(dir: string, graph: StoredGraph): void {
     ordered[key] = [...(graph.clusters[key] ?? [])].sort();
   }
   writeFileSync(
-    join(dir, "graph.json"),
+    join(dir, "clusters.json"),
     JSON.stringify({ ...graph, clusters: ordered }, null, 2) + "\n",
   );
 }

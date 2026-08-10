@@ -1,0 +1,211 @@
+import { describe, expect, it } from "vitest";
+import { estimateTokens, renderMap } from "../src/render.js";
+import type { Analysis } from "../src/analyze.js";
+
+const analysis: Analysis = {
+  commitCount: 400,
+  fileCount: 120,
+  spineSource: "manifests",
+  modules: [
+    { id: 0, name: "packages/board", members: ["packages/board/src/a.ts"], layer: 1 },
+    { id: 1, name: "apps/ext", members: ["apps/ext/src/b.ts"], layer: 0 },
+  ],
+  moduleEdges: [{ from: "apps/ext", to: "packages/board", weight: 3.2 }],
+  moduleEdgesDirected: false,
+  hubs: ["package.json"],
+  bridged: 0,
+  clusterIds: { kept: 2, fresh: 0 },
+};
+
+describe("renderMap", () => {
+  it("lists every module and its layer", () => {
+    const md = renderMap(analysis, 2000);
+    expect(md).toContain("packages/board");
+    expect(md).toContain("apps/ext");
+  });
+
+  it("stays within the token budget by dropping least-central modules", () => {
+    const big: Analysis = {
+      ...analysis,
+      modules: Array.from({ length: 500 }, (_, i) => ({
+        id: i,
+        name: `module/number-${i}`,
+        members: [`module/number-${i}/file.ts`],
+        layer: 0,
+      })),
+    };
+    expect(estimateTokens(renderMap(big, 500))).toBeLessThanOrEqual(500);
+  });
+
+  it("is byte-identical across runs for the same input", () => {
+    expect(renderMap(analysis, 2000)).toBe(renderMap(analysis, 2000));
+  });
+
+  it("notes when the map was truncated", () => {
+    const big: Analysis = {
+      ...analysis,
+      modules: Array.from({ length: 500 }, (_, i) => ({
+        id: i, name: `m/${i}`, members: [`m/${i}/f.ts`], layer: 0,
+      })),
+    };
+    expect(renderMap(big, 300)).toContain("truncated");
+  });
+
+  /**
+   * The dependency list is quadratic in the module count, so it — not the
+   * module list — is the section that overruns a real repo's budget. Trimming
+   * only modules left it whole: with 400 edges the map came out at ~3500 tokens
+   * against a 500-token budget however far the module list was cut back, which
+   * defeats the one thing the budget is for (keeping map.md loadable as agent
+   * context).
+   */
+  it("stays within the budget when the dependency section is the large one", () => {
+    const edgeHeavy: Analysis = {
+      ...analysis,
+      modules: [{ id: 0, name: "pkg/only", members: ["pkg/only/x.ts"], layer: null }],
+      moduleEdges: Array.from({ length: 400 }, (_, i) => ({
+        from: `pkg/from-${i}`,
+        to: `pkg/to-${i}`,
+        weight: 1.5,
+      })),
+    };
+    const md = renderMap(edgeHeavy, 500);
+    expect(estimateTokens(md)).toBeLessThanOrEqual(500);
+    // The fixture's spine is `manifests`, so these are undirected co-change
+    // edges, not declared dependencies — see module-edge-direction.test.ts.
+    expect(md).toContain("coupling edge(s) truncated");
+    // Trimming must not starve one section to pay for the other: the single
+    // module survives a cut that drops hundreds of edges.
+    expect(md).toContain("pkg/only");
+  });
+
+  it("degrades to the header rather than looping when the budget is unreachably small", () => {
+    const md = renderMap(analysis, 1);
+    expect(md).toContain("# Module map");
+    expect(md).not.toContain("packages/board");
+  });
+
+  /**
+   * `modules[].members` counts files that survived `harvest`'s pair-bearing-
+   * commit filter, not "every file in the module" — a file only ever touched
+   * by single-file commits never reaches `table.files` at all and so is
+   * invisible to this count. The per-module line must say what it counts
+   * instead of reading as a total, and the header must tell a reader such
+   * files are omitted, or they are left wondering where roughly half a real
+   * repo's tracked files went.
+   */
+  it("labels the per-module count as co-changed files, not a module total", () => {
+    const md = renderMap(analysis, 2000);
+    expect(md).toContain("**packages/board** [layer 1] — 1 co-changed files");
+    expect(md).toContain("**apps/ext** [layer 0] — 1 co-changed files");
+  });
+
+  it("tells the reader that solo-commit files are absent from the graph entirely", () => {
+    const md = renderMap(analysis, 2000);
+    expect(md).toContain("- files never co-changed with another file: omitted below");
+  });
+
+  /**
+   * `Analysis.fileCount` is `PairTable.files.length` — the files that appear in
+   * an analysable commit touching two or more paths, which on this repo is a
+   * third of the tracked tree. Rendered as a bare "files: N" it reads as a repo
+   * total, which is the same partial-presented-as-total failure the
+   * "never co-changed" header line already guards for the Modules section.
+   */
+  it("scopes the header file count to the graph rather than implying a repo total", () => {
+    const md = renderMap(analysis, 2000);
+    expect(md).toContain("- files in the co-change graph: 120");
+    expect(md).not.toMatch(/^- files: /m);
+  });
+
+  /**
+   * A module row's members are its co-change CLUSTER's members: `analyze` names
+   * each Louvain community by the declared module of its most central file, so
+   * a row can hold files declared under a different module (measured on this
+   * repo: three of `packages/tokenomics`' four members are
+   * `apps/vscode-extension` files). Without a scope line the count reads as
+   * "this module contains N files".
+   */
+  it("states what a module row's file count actually counts", () => {
+    const md = renderMap(analysis, 2000);
+    expect(md).toContain("co-change cluster's members");
+    expect(md).toContain("declared under another module");
+  });
+
+  /**
+   * The parenthesised number means a count of declared import edges on the
+   * Graphify tier and a sum of decayed nPMI on the co-change tier — different
+   * quantities on different scales in the same rendered position.
+   */
+  it("names the unit of the edge weight, per tier", () => {
+    expect(renderMap(analysis, 2000)).toContain("Weight is summed decayed nPMI");
+    expect(renderMap({ ...analysis, moduleEdgesDirected: true }, 2000)).toContain(
+      "Weight is the number of declared import edges",
+    );
+  });
+
+  /**
+   * The regression this block exists for (M2 whole-mission review).
+   *
+   * `analyze` guarantees every module a `moduleEdges` row names has a heading of
+   * its own — the invariant its module-identity backstop exists for, pinned by
+   * `expectNoDanglingModuleEdges` in analyze.test.ts. That invariant is stated
+   * over `Analysis`, so nothing saw the renderer reopen it: the budget loop
+   * trimmed the module list and the edge list independently, so a rendered edge
+   * could name a module whose heading had just been cut. map.md is the
+   * committed artifact and an agent's architecture context — the dangling
+   * reference lands there, not in the in-memory analysis.
+   */
+  it("never renders an edge whose endpoint was truncated out of the Modules section", () => {
+    const many: Analysis = {
+      ...analysis,
+      // Equal-sized modules, so the budget cuts strictly from the tail.
+      modules: Array.from({ length: 16 }, (_, i) => ({
+        id: i,
+        name: `pkg/m${i}`,
+        members: [`pkg/m${i}/x.ts`],
+        layer: null,
+      })),
+      // Edges deliberately naming modules deep in the tail, at weights that
+      // keep them at the head of the edge list — exactly the shape where the
+      // two independent trims disagree.
+      moduleEdges: [
+        { from: "pkg/m0", to: "pkg/m15", weight: 9.5 },
+        { from: "pkg/m1", to: "pkg/m14", weight: 9.4 },
+        { from: "pkg/m2", to: "pkg/m13", weight: 9.3 },
+      ],
+    };
+
+    const budget = 190;
+    // Precondition: the map really is over budget, so the trim really runs.
+    expect(estimateTokens(renderMap(many, Number.MAX_SAFE_INTEGER))).toBeGreaterThan(budget);
+
+    const md = renderMap(many, budget);
+    expect(estimateTokens(md)).toBeLessThanOrEqual(budget);
+
+    const headings = new Set([...md.matchAll(/^- \*\*(.+?)\*\*/gm)].map((m) => m[1]));
+    // Precondition: modules really were dropped — otherwise nothing can dangle
+    // and this assertion is satisfied by any implementation at all.
+    expect(headings.size).toBeLessThan(many.modules.length);
+
+    const endpoints = [...md.matchAll(/^- (\S+) [↔→] (\S+) \(/gm)].flatMap((m) => [m[1], m[2]]);
+    expect(endpoints.filter((e) => !headings.has(e))).toEqual([]);
+  });
+
+  it("counts an edge hidden with its module against the truncation note", () => {
+    const many: Analysis = {
+      ...analysis,
+      modules: Array.from({ length: 16 }, (_, i) => ({
+        id: i,
+        name: `pkg/m${i}`,
+        members: [`pkg/m${i}/x.ts`],
+        layer: null,
+      })),
+      moduleEdges: [{ from: "pkg/m0", to: "pkg/m15", weight: 9.5 }],
+    };
+    const md = renderMap(many, 190);
+    // The one edge is not rendered (its endpoint lost its heading), so the
+    // reader is told it is missing rather than left to assume there were none.
+    expect(md).toContain("1 coupling edge(s) truncated to fit the token budget.");
+  });
+});

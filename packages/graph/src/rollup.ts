@@ -130,6 +130,28 @@ export function rollUp(
   );
 }
 
-function compare(x: string, y: string): number {
+/**
+ * Order two module names, as every consumer in this package must order them.
+ *
+ * Raw UTF-16 code units — the same comparison `Array.prototype.sort` applies by
+ * default, which is what orders `Spine.modules`. `localeCompare` must not be
+ * used in its place for two independent reasons, both of which put churn into a
+ * committed artifact:
+ *
+ *  - It collates by the machine's default locale. "pkg/aa" sorts before "pkg/z"
+ *    in en-US and after it in da-DK, so the artifact changes on nothing but a
+ *    change of LANG.
+ *  - It disagrees with code-unit order on the *same* machine wherever case or
+ *    punctuation is involved — `localeCompare` puts "alpha/x" before "Zed/x",
+ *    code units put "Zed/x" first. A module list and an edge list sorted by the
+ *    two different rules are inconsistent with each other in any repo holding a
+ *    capitalized module directory (`Sources/`, `App/`).
+ *
+ * Exported so an edge list built anywhere in this package — `rollUp` from
+ * commit co-change, `readGraphify` from a declared import graph — lands in one
+ * order. This rule was open-coded once and diverged immediately; read it
+ * through this and it cannot.
+ */
+export function compare(x: string, y: string): number {
   return x < y ? -1 : x > y ? 1 : 0;
 }

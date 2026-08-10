@@ -1,0 +1,71 @@
+# octograph configuration
+#
+# octograph builds a co-change graph from git history and rolls it up into a
+# module map (see packages/graph). Every key below is optional — anything
+# omitted, or the whole file if it's missing, falls back to the built-in
+# default in packages/graph/src/config.ts. Precedence is
+# DEFAULTS <- this file <- explicit CLI overrides.
+#
+# This file ships with every default spelled out explicitly, each with the
+# reasoning behind the number, so you can tune it without opening source.
+
+# Commits touching more files than this are dropped entirely before
+# co-change counting. A rename sweep or a formatter run asserts coupling
+# between every pair of files it touches, which is noise, not signal, and a
+# single such commit can swamp real coupling data. 50 is generous enough to
+# keep an honest multi-file feature commit while dropping mechanical sweeps.
+# Lower it if your repo's formatter/rename commits are smaller than that;
+# raise it if legitimate commits routinely touch more files than this.
+maxCommitFiles: 50
+
+# Exponential half-life, in days, applied to each commit's contribution to
+# co-change weight (packages/graph/src/cochange.ts). 180 days (~6 months)
+# means a pairing from a year ago counts for roughly a quarter of a pairing
+# from today — old coupling still counts, but a repo's current shape
+# dominates. Shorten it to make the map more reactive to recent refactors;
+# lengthen it for a slow-moving repo where old coupling is still meaningful.
+halfLifeDays: 180
+
+# Minimum number of times two files must co-change in the same commit
+# before their pairing is kept at all (packages/graph/src/weights.ts).
+# This is a raw "seen at least N times" floor, applied BEFORE the decay
+# weighting above — it exists because a single coincidental co-commit
+# between two otherwise-unrelated files is not evidence of real coupling.
+# 2 is the minimum that distinguishes "happened more than once" from "pure
+# coincidence". Raise it in a very active repo to demand stronger evidence.
+minSupport: 2
+
+# Minimum number of analysable commits (after maxCommitFiles filtering)
+# before the co-change signal is considered meaningful. Below this the
+# doctor/setup check reports the analysis as degraded/thin — a shallow
+# clone or a repo that recently squashed its history won't have enough
+# commits for co-change counting to mean anything. 200 was chosen as the
+# rough point where enough pairs have repeated for noise to average out.
+minCommits: 200
+
+# How many standard deviations above the mean weighted degree a file's
+# co-change strength must be before it's quarantined as a "hub"
+# (packages/graph/src/hubs.ts). A hub — e.g. a shared config or lockfile —
+# touches so much of the graph that it would otherwise bridge unrelated
+# modules together and distort clustering, even though its *edge weight* is
+# already suppressed by nPMI. 3 standard deviations is the conventional
+# "clear outlier" bar. Lower it to quarantine more aggressively in a repo
+# with several such hub files; raise it if real modules are being
+# mistakenly quarantined.
+hubZThreshold: 3
+
+# Token budget for the rendered module map (packages/graph/src/render.ts),
+# estimated at roughly chars/4. The map is meant to be loaded as context by
+# a coding agent, so it must fit comfortably in a prompt — modules and
+# dependency edges are trimmed from the tail (weakest/smallest first) once
+# the budget is exceeded. 2000 tokens keeps the map small enough to load
+# alongside other context without dominating it. Raise it for a large repo
+# where a useful map genuinely needs more room.
+budgetTokens: 2000
+
+# Explicit output directory, relative to the repo root, for the graph
+# artifact. Leave this null to let octograph choose automatically:
+# `.octobots/graph/` when the repo has an Octobots board, otherwise
+# `.octograph/` — it never creates `.octobots/` itself. Set this only to
+# override that default location.
+out: null
