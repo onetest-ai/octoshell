@@ -2,12 +2,10 @@ import { describe, expect, it } from "vitest";
 import { isTestPath } from "../src/noise.js";
 
 describe("isTestPath", () => {
-  it("matches a path segment equal to test/tests/__tests__/spec/specs", () => {
+  it("matches a path segment equal to test/tests/__tests__", () => {
     expect(isTestPath("src/test/foo.ts")).toBe(true);
     expect(isTestPath("src/tests/foo.ts")).toBe(true);
     expect(isTestPath("src/__tests__/foo.ts")).toBe(true);
-    expect(isTestPath("src/spec/foo.ts")).toBe(true);
-    expect(isTestPath("src/specs/foo.ts")).toBe(true);
     // Segment at the very start or end of the path, not just in the middle.
     expect(isTestPath("test/foo.ts")).toBe(true);
     expect(isTestPath("foo/test")).toBe(true);
@@ -52,5 +50,24 @@ describe("isTestPath", () => {
     expect(isTestPath("packages/graph/src/analyze.ts")).toBe(false);
     expect(isTestPath("src/index.ts")).toBe(false);
     expect(isTestPath("src/protest/vote.ts")).toBe(false);
+  });
+
+  /**
+   * A bare `spec`/`specs` directory segment is NOT a test-path signal: it is
+   * far more commonly "specifications" (an API spec, a design doc) than
+   * RSpec's `spec/` convention, and this repo just proved it — its own
+   * architecture spec directory, `docs/superpowers/specs/`, tripped the old
+   * segment rule and rendered as a mis-split module in map.md. The
+   * unambiguous `.spec.ts`/`.spec.tsx`/`.spec.js`/`.spec.jsx` FILENAME suffix
+   * (Jasmine/Angular-style) is unaffected — it never collides with a
+   * "specifications" folder, since it names the file, not its directory.
+   */
+  it("does not match a bare spec/specs directory segment — 'specifications', not RSpec", () => {
+    expect(isTestPath("src/spec/foo.ts")).toBe(false);
+    expect(isTestPath("src/specs/foo.ts")).toBe(false);
+    // The regression this test exists for: this repo's own architecture spec.
+    expect(isTestPath("docs/superpowers/specs/2026-08-09-octograph-design.md")).toBe(false);
+    // The filename-suffix form is unambiguous and still matches.
+    expect(isTestPath("src/foo.spec.ts")).toBe(true);
   });
 });
