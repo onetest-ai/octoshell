@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { load as loadYaml } from "js-yaml";
+import { insideRepo } from "./paths.js";
 
 export interface Config {
   maxCommitFiles: number;
@@ -45,7 +46,20 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
           const v = parsed[key];
           if (typeof v === "number" && Number.isFinite(v)) cfg[key] = v;
         }
-        if (typeof parsed.out === "string") cfg.out = parsed.out;
+        // `out` is repo content too — read out of octograph.yaml, same as
+        // every other key here — and is not exempt from the containment rule
+        // `readGraphify` already enforces on a declared node path (via
+        // `insideRepo`/`repoRelative` in paths.ts). M2 never consumes
+        // `Config.out`, but a future writer will, so `out: '../../..'` must
+        // not be accepted verbatim now, before there is a write to guard.
+        // Reuse the SAME `insideRepo` helper rather than open-coding a third
+        // containment check — a second, independently-written one is exactly
+        // how the edge-weight defect (see `edgeWeight` in weights.ts)
+        // happened.  An escaping path degrades to the default, exactly like
+        // every NUMERIC key above: skip the assignment rather than throw.
+        if (typeof parsed.out === "string" && insideRepo(repoRoot, parsed.out) !== null) {
+          cfg.out = parsed.out;
+        }
       }
     } catch {
       /* malformed config: fall back to defaults rather than failing the run */

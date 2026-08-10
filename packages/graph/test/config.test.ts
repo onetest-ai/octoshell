@@ -101,6 +101,29 @@ describe("loadConfig", () => {
     );
   });
 
+  /**
+   * The regression this test exists for (M3 bug: `Config.out` had no
+   * containment check).
+   *
+   * `out` is read from repo content (octograph.yaml) with no validation
+   * before this fix, so `out: '../../..'` was accepted verbatim. M2 never
+   * consumes `Config.out`, but a future writer would — and an escaping path
+   * must degrade to the default, the same per-key fallback every other
+   * config key already gets on bad input, not throw and not write outside
+   * the repo.
+   */
+  it("falls back to the default out path when octograph.yaml's out escapes the repo root", () => {
+    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    writeFileSync(join(root, "octograph.yaml"), "out: '../../..'\n");
+    expect(loadConfig(root).out).toBe(DEFAULTS.out);
+  });
+
+  it("accepts a legitimate in-repo out path from octograph.yaml", () => {
+    const root = mkdtempSync(join(tmpdir(), "cfg-"));
+    writeFileSync(join(root, "octograph.yaml"), "out: graphify-out\n");
+    expect(loadConfig(root).out).toBe("graphify-out");
+  });
+
   it("reads values correctly with comments present", () => {
     const root = mkdtempSync(join(tmpdir(), "cfg-"));
     writeFileSync(
