@@ -1,4 +1,5 @@
 import type { Analysis } from "./analyze.js";
+import { isTestPath } from "./noise.js";
 import { compare, modulePageRank } from "./rollup.js";
 
 /** chars/4, the same fallback wikis' token_counter uses without tiktoken.
@@ -42,6 +43,29 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     "",
   ];
 
+  // Spec A8 (amended 2026-08-10): test files stay in `members` — dropping
+  // them would throw away "which tests cover this module", the same data
+  // that makes `impact` useful to the completion gate — but a single mixed
+  // total would silently blend them into "N co-changed files", which is the
+  // file-count-as-total defect the comment above already guards against for
+  // solo-commit files. So the count is split: `${source} source, ${test}
+  // test co-changed files` whenever a module has at least one test member.
+  // The far more common all-source case keeps the ORIGINAL unbroken
+  // wording — `${source} co-changed files`, no "0 test" — because a mixed
+  // count naming a part that is always zero is noise for the overwhelming
+  // majority of rows, not honesty. An all-TEST module (zero source members)
+  // is the deliberate exception: that is a genuinely unusual state worth
+  // naming explicitly (`0 source, N test`), not the noise case above,
+  // because a reader would otherwise have no way to tell "this module has no
+  // source files at all" from "this render just didn't say".
+  const countLabel = (members: string[]): string => {
+    const testCount = members.filter((p) => isTestPath(p)).length;
+    const sourceCount = members.length - testCount;
+    return testCount === 0
+      ? `${sourceCount} co-changed files`
+      : `${sourceCount} source, ${testCount} test co-changed files`;
+  };
+
   // Spec A9: truncation must keep the most CENTRAL modules, not the biggest
   // ones — centrality is the signal the map exists to convey. Rank every
   // module by descending PageRank over the module graph before building
@@ -61,7 +85,7 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
   const lines: string[] = [];
   for (const m of ranked) {
     const layer = m.layer === null ? "" : ` [layer ${m.layer}]`;
-    lines.push(`- **${m.name}**${layer} — ${m.members.length} co-changed files`);
+    lines.push(`- **${m.name}**${layer} — ${countLabel(m.members)}`);
   }
 
   // An arrow is a claim, and only one of the two edge producers can back it.

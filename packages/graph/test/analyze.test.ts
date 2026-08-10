@@ -355,3 +355,64 @@ describe("analyze: members come from the declared spine, not the naming communit
     expect(b?.members).not.toContain("pkg/A/leak.ts");
   });
 });
+
+/**
+ * Spec A8: test files are tagged, never dropped. They stay queryable and
+ * stay in `ModuleSummary.members` — the "which tests cover this module"
+ * answer — but must be invisible to the clustering step (community
+ * detection), because a test co-changes with its own subject constantly and
+ * two different modules' test suites tend to co-change with EACH OTHER too
+ * (a shared CI fixture, a repo-wide test refactor), which is exactly the
+ * kind of bridge that would merge two unrelated modules into one community
+ * for a reason that has nothing to do with architecture.
+ *
+ * Before this fix, nothing in this suite named that invariant: `members` came
+ * entirely from `filesByModule` (declared identity, see the fix above this
+ * block) and was never sourced from the Louvain partition, so a test asserting
+ * only membership passes whether or not clustering excludes tests. The
+ * invariant this block pins is therefore about CLUSTERING, not membership —
+ * membership is asserted too, but only as A8's other, already-covered half.
+ */
+describe("analyze: A8 — test files are excluded from clustering, not from membership", () => {
+  it("keeps test files as declared members while stopping a test-to-test bridge from linking two modules", () => {
+    const commits: CommitSpec[] = [];
+    // modA and modB each co-change internally with their own test file —
+    // ordinary, expected coupling.
+    for (let i = 0; i < 20; i++) {
+      commits.push({ files: ["modA/subject.ts", "modA/subject.test.ts"] });
+    }
+    for (let i = 0; i < 20; i++) {
+      commits.push({ files: ["modB/subject.ts", "modB/subject.test.ts"] });
+    }
+    // The two modules' SUBJECT files never co-change directly. Their TEST
+    // files do, heavily — a test-shaped community that would otherwise bridge
+    // modA and modB together for a reason with no architectural meaning.
+    for (let i = 0; i < 20; i++) {
+      commits.push({ files: ["modA/subject.test.ts", "modB/subject.test.ts"] });
+    }
+    // 15 disjoint background pairs so the graph has real components besides
+    // the modA/modB cluster — bridging is otherwise a no-op with only one
+    // cluster in play, and the count below would not distinguish anything.
+    commits.push(...backgroundChurn(15));
+
+    const { analysis } = analyze(buildRepo(commits), DEFAULTS, { now: NOW });
+
+    // (a) A8's membership half: tests stay in `members`, under their own
+    // module — the "which tests cover this module" answer.
+    const a = analysis.modules.find((m) => m.name === "modA");
+    const b = analysis.modules.find((m) => m.name === "modB");
+    expect(a?.members).toEqual(["modA/subject.test.ts", "modA/subject.ts"]);
+    expect(b?.members).toEqual(["modB/subject.test.ts", "modB/subject.ts"]);
+
+    // (b) A8's clustering half. With tests excluded, no edge touching
+    // modA/modB's four files survives into `clusterable` at all (every one of
+    // them touches a test id): the pair has nothing left to bridge, and only
+    // the 15 background components need connecting — 14 bridges for a
+    // spanning tree over them. Restore the test-to-test edge to clustering
+    // (delete the exclusion) and the modA/modB files form ONE additional
+    // component that also needs bridging in: 15. This is the number that
+    // moves if the exclusion in analyze.ts is ever deleted — membership above
+    // does not, by design (see the block comment above this describe).
+    expect(analysis.bridged).toBe(14);
+  });
+});

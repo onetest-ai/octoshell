@@ -74,6 +74,31 @@ describe("package conventions", () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * A third single-spelling rule, of the same shape as `edgeWeight`/`compare`
+   * above: whether a path is a test file lives in `isTestPath` (noise.ts) and
+   * nowhere else. A hand-rolled test-path regex open-coded at a second call
+   * site would agree with `isTestPath` on every fixture right up until one of
+   * the two is tweaked and they quietly start disagreeing about which files
+   * are tests — precisely the class of mistake that put negative-weight
+   * module edges into a committed artifact once already (see the npmi guard
+   * above), just for A8's clustering exclusion instead of the nPMI floor.
+   *
+   * Matched against the ESCAPED form a real regex literal actually uses on
+   * disk (`\.test\.`, `\.spec\.`) — not the bare `.test.`/`.spec.` sequence,
+   * which a correctly-written regex literal never contains contiguously (the
+   * dot before the extension is itself escaped, so a backslash always sits
+   * between the marker and the trailing dot). A guard written against the
+   * unescaped form would silently never fire against the one thing it exists
+   * to catch: a copy of noise.ts's own pattern text pasted somewhere else.
+   */
+  it("recognises a test path only through isTestPath, never a second hand-rolled pattern", () => {
+    const offenders = sources.filter(
+      (f) => f !== "noise.ts" && /\\\.test\\\.|\\\.spec\\\.|__tests__/.test(code(f)),
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it("never reads a clock or an RNG in graph computation", () => {
     const offenders = sources.filter((f) => /\bDate\.now\s*\(|\bMath\.random\s*\(/.test(code(f)));
     expect(offenders).toEqual([]);
