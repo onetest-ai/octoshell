@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { estimateTokens, renderMap } from "../src/render.js";
 import type { Analysis } from "../src/analyze.js";
+import type { WorkingSet } from "../src/working-sets.js";
 
 const analysis: Analysis = {
   commitCount: 400,
@@ -15,6 +16,7 @@ const analysis: Analysis = {
   hubs: ["package.json"],
   bridged: 0,
   clusterIds: { kept: 2, fresh: 0 },
+  workingSets: [],
 };
 
 describe("renderMap", () => {
@@ -357,5 +359,140 @@ describe("renderMap", () => {
     // alone is not centrality.
     const survivingLeaves = leaves.filter((l) => md.includes(`**${l.name}**`));
     expect(survivingLeaves.length).toBeLessThan(leaves.length);
+  });
+
+  /**
+   * T7.3: the read-only "discovered delta" section (spec D3). `analysis.
+   * workingSets` is already suppressed to `[]` at the analysis layer (T7.2)
+   * whenever history is too thin to cluster, so the renderer's only job is:
+   * say nothing when there is nothing, and when there IS something, say
+   * exactly what was observed — never a recommendation.
+   */
+  describe("Working sets", () => {
+    it("omits the section entirely when there are no working sets", () => {
+      const out = renderMap({ ...analysis, workingSets: [] }, 4000);
+      expect(out).not.toContain("## Working sets");
+    });
+
+    it("names the modules a working set spans and lists its files", () => {
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
+      ];
+      const out = renderMap({ ...analysis, workingSets: sets }, 4000);
+      expect(out).toContain("## Working sets");
+      expect(out).toContain("2 files across apps/ext, packages/board");
+      expect(out).toContain("  - a/x.ts");
+      expect(out).toContain("  - b/y.ts");
+    });
+
+    it("states no recommendation", () => {
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
+      ];
+      const out = renderMap({ ...analysis, workingSets: sets }, 4000);
+      const section = out.slice(out.indexOf("## Working sets")).toLowerCase();
+      for (const word of ["should", "consider", "recommend", "merge these", "split", "refactor"]) {
+        expect(section).not.toContain(word);
+      }
+    });
+
+    it("is byte-identical across runs when working sets are present", () => {
+      const sets: WorkingSet[] = [
+        { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
+      ];
+      const withSets = { ...analysis, workingSets: sets };
+      expect(renderMap(withSets, 4000)).toBe(renderMap(withSets, 4000));
+    });
+
+    /**
+     * Criterion 4 / criterion 6 (dangling reference), restated at this new
+     * surface exactly as `visibleEdges`' own regression block does above for
+     * edges. `analyze` never guarantees a working set's modules survive the
+     * budget — only `analyze.test.ts`'s module-identity backstop guarantees
+     * that for edge endpoints — so this invariant is entirely `render.ts`'s
+     * to hold: a working set naming a module whose heading the budget just
+     * cut is a dangling reference in the committed artifact.
+     */
+    it("never renders a working set naming a module truncated out of the Modules section", () => {
+      const many: Analysis = {
+        ...analysis,
+        // Equal-sized modules, so the budget cuts strictly from the tail —
+        // same shape as the edge dangling-reference fixture above.
+        modules: Array.from({ length: 16 }, (_, i) => ({
+          id: i,
+          name: `pkg/m${i}`,
+          members: [`pkg/m${i}/x.ts`],
+          layer: null,
+        })),
+        moduleEdges: [],
+        // Spans a module deep in the tail, so a budget that keeps only the
+        // head of the module list must also drop this set.
+        workingSets: [
+          {
+            name: "pkg/m15/x.ts",
+            modules: ["pkg/m0", "pkg/m15"],
+            files: ["pkg/m0/x.ts", "pkg/m15/x.ts"],
+          },
+        ],
+      };
+
+      const budget = 190;
+      // Precondition: the map really is over budget, so the trim really runs.
+      expect(estimateTokens(renderMap(many, Number.MAX_SAFE_INTEGER))).toBeGreaterThan(budget);
+
+      const md = renderMap(many, budget);
+      expect(estimateTokens(md)).toBeLessThanOrEqual(budget);
+
+      const headings = new Set([...md.matchAll(/^- \*\*(.+?)\*\*/gm)].map((m) => m[1]));
+      // Precondition: pkg/m15 really was dropped — otherwise nothing can
+      // dangle and this assertion is satisfied by any implementation at all.
+      expect(headings.has("pkg/m15")).toBe(false);
+      expect(md).not.toContain("## Working sets");
+    });
+
+    /**
+     * The enforcement test for "slice by SET, never by line" (task brief):
+     * whatever budget renders a working set at all, the file count its
+     * header claims must equal the member lines actually shown beneath it —
+     * never a header claiming "N files" above fewer than N lines.
+     */
+    it("never renders a working set header above a partial file list", () => {
+      const bigSet: WorkingSet = {
+        name: "pkg/big/x.ts",
+        modules: ["apps/ext", "packages/board"],
+        files: Array.from({ length: 50 }, (_, i) => `pkg/big/file-${i}.ts`),
+      };
+      const out = renderMap({ ...analysis, workingSets: [bigSet] }, 4000);
+      const header = out.match(/- \*\*.+\*\* — (\d+) files across /);
+      expect(header).not.toBeNull();
+      const claimed = Number(header?.[1]);
+      const rendered = out
+        .slice(out.indexOf(header?.[0] ?? ""))
+        .split("\n")
+        .slice(1)
+        .filter((l) => l.startsWith("  - ")).length;
+      expect(rendered).toBe(claimed);
+    });
+
+    it("stays within the token budget when the working sets section is the large one", () => {
+      const heavySets: WorkingSet[] = Array.from({ length: 40 }, (_, i) => ({
+        name: `pkg/set-${i}/x.ts`,
+        modules: ["apps/ext", "packages/board"],
+        files: Array.from({ length: 10 }, (_, j) => `pkg/set-${i}/file-${j}.ts`),
+      }));
+      const heavy: Analysis = { ...analysis, workingSets: heavySets };
+
+      const budget = 500;
+      // Precondition: the map really is over budget, so the trim really runs.
+      expect(estimateTokens(renderMap(heavy, Number.MAX_SAFE_INTEGER))).toBeGreaterThan(budget);
+
+      const md = renderMap(heavy, budget);
+      expect(estimateTokens(md)).toBeLessThanOrEqual(budget);
+      // Trimming the sets list must not starve the modules it names.
+      expect(md).toContain("packages/board");
+      expect(md).toContain("apps/ext");
+      expect(md).toContain("working set(s) truncated");
+      expect(renderMap(heavy, budget)).toBe(renderMap(heavy, budget));
+    });
   });
 });

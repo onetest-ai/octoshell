@@ -1,6 +1,7 @@
 import type { Analysis } from "./analyze.js";
 import { isTestPath } from "./noise.js";
 import { compare, modulePageRank } from "./rollup.js";
+import type { WorkingSet } from "./working-sets.js";
 
 /** chars/4, the same fallback wikis' token_counter uses without tiktoken.
  *  Exact enough: the budget decides how many module and dependency lines to
@@ -127,8 +128,35 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
   const note = (dropped: number, unit: string): string[] =>
     dropped > 0 ? ["", `_${dropped} ${unit}(s) truncated to fit the token budget._`] : [];
 
-  const compose = (keptModules: number, keptEdges: number): string => {
+  const WORKING_SETS_NOTE =
+    "_Files that move together across declared module boundaries. Observed from commit"
+    + " history; a working set is evidence of coupling, not a proposal to change any boundary._";
+
+  // Criterion 6, and the third surface this invariant has had to be pinned at
+  // (in-memory Analysis, then the Graphify branch, then rendered markdown).
+  // Same rule as `visibleEdges`: a working set naming a module the budget cut
+  // is a dangling reference in a committed artifact. Pinned at the boundary
+  // the harm crosses — the rendered file — not at the layer it was found in.
+  const visibleSets = (keptModules: number): WorkingSet[] => {
+    const shown = new Set(ranked.slice(0, keptModules).map((m) => m.name));
+    return analysis.workingSets.filter((w) => w.modules.every((m) => shown.has(m)));
+  };
+
+  // Slice by SET, then flat-map to lines — never the reverse. `visibleEdges`
+  // returns lines and is sliced by line because one edge is exactly one line;
+  // a working set is a header plus N file lines, so slicing its lines would cut
+  // a set mid-membership and render a header claiming "10 files" above four of
+  // them. That is the partial-presented-as-total defect the Modules header
+  // comment already guards, reintroduced at a new surface.
+  const setLines = (sets: WorkingSet[]): string[] =>
+    sets.flatMap((w) => [
+      `- **${w.name}** — ${w.files.length} files across ${w.modules.join(", ")}`,
+      ...w.files.map((f) => `  - ${f}`),
+    ]);
+
+  const compose = (keptModules: number, keptEdges: number, keptSets: number): string => {
     const shownEdges = visibleEdges(keptModules).slice(0, Math.max(0, keptEdges));
+    const shownSets = visibleSets(keptModules).slice(0, Math.max(0, keptSets));
     return (
       [
         ...header,
@@ -145,6 +173,14 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
         // still an edge the reader is not being shown, and both causes are the
         // budget.
         ...note(analysis.moduleEdges.length - shownEdges.length, edgeUnit),
+        // The heading itself is conditional (criterion 1: an empty result is
+        // NO heading, not an empty one) but the truncation note is not — a
+        // working set cut down to zero by the budget is still something the
+        // reader is not being shown, exactly the edge-section precedent above.
+        ...(shownSets.length > 0
+          ? ["", "## Working sets", "", WORKING_SETS_NOTE, "", ...setLines(shownSets)]
+          : []),
+        ...note(analysis.workingSets.length - shownSets.length, "working set"),
       ].join("\n") + "\n"
     );
   };
@@ -168,18 +204,24 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
   // section is starved to pay for the other.
   let keptModules = lines.length;
   let keptEdges = analysis.moduleEdges.length;
-  let out = compose(keptModules, keptEdges);
+  let keptSets = analysis.workingSets.length;
+  let out = compose(keptModules, keptEdges, keptSets);
   while (estimateTokens(out) > budgetTokens) {
-    // Measure against what is actually RENDERED, not against `keptEdges`:
-    // trimming a module hides its edges too, so a stale `keptEdges` would keep
-    // charging the edge section for lines that are no longer there and starve
-    // the module list. It is also what makes the loop terminate — every branch
-    // strictly decreases one of the two, and both bottom out at zero.
+    // Measure against what is actually RENDERED, not against `keptEdges` /
+    // `keptSets`: trimming a module hides its edges AND any working set
+    // naming it too, so a stale counter would keep charging a section for
+    // lines that are no longer there and starve the other two. It is also
+    // what makes the loop terminate — every branch strictly decreases one of
+    // the three, and all three bottom out at zero.
     const shownEdges = Math.min(keptEdges, visibleEdges(keptModules).length);
-    if (keptModules + shownEdges === 0) break;
-    if (keptModules >= shownEdges) keptModules = shrink(keptModules);
-    else keptEdges = shrink(shownEdges);
-    out = compose(keptModules, keptEdges);
+    const shownSets = Math.min(keptSets, visibleSets(keptModules).length);
+    if (keptModules + shownEdges + shownSets === 0) break;
+    // Whichever of the three is currently largest gives up the next slice, so
+    // no section is starved to pay for the other two.
+    if (keptModules >= shownEdges && keptModules >= shownSets) keptModules = shrink(keptModules);
+    else if (shownEdges >= keptModules && shownEdges >= shownSets) keptEdges = shrink(shownEdges);
+    else keptSets = shrink(shownSets);
+    out = compose(keptModules, keptEdges, keptSets);
   }
   return out;
 }
