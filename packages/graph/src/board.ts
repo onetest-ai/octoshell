@@ -24,6 +24,14 @@ export interface BoardTask {
 export interface BoardView {
   tasks: BoardTask[];
   missionOf: (taskId: string) => string | null;
+  /** The human-authored mission title for the SAME task `missionOf` answers
+   *  with a folder id — `own`'s rendered output names a mission by the words
+   *  a person gave it (`mission.title`), never by `folder:campaigns/.../
+   *  missions/<slug>`, which is what shipped before (see cli.ts's
+   *  `formatOwnAnswer`). A second map, populated in the same loop as
+   *  `missionOfTask` below, so the two can never disagree about which task a
+   *  mission id/name pair belongs to. */
+  missionNameOf: (taskId: string) => string | null;
 }
 
 /**
@@ -72,6 +80,7 @@ export function readBoard(repoRoot: string): BoardView | null {
 
   const tasks: BoardTask[] = [];
   const missionOfTask = new Map<string, string>();
+  const missionNameOfTask = new Map<string, string>();
 
   for (const campaign of model.listCampaigns()) {
     for (const mission of model.listMissions(campaign.id)) {
@@ -87,6 +96,7 @@ export function readBoard(repoRoot: string): BoardView | null {
           criteria: readCriteria(task.acceptanceCriteria),
         });
         missionOfTask.set(task.id, mission.id);
+        missionNameOfTask.set(task.id, mission.title);
       }
     }
   }
@@ -98,5 +108,6 @@ export function readBoard(repoRoot: string): BoardView | null {
   return {
     tasks,
     missionOf: (taskId: string) => missionOfTask.get(taskId) ?? null,
+    missionNameOf: (taskId: string) => missionNameOfTask.get(taskId) ?? null,
   };
 }

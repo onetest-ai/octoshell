@@ -401,18 +401,30 @@ function runImpactCommand(
  * a claim that the criterion, too, came off a recorded merge; it never can
  * (see `own.ts`'s `OwnAnswer.criterionMode`).
  *
- * `oneLine` on every interpolated identifier, for the reason render.ts
- * documents: a repo-relative path may legally contain a newline, and this
- * formatter joins rows with `\n`, so an unescaped one splits a single answer
- * into two rendered rows — the phantom-line defect M7 shipped into `map.md`,
- * reaching stdout here instead.
+ * Names the mission and task by {@link OwnAnswer.missionName}/`.taskName` —
+ * the words a person gave them — never by their folder-derived
+ * `.mission`/`.task` ids (`folder:campaigns/.../missions/<slug>`). `own`'s
+ * stated reader is a person asking why code exists; printing the id twice,
+ * in full, answered a different question. The id stays reachable for a
+ * machine consumer through `own --json`, which serialises the whole
+ * {@link OwnAnswer} — id and name both — since a name is not a join key (two
+ * missions can share a title, an id never repeats).
+ *
+ * `oneLine` on every interpolated identifier — the mission/task NAME included,
+ * not only the path and criterion: both come off free-form board text
+ * (`mission.yaml`'s `name`, `task.yaml`'s `name`) exactly like a criterion
+ * does, and are exactly as able to carry a TAB or a newline. For the reason
+ * render.ts documents: a repo-relative path (or a board-authored name) may
+ * legally contain a newline, and this formatter joins rows with `\n`, so an
+ * unescaped one splits a single answer into two rendered rows — the
+ * phantom-line defect M7 shipped into `map.md`, reaching stdout here instead.
  */
 function formatOwnAnswer(a: OwnAnswer): string {
   const criterion =
     a.criterion === null || a.criterionMode === null
       ? "criterion: none — no acceptance criterion's own words single out this path"
       : `criterion (${a.criterionMode}): ${oneLine(a.criterion)}`;
-  return `${oneLine(a.path)}\towned by ${oneLine(a.mission)} / ${oneLine(a.task)} (${a.mode})\t${criterion}`;
+  return `${oneLine(a.path)}\towned by ${oneLine(a.missionName)} / ${oneLine(a.taskName)} (${a.mode})\t${criterion}`;
 }
 
 function formatOwn(answers: OwnAnswer[]): string {

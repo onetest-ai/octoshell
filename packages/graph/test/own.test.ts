@@ -81,7 +81,9 @@ describe("own", () => {
       {
         path: "src/auth.ts",
         task: task.id,
+        taskName: "T1.1 - JWT",
         mission: mission.id,
+        missionName: "M1 - Auth",
         criterion: "the auth token is validated",
         // The file came off a recorded merge; the criterion is a lexical
         // guess even so. Two answers, two labels.
@@ -131,7 +133,9 @@ describe("own", () => {
       {
         path: "src/louvain.ts",
         task: task.id,
+        taskName: "T1.5 - Louvain",
         mission: mission.id,
+        missionName: "M1 - Clustering",
         criterion: null,
         mode: "provenance",
         criterionMode: null,
@@ -225,7 +229,9 @@ describe("own", () => {
       {
         path: "src/auth/session.ts",
         task: task.id,
+        taskName: "T1.1 - JWT",
         mission: mission.id,
+        missionName: "M1 - Auth",
         criterion: "the session token is validated on every login attempt",
         mode: "predicted",
         criterionMode: "predicted",
@@ -268,7 +274,9 @@ describe("own", () => {
       {
         path: "src/auth/session.ts",
         task: task.id,
+        taskName: "T1.1 - JWT",
         mission: mission.id,
+        missionName: "M1 - Auth",
         criterion: "the auth session token is validated",
         mode: "provenance",
         criterionMode: "predicted",
