@@ -12,6 +12,24 @@ function realRoot(root: string): string {
   return realpathSync(root);
 }
 
+/**
+ * ESCAPE-VECTOR MARKERS — the shared list, half of it.
+ *
+ * `insideRepo` has a hand-duplicated twin the extension cannot avoid:
+ * `apps/vscode-extension/src/host/octograph.ts`'s `insideWorkspace` (mission
+ * M6 criterion 4 forbids the extension a dependency on `@octoshell/graph`, so
+ * the rule is spelled twice). The two suites must cover the SAME escape
+ * vectors or the duplication drifts silently — which it already had: this file
+ * tested two vectors while the extension's suite tested three, under a comment
+ * in three places claiming the lists matched.
+ *
+ * So every escaping-path case here carries an `escape-vector: <id>` marker, and
+ * `apps/vscode-extension/test/octograph.test.ts`'s "escape-vector lists agree"
+ * guard reads this file and fails when the marker set and its own
+ * `ESCAPE_VECTORS` ids differ in EITHER direction. Adding a vector to one side
+ * only is a red test, not a comment nobody re-checks. Keep the marker on the
+ * same line as the `it(...)` title, and add the twin case over there.
+ */
 describe("insideRepo", () => {
   it("resolves a plain relative path inside the repo", () => {
     const root = mkdtempClean("octograph-paths-");
@@ -20,9 +38,25 @@ describe("insideRepo", () => {
     );
   });
 
+  // escape-vector: dotdot-traversal
   it("rejects a plain relative path that escapes via '..'", () => {
     const root = mkdtempClean("octograph-paths-");
     expect(insideRepo(root, "../outside")).toBeNull();
+  });
+
+  // escape-vector: absolute-elsewhere
+  it("rejects an absolute path pointing somewhere else entirely", () => {
+    // The vector `octograph.ts`'s twin has always tested and this file did
+    // not. `resolve(root, abs)` returns an absolute candidate UNCHANGED, so
+    // the `..`-traversal case does not cover it: nothing about the string is
+    // relative to the root, and only the containment comparison rejects it.
+    const root = mkdtempClean("octograph-paths-");
+    const elsewhere = mkdtempClean("octograph-elsewhere-");
+    writeFileSync(join(elsewhere, "file.ts"), "outside content\n");
+    expect(insideRepo(root, join(elsewhere, "file.ts"))).toBeNull();
+    // Also when it names nothing on disk — containment must not depend on the
+    // candidate existing.
+    expect(insideRepo(root, resolve(elsewhere, "no", "such", "file.ts"))).toBeNull();
   });
 
   it("is pure string math for a path that does not exist on disk", () => {
@@ -49,6 +83,7 @@ describe("insideRepo", () => {
    * itself never left the root) and was only followed later, unguarded, by
    * `statSync`/`readdirSync` in spine.ts's directory walks.
    */
+  // escape-vector: symlink-escape
   it("rejects a path reached through a symlink that escapes the repo root", () => {
     const outside = mkdtempClean("octograph-outside-");
     writeFileSync(join(outside, "secret.txt"), "outside content\n");
