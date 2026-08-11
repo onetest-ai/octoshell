@@ -441,7 +441,7 @@ describe("end-to-end: Working sets in the RENDERED map.md, driven through the re
     expect(doctorReport.status).toBe("degraded");
 
     const mapResult = runCli(["map"], repo, T4_NOW);
-    expect(mapResult.code).toBe(0);
+    expect(mapResult.code, `octograph map exited ${mapResult.code}: ${mapResult.stderr}`).toBe(0);
 
     // Not "an empty section" — no heading at all. Criterion 3 is written as
     // "absent, not caveated" (config.ts's own doc comment on
@@ -452,7 +452,7 @@ describe("end-to-end: Working sets in the RENDERED map.md, driven through the re
   it("(b) renders the section once history clears the threshold, and every claim it makes matches what produced it", () => {
     const repo = crossModuleRepo();
     const mapResult = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
-    expect(mapResult.code).toBe(0);
+    expect(mapResult.code, `octograph map exited ${mapResult.code}: ${mapResult.stderr}`).toBe(0);
 
     const rendered = readMap(repo);
     expect(rendered).toContain("## Working sets");
@@ -468,7 +468,7 @@ describe("end-to-end: Working sets in the RENDERED map.md, driven through the re
   it("(c) the rendered section contains no recommendation vocabulary", () => {
     const repo = crossModuleRepo();
     const mapResult = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
-    expect(mapResult.code).toBe(0);
+    expect(mapResult.code, `octograph map exited ${mapResult.code}: ${mapResult.stderr}`).toBe(0);
 
     const rendered = readMap(repo);
     expect(rendered).toContain("## Working sets");
@@ -484,7 +484,7 @@ describe("end-to-end: Working sets in the RENDERED map.md, driven through the re
     const repo = crossModuleRepo();
 
     const first = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
-    expect(first.code).toBe(0);
+    expect(first.code, `octograph map exited ${first.code}: ${first.stderr}`).toBe(0);
     const firstText = readMap(repo);
     expect(firstText).toContain("## Working sets");
     expectRenderedSetsHonest(firstText);
@@ -492,7 +492,7 @@ describe("end-to-end: Working sets in the RENDERED map.md, driven through the re
     // No commits added between runs — the CLI is invoked a second time over
     // the exact same history, exactly as a real "run octograph again" would.
     const second = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
-    expect(second.code).toBe(0);
+    expect(second.code, `octograph map exited ${second.code}: ${second.stderr}`).toBe(0);
     const secondText = readMap(repo);
     expect(secondText).toContain("## Working sets");
 
@@ -516,7 +516,7 @@ describe("end-to-end: Working sets in the RENDERED map.md, driven through the re
     // assertion below would pass trivially for a renderer with no
     // truncation logic at all.
     const generous = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
-    expect(generous.code).toBe(0);
+    expect(generous.code, `octograph map exited ${generous.code}: ${generous.stderr}`).toBe(0);
     const generousText = readMap(repo);
     const setEntries = expectRenderedSetsHonest(generousText);
     expect(setEntries.length).toBeGreaterThanOrEqual(10);
@@ -525,7 +525,7 @@ describe("end-to-end: Working sets in the RENDERED map.md, driven through the re
     // Now a tight budget, over the same history: the written file must obey
     // it, read back off disk exactly as a real consumer would read it.
     const tight = runCli(["map", "--min-commits", "5", "--budget", "400"], repo, T4_NOW);
-    expect(tight.code).toBe(0);
+    expect(tight.code, `octograph map exited ${tight.code}: ${tight.stderr}`).toBe(0);
     const tightText = readMap(repo);
     expect(estimateTokens(tightText)).toBeLessThanOrEqual(400);
 
@@ -560,11 +560,11 @@ describe("end-to-end: Working sets in the RENDERED map.md, driven through the re
     const repo = buildRepo(commits);
 
     const generous = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
-    expect(generous.code).toBe(0);
+    expect(generous.code, `octograph map exited ${generous.code}: ${generous.stderr}`).toBe(0);
     const all = expectRenderedSetsHonest(readMap(repo));
 
     const tight = runCli(["map", "--min-commits", "5", "--budget", "400"], repo, T4_NOW);
-    expect(tight.code).toBe(0);
+    expect(tight.code, `octograph map exited ${tight.code}: ${tight.stderr}`).toBe(0);
     const rendered = readMap(repo);
     expect(estimateTokens(rendered)).toBeLessThanOrEqual(400);
 
