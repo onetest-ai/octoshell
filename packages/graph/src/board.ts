@@ -9,7 +9,7 @@
  * entity-io.md`). This module exists so `own`/`conflicts` never become the
  * third.
  */
-import { BoardModel, type Task } from "@octoshell/board";
+import { BoardModel, parseCriteriaString } from "@octoshell/board";
 import { boardDir } from "./artifact.js";
 import { compare } from "./rollup.js";
 
@@ -34,21 +34,23 @@ export interface BoardView {
  * but it is not what `BoardModel` exposes on `Task`, and reaching for it
  * would mean reading `task.yaml`'s `acceptance_criteria` array a second way.
  *
- * Parsing the rendered checklist back into lines here, instead, is
- * deliberately format-agnostic: a legacy `.md` board's criteria come from a
- * markdown section (no YAML array to re-read at all), and a current YAML
- * board's come from `acceptance_criteria` — `BoardModel` already normalizes
- * both into the same checklist string, so parsing THAT is the one path that
- * works for either board generation without this module knowing which one
- * it is looking at.
+ * Parsing the rendered checklist back is deliberately format-agnostic — a
+ * legacy `.md` board's criteria come from a markdown section with no YAML
+ * array to re-read at all — but the parse is `@octoshell/board`'s OWN
+ * `parseCriteriaString`, never a local regex.
+ *
+ * The two board generations do not hand us the same string, which is exactly
+ * what a local copy gets wrong. `board-model.ts`'s `readEntity` runs
+ * `renderCriteria` only on the YAML branch (machine-perfect `- [x] text`); its
+ * `.md` branch returns `parseManagedBlock`'s `## Acceptance Criteria` section
+ * body VERBATIM, so `  - [ ] indented` and `-  [x]  loose` are the authored
+ * form there. A stricter local regex silently reports those criteria as
+ * ABSENT — an empty-criteria claim the file does not support. There is exactly
+ * one spelling of this rule and it lives in `@octoshell/board`;
+ * `test/conventions.test.ts` fails the build on a second one appearing here.
  */
-function parseCriteriaChecklist(rendered: string): string[] {
-  const out: string[] = [];
-  for (const line of rendered.split("\n")) {
-    const m = /^-\s\[[ xX]\]\s(.*)$/.exec(line);
-    if (m) out.push(m[1] ?? "");
-  }
-  return out;
+function readCriteria(rendered: string): string[] {
+  return parseCriteriaString(rendered).map((c) => c.text);
 }
 
 /**
@@ -73,13 +75,16 @@ export function readBoard(repoRoot: string): BoardView | null {
 
   for (const campaign of model.listCampaigns()) {
     for (const mission of model.listMissions(campaign.id)) {
-      for (const task of model.listTasks(mission.id) as Task[]) {
+      // No `as Task[]` cast: `listTasks` is already typed `Task[]`, and an
+      // assertion here would silence — rather than surface — the day that
+      // stops being true.
+      for (const task of model.listTasks(mission.id)) {
         tasks.push({
           id: task.id,
           name: task.name,
           mission: mission.id,
           campaign: campaign.id,
-          criteria: parseCriteriaChecklist(task.acceptanceCriteria),
+          criteria: readCriteria(task.acceptanceCriteria),
         });
         missionOfTask.set(task.id, mission.id);
       }
