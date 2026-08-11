@@ -26,7 +26,7 @@
  *    task gets an entry, never a silent omission.
  */
 import { execFileSync } from "node:child_process";
-import type { BoardView } from "./board.js";
+import type { BoardTask, BoardView } from "./board.js";
 import { compare } from "./rollup.js";
 import type { WorklogEntry } from "./worklog.js";
 
@@ -123,23 +123,69 @@ function filesChangedBy(repoRoot: string, sha: string): string[] | null {
 const SHORT_ID = /^(T\d+\.\d+)\b/;
 
 /**
- * The most recently recorded SHA for a task, or `null` if no worklog entry
- * carries one for it. A task is logged more than once (`active`, then
- * `done`) and only a post-merge backfill ever adds `mergedSha`, so picking
- * the latest `at` is what "the SHA that is actually current" means — never
- * the array's incidental iteration order.
- *
- * `keys` are every id this task answers to: its full board id first (which
- * nothing writes today, but is unambiguous by construction the day
- * work-log.mjs learns to), then its short id.
+ * Emits one line of non-fatal diagnostic text — by default to the real
+ * process's stderr, exactly like a CLI warning should read. Threaded as an
+ * explicit parameter (never a bare `console.error`/`process.stderr.write`
+ * inline below) so a caller — a test, or a future CLI layer that wants to
+ * fold this into a `CliResult` the way `cli.ts`'s `sinceMismatchWarning`
+ * folds its own — can capture it without mocking a global.
  */
-function latestShaFor(keys: readonly string[], log: WorklogEntry[]): string | null {
-  let best: { sha: string; at: string } | null = null;
-  for (const e of log) {
-    if (e.task === null || e.mergedSha === null || !keys.includes(e.task)) continue;
-    if (best === null || compare(e.at, best.at) > 0) best = { sha: e.mergedSha, at: e.at };
-  }
-  return best === null ? null : best.sha;
+export type Warn = (message: string) => void;
+
+const defaultWarn: Warn = (message) => {
+  process.stderr.write(message);
+};
+
+/**
+ * The trailing path segment of a `BoardTask.campaign` entity id
+ * (`folder:campaigns/<slug>` — see `@octoshell/board`'s `createCampaign`) —
+ * the campaign's slug, and nothing else. Used as text to search for inside a
+ * branch name, never re-derived from a name/title, because the slug is
+ * exactly what a conventional branch (`feat/<slug>-m3-t1`) actually embeds.
+ */
+function campaignSlug(campaignId: string): string {
+  const idx = campaignId.lastIndexOf("/");
+  return idx === -1 ? campaignId : campaignId.slice(idx + 1);
+}
+
+/**
+ * Narrows `candidates` (board tasks that all share one ambiguous short id) to
+ * the single one `branch`'s text names, or `[]` when zero or more than one
+ * campaign slug matches — an ambiguous branch is not a tiebreaker, it is
+ * still ambiguous, and guessing between two matches would be exactly the
+ * silent-wrong-attribution failure this module exists to avoid.
+ *
+ * "Which campaign slugs does this branch name CONTAIN", deliberately not a
+ * rigid `feat/<slug>-m<n>-t<k>` parse: a mission may declare a
+ * non-conventional branch name (see `mission-completion-gate`'s
+ * `tokenomics.branches`), and a substring search is the only shape that
+ * degrades gracefully to "no match" instead of throwing on one.
+ */
+function disambiguateByBranch(candidates: readonly BoardTask[], branch: string | null): BoardTask[] {
+  if (branch === null) return [];
+  const matches = candidates.filter((t) => branch.includes(campaignSlug(t.campaign)));
+  return matches.length === 1 ? matches : [];
+}
+
+/**
+ * Resolves one worklog entry's `task` field to the single board task it
+ * names, or `null` when it names none or more than one — `byId` first (a
+ * task's own full board id, which nothing writes today but is unambiguous by
+ * construction the day `work-log.mjs` learns to), else every task sharing
+ * that SHORT id via `byShortId`, narrowed further by
+ * {@link disambiguateByBranch} when more than one shares it.
+ */
+function resolveEntryTask(
+  entry: WorklogEntry,
+  byId: ReadonlyMap<string, BoardTask>,
+  byShortId: ReadonlyMap<string, readonly BoardTask[]>,
+): readonly BoardTask[] {
+  if (entry.task === null) return [];
+  const direct = byId.get(entry.task);
+  if (direct !== undefined) return [direct];
+  const candidates = byShortId.get(entry.task) ?? [];
+  if (candidates.length <= 1) return candidates;
+  return disambiguateByBranch(candidates, entry.branch);
 }
 
 /**
@@ -159,25 +205,74 @@ function latestShaFor(keys: readonly string[], log: WorklogEntry[]): string | nu
  * within a campaign and nowhere else — this repo's board carries 14 short
  * ids shared across two or three campaigns (2026-08-11), so joining on it
  * alone would hand `octograph`'s T3.5 files to `octobots-pack-ergonomics`'s
- * T3.5 as a recorded fact. An ambiguous short id is therefore evidence for
- * NEITHER task: both fall through to `predicted`, where the lexical layer
- * answers and nobody is told a merge they did not make is theirs. The fix
- * that removes the ambiguity is upstream — work-log.mjs recording the task's
- * full board id — not a tiebreaker guessed from a branch name here.
+ * T3.5 as a recorded fact. The worklog's OWN `branch` field disambiguates
+ * this: its text carries the campaign slug (`feat/octograph-…-m3-t1`) even
+ * once the branch itself is long deleted as a git ref — a dead ref is still
+ * usable as an identifier — so an ambiguous short id resolves through
+ * {@link disambiguateByBranch} whenever exactly one candidate's campaign
+ * slug appears in the branch text.
+ *
+ * When it still cannot resolve — the branch names none of the candidates, or
+ * more than one — the entry is not silently dropped: `warn` (real stderr by
+ * default) names the ambiguous id and the candidates it could not choose
+ * between, for every entry whose `mergedSha` actually resolves in this repo
+ * (an unresolvable one already falls through to `predicted` for an unrelated
+ * reason, and warning about it too would just be noise). The task itself
+ * still answers `predicted` either way — {@link AttributionMode} keeps
+ * exactly two members — but a reader watching stderr can tell "provenance
+ * existed but could not be joined" apart from "no provenance existed at
+ * all", which the mode alone cannot say.
  */
-export function attribute(repoRoot: string, board: BoardView, log: WorklogEntry[]): Attribution[] {
-  const shareShortId = new Map<string, number>();
+export function attribute(
+  repoRoot: string,
+  board: BoardView,
+  log: WorklogEntry[],
+  warn: Warn = defaultWarn,
+): Attribution[] {
+  const byId = new Map(board.tasks.map((t) => [t.id, t] as const));
+  const byShortId = new Map<string, BoardTask[]>();
   for (const t of board.tasks) {
     const short = SHORT_ID.exec(t.name)?.[1];
-    if (short !== undefined) shareShortId.set(short, (shareShortId.get(short) ?? 0) + 1);
+    if (short === undefined) continue;
+    const existing = byShortId.get(short);
+    if (existing !== undefined) existing.push(t);
+    else byShortId.set(short, [t]);
+  }
+
+  // The latest resolved {sha, at} recorded for each task, keyed by
+  // `BoardTask.id` — never blended across an ambiguous short id, since only
+  // an entry `resolveEntryTask` narrowed to exactly one task reaches here.
+  const latest = new Map<string, { sha: string; at: string }>();
+
+  for (const entry of log) {
+    if (entry.task === null || entry.mergedSha === null) continue;
+    const resolved = resolveEntryTask(entry, byId, byShortId);
+    if (resolved.length !== 1) {
+      // Ambiguous (0 candidates means "names no task on this board" — not
+      // this module's problem; >1 means the branch could not narrow it).
+      const candidates = byShortId.get(entry.task) ?? [];
+      if (candidates.length > 1 && filesChangedBy(repoRoot, entry.mergedSha) !== null) {
+        const names = candidates.map((t) => t.id).sort(compare).join(", ");
+        warn(
+          `octograph: worklog entry for task "${entry.task}" (branch: ` +
+            `${entry.branch ?? "(none)"}) matches ${candidates.length} board tasks and could not ` +
+            `be resolved to exactly one — candidates: ${names}\n`,
+        );
+      }
+      continue;
+    }
+    const task = resolved[0];
+    if (task === undefined) continue; // unreachable: guarded by resolved.length !== 1 above
+    const current = latest.get(task.id);
+    if (current === undefined || compare(entry.at, current.at) > 0) {
+      latest.set(task.id, { sha: entry.mergedSha, at: entry.at });
+    }
   }
 
   return board.tasks.map((task): Attribution => {
-    const short = SHORT_ID.exec(task.name)?.[1];
-    const keys = short !== undefined && shareShortId.get(short) === 1 ? [task.id, short] : [task.id];
-    const sha = latestShaFor(keys, log);
-    if (sha !== null) {
-      const files = filesChangedBy(repoRoot, sha);
+    const rec = latest.get(task.id);
+    if (rec !== undefined) {
+      const files = filesChangedBy(repoRoot, rec.sha);
       if (files !== null && files.length > 0) return { task: task.id, files, mode: "provenance" };
     }
     return { task: task.id, files: [], mode: "predicted" };
