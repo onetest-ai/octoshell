@@ -40,38 +40,71 @@ const PRIMER = [
  * budget never balloons the context injected on every SessionStart/PreCompact. Set to 4x the
  * default budget's byte estimate, rounded to a clean 32 KB: generous headroom for a moderately
  * raised `--budget`, still bounded.
+ *
+ * Named, not inlined, on purpose (T6.4 criterion 5): `test/octobots-primer.test.ts` parses this
+ * exact declaration out of the source and drives every boundary case from the parsed value, so
+ * inlining the literal at the comparison makes that suite fail by name rather than quietly
+ * re-tuning the cap. Verified 2026-08-11 by planting that violation — the three cap tests failed
+ * with "primer.mjs no longer declares `const MAP_MD_MAX_BYTES = <bytes>;`".
  */
 const MAP_MD_MAX_BYTES = 32 * 1024; // 32 KB
 
-/**
- * Same relative path as `octograph-install.ts`'s exported `GRAPH_RELATIVE_PATH` (in
- * `apps/vscode-extension/src/host/`). Not importable here — this script ships standalone, run
- * under bare `node` in an unrelated workspace with no node_modules and no TypeScript build step,
- * the same constraint `entity-io.mjs` operates under. Hand-duplicated; cross-referenced so a
- * rename of the installed location does not silently orphan this pointer.
- */
+// ---------------------------------------------------------------------------------------------
+// Rules this script HAND-DUPLICATES from the extension host, and the guard that keeps them honest.
+//
+// This script ships standalone: it runs under bare `node` in someone else's workspace, with no
+// node_modules and no TypeScript build step — the same constraint `entity-io.mjs` operates under —
+// so it can import neither `@octoshell/graph` (mission criterion 4) nor the extension's own host
+// modules. Every constant below is therefore a SECOND SPELLING of a rule that already exists in
+// TypeScript, named here with its twin.
+//
+// Cross-referencing them in prose is not enough — that is how this campaign's duplicated rules
+// drifted before. `test/octobots-primer.test.ts`'s "duplicated rules" suite imports the real
+// TypeScript twins, drives ONE shared list of them, and asserts each appears verbatim in this
+// script's emitted output. Rename `GRAPH_RELATIVE_PATH`, change `graphCommand`'s shape, move
+// `artifactPath`, or retitle the `octoshell.installGraph` command, and that suite fails by name
+// instead of this pointer quietly telling agents to run something that no longer exists.
+// ---------------------------------------------------------------------------------------------
+
+/** Twin of `octograph-install.ts`'s exported `GRAPH_RELATIVE_PATH`. */
 const GRAPH_CLI_RELATIVE_PATH = ".claude/skills/graph/octograph.mjs";
 
-/** Display-only, forward-slashed regardless of OS — this is a message a person reads, not a path
- *  handed to a command. */
-const MAP_MD_DISPLAY_PATH = ".octobots/graph/map.md";
+/** Twin of `octograph.ts`'s `graphCommand("setup")` — the documented bare-`node` invocation. No
+ *  `npx`, no network, no install at run time. Display-only here: this is text an agent reads, not
+ *  a command this script ever spawns. */
+const GRAPH_SETUP_COMMAND = `node ${GRAPH_CLI_RELATIVE_PATH} setup`;
+
+/** Twin of the `octoshell.installGraph` command's `title` in `package.json` — the GUI route to the
+ *  same thing, named so a person who would rather click than type can find it. */
+const INSTALL_GRAPH_COMMAND_TITLE = "Octobots: Install Graph";
 
 /**
- * Where octograph writes `map.md` for THIS workspace: `.octobots/graph/map.md`.
+ * Where octograph writes `map.md` for THIS workspace, as path segments — the ONE spelling in this
+ * file, so the fs path and the displayed path can never disagree.
  *
- * This is one of `packages/graph/src/artifact.ts`'s `resolveOut` two default branches (the
- * `hasBoard(repoRoot)` TRUE case) — the same rule `apps/vscode-extension/src/host/octograph.ts`'s
- * `artifactPath` also hand-duplicates, for the identical reason: this script cannot import
- * `@octoshell/graph` (mission criterion 4) or the extension's TypeScript (it ships standalone).
- * Unlike `artifactPath`, this copy only ever needs the board-present branch: the `.octobots`
- * existence check just above this function's only call site already exits the whole process
- * before this runs, so the `.octograph` fallback `artifactPath`/`resolveOut` both define for a
- * boardless workspace is unreachable here and is deliberately not re-derived. If that early exit
- * is ever removed, this needs the same two-branch check `artifactPath` has — cross-referenced here
- * so that dependency stays visible.
+ * Twin of `apps/vscode-extension/src/host/octograph.ts`'s `artifactPath` (its board-present
+ * branch) joined with the `"map.md"` filename `packages/graph/src/cli.ts` writes. Both in turn
+ * mirror `packages/graph/src/artifact.ts`'s `resolveOut`.
+ *
+ * TWO branches of `resolveOut` are deliberately NOT re-derived here, and neither is a claim this
+ * makes:
+ *  - the `.octograph` fallback for a boardless workspace is unreachable — the `.octobots`
+ *    existence check above this function's only call site exits the process first. If that early
+ *    exit is ever removed, this needs `artifactPath`'s two-branch check.
+ *  - an `octograph.yaml` that sets `out:` wins over both defaults, exactly as `artifactPath`
+ *    documents and `test/octograph.test.ts` pins. Honouring it would need a third spelling of
+ *    `loadConfig`'s YAML read AND of its containment check, neither importable here. So this is
+ *    the DEFAULT-LOCATION answer only, and {@link graphBlock}'s message says what it actually
+ *    looked at rather than claiming a repo-wide "there is no map".
  */
+const MAP_MD_SEGMENTS = [".octobots", "graph", "map.md"];
+
+/** Forward-slashed regardless of OS — this is a path a person reads in a message, never one handed
+ *  to a command. */
+const MAP_MD_DISPLAY_PATH = MAP_MD_SEGMENTS.join("/");
+
 function mapMdPath(projectDir) {
-  return join(projectDir, ".octobots", "graph", "map.md");
+  return join(projectDir, ...MAP_MD_SEGMENTS);
 }
 
 /**
@@ -80,14 +113,19 @@ function mapMdPath(projectDir) {
  * in BOTH non-injecting cases (present-but-over-cap AND absent), never silence. Over the cap this
  * never reads or slices the file's content: a truncated architecture map reads as complete, which
  * is worse than none, so the only safe non-injecting output is a pointer that names where to read
- * it directly. A read failure (permission error, `map.md` replaced by a directory) is treated the
- * same as absent, matching `graphStatus`'s "any read failure reads as absent" convention.
+ * it directly. A read failure (permission error, `map.md` replaced by a directory) and a zero-byte
+ * file are both treated as absent — an "Architecture map:" heading over nothing is a claim with no
+ * observation behind it, and "any read failure reads as absent" is `graphStatus`'s convention too.
+ *
+ * The absent-case message states ONLY what was observed: nothing readable at
+ * {@link MAP_MD_DISPLAY_PATH}. It deliberately does not say "this repo has no architecture map" —
+ * see {@link MAP_MD_SEGMENTS} on the `octograph.yaml` `out:` branch this does not resolve.
  */
 function graphBlock(projectDir) {
   const path = mapMdPath(projectDir);
   const pointer =
-    `No architecture map yet - run \`node ${GRAPH_CLI_RELATIVE_PATH} setup\` ` +
-    `(Octobots: Install Graph) to build one at \`${MAP_MD_DISPLAY_PATH}\`.`;
+    `No architecture map at \`${MAP_MD_DISPLAY_PATH}\` - run \`${GRAPH_SETUP_COMMAND}\` ` +
+    `(${INSTALL_GRAPH_COMMAND_TITLE}) to build one there.`;
 
   let size;
   try {
@@ -101,6 +139,7 @@ function graphBlock(projectDir) {
       `it directly instead of via session context.`
     );
   }
+  if (size === 0) return pointer; // present but empty: nothing to inject, so do not announce one
   try {
     const body = readFileSync(path, "utf8");
     return `Architecture map (\`${MAP_MD_DISPLAY_PATH}\`):\n\n${body}`;
@@ -141,5 +180,10 @@ const payload =
     ? { additionalContext: fullContext }
     : { hookSpecificOutput: { hookEventName: event, additionalContext: fullContext } };
 
-process.stdout.write(JSON.stringify(payload));
-process.exit(0);
+// Exit only once stdout has actually drained. Node's stdout is ASYNCHRONOUS when it is a pipe —
+// which is exactly what a hook runner gives us — so `process.exit(0)` on the next line would
+// discard whatever has not been flushed yet. That was harmless while the payload was the ~2 KB
+// primer (well inside a pipe's buffer); this mission appends up to MAP_MD_MAX_BYTES on top of it,
+// and a payload cut mid-flight is not a shorter primer, it is JSON the runner cannot parse, so the
+// session silently gets NO context at all. The callback fires after the write completes.
+process.stdout.write(JSON.stringify(payload), () => process.exit(0));
