@@ -10,8 +10,25 @@ import { BoardModel } from "./board-model.js";
 /** Entity kinds that are YAML files (workflow is a `.js` script, not an entity file). */
 type YamlKind = "campaign" | "mission" | "task" | "bug";
 
-/** Parse a `- [ ] text` / `- [x] text` checklist string into structured criteria. */
-function parseCriteriaString(s: string): AcceptanceCriterion[] {
+/**
+ * Parse a `- [ ] text` / `- [x] text` checklist string into structured criteria.
+ *
+ * THE single spelling of this rule, and public because `BoardModel` exposes
+ * `acceptanceCriteria` as the RENDERED checklist string (see `renderCriteria`),
+ * so every consumer that needs the items back — the write path below, and
+ * `@octoshell/graph`'s board reader — has to parse it. A private second copy in
+ * a consumer is how the two drift: it lands stricter or looser than this one,
+ * and the two then disagree about the same file while both look correct.
+ *
+ * The tolerance is deliberate and load-bearing, not sloppiness. Only the YAML
+ * branch of `board-model.ts`'s `readEntity` runs `renderCriteria` and produces
+ * machine-perfect `- [x] text`; the legacy `.md` branch hands back
+ * `parseManagedBlock`'s `## Acceptance Criteria` section body VERBATIM. There,
+ * `  - [ ] indented` and `-  [x]  loose` are the AUTHORED form of a criterion,
+ * and a parser that rejects them reports a task's criteria as absent rather
+ * than as written.
+ */
+export function parseCriteriaString(s: string): AcceptanceCriterion[] {
   const out: AcceptanceCriterion[] = [];
   for (const line of (s ?? "").split("\n")) {
     const m = line.match(/^\s*-\s*\[([ xX])\]\s*(.*)$/);

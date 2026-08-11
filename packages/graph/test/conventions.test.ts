@@ -289,6 +289,73 @@ describe("package conventions", () => {
     }
   });
 
+  /**
+   * An eighth single-spelling rule, and the first one this package does not
+   * own: parsing a `- [ ] text` acceptance-criterion checklist lives in
+   * `@octoshell/board`'s `parseCriteriaString` and nowhere else.
+   *
+   * `board.ts` shipped its own `/^-\s\[[ xX]\]\s(.*)$/` for one review cycle,
+   * with a comment asserting `BoardModel` "already normalizes both board
+   * generations into the same checklist string". It does not: `readEntity`
+   * runs `renderCriteria` only on the YAML branch, and returns the legacy
+   * `.md` branch's `## Acceptance Criteria` body verbatim — where
+   * `  - [ ] indented` and `-  [x]  loose` are the AUTHORED form. Against
+   * three such criteria the strict local copy recovered one and reported the
+   * other two as absent, i.e. it turned an unreadable line into a claim that
+   * the task has no such criterion.
+   *
+   * That divergence is invisible behaviourally on the fixtures a YAML-only
+   * suite can build — `renderCriteria`'s output satisfies both regexes on
+   * every input it can produce, so a test that runs the code passes either
+   * way (the same argument the `edgeWeight`/`compare` guards above rest on).
+   * Only the source distinguishes them. `board.test.ts` holds the
+   * behavioural half against a legacy `.md` fixture; this is the structural
+   * half, and it is the one that catches the NEXT copy.
+   *
+   * Matched against the ESCAPED bracket form a real regex literal uses on
+   * disk — `\[` … `\]` around a `[ xX]`-style class, with or without the
+   * capturing group `parseCriteriaString`'s own spelling wraps it in — and
+   * with comments and string literals stripped, so this comment and the prose
+   * in `board.ts` are not themselves offenders. It sees a regex copy, which is
+   * how the rule actually got duplicated; a hand-rolled `startsWith("- [x] ")`
+   * scan would slip past, and the behavioural half in `board.test.ts` is what
+   * covers that.
+   */
+  const CHECKLIST_REGEX = /\\\[\(?(?:\?:)?\[[ xX]+\]\)?\\\]/;
+
+  it("parses an acceptance-criteria checklist only through @octoshell/board's parseCriteriaString", () => {
+    const offenders = sources.filter((f) => CHECKLIST_REGEX.test(code(f)));
+    expect(offenders).toEqual([]);
+  });
+
+  /** The guard above is a regex, so what it can see is a claim of its own,
+   *  and one nothing exercises now that the tree has no offenders. Pin the
+   *  spellings it must catch and the ones it must not. */
+  it("recognises a hand-rolled checklist regex, and no unrelated character class", () => {
+    const isChecklistRegex = (text: string): boolean => CHECKLIST_REGEX.test(stripped(text));
+    for (const violation of [
+      // The exact copy board.ts shipped, and the exact copy it would have
+      // been had it been pasted from `parseCriteriaString` instead.
+      "const m = /^-\\s\\[[ xX]\\]\\s(.*)$/.exec(line);",
+      "line.match(/^\\s*-\\s*\\[([ xX])\\]\\s*(.*)$/)",
+      "const done = /\\[[xX]\\]/.test(line);",
+      "if (/^- \\[[ x]\\] /.test(line)) keep(line);",
+      "const m = /\\[(?:[ xX])\\]/.exec(line);",
+    ]) {
+      expect([violation, isChecklistRegex(violation)]).toEqual([violation, true]);
+    }
+    for (const legal of [
+      "parseCriteriaString(rendered).map((c) => c.text)",
+      // A character class that is not a checkbox: no escaped brackets around it.
+      "const m = /^[ xX]+$/.exec(line);",
+      // Prose naming the form — stripped as a comment/string before matching.
+      "// a rendered `- [x] text` / `- [ ] text` checklist",
+      'const RENDERED = "- [x] done";',
+    ]) {
+      expect([legal, isChecklistRegex(legal)]).toEqual([legal, false]);
+    }
+  });
+
   it("never reads a clock or an RNG in graph computation", () => {
     const offenders = sources.filter((f) => /\bDate\.now\s*\(|\bMath\.random\s*\(/.test(code(f)));
     expect(offenders).toEqual([]);
@@ -393,6 +460,12 @@ describe("package conventions", () => {
       // `workingSets` came back empty (thin history vs. genuine agreement
       // with the declared spine) needs this, not just `doctor`'s report.
       "historyIsThin",
+      // M4/T4.1's own surface: the board and worklog readers `own` and
+      // `conflicts` are built on. Added in the same commit, for the same
+      // reason every entry above was — a symbol this package's own tests can
+      // reach only from inside the package is not part of its public API.
+      "readBoard",
+      "readWorklog",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }

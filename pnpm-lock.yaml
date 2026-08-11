@@ -139,6 +139,9 @@ importers:
 
   packages/graph:
     dependencies:
+      '@octoshell/board':
+        specifier: workspace:*
+        version: link:../board
       js-yaml:
         specifier: ^5.2.2
         version: 5.2.2
