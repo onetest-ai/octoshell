@@ -20,15 +20,124 @@ import { mkdtempClean } from "./fixtures/tmpdir.js";
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const TEST = dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Comments, strings and regex literals recognised in ONE left-to-right pass —
+ * the only way it can be done, and the reason this is a scanner rather than
+ * the four sequential `String.replace` calls it used to be.
+ *
+ * Those calls stripped `//`-comments BEFORE string literals, so the first
+ * string in the file containing a `//` lost its own closing quote:
+ *
+ *     const UV_INSTALL_URL = "https://docs.astral.sh/uv/getting-started/installation/";
+ *
+ * became `const UV_INSTALL_URL = "https:` — a dangling quote, which the
+ * string pass then paired with the next quote 150 lines below, deleting
+ * everything in between. In `setup.ts` (the only src file with a URL in it,
+ * added by this mission) "everything in between" was `runSetup`'s entire
+ * install flow: the `which("uv")` check, the consent prompt, the `io.exec`
+ * install call and every branch that reports its result. Verified: a
+ * `Date.now()` added inside `runSetup` passed the clock guard, in the one
+ * file whose plan cites that guard by name as the reason `now` is a
+ * parameter. Every `code("setup.ts")` rule was scanning a file with its
+ * safety-critical half deleted — reading as coverage over exactly the lines
+ * this mission exists to constrain.
+ *
+ * No ordering of independent regexes can fix that: whichever kind is stripped
+ * first corrupts the delimiters of the kinds stripped after it (strings-first
+ * makes any `//` comment containing an apostrophe swallow the code below it).
+ * A single pass is the fix, because a scanner knows which construct it is
+ * inside.
+ *
+ * Regex literals are copied through VERBATIM, not blanked — several guards
+ * here exist to recognise a hand-rolled regex (`CHECKLIST_REGEX`, the
+ * test-path rule), so blanking them would blind those instead. Their contents
+ * are simply not re-interpreted as strings or comments. A `/` that opens no
+ * regex (division) falls back to being emitted as ordinary code, so the worst
+ * a misread can do is leave a construct un-stripped — never delete one.
+ */
+function scanSource(text: string, keepStrings: boolean): string {
+  /** Where a `/` may open a regex literal: after an operator or an opening
+   *  bracket, never after a value. Misjudging it costs nothing (see above). */
+  const canStartRegex = (out: string): boolean => {
+    const trimmed = out.replace(/\s+$/, "");
+    if (trimmed === "") return true;
+    const last = trimmed.slice(-1);
+    if ("(,=:[!&|?{};+-*%~^<>".includes(last)) return true;
+    return /\b(?:return|typeof|case|in|of|do|else|yield|await|new|delete|void)$/.test(trimmed);
+  };
+
+  let out = "";
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const c = text[i] as string;
+    const d = i + 1 < n ? (text[i + 1] as string) : "";
+
+    if (c === "/" && d === "/") {
+      while (i < n && text[i] !== "\n") i++;
+      out += " ";
+      continue;
+    }
+    if (c === "/" && d === "*") {
+      i += 2;
+      while (i < n && !(text[i] === "*" && text[i + 1] === "/")) i++;
+      i = Math.min(i + 2, n);
+      out += " ";
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      const start = i;
+      i++;
+      while (i < n) {
+        const s = text[i] as string;
+        if (s === "\\") {
+          i += 2;
+          continue;
+        }
+        i++;
+        if (s === c) break;
+      }
+      out += keepStrings ? text.slice(start, i) : c === "`" ? "``" : `${c}${c}`;
+      continue;
+    }
+    if (c === "/" && canStartRegex(out)) {
+      let j = i + 1;
+      let inClass = false;
+      let closed = false;
+      while (j < n) {
+        const s = text[j] as string;
+        if (s === "\\") {
+          j += 2;
+          continue;
+        }
+        if (s === "\n") break;
+        if (s === "[") inClass = true;
+        else if (s === "]") inClass = false;
+        else if (s === "/" && !inClass) {
+          j++;
+          closed = true;
+          break;
+        }
+        j++;
+      }
+      // Unterminated on this line: not a regex after all (a division, a path
+      // in a JSX-free file). Emit the `/` and carry on rather than guessing.
+      if (closed) {
+        out += text.slice(i, j);
+        i = j;
+        continue;
+      }
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
 /** Comments and string literals stripped, so prose about a rule is not
  *  mistaken for a violation of it. */
 function stripped(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/\/\/[^\n]*/g, " ")
-    .replace(/`(?:[^`\\]|\\.)*`/g, "``")
-    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
-    .replace(/'(?:[^'\\]|\\.)*'/g, "''");
+  return scanSource(text, false);
 }
 
 /** Source with comments and string literals removed, so prose about a rule is
@@ -45,9 +154,10 @@ function testCode(file: string): string {
 
 /** Comments stripped, string literals KEPT — what a guard over an import
  *  SPECIFIER has to read, since the specifier is itself a string literal that
- *  `stripped` would erase. */
+ *  `stripped` would erase. Through the same single pass, so a `//` inside a
+ *  string is not mistaken for the start of a comment here either. */
 function stripComments(text: string): string {
-  return text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+  return scanSource(text, true);
 }
 
 /** Same, for a file under `src/`. */
@@ -157,6 +267,67 @@ describe("package conventions", () => {
     expect(sources.length).toBeGreaterThan(10);
   });
 
+  /**
+   * THE REGRESSION TEST for `scanSource`, and the reason every guard below can
+   * be believed at all: what a rule reads has to still BE the file.
+   *
+   * The four sequential `String.replace` calls this replaced deleted lines
+   * 60–209 of `setup.ts` — `runSetup`'s whole install flow — because
+   * `"https://…"` lost its closing quote to the `//`-comment pass and the
+   * string pass then paired the survivor with a quote 150 lines down. Every
+   * `code("setup.ts")` guard was green over a file with its safety-critical
+   * half missing.
+   *
+   * Pinned at the level the defect actually lives: the FILE this mission is
+   * about, checked for the constructs a reader would swear are in it. A unit
+   * test of the scanner alone would not have caught it either, since the bug
+   * needed a real file's shape to show up.
+   */
+  it("keeps the whole file after a string containing a URL — a rule reads the code, not a fragment of it", () => {
+    const setup = code("setup.ts");
+    // The install flow, all of it AFTER the `UV_INSTALL_URL` literal that used
+    // to swallow it.
+    for (const construct of [
+      "io.which(",
+      "io.prompt(",
+      "io.exec(",
+      "installFailed",
+      "runMapCommand(",
+      "doctorExitCode(",
+    ]) {
+      expect([construct, setup.includes(construct)]).toEqual([construct, true]);
+    }
+    // The literal itself is still blanked — that is what `stripped` is for.
+    expect(setup).not.toContain("docs.astral.sh");
+  });
+
+  it("recognises comments, strings and regex literals in one pass, whichever comes first", () => {
+    // The exact defect, in miniature: a `//` inside a string is not a comment.
+    // The trailing literal is what makes this bite — stripping `//` first
+    // leaves `"https:` dangling, and the string pass then pairs it with the
+    // NEXT quote, deleting everything between the two.
+    expect(stripped('const u = "https://x";\nconst t = Date.now();\nconst v = "z";\n')).toContain(
+      "Date.now()",
+    );
+    // …and the mirror image, which is why the fix is not "strip strings
+    // first": an apostrophe inside a line comment is not a string.
+    expect(stripped("// it's fine\nconst t = Date.now();\n")).toContain("Date.now()");
+    // A comment opener inside a string is not a comment either.
+    expect(stripped('const u = "/* not a comment";\nconst t = Date.now();\n')).toContain(
+      "Date.now()",
+    );
+    // Regex literals survive verbatim — several guards below match on them.
+    expect(stripped('const m = /^-\\s\\[[ xX]\\]/.exec(line);')).toContain("/^-\\s\\[[ xX]\\]/");
+    // …and a quote inside a regex does not open a string.
+    expect(stripped("const q = /[\"']/.test(s);\nconst t = Date.now();\n")).toContain("Date.now()");
+    // Division is not a regex: nothing between two `/` on a line is lost.
+    expect(stripped("const a = x / y; const b = z / w; const t = Date.now();")).toContain(
+      "Date.now()",
+    );
+    // Strings still go, which is the whole point of `stripped`.
+    expect(stripped('const s = "Date.now()";')).not.toContain("Date.now()");
+  });
+
   it("reads Edge.npmi only in weights.ts, where edgeWeight applies the floor", () => {
     // components.ts writes `npmi:` when it mints a synthetic bridge edge; that
     // is construction, not a weight read, so only property ACCESS is banned.
@@ -209,10 +380,7 @@ describe("package conventions", () => {
    * exempt.
    */
   it("spells the graphify output path only in graphify.ts", () => {
-    const withoutComments = (file: string): string =>
-      readFileSync(join(SRC, file), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, " ")
-        .replace(/\/\/[^\n]*/g, " ");
+    const withoutComments = (file: string): string => sourceKeepingStrings(file);
     const offenders = sources.filter(
       (f) => f !== "graphify.ts" && /graphify-out/.test(withoutComments(f)),
     );
@@ -239,10 +407,7 @@ describe("package conventions", () => {
    * not caught: the character after the segment there is `/`, never a quote.
    */
   it("spells the board directory only in artifact.ts", () => {
-    const withoutComments = (file: string): string =>
-      readFileSync(join(SRC, file), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, " ")
-        .replace(/\/\/[^\n]*/g, " ");
+    const withoutComments = (file: string): string => sourceKeepingStrings(file);
     const offenders = sources.filter(
       (f) => f !== "artifact.ts" && /["'`]\.octobots["'`]/.test(withoutComments(f)),
     );
@@ -863,6 +1028,62 @@ describe("package conventions", () => {
   });
 
   /**
+   * A thirteenth rule, and the structural half of mission criterion 1
+   * ("prompts before installing anything"): CONSENT REACHES `setup.ts` ONLY
+   * THROUGH THE PORT. `setup.ts` may not touch `process` at all — not
+   * `process.env`, not `process.argv`, not `process.exit`.
+   *
+   * The behavioural half of criterion 1 is checked everywhere: `setup.test.ts`
+   * drives a fake port that declines and asserts zero `exec` calls, and
+   * `setup-e2e-gate.test.ts` drives the real bin with a scripted `n`. Neither
+   * can see the one edit that actually reopens the rule, because neither sets
+   * the variable it would read:
+   *
+   *     const consent = process.env.OCTOGRAPH_ASSUME_YES === "1" || (await io.prompt(…));
+   *
+   * Every test in this package stays green for that line — the fake port still
+   * declines, the scripted `n` still declines — and `octograph setup` installs
+   * without a human answering, in CI, where nobody is watching. That is
+   * precisely the affordance the plan refuses to add as a `--yes` flag, and
+   * refusing the flag while leaving the environment open is refusing the
+   * spelling rather than the rule. The bin already rejects any argument after
+   * `setup`, so the flag route is closed; this closes the ambient one.
+   *
+   * It costs nothing legitimate: `setup.ts` is pure over `SetupIO` by
+   * construction — the port is the escape valve, and an in-process caller
+   * (M6) supplies its own. The one module that IS allowed ambient process
+   * state is `setup-io.ts`, which is what a port is for.
+   */
+  it("setup.ts never touches process — consent, and every other input, arrives through the port", () => {
+    expect(/\bprocess\b/.test(code("setup.ts"))).toBe(false);
+  });
+
+  /** The guard above is a regex, so what it can see is a claim of its own, and
+   *  one nothing exercises while `setup.ts` is clean. Pin the spellings it must
+   *  catch — the consent bypass first — and the ones it must not. */
+  it("recognises every ambient read of process, and no unrelated identifier", () => {
+    const touchesProcess = (text: string): boolean => /\bprocess\b/.test(stripped(text));
+    for (const violation of [
+      'const consent = process.env.OCTOGRAPH_ASSUME_YES === "1" || (await io.prompt(q));',
+      "if (process.argv.includes(\"--yes\")) return true;",
+      "process.exit(code);",
+      "const { env } = process;",
+    ]) {
+      expect([violation, touchesProcess(violation)]).toEqual([violation, true]);
+    }
+    for (const legal of [
+      "const consent = await io.prompt(question);",
+      "const result = await io.exec(file, [...args]);",
+      // Prose naming it, and an identifier that merely contains it — stripped
+      // or not a word boundary respectively.
+      "// never reads process.env — consent comes through the port",
+      "const processed = report.checks.map(format);",
+    ]) {
+      expect([legal, touchesProcess(legal)]).toEqual([legal, false]);
+    }
+  });
+
+  /**
    * A ninth single-spelling rule, and the first one this suite pins by
    * EXACT membership rather than "at least contains": `AttributionMode` must
    * have exactly two members, `"provenance"` and `"predicted"`, and no third.
@@ -897,10 +1118,7 @@ describe("package conventions", () => {
   it("passes -z wherever it asks git for file names, so no reader gets C-quoted paths", () => {
     // Comments only: `code()` strips string literals, which are the very
     // argv tokens this rule is about.
-    const argv = (f: string) =>
-      readFileSync(join(SRC, f), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, " ")
-        .replace(/\/\/[^\n]*/g, " ");
+    const argv = (f: string) => sourceKeepingStrings(f);
     const offenders = sources.filter((f) => {
       const text = argv(f);
       return /["']--name-only["']/.test(text) && !/["']-z["']/.test(text);
@@ -913,9 +1131,7 @@ describe("package conventions", () => {
     // members this guard reads — comments only, same as the graphify-path
     // and board-directory guards above, which read a literal for the same
     // reason.
-    const withoutComments = readFileSync(join(SRC, "attribution.ts"), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, " ")
-      .replace(/\/\/[^\n]*/g, " ");
+    const withoutComments = sourceKeepingStrings("attribution.ts");
     const m = /type AttributionMode\s*=\s*("[^"]+"(?:\s*\|\s*"[^"]+")*)/.exec(withoutComments);
     expect(m).not.toBeNull();
     const members = (m ? m[1] : "").split("|").map((s) => s.trim());
