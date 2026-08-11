@@ -37,10 +37,21 @@ export interface GraphStatus {
  * — same three-state result (absent / present-but-stale / current), and a read that THROWS
  * (a directory in the file's place, a permission error) reads as absent rather than propagating.
  *
- * What this does NOT detect, stated plainly rather than implied: a file that reads fine but is
- * TRUNCATED still carries the banner on line 2, so it reports `current`. That is why `installGraph`
- * writes atomically (temp file + rename) instead of copying in place — the version marker is not a
- * content check and must not be asked to act as one.
+ * What this does NOT detect, stated plainly rather than implied — **the marker is a version check,
+ * never a content check**, and there are two distinct ways that gap bites:
+ *
+ *  1. A file that reads fine but is TRUNCATED still carries the banner on line 2, so it reports
+ *     `current`. That is why `installGraph` writes atomically (temp file + rename) instead of
+ *     copying in place.
+ *  2. Unlike the primer and the tokenomics runner — hand-edited files whose marker sits under the
+ *     author's cursor when they change them — this payload is MACHINE-GENERATED from
+ *     `packages/graph` and its banner is stamped from `OCTOBOTS_PACK_VERSION`. So a change to that
+ *     package's source regenerates different bytes under an UNCHANGED banner, and an already-
+ *     installed workspace would report `current` forever and never be prompted to upgrade. Nothing
+ *     in this function can see that; it is closed one layer up, at build time, by
+ *     `scripts/graph-payload-versions.json` and the "pack version stays honest about the payload's
+ *     content" suite in `test/graph-payload.test.ts`, which turns "payload changed, version did
+ *     not" into a red test. If that guard is ever removed, this paragraph becomes a live bug.
  *
  * Unlike tokenomics, graph is **opt-in**: a workspace that never ran "Octobots: Install Graph"
  * (M6/T3) is expected to report `present: false`, and that alone must never make the general pack

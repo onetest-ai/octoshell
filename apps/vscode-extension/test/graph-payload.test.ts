@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -14,6 +15,7 @@ import { parseGraphVersion } from "../src/host/octograph-install.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const GRAPH_PKG_ROOT = join(__dirname, "..", "..", "..", "packages", "graph");
+const VERSIONS_LOCK = join(__dirname, "..", "scripts", "graph-payload-versions.json");
 
 describe("scripts/graph-payload.mjs", () => {
   it("readPackVersionFromSource stays equal to the real, imported OCTOBOTS_PACK_VERSION", () => {
@@ -64,6 +66,80 @@ describe("scripts/graph-payload.mjs", () => {
     },
     60_000,
   );
+});
+
+/**
+ * REGRESSION (found in the M6 mission review, 2026-08-11): the freshness gate above keeps the
+ * COMMITTED payload equal to what `packages/graph` produces now — but nothing kept the pack
+ * VERSION honest about it, and that number is the only thing an installed workspace ever compares.
+ *
+ * `graphStatus` (`octograph-install.ts`) calls an installed payload `current` when its
+ * `// octobots-pack-version: N` banner equals `OCTOBOTS_PACK_VERSION`. For the primer and the
+ * tokenomics runner that marker is a hand-edited line inside the file being changed, so changing
+ * one puts the bump under the author's cursor. The graph payload is not hand-edited: it is
+ * MACHINE-GENERATED from another package's source and its banner is stamped from
+ * `OCTOBOTS_PACK_VERSION`. So a change anywhere in `packages/graph` regenerates different bytes
+ * under an unchanged banner, and then:
+ *
+ *   - the freshness gate is satisfied (the committed payload was regenerated),
+ *   - `graphStatus` reports `{ present: true, current: true }` for the OLD installed bundle,
+ *   - `packStatus().upToDate` stays true, so `activate()` never shows the upgrade prompt,
+ *   - and every workspace that already ran "Octobots: Install Graph" keeps running the stale
+ *     bundle indefinitely, with nothing anywhere saying so.
+ *
+ * Verified on this tree before the guard existed: editing a string literal in
+ * `packages/graph/src/cli.ts` and rebuilding produced different payload bytes with the banner
+ * still reading `// octobots-pack-version: 42`.
+ *
+ * `scripts/graph-payload-versions.json` closes it by recording the payload's hash AGAINST the
+ * version it shipped under. Regenerate the payload without bumping and this goes red by name.
+ */
+describe("the pack version stays honest about the payload's content", () => {
+  const lock = JSON.parse(readFileSync(VERSIONS_LOCK, "utf8")) as Record<string, string>;
+
+  /** Recorded version → hash pairs, with the `_`-prefixed prose keys dropped. */
+  function recorded(): [number, string][] {
+    return Object.entries(lock)
+      .filter(([k]) => !k.startsWith("_"))
+      .map(([k, v]) => [Number(k), v]);
+  }
+
+  it("the committed payload's sha256 is recorded against the CURRENT pack version", () => {
+    const sha = createHash("sha256").update(readFileSync(PAYLOAD_PATH)).digest("hex");
+    // Reported as an object so a failure prints both the expected and the actual hash together
+    // with the version they were judged under, rather than two bare hex strings.
+    expect({
+      packVersion: OCTOBOTS_PACK_VERSION,
+      sha,
+      hint:
+        "if this fails, packages/graph changed: bump OCTOBOTS_PACK_VERSION (and every pack marker " +
+        "with it) and add the new sha to scripts/graph-payload-versions.json, or installed " +
+        "workspaces will never be prompted to upgrade their octograph bundle",
+    }).toEqual({
+      packVersion: OCTOBOTS_PACK_VERSION,
+      sha: lock[String(OCTOBOTS_PACK_VERSION)],
+      hint: expect.any(String),
+    });
+  });
+
+  it("meta: the lock is a non-empty map of integer versions, none ahead of the current one", () => {
+    const entries = recorded();
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [version, sha] of entries) {
+      expect(Number.isInteger(version)).toBe(true);
+      expect(version).toBeLessThanOrEqual(OCTOBOTS_PACK_VERSION);
+      expect(sha).toMatch(/^[0-9a-f]{64}$/);
+    }
+  });
+
+  it("meta: the guard is not vacuous — a byte-different payload fails against the same version", () => {
+    // The rule the test above enforces, applied to a payload that differs from the committed one
+    // by a single byte. If this passed, the check would be comparing something other than content.
+    const mutated = Buffer.from(readFileSync(PAYLOAD_PATH));
+    mutated[mutated.length - 1] = (mutated[mutated.length - 1] ?? 0) ^ 0xff;
+    const sha = createHash("sha256").update(mutated).digest("hex");
+    expect(sha).not.toBe(lock[String(OCTOBOTS_PACK_VERSION)]);
+  });
 });
 
 describe("isDirectRun — the guard deciding whether the freshness check runs at all", () => {
