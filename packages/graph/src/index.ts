@@ -54,3 +54,10 @@ export {
 // records for M2's analysis pipeline; `test/conventions.test.ts` now names
 // these symbols so the third recurrence fails the build instead of review.
 export { runCli, parseArgs, type CliResult, type Command } from "./cli.js";
+// M5/T5.1's own surface: `setup` is deliberately NOT a `runCli` command (see
+// setup.ts's doc comment) — it is a second, async entry point over an
+// injected `SetupIO` port, because prompting before an install cannot be
+// synchronous the way `runCli` is on purpose. Exported here for the same
+// reason `runCli` is: an in-process caller (M6's VS Code commands) needs
+// this, not a deep path into `src/`.
+export { runSetup, type SetupIO } from "./setup.js";

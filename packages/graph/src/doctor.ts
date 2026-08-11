@@ -122,12 +122,22 @@ export function doctor(repoRoot: string, config: Config): Report {
       ? `${graphRel} read — ${spine.imports.length} declared import edges, precise boundaries available`
       : graphifyPresent
         ? `${graphRel} found but yielded no cross-module import edges (truncated or empty run?) — the spine falls back to ${spine.source}`
-        : 'not installed — drift can say "different modules" but not "nothing imports across them"',
+        : // What this function ACTUALLY observed is the absence of a file, and
+          // it used to report that as "not installed" — a claim about the
+          // machine that nothing here checks. The two differ on the ordinary
+          // case of a developer who has Graphify installed and has never run
+          // it in this repo, and they contradicted each other out loud in
+          // `runSetup`, which printed "`uv tool install graphifyy`
+          // succeeded." and then, four lines down, "not installed — fix: uv
+          // tool install graphifyy". Installing the tool cannot produce this
+          // file; only running it can, which is why the fix below leads with
+          // that.
+          `${graphRel} not found — no Graphify output in this repo, so drift can say "different modules" but not "nothing imports across them"`,
     fix: graphifyUsable
       ? undefined
       : graphifyPresent
         ? `re-run graphify, or delete ${graphRel} if it is stale`
-        : "uv tool install graphifyy",
+        : `run Graphify in this repo to produce ${graphRel} — install it with \`uv tool install graphifyy\` if you have not`,
     required: false,
   });
 
