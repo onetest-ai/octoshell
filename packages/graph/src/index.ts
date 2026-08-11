@@ -23,6 +23,7 @@ export { drift, type DriftRow } from "./drift.js";
 export { doctor, exitCode, type Check, type CheckState, type Report, type Status } from "./doctor.js";
 export { readBoard, type BoardTask, type BoardView } from "./board.js";
 export { readWorklog, type WorklogEntry } from "./worklog.js";
+export { attribute, type Attribution, type AttributionMode } from "./attribution.js";
 export {
   hasBoard,
   readArtifact,
