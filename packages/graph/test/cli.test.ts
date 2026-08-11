@@ -511,6 +511,49 @@ describe("runCli — own", () => {
   });
 
   /**
+   * M7 shipped a defect where a newline inside a filename injected a phantom
+   * line into rendered `map.md`. `own` renders a second, softer target on the
+   * same line-oriented surface: **acceptance-criterion text**, which is
+   * free-form prose a person types into `task.yaml` rather than a path git
+   * had to accept. `parseCriteriaString` splits on newlines, so a criterion
+   * cannot carry one — but nothing stops it carrying a TAB, and `own`'s rows
+   * are TAB-separated, so an unescaped one silently shifts the criterion into
+   * the ownership column of a parser reading this output. A control character
+   * does the same to a terminal.
+   *
+   * `formatOwnAnswer` escapes through `render.ts`'s `oneLine` for exactly
+   * this, but nothing pinned it on this surface — and "the code currently
+   * calls the right helper" is not the same claim as "a criterion cannot
+   * forge a field". Asserted on the shape of the whole rendered block: one
+   * line and the fixed number of tab-separated fields per answer, whatever
+   * the criterion text contains.
+   */
+  it("cannot let criterion text forge a row or a field in own's rendered output", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, { "src/auth.ts": "export {}\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    const task = createTask(octobotsDir, mission.id, {
+      // A tab (own's own field separator) and a bell, inside authored prose.
+      name: "T1.1 - JWT",
+      acceptanceCriteria: "- [ ] the auth token\tis\u0007validated",
+    });
+    writeWorklog(root, [
+      { session_id: "s1", task: task.id, branch: "feat/x-t1", merged_sha: sha, at: "2026-08-10T00:00:00.000Z" },
+    ]);
+
+    const result = runCli(["own", "src/auth.ts"], root, NOW);
+    expect(result.code).toBe(0);
+    const lines = result.stdout.trimEnd().split("\n");
+    expect(lines).toHaveLength(1); // one answer, one row
+    expect(lines[0]?.split("\t")).toHaveLength(3); // path, ownership, criterion
+    expect(result.stdout).toContain("token\\x09is\\x07validated");
+    expect(result.stdout).not.toContain("token\tis");
+  });
+
+  /**
    * The rendered half of `own.test.ts`'s "names no criterion…" regression: a
    * file whose owning task's criteria share nothing with its path must not
    * print a criterion under the row's `provenance` badge. It used to print
