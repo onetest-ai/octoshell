@@ -31,6 +31,9 @@ export {
   type LexicalMatch,
   type LexicalOptions,
 } from "./lexical.js";
+// T4.4's own surface: the `own` query itself, over `board.ts`/`attribution.ts`/
+// `lexical.ts`. Added in the same commit, same reason as every entry above.
+export { own, type OwnAnswer } from "./own.js";
 export {
   hasBoard,
   readArtifact,

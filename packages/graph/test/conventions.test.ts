@@ -475,6 +475,9 @@ describe("package conventions", () => {
       // case, not the fallback (see attribution.ts). Added in the same
       // commit, same reason as every entry above.
       "predictFiles",
+      // T4.4's own surface: the `own` query itself. Added in the same
+      // commit, same reason as every entry above.
+      "own",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }
