@@ -12,6 +12,11 @@ import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const SRC = join(__dirname, "..", "src", "host", "octograph.ts");
 
+/** `packages/graph/test/paths.test.ts` — the twin suite this one's escape-vector list is pinned
+ *  to. Read, never imported: the extension has no dependency on `@octoshell/graph` (criterion 4)
+ *  and this must not create one. A rename breaks the read loudly rather than silently passing. */
+const TWIN_SUITE = join(__dirname, "..", "..", "..", "packages", "graph", "test", "paths.test.ts");
+
 describe("graphCommand", () => {
   it("produces the documented bare-node invocation for setup", () => {
     expect(graphCommand("setup")).toBe(`node ${GRAPH_RELATIVE_PATH} setup`);
@@ -39,27 +44,47 @@ describe("artifactPath", () => {
     const repo = mkdtempClean("octograph-artifact-");
     expect(artifactPath(repo)).toBe(join(repo, ".octograph"));
   });
+
+  it("does NOT honour octograph.yaml's `out:` — the one resolveOut branch it does not mirror", () => {
+    // Pins the documented gap so it stays visible instead of being rediscovered by a consumer
+    // that trusted "where the artifact is". `packages/graph/src/artifact.ts`'s `resolveOut`
+    // returns `resolve(repoRoot, config.out)` when `out:` is set and containment-clean — it wins
+    // over BOTH branches above — so for such a workspace this function's answer and the real run's
+    // answer differ. Covering it would need a third spelling of `loadConfig`'s YAML read plus its
+    // containment check, neither importable here (criterion 4). If a future task closes the gap,
+    // this test fails and forces the doc comment on `artifactPath` to be corrected with it.
+    const repo = mkdtempClean("octograph-artifact-");
+    writeFileSync(join(repo, "octograph.yaml"), "out: build/graph\n");
+    expect(artifactPath(repo)).toBe(join(repo, ".octograph"));
+    expect(artifactPath(repo)).not.toBe(join(repo, "build", "graph"));
+  });
 });
 
 /**
- * The three escape vectors `packages/graph/src/paths.ts`'s `insideRepo` is tested against (see
- * `packages/graph/test/paths.test.ts`): a `..` traversal, an absolute path elsewhere, and a
- * symlink whose real target escapes. This module hand-duplicates `insideRepo`'s containment
- * check (it cannot import `@octoshell/graph` — mission criterion 4), so this list is the ONE
- * place `impactArgv`'s escape-vector coverage is enumerated. If a vector is added here, add the
- * matching case to `paths.test.ts` too, and vice versa — the two suites must never quietly
- * diverge on what counts as "escapes the root".
+ * The escape vectors `impactArgv`'s containment check is tested against — and, because that check
+ * is a hand-duplicated TWIN of `packages/graph/src/paths.ts`'s `insideRepo` (unimportable here,
+ * mission criterion 4), the vectors `insideRepo` must be tested against too.
+ *
+ * This is HALF of one shared list, not two lists that happen to look alike. Each entry's `id`
+ * matches an `// escape-vector: <id>` marker on the corresponding case in
+ * `packages/graph/test/paths.test.ts`, and the "escape-vector lists agree" guard below fails when
+ * the two sets differ in either direction. That guard is not decoration: when it was written the
+ * lists HAD already diverged — `absolute-elsewhere` was tested only here, while a comment in three
+ * places (this file, `octograph.ts`, the PR body) claimed all three were tested on both sides.
  */
-const ESCAPE_VECTORS: { name: string; buildPath: (root: string) => string }[] = [
+const ESCAPE_VECTORS: { id: string; name: string; buildPath: (root: string) => string }[] = [
   {
+    id: "dotdot-traversal",
     name: "'..' traversal",
     buildPath: () => "../outside",
   },
   {
+    id: "absolute-elsewhere",
     name: "absolute path elsewhere",
     buildPath: (root) => resolve(dirname(root), "definitely-elsewhere", "file.ts"),
   },
   {
+    id: "symlink-escape",
     name: "symlink whose target escapes",
     buildPath: (root) => {
       const outside = mkdtempClean("octograph-outside-");
@@ -107,6 +132,37 @@ describe("impactArgv — path containment", () => {
     const argv = impactArgv(root, "src/foo.ts");
     expect(argv).toEqual(["node", GRAPH_RELATIVE_PATH, "impact", "src/foo.ts"]);
   });
+
+  it("rejects an empty path rather than emitting an empty argv element", () => {
+    // `resolve(root, "")` is the root itself, so containment ALONE accepts `""` and the argv
+    // would carry an empty element — a value no caller means and every downstream string-join
+    // (`sendText`, a shell history entry) renders as nothing at all. Reject at the seam.
+    const root = mkdtempClean("octograph-impact-");
+    expect(impactArgv(root, "")).toBeNull();
+    expect(impactArgv(root, "   ")).toBeNull();
+  });
+});
+
+describe("escape-vector lists agree with the twin suite", () => {
+  /**
+   * The pin that makes the duplicated containment rule VISIBLE rather than silently re-derived.
+   *
+   * `impactArgv`'s containment check is a second spelling of `packages/graph/src/paths.ts`'s
+   * `insideRepo` — unimportable here by mission criterion 4 — so nothing but a test can keep the
+   * two honest about which escapes they cover. This reads the twin suite's
+   * `// escape-vector: <id>` markers and requires the set to equal {@link ESCAPE_VECTORS}'s ids,
+   * in BOTH directions: adding a vector on either side without the other is a red test.
+   *
+   * Proven, not assumed: this guard failed on the tree it was written against
+   * (`absolute-elsewhere` was tested only in the extension suite, while three separate comments
+   * claimed both suites tested all three).
+   */
+  it("has the same vector ids as packages/graph/test/paths.test.ts", () => {
+    const twin = readFileSync(TWIN_SUITE, "utf8");
+    const marked = [...twin.matchAll(/\/\/\s*escape-vector:\s*([a-z0-9-]+)/g)].map((m) => m[1]);
+    expect(marked.length).toBeGreaterThan(0); // a rename/rewrite that drops the markers is a failure, not a pass
+    expect([...marked].sort()).toEqual(ESCAPE_VECTORS.map((v) => v.id).sort());
+  });
 });
 
 describe("conflictsArgv — task-id validation", () => {
@@ -143,9 +199,26 @@ describe("conflictsArgv — task-id validation", () => {
 });
 
 describe("octograph.ts imports vscode nowhere", () => {
-  it("contains no import of the vscode module", () => {
+  /**
+   * Every syntactic way the `vscode` module specifier can enter this file, not just the static
+   * `from "vscode"` form. A DYNAMIC `await import("vscode")` is the realistic edit that slipped
+   * past the original two patterns — esbuild bundles it and the extension host resolves it, so it
+   * works at runtime and nothing else in the suite would have noticed; this module would just
+   * quietly stop being unit-testable outside a host. Verified by planting each form in turn and
+   * watching this test go red, then removing it.
+   */
+  it("names the vscode module in no import form — static, dynamic, bare, or require", () => {
     const source = readFileSync(SRC, "utf8");
-    expect(source).not.toMatch(/from\s+["']vscode["']/);
-    expect(source).not.toMatch(/require\(\s*["']vscode["']\s*\)/);
+    // Strip comments first: the doc comments here TALK about `vscode.Terminal.sendText` and
+    // `vscode` the API, and a guard that trips on prose is a guard people delete.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    for (const pattern of [
+      /from\s+["']vscode["']/, // import x from "vscode"
+      /import\s*\(\s*["']vscode["']\s*\)/, // await import("vscode")
+      /import\s+["']vscode["']/, // import "vscode"
+      /require\s*\(\s*["']vscode["']\s*\)/, // require("vscode")
+    ]) {
+      expect(code).not.toMatch(pattern);
+    }
   });
 });

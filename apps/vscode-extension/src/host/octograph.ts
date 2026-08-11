@@ -1,9 +1,11 @@
 /**
  * octograph's thin-launcher command construction — pure functions only, no `vscode` import (see
  * `test/octograph.test.ts`'s "imports vscode nowhere" guard, which is what keeps this true rather
- * than a comment nobody re-checks). `octograph-command.ts` is the glue that actually creates a
- * terminal and sends what `graphCommand` builds; this module never touches the VS Code API, so it
- * stays unit-testable without a running extension host.
+ * than a comment nobody re-checks). The glue that creates a terminal and sends what `graphCommand`
+ * builds is a SEPARATE, not-yet-written module (M6's next task, planned as `octograph-command.ts`
+ * — no such file exists yet, and this comment is a forward reference, not a description of one);
+ * this module never touches the VS Code API, so it stays unit-testable without a running
+ * extension host.
  *
  * TWO validators, deliberately, because the arguments this module handles are not the same
  * shape:
@@ -33,10 +35,19 @@ export function graphCommand(cmd: "setup" | "map"): string {
 /**
  * `.octobots/graph` when the workspace has a board, `.octograph` otherwise.
  *
- * Mirrors `packages/graph/src/artifact.ts`'s `hasBoard`/`resolveOut` two-branch resolution (that
- * module's `.octobots` existence check is the one place the graph package itself asks the
- * question). This is a plain read, never a write: it must agree with what a real `octograph map`
- * run would resolve to without ever creating `.octobots/` in a workspace that has none.
+ * Mirrors TWO of `packages/graph/src/artifact.ts`'s `resolveOut` THREE branches — its
+ * `hasBoard(repoRoot)` split, whose `.octobots` existence check is the one place the graph package
+ * itself asks the question. This is a plain read, never a write: it never creates `.octobots/` in
+ * a workspace that has none.
+ *
+ * **It does NOT cover `resolveOut`'s first branch**, and a caller must not read it as "where the
+ * run wrote". `resolveOut` returns `resolve(repoRoot, config.out)` when `octograph.yaml` sets a
+ * containment-clean `out:`, and that wins over BOTH branches below. Honouring it here would mean a
+ * third spelling of `loadConfig`'s YAML read and of the containment check `out` is validated
+ * with — the extension cannot import either (mission criterion 4) — so this deliberately stays the
+ * default-location answer and says so rather than claiming agreement it cannot deliver. A consumer
+ * that must show the user where the artifact actually landed should read the path back from the
+ * run, not compute it here; `test/octograph.test.ts` pins this gap so it stays visible.
  */
 export function artifactPath(repoRoot: string): string {
   return existsSync(join(repoRoot, ".octobots"))
@@ -112,10 +123,13 @@ function resolvedWorkspaceRoot(repoRoot: string): string {
  * same threat: `path` here is caller-supplied (VS Code command input, or a future CLI-driven
  * call), not trusted structure.
  *
- * `ESCAPE_VECTORS` in `test/octograph.test.ts` names the three forms this is tested against — the
- * same three `packages/graph/test/paths.test.ts` tests `insideRepo` against — so the two suites'
- * coverage cannot quietly diverge on what counts as "escapes the root". If a vector is added to
- * one, add it to the other by hand; there is no shared import to do it for you.
+ * `ESCAPE_VECTORS` in `test/octograph.test.ts` names the forms this is tested against, and each
+ * entry's id must match an `// escape-vector: <id>` marker on the corresponding case in
+ * `packages/graph/test/paths.test.ts`. That equality is ENFORCED by the "escape-vector lists
+ * agree" test, in both directions — not asserted by this comment. There is no shared import to
+ * keep the two halves aligned, so a test does it: adding a vector on one side only is a red test,
+ * which is exactly how the original divergence here was found (`absolute-elsewhere` was tested
+ * only on the extension side while three comments claimed both suites covered it).
  *
  * Returns the resolved, realpath'd absolute path when `path` is inside the workspace, or `null`
  * when it escapes.
@@ -134,6 +148,13 @@ function insideWorkspace(repoRoot: string, path: string): string | null {
  * rejected character is still one `sendText` string-join away from reintroducing the very
  * injection this guard exists to prevent. A legitimate path with a space or a dot is unaffected —
  * neither is in this set.
+ *
+ * `\` IS in this set, which on Windows also rejects a native separator: a caller there must pass
+ * the forward-slash spelling (`Uri.fsPath` is backslash-separated — `asRelativePath` or a manual
+ * `split(sep).join("/")` is what to hand this function). Deliberate: `\` is the shell escape
+ * character, and admitting it to spare Windows callers a conversion would reopen the hole this set
+ * exists to close. Stated here because the first Windows consumer will otherwise read a blanket
+ * rejection as a bug.
  */
 const SHELL_METACHARACTERS = /[;&|`$()<>\n\r"'\\*?~#!{}[\]]/;
 
@@ -170,6 +191,11 @@ const SAFE_TASK_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
  * the next mission's problem, not solved here.
  */
 export function impactArgv(repoRoot: string, path: string): string[] | null {
+  // Blank first: `resolve(root, "")` IS the root, so containment alone accepts an empty path and
+  // would put an empty string in the argv — a value no caller means, and one that vanishes
+  // entirely in any downstream string-join (`sendText`, a shell history entry), turning
+  // `impact <path>` into a different command than the one that was validated.
+  if (path.trim() === "") return null;
   if (SHELL_METACHARACTERS.test(path)) return null;
   if (insideWorkspace(repoRoot, path) === null) return null;
   return ["node", GRAPH_RELATIVE_PATH, "impact", path];
