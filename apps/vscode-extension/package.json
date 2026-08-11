@@ -255,7 +255,7 @@
     }
   },
   "scripts": {
-    "build": "node esbuild.mjs && vite build",
+    "build": "node scripts/graph-payload.mjs --verify && node esbuild.mjs && vite build",
     "build:host": "node esbuild.mjs",
     "build:webview": "vite build",
     "watch:host": "node esbuild.mjs --watch",
@@ -263,7 +263,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit",
     "lint": "eslint src",
     "test": "vitest run --passWithNoTests",
-    "package": "node scripts/package-vsix.mjs"
+    "package": "node scripts/package-vsix.mjs",
+    "graph:payload:write": "node scripts/graph-payload.mjs --write"
   },
   "dependencies": {
     "@octoshell/board": "workspace:*",
