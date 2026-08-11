@@ -98,9 +98,42 @@ describe("setup-io — the real SetupIO", () => {
     expect(result.code).toBe(3);
   });
 
+  /**
+   * `exec()`'s catch block falls all the way through to `err.message` only
+   * when the thrown error carries no `.stdout`/`.stderr` strings at all —
+   * true for a spawn failure (ENOENT) but NOT for one: Node's own ENOENT
+   * error already carries `stdout: ""`/`stderr: ""` (both real strings), so
+   * that path never reaches the fallback. A `file` argument containing a
+   * null byte throws a synchronous `ERR_INVALID_ARG_VALUE` instead — no
+   * `.stdout`, no `.stderr`, no numeric `.code`, only a `.message` — which is
+   * the one shape that actually exercises every fallback in the catch block
+   * (code -> 1, stdout -> "", stderr -> the message). No process is spawned
+   * either way: Node rejects before ever reaching the OS.
+   */
+  it("exec() falls back to the error's message when it carries no stdout/stderr strings", async () => {
+    const result = await realSetupIO.exec("bad\0path", []);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("null bytes");
+  });
+
   it("which() resolves null for a binary that does not exist on PATH", async () => {
     const found = await realSetupIO.which("octograph-definitely-not-a-real-binary-xyz");
     expect(found).toBeNull();
+  });
+
+  /**
+   * The success path — `which`/`where` DOES find something, and `which()`
+   * has to parse its stdout (trim, drop blank lines, take the first
+   * survivor) rather than just checking the exit code. `"node"` is the
+   * harmless real lookup: whatever runs this test suite is a `node`
+   * process, so `node` is guaranteed on this machine's `PATH` without this
+   * file asserting anything about `uv`.
+   */
+  it("which() resolves the real path for a binary that IS on PATH", async () => {
+    const found = await realSetupIO.which("node");
+    expect(found).not.toBeNull();
+    expect(found).toMatch(/node(\.exe)?$/);
   });
 
   it("which() reaches execFile too, never exec()/spawn()", async () => {
@@ -198,5 +231,48 @@ describe("setup-io — prompt", () => {
   it("declines, rather than hanging, when stdin closes with no answer", { timeout: 10_000 }, async () => {
     const { answer } = await promptWith(Readable.from([]));
     expect(answer).toBe(false);
+  });
+});
+
+/**
+ * `log()` — the one piece of `realSetupIO` no other test in this file
+ * touches. Both branches matter: a line `runSetup` already terminated with
+ * `\n` (postflight text, which formats multi-line output itself) must not
+ * get a second one appended, and a line that didn't must.
+ */
+describe("setup-io — log", () => {
+  function captureStdoutWrite(): { calls: string[]; restore: () => void } {
+    const calls: string[] = [];
+    const original = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string) => {
+      calls.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    return {
+      calls,
+      restore: () => {
+        process.stdout.write = original;
+      },
+    };
+  }
+
+  it("appends a newline to a line that doesn't already end with one", () => {
+    const capture = captureStdoutWrite();
+    try {
+      realSetupIO.log("octograph: ready");
+    } finally {
+      capture.restore();
+    }
+    expect(capture.calls).toEqual(["octograph: ready\n"]);
+  });
+
+  it("does not double a newline a caller already terminated the line with", () => {
+    const capture = captureStdoutWrite();
+    try {
+      realSetupIO.log("octograph: ready\n");
+    } finally {
+      capture.restore();
+    }
+    expect(capture.calls).toEqual(["octograph: ready\n"]);
   });
 });
