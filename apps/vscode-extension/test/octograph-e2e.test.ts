@@ -7,7 +7,7 @@
 // re-computing the `.octobots/graph` vs `.octograph` fallback, or the installed-payload path, a
 // second time).
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,13 +16,13 @@ import { launchInstallGraph, launchRebuildGraph } from "../src/host/octograph-co
 import { GRAPH_RELATIVE_PATH, graphStatus, installGraph } from "../src/host/octograph-install.js";
 import { artifactPath, graphCommand } from "../src/host/octograph.js";
 import { OCTOBOTS_PACK_VERSION, installPack, packStatus } from "../src/host/octobots-skill.js";
+import { TERMINAL_EVENTS } from "./fixtures/terminal-events.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 /** The extension's own shipped pack resources — the real payload these tests install and run. */
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
 
-const OCTOGRAPH_HOST = join(__dirname, "..", "src", "host", "octograph.ts");
-const OCTOGRAPH_COMMAND_HOST = join(__dirname, "..", "src", "host", "octograph-command.ts");
+const HOST_DIR = join(__dirname, "..", "src", "host");
 
 function git(root: string, args: string[]): void {
   execFileSync("git", args, { cwd: root, stdio: "pipe" });
@@ -178,7 +178,11 @@ describe("T6.5/Step 3 — Rebuild Graph against a real workspace writes at the r
     launchRebuildGraph(repo);
 
     const sentCommand = t.sendText.mock.calls[0]?.[0] as string;
-    runLauncherCommand(sentCommand, repo);
+    // Asserted on BOTH branches, not just the board one: a `map` that exited non-zero and left a
+    // stale artifact behind would satisfy the existence checks below on their own.
+    const result = runLauncherCommand(sentCommand, repo);
+    expect(result.stderr).not.toMatch(/cannot find module|err_module_not_found/i);
+    expect(result.status).toBe(0);
 
     const outDir = artifactPath(repo);
     expect(existsSync(join(outDir, "map.md"))).toBe(true);
@@ -192,85 +196,199 @@ describe("T6.5/Step 4 — the launcher stays thin: grepped, not reviewed", () =>
    * forbidden pattern inside a doc comment as a warning (`octograph-command.ts`'s header literally
    * quotes `writeFileSync` and `terminal.exitStatus` as examples of a violation a PRIOR, weaker
    * test let through) — a raw substring grep would flag that prose as the violation it is
-   * documenting against. Exact here, not a heuristic: verified below that neither host module has
-   * `//` inside a string literal, which is what would make a line-based strip lie.
+   * documenting against. Exact here, not a heuristic: the precondition test below pins the one
+   * thing that would make a line-based strip LOSE code — a `//` sitting inside a string literal,
+   * after which the strip would delete real code to the end of that line and hide a violation.
    */
-  function codeOnly(source: string): string {
-    return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  function stripBlockComments(source: string): string {
+    // Newlines preserved, so line numbers still mean something to the precondition test below and
+    // so `^(?:let|var)` keeps meaning "at the start of a line" rather than "wherever a removed doc
+    // comment happened to leave the cursor".
+    return source.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ""));
   }
 
-  const FORBIDDEN: readonly { category: string; pattern: RegExp }[] = [
-    // Output capture — reading back what the terminal/process produced.
-    { category: "output capture", pattern: /\.exitStatus\b/ },
-    { category: "output capture", pattern: /\.processId\b/ },
-    { category: "output capture", pattern: /shellIntegration/ },
-    { category: "output capture", pattern: /onDidWriteTerminalData/ },
-    { category: "output capture", pattern: /\.stdout\b/ },
-    { category: "output capture", pattern: /\.stderr\b/ },
-    { category: "output capture", pattern: /\bexecFile\b/ },
-    { category: "output capture", pattern: /\bexecSync\b/ },
-    { category: "output capture", pattern: /\bspawnSync\b/ },
-    { category: "output capture", pattern: /\bspawn\s*\(/ },
-    { category: "output capture", pattern: /child_process/ },
-    // Exit / close handlers — any terminal lifecycle registrar.
-    { category: "exit/close handler", pattern: /onDidCloseTerminal/ },
-    { category: "exit/close handler", pattern: /onDidOpenTerminal/ },
-    { category: "exit/close handler", pattern: /onDidChangeActiveTerminal/ },
-    { category: "exit/close handler", pattern: /onDidChangeTerminalState/ },
-    { category: "exit/close handler", pattern: /onDidChangeTerminalShellIntegration/ },
-    { category: "exit/close handler", pattern: /onDidStartTerminalShellExecution/ },
-    { category: "exit/close handler", pattern: /onDidEndTerminalShellExecution/ },
-    { category: "exit/close handler", pattern: /process\.on\s*\(/ },
-    { category: "exit/close handler", pattern: /\.on\s*\(\s*["'](exit|close)["']/ },
-    // State writes — anything that changes what's on disk.
-    { category: "state write", pattern: /writeFileSync\s*\(/ },
-    { category: "state write", pattern: /\bwriteFile\s*\(/ },
-    { category: "state write", pattern: /appendFileSync\s*\(/ },
-    { category: "state write", pattern: /\bappendFile\s*\(/ },
-    { category: "state write", pattern: /mkdirSync\s*\(/ },
-    { category: "state write", pattern: /renameSync\s*\(/ },
-    { category: "state write", pattern: /rmSync\s*\(/ },
-    { category: "state write", pattern: /copyFileSync\s*\(/ },
-    { category: "state write", pattern: /createWriteStream\s*\(/ },
-    { category: "state write", pattern: /fs\.promises\./ },
+  function codeOnly(source: string): string {
+    return stripBlockComments(source).replace(/\/\/.*$/gm, "");
+  }
+
+  /**
+   * The forbidden-pattern set, as ONE list of cases: every rule carries the `sample` that must
+   * trip it. The meta-tests below run that sample through the whole set, so a rule whose regex is
+   * typo'd, or silently made unmatchable, fails BY ID instead of sitting in the array looking
+   * enforced. The previous shape asserted only that *some* rule fired on one hand-written snippet
+   * — 30 dead patterns would have passed it.
+   *
+   * The categories are the four properties the mission forbids, not three: "state tracking" and
+   * "post-run verification" are here because planting them proved both gates blind to them
+   * (verified 2026-08-11 — a module-scope `let lastRun` plus a `setTimeout` that reported the run
+   * afterwards passed BOTH this suite and `octograph-command.test.ts` green; the behavioural gate
+   * cannot see either, because neither touches the terminal or the workspace's file tree).
+   */
+  type Category =
+    | "output capture"
+    | "terminal event registrar"
+    | "state write"
+    | "state tracking"
+    | "post-run verification";
+
+  interface Rule {
+    readonly id: string;
+    readonly category: Category;
+    readonly pattern: RegExp;
+    readonly sample: string;
+  }
+
+  const RULES: readonly Rule[] = [
+    // Output capture — reading back what the terminal or a spawned process produced.
+    { id: "exitStatus", category: "output capture", pattern: /\.exitStatus\b/, sample: "const x = terminal.exitStatus;" },
+    { id: "processId", category: "output capture", pattern: /\.processId\b/, sample: "void terminal.processId;" },
+    { id: "shellIntegration", category: "output capture", pattern: /shellIntegration/, sample: "terminal.shellIntegration?.executeCommand(a);" },
+    { id: "stdout", category: "output capture", pattern: /\.stdout\b/, sample: "const o = result.stdout;" },
+    { id: "stderr", category: "output capture", pattern: /\.stderr\b/, sample: "const e = result.stderr;" },
+    { id: "execFile", category: "output capture", pattern: /\bexecFile(?:Sync)?\s*\(/, sample: "execFileSync('node', []);" },
+    { id: "exec", category: "output capture", pattern: /\bexec(?:Sync)?\s*\(/, sample: "execSync('node');" },
+    { id: "spawn", category: "output capture", pattern: /\bspawn(?:Sync)?\s*\(/, sample: "spawnSync('node', []);" },
+    { id: "child_process", category: "output capture", pattern: /child_process/, sample: 'import { exec } from "node:child_process";' },
+    // Terminal lifecycle registrars — the SHARED list, so this half of the gate and
+    // `octograph-command.test.ts`'s behavioural half can never cover different registrars.
+    ...TERMINAL_EVENTS.map(
+      (name): Rule => ({
+        id: `window.${name}`,
+        category: "terminal event registrar",
+        pattern: new RegExp(`\\b${name}\\b`),
+        sample: `vscode.window.${name}(() => {});`,
+      }),
+    ),
+    { id: "process.on", category: "terminal event registrar", pattern: /process\.on\s*\(/, sample: "process.on('exit', () => {});" },
+    { id: "on-exit-close", category: "terminal event registrar", pattern: /\.on\s*\(\s*["'](exit|close)["']/, sample: "child.on('close', () => {});" },
+    // State writes — anything that changes what is on disk.
+    { id: "writeFileSync", category: "state write", pattern: /writeFileSync\s*\(/, sample: 'writeFileSync("x", "y");' },
+    { id: "writeFile", category: "state write", pattern: /\bwriteFile\s*\(/, sample: 'await writeFile("x", "y");' },
+    { id: "appendFileSync", category: "state write", pattern: /appendFileSync\s*\(/, sample: 'appendFileSync("x", "y");' },
+    { id: "appendFile", category: "state write", pattern: /\bappendFile\s*\(/, sample: 'await appendFile("x", "y");' },
+    { id: "mkdirSync", category: "state write", pattern: /mkdirSync\s*\(/, sample: 'mkdirSync("x");' },
+    { id: "renameSync", category: "state write", pattern: /renameSync\s*\(/, sample: 'renameSync("a", "b");' },
+    { id: "rmSync", category: "state write", pattern: /rmSync\s*\(/, sample: 'rmSync("x");' },
+    { id: "copyFileSync", category: "state write", pattern: /copyFileSync\s*\(/, sample: 'copyFileSync("a", "b");' },
+    { id: "createWriteStream", category: "state write", pattern: /createWriteStream\s*\(/, sample: 'createWriteStream("x");' },
+    { id: "fs.promises", category: "state write", pattern: /fs\.promises\./, sample: 'await fs.promises.writeFile("x", "y");' },
+    // State tracking — remembering that a run happened, in memory or in VS Code's own stores.
+    // These leave the workspace file tree untouched, which is exactly why the tree-snapshot gate
+    // in `octograph-command.test.ts` cannot see them.
+    { id: "module-scope-let", category: "state tracking", pattern: /^(?:let|var)\s/m, sample: "let lastRun: number | undefined;" },
+    { id: "globalState", category: "state tracking", pattern: /globalState/, sample: 'context.globalState.update("lastRun", 1);' },
+    { id: "workspaceState", category: "state tracking", pattern: /workspaceState/, sample: 'context.workspaceState.update("lastRun", 1);' },
+    { id: "Memento", category: "state tracking", pattern: /\bMemento\b/, sample: "function f(m: vscode.Memento): void {}" },
+    { id: "setContext", category: "state tracking", pattern: /["']setContext["']/, sample: 'void vscode.commands.executeCommand("setContext", "x", true);' },
+    // Post-run verification — coming back later to judge whether the run worked. `doctor`, inside
+    // the terminal, is what judges that; the launcher opens the terminal and stops.
+    { id: "setTimeout", category: "post-run verification", pattern: /\bsetTimeout\s*\(/, sample: "setTimeout(() => check(), 5000);" },
+    { id: "setInterval", category: "post-run verification", pattern: /\bsetInterval\s*\(/, sample: "setInterval(() => check(), 500);" },
+    { id: "nextTick", category: "post-run verification", pattern: /process\.nextTick\s*\(/, sample: "process.nextTick(() => check());" },
+    { id: "queueMicrotask", category: "post-run verification", pattern: /\bqueueMicrotask\s*\(/, sample: "queueMicrotask(() => check());" },
+    { id: "watchFile", category: "post-run verification", pattern: /\bwatch(?:File)?\s*\(/, sample: 'watch(outDir, () => check());' },
   ];
 
-  it("precondition: neither host module has `//` inside a string literal, so a line-based comment strip is exact", () => {
-    for (const path of [OCTOGRAPH_HOST, OCTOGRAPH_COMMAND_HOST]) {
-      const src = readFileSync(path, "utf8");
-      expect(src).not.toContain("http://");
-      expect(src).not.toContain("https://");
+  /**
+   * Which categories a module is excused from, and why. Per-CATEGORY, never per-file: exempting a
+   * whole module would have silently excused `octograph-install.ts` from the output-capture,
+   * registrar and post-run-verification rules it has no business breaking either.
+   */
+  const EXEMPTIONS: Readonly<Record<string, readonly Category[]>> = {
+    // The payload copy IS a state write, and it is the command's whole point — the ONE write in
+    // this mission, gated on the user explicitly invoking "Octobots: Install Graph"
+    // (`octograph-command.ts`). Every other category still applies to it.
+    "octograph-install.ts": ["state write"],
+  };
+
+  /**
+   * The modules under test, DISCOVERED rather than hand-listed. A hand-typed pair is exactly the
+   * shape of guard this mission's brief warns about: dropping a new `src/host/octograph-run.ts`
+   * carrying a `writeFileSync` and an `onDidCloseTerminal` registration next to the two named
+   * files left the whole suite green (verified 2026-08-11, by planting that file). Discovery makes
+   * a new octograph host module scanned the moment it exists.
+   */
+  function octographHostModules(): string[] {
+    return readdirSync(HOST_DIR)
+      .filter((f) => /^octograph.*\.ts$/.test(f))
+      .sort();
+  }
+
+  function violations(source: string, exempt: readonly Category[] = []): string[] {
+    const stripped = codeOnly(source);
+    return RULES.filter((r) => !exempt.includes(r.category) && r.pattern.test(stripped)).map(
+      (r) => `${r.category}: ${r.id}`,
+    );
+  }
+
+  it("meta: every rule matches its own sample, so a dead pattern fails by id instead of hiding", () => {
+    const dead = RULES.filter((r) => !r.pattern.test(codeOnly(r.sample))).map((r) => r.id);
+    expect(dead).toEqual([]);
+  });
+
+  it("meta: rule ids are unique, so a hit names exactly one rule", () => {
+    const ids = RULES.map((r) => r.id);
+    expect(ids.length).toBe(new Set(ids).size);
+  });
+
+  it("meta: every sample IS caught by the full set (the guard is not vacuously green)", () => {
+    for (const rule of RULES) {
+      expect({ id: rule.id, hits: violations(rule.sample) }).toEqual({
+        id: rule.id,
+        hits: expect.arrayContaining([`${rule.category}: ${rule.id}`]),
+      });
     }
   });
 
-  it("self-test: the pattern set catches a planted violation OUTSIDE a comment (proves this is not vacuously green)", () => {
-    const planted =
-      'const x = terminal.exitStatus;\nwriteFileSync("x", "y");\nvscode.window.onDidCloseTerminal(() => {});\n';
-    const hits = FORBIDDEN.filter((f) => f.pattern.test(codeOnly(planted)));
-    expect(hits.length).toBeGreaterThan(0);
+  it("meta: no sample is flagged when it appears only inside a comment", () => {
+    for (const rule of RULES) {
+      expect({ id: rule.id, hits: violations(`// ${rule.sample}\n`) }).toEqual({ id: rule.id, hits: [] });
+      expect({ id: rule.id, hits: violations(`/**\n * ${rule.sample}\n */\n`) }).toEqual({ id: rule.id, hits: [] });
+    }
   });
 
-  it("does NOT flag the same words when they appear only in a comment (the false positive real doc comments here would otherwise trip)", () => {
-    const commentOnly =
-      '// a planted `writeFileSync` and a planted `terminal.exitStatus` read both passed it green\n' +
-      "// registering vscode.window.onDidCloseTerminal would be the same class of violation\n";
-    const hits = FORBIDDEN.filter((f) => f.pattern.test(codeOnly(commentOnly)));
-    expect(hits).toEqual([]);
+  it("precondition: no host module puts `//` inside a string literal, so the comment strip loses no code", () => {
+    for (const name of octographHostModules()) {
+      // Block comments blanked first (line numbers preserved): a backtick or quote inside prose is
+      // not a string literal, and `octograph-install.ts`'s doc comment legitimately writes
+      // "the `// octobots-pack-version: N` marker".
+      const lines = stripBlockComments(readFileSync(join(HOST_DIR, name), "utf8")).split("\n");
+      for (const [i, line] of lines.entries()) {
+        const at = line.indexOf("//");
+        if (at < 0) continue;
+        // A quote before the `//` on the same line is the only way `//` is NOT a comment start;
+        // the strip would then delete real code after it. Reported with the line so a future
+        // violation is a one-line fix, not a mystery.
+        expect({ file: name, line: i + 1, quotedBefore: /["'`]/.test(line.slice(0, at)) }).toEqual({
+          file: name,
+          line: i + 1,
+          quotedBefore: false,
+        });
+      }
+    }
   });
 
-  it("octograph.ts contains no output capture, no exit/close handler, and no state write, outside comments", () => {
-    const stripped = codeOnly(readFileSync(OCTOGRAPH_HOST, "utf8"));
-    // Sanity: the strip removed comments without eating the real code alongside them.
-    expect(stripped).toMatch(/export function graphCommand/);
-    const hits = FORBIDDEN.filter((f) => f.pattern.test(stripped)).map((f) => f.category);
-    expect(hits).toEqual([]);
+  it("meta: every module named in EXEMPTIONS still exists, and the launcher modules are discovered", () => {
+    const modules = octographHostModules();
+    expect(modules).toEqual(expect.arrayContaining(["octograph.ts", "octograph-command.ts", "octograph-install.ts"]));
+    for (const name of Object.keys(EXEMPTIONS)) expect(modules).toContain(name);
   });
 
-  it("octograph-command.ts contains no output capture, no exit/close handler, and no state write, outside comments", () => {
-    const stripped = codeOnly(readFileSync(OCTOGRAPH_COMMAND_HOST, "utf8"));
-    expect(stripped).toMatch(/terminal\.sendText\(graphCommand\(/);
-    const hits = FORBIDDEN.filter((f) => f.pattern.test(stripped)).map((f) => f.category);
-    expect(hits).toEqual([]);
+  it("no octograph host module captures output, registers a terminal event, tracks run state, or verifies after the fact", () => {
+    const found = octographHostModules().map((name) => ({
+      name,
+      hits: violations(readFileSync(join(HOST_DIR, name), "utf8"), EXEMPTIONS[name] ?? []),
+    }));
+    expect(found).toEqual(octographHostModules().map((name) => ({ name, hits: [] })));
+  });
+
+  it("sanity: the comment strip leaves the real code of both launcher modules intact", () => {
+    expect(codeOnly(readFileSync(join(HOST_DIR, "octograph.ts"), "utf8"))).toMatch(
+      /export function graphCommand/,
+    );
+    expect(codeOnly(readFileSync(join(HOST_DIR, "octograph-command.ts"), "utf8"))).toMatch(
+      /terminal\.sendText\(graphCommand\(/,
+    );
   });
 });
 
