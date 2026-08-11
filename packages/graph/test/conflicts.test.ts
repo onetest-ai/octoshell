@@ -123,8 +123,23 @@ describe("conflicts", () => {
     for (const p of pairs) {
       expect(p).toHaveProperty("shared");
       expect(p).toHaveProperty("coupled");
-      expect(Object.keys(p).sort()).toEqual(["a", "b", "coupled", "modules", "shared"]);
+      expect(Object.keys(p).sort()).toEqual(["a", "b", "coupled", "mode", "modules", "shared"]);
     }
+  });
+
+  /**
+   * Mission criterion: "every answer from `own` or `conflicts` names which
+   * mode produced it". `own` labels every row; a `conflicts` row printed
+   * beside it with no label reads as the stronger claim, when in fact both
+   * `shared` and `coupled` rest on `predictFiles`' guess about which files
+   * each task will touch. The regression this guards is the absence of the
+   * field entirely — the first version of `ConflictPair` had none.
+   */
+  it("labels every pair with the mode that produced it", () => {
+    const { files, analysis, edges, taskA, taskB, taskC } = ownershipFixture();
+    const pairs = conflicts(analysis, edges, files, [taskA, taskB, taskC]);
+    expect(pairs.length).toBeGreaterThan(0);
+    for (const p of pairs) expect(p.mode).toBe("predicted");
   });
 
   /**
@@ -166,6 +181,86 @@ describe("conflicts", () => {
     const taskB = task({ id: "t-b", criteria });
 
     expect(conflicts(analysis, edges, files, [taskA, taskB])).toEqual([]);
+  });
+
+  /**
+   * The regression: suppression that only looked at the OTHER files already
+   * in `shared`. A task criterion that names `package.json` and not the
+   * lockfile — the ordinary way one is written — puts the manifest in
+   * `shared` alone, where `classifyPair(f, f)` grades it `"candidate"`
+   * (its mechanical branch needs a manifest AND a lock, and no path is
+   * both). Two such tasks reported `shared: ["package.json"]`, i.e. exactly
+   * the "a manifest every task touches produces no conflict on its own"
+   * criterion failing, while the suite passed because its only manifest
+   * fixture wrote criteria naming both halves of the pair.
+   *
+   * The lockfile that settles it is in the candidate corpus, which is where
+   * `classifyPair` is now asked about it.
+   */
+  it("suppresses a manifest neither task's criteria pair with its lockfile", () => {
+    const files = ["package.json", "pnpm-lock.yaml", "src/app/server.ts"];
+    const analysis = moduleAnalysis([
+      { id: 0, name: "(repo root)", members: ["package.json", "pnpm-lock.yaml"], layer: null },
+      { id: 1, name: "src/app", members: ["src/app/server.ts"], layer: null },
+    ]);
+    // Names the manifest only — the lockfile is never mentioned, so it is
+    // not in either task's predicted surface and cannot be paired against
+    // from inside `shared`.
+    const criteria = ["bump the express dependency in package json"];
+    const taskA = task({ id: "t-a", criteria });
+    const taskB = task({ id: "t-b", criteria });
+
+    expect(conflicts(analysis, [], files, [taskA, taskB])).toEqual([]);
+  });
+
+  /**
+   * The boundary of the rule above, pinned so nobody "fixes" it into a
+   * name-shaped predicate: `classifyPair` calls a manifest mechanical only
+   * when a lockfile that GOVERNS it exists. With no lockfile anywhere in the
+   * corpus there is no evidence the coupling is mechanical, and two tasks
+   * both predicting the file are reported — the same evidence-before-claim
+   * rule the rest of this package is built on, rather than "the filename
+   * looks like a manifest, therefore ignore it".
+   */
+  it("does not suppress a manifest the corpus holds no governing lockfile for", () => {
+    const files = ["package.json", "src/app/server.ts"];
+    const analysis = moduleAnalysis([
+      { id: 0, name: "(repo root)", members: ["package.json"], layer: null },
+      { id: 1, name: "src/app", members: ["src/app/server.ts"], layer: null },
+    ]);
+    const criteria = ["bump the express dependency in package json"];
+    const pairs = conflicts(analysis, [], files, [
+      task({ id: "t-a", criteria }),
+      task({ id: "t-b", criteria }),
+    ]);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]?.shared).toEqual(["package.json"]);
+  });
+
+  /**
+   * `octograph.yaml`'s `lexicalConfidenceFloor` / `lexicalRunnerUpMargin`
+   * reach `predictFiles` from here (see `config.ts`'s `lexicalOptions`). The
+   * regression: `conflicts` called `predictFiles` with no options at all, so
+   * both keys were parsed, documented as "settable per repo" — and inert.
+   */
+  it("honours the caller's lexical gate rather than always using the default", () => {
+    const files = ["src/auth/session.ts", "src/token/store.ts"];
+    const analysis = moduleAnalysis([
+      { id: 0, name: "src/auth", members: ["src/auth/session.ts"], layer: null },
+      { id: 1, name: "src/token", members: ["src/token/store.ts"], layer: null },
+    ]);
+    // `session.ts` recovers 2 of the query's 3 scoring tokens (auth, session;
+    // `token` belongs to the other file, `validated` to neither) — a score of
+    // 2/3, comfortably over the default floor and under a 0.7 one.
+    const criteria = ["the auth session token is validated"];
+    const taskA = task({ id: "t-a", criteria });
+    const taskB = task({ id: "t-b", criteria });
+
+    const byDefault = conflicts(analysis, [], files, [taskA, taskB]);
+    expect(byDefault[0]?.shared).toEqual(["src/auth/session.ts"]);
+
+    const strict = conflicts(analysis, [], files, [taskA, taskB], { confidenceFloor: 0.7 });
+    expect(strict).toEqual([]);
   });
 
   it("reports nothing for a clean decomposition with no shared file and no coupling", () => {

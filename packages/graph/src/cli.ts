@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { analyze, type Analysis } from "./analyze.js";
 import { readArtifact, resolveOut, writeArtifact, type StoredGraph } from "./artifact.js";
 import { readBoard, type BoardTask, type BoardView } from "./board.js";
-import { loadConfig, type Config } from "./config.js";
+import { lexicalOptions, loadConfig, type Config } from "./config.js";
 import { conflicts as computeConflicts, type ConflictPair } from "./conflicts.js";
 import { doctor, exitCode, type Report } from "./doctor.js";
 import { drift as computeDrift, type DriftRow } from "./drift.js";
@@ -421,7 +421,7 @@ function runOwnCommand(
   const { files } = analyze(repoRoot, config, { now, since });
   const path = rawPath === null ? null : (repoRelative(repoRoot, rawPath) ?? rawPath);
 
-  const answers = computeOwn(repoRoot, board, log, files, path);
+  const answers = computeOwn(repoRoot, board, log, files, path, lexicalOptions(config));
   const stdout = json ? JSON.stringify(answers) + "\n" : formatOwn(answers);
   return { code: 0, stdout, stderr: "" };
 }
@@ -443,10 +443,25 @@ function formatModuleList(modules: string[]): string {
   return modules.length === 0 ? "(none)" : modules.map(oneLine).join(", ");
 }
 
+/**
+ * One `conflicts` row, carrying the mode that produced it — `(predicted)`,
+ * always, for the reason {@link ConflictPair.mode} states.
+ *
+ * Printed rather than left implicit: `own` labels every row it emits, and an
+ * unlabelled row from a sibling command in the same CLI reads as the stronger
+ * claim. Both halves of this row rest on a lexical guess about which files
+ * each task will touch, so the label sits on the pair, covering the whole
+ * line — there is no second, differently-evidenced half here of the kind that
+ * forced `own` to label its two clauses separately.
+ *
+ * `oneLine` on every interpolated identifier, same reason as
+ * {@link formatOwnAnswer}: a path or a board id may legally contain a control
+ * character, and this formatter joins rows with `\n` and fields with `\t`.
+ */
 function formatConflictPair(p: ConflictPair): string {
   const shared = p.shared.length === 0 ? "(none)" : p.shared.map(oneLine).join(", ");
   return (
-    `${oneLine(p.a)} <-> ${oneLine(p.b)}` +
+    `${oneLine(p.a)} <-> ${oneLine(p.b)} (${p.mode})` +
     `\tshared=${shared}\tcoupled=${p.coupled.toFixed(3)}\tmodules=${formatModuleList(p.modules)}`
   );
 }
@@ -525,7 +540,7 @@ function runConflictsCommand(
 
   // Same co-change graph `impact`/`drift`/`own` already answer against.
   const { analysis, edges, files } = analyze(repoRoot, config, { now, since });
-  const pairs = computeConflicts(analysis, edges, files, resolved.tasks);
+  const pairs = computeConflicts(analysis, edges, files, resolved.tasks, lexicalOptions(config));
   const stdout = json ? JSON.stringify(pairs) + "\n" : formatConflicts(pairs);
   return { code: 0, stdout, stderr: "" };
 }

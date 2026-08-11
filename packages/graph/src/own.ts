@@ -21,7 +21,7 @@
 import { statSync } from "node:fs";
 import { attribute, type AttributionMode } from "./attribution.js";
 import type { BoardTask, BoardView } from "./board.js";
-import { predictFiles, tokenize } from "./lexical.js";
+import { predictFiles, tokenize, type LexicalOptions } from "./lexical.js";
 import { insideRepo } from "./paths.js";
 import { compare } from "./rollup.js";
 import type { WorklogEntry } from "./worklog.js";
@@ -160,12 +160,13 @@ function filesFor(
   provenanceFiles: readonly string[],
   candidates: readonly string[],
   path: string | null,
+  lexical: LexicalOptions,
 ): string[] {
   if (mode === "provenance") {
     return path === null ? [...provenanceFiles] : provenanceFiles.filter((f) => f === path);
   }
   const corpus = path === null ? candidates : withCandidate(repoRoot, candidates, path);
-  const predicted = predictFiles(task.criteria, corpus).map((m) => m.file);
+  const predicted = predictFiles(task.criteria, corpus, lexical).map((m) => m.file);
   return path === null ? predicted : predicted.filter((f) => f === path);
 }
 
@@ -180,6 +181,10 @@ function filesFor(
  * exists to stop repeating). `candidates` is the repo's own co-change file
  * corpus, the SAME universe `predictFiles`'s calibration was measured
  * against.
+ *
+ * `lexical` is the caller's configured `predictFiles` gate — see
+ * `config.ts`'s `lexicalOptions` for why it is threaded through rather than
+ * defaulted here (both `octograph.yaml` keys were inert until it was).
  */
 export function own(
   repoRoot: string,
@@ -187,6 +192,7 @@ export function own(
   log: WorklogEntry[],
   candidates: readonly string[],
   path: string | null,
+  lexical: LexicalOptions = {},
 ): OwnAnswer[] {
   const attributions = attribute(repoRoot, board, log);
   const byTask = new Map(board.tasks.map((t) => [t.id, t] as const));
@@ -198,7 +204,7 @@ export function own(
     const mission = board.missionOf(task.id);
     if (mission === null) continue; // defensive: same as above
 
-    for (const file of filesFor(repoRoot, task, a.mode, a.files, candidates, path)) {
+    for (const file of filesFor(repoRoot, task, a.mode, a.files, candidates, path, lexical)) {
       const criterion = bestCriterion(task.criteria, file);
       answers.push({
         path: file,

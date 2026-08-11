@@ -35,7 +35,7 @@
 import type { Analysis } from "./analyze.js";
 import type { BoardTask } from "./board.js";
 import { isSyntheticBridge } from "./components.js";
-import { predictFiles } from "./lexical.js";
+import { predictFiles, type LexicalOptions } from "./lexical.js";
 import { classifyPair } from "./noise.js";
 import { compare } from "./rollup.js";
 import { edgeWeight, type Edge } from "./weights.js";
@@ -46,10 +46,28 @@ export interface ConflictPair {
    *  a caller lists first. */
   a: string;
   b: string;
+  /**
+   * How this answer was reached — `"predicted"`, always, and typed as that
+   * single literal so no branch here can ever widen it (mission criterion:
+   * "every answer from `own` or `conflicts` names which mode produced it").
+   *
+   * Constant BY CONSTRUCTION, not by omission: unlike `own`'s `mode`, which
+   * really does move with the evidence (a resolvable merge SHA gives
+   * `provenance`, its absence gives `predicted`), a planned task has no merge
+   * to read, so `attribution.ts` and `readWorklog` are not imported by this
+   * module at all — there is no code path here that could produce another
+   * value. An unlabelled answer would be the worse failure: `own` prints a
+   * mode on every row, so a `conflicts` row printed beside it with none reads
+   * as the stronger claim, when both `shared` and `coupled` rest entirely on
+   * `predictFiles`' lexical guess about which files each task will touch.
+   * `coupled` is no exception — its nPMI is real history, but the two
+   * SURFACES it is measured between are predicted.
+   */
+  mode: "predicted";
   /** Files BOTH tasks' predicted surfaces name — the direct collision.
    *  Never summed into `coupled`; see this module's doc comment.
    *  `compare`-sorted, and filtered of manifest/lockfile and test-subject
-   *  noise through {@link classifyPair} — see `suppressedSharedFiles`. */
+   *  noise through {@link classifyPair} — see {@link isNoiseOnItsOwn}. */
   shared: string[];
   /** Summed `edgeWeight` over every pair of DISTINCT files (one predicted by
    *  `a`, one by `b`) that survive the same noise floor — evidence the two
@@ -86,8 +104,9 @@ function surfaceFor(
   task: BoardTask,
   candidates: readonly string[],
   modOf: ReadonlyMap<string, string>,
+  lexical: LexicalOptions,
 ): TaskSurface {
-  const files = predictFiles(task.criteria, candidates)
+  const files = predictFiles(task.criteria, candidates, lexical)
     .map((m) => m.file)
     .sort(compare);
   const modules = new Set<string>();
@@ -99,47 +118,48 @@ function surfaceFor(
 }
 
 /**
- * Which of `shared`'s files are noise, per the SAME `classifyPair` `drift`
- * ranks a real co-change edge against — never a hand-rolled "is this a
- * manifest" predicate.
+ * Whether a file both tasks predict is noise on its own, per the SAME
+ * `classifyPair` `drift` ranks a real co-change edge against — never a
+ * hand-rolled "is this a manifest" predicate.
  *
- * Two shapes of noise, both read through `classifyPair`, never a second
- * spelling:
+ * `classifyPair` grades a PAIR, so asking it about one file means choosing
+ * what to pair that file with, and the choice is the whole rule:
  *
- *  - A file that classifies as `test-subject` against ITSELF
- *    (`classifyPair(f, f)`, which reduces to `isTestPath(f)` — the mechanical
- *    branch can never fire for two equal filenames, since a manifest never
- *    also matches its own lockfile's pattern; see `noise.ts`). Two tasks
- *    both predicting the same test file is exactly as uninformative as two
- *    tasks both predicting the same lockfile.
- *  - A manifest and ITS lockfile, when BOTH are in `shared` (an exact tie in
- *    `predictFiles` puts both files in a task's surface — see
- *    `TaskSurface.files`): `classifyPair(manifest, lockfile)` reports
- *    `"mechanical"`, and BOTH endpoints of that pair are suppressed, not
- *    just one — leaving one behind would still flag "every task touches
- *    package.json" as a finding.
+ *  - **Against itself** (`classifyPair(f, f)`, which reduces to
+ *    `isTestPath(f)` — the mechanical branch can never fire for two equal
+ *    filenames, since a manifest never also matches its own lockfile's
+ *    pattern; see `noise.ts`). Two tasks both predicting the same test file
+ *    is exactly as uninformative as two tasks both predicting the same
+ *    lockfile.
+ *  - **Against every OTHER file in the candidate corpus.** A lone
+ *    `package.json` in `shared` — with no lockfile alongside it, which is the
+ *    ordinary case, since a task criterion naming the manifest rarely also
+ *    names the lock — is graded `"candidate"` against itself and would
+ *    otherwise be reported as a conflict. It is `classifyPair(package.json,
+ *    pnpm-lock.yaml)` that knows the file is mechanical, and that lockfile is
+ *    sitting in `corpus`. Pairing only WITHIN `shared` (the first version of
+ *    this function) suppressed the manifest exactly when a task's criteria
+ *    happened to name both halves of the pair, and the board's own acceptance
+ *    criterion — "a manifest every task touches produces no conflict on its
+ *    own" — held only for that wording.
  *
- * Checked pairwise only WITHIN `shared`, never against a file that merely
- * happens to be in one task's fuller surface: an unrelated test file sharing
- * the list with a real file must not drag the real file down with it.
+ * Evidence-shaped, not name-shaped: a `package.json` in a repo whose corpus
+ * holds no lockfile that {@link classifyPair} says governs it is NOT
+ * suppressed, because nothing in this repository's history says its coupling
+ * is mechanical. That is `classifyPair`'s judgement, made where it lives,
+ * rather than a second predicate here re-deciding what a manifest is.
+ *
+ * Never checked against the OTHER task's fuller surface, only against the
+ * corpus: an unrelated test file in one task's surface must not drag a real
+ * shared file down with it.
  */
-function suppressedSharedFiles(shared: readonly string[]): Set<string> {
-  const suppressed = new Set<string>();
-  for (const f of shared) {
-    if (classifyPair(f, f) !== "candidate") suppressed.add(f);
+function isNoiseOnItsOwn(file: string, corpus: readonly string[]): boolean {
+  if (classifyPair(file, file) !== "candidate") return true;
+  for (const other of corpus) {
+    if (other === file) continue;
+    if (classifyPair(file, other) === "mechanical") return true;
   }
-  for (let i = 0; i < shared.length; i++) {
-    for (let j = i + 1; j < shared.length; j++) {
-      const f = shared[i];
-      const g = shared[j];
-      if (f === undefined || g === undefined) continue;
-      if (classifyPair(f, g) === "mechanical") {
-        suppressed.add(f);
-        suppressed.add(g);
-      }
-    }
-  }
-  return suppressed;
+  return false;
 }
 
 /**
@@ -237,17 +257,35 @@ function coupledScore(
  * Ranked by `shared.length` first (a literal collision outranks a mere
  * historical correlation), then `coupled`, then `compare` on both task ids —
  * deterministic regardless of `tasks`' own input order.
+ *
+ * `lexical` is the caller's configured `predictFiles` gate
+ * (`octograph.yaml`'s `lexicalConfidenceFloor` / `lexicalRunnerUpMargin`, via
+ * `config.ts`'s `lexicalOptions`). Passed through rather than defaulted here:
+ * a setting a user wrote in their own config file and that this command
+ * silently ignored would be the `--half-life-days` defect `cli.ts` documents,
+ * one layer down — and every file in this answer comes out of that gate.
  */
 export function conflicts(
   analysis: Analysis,
   edges: Edge[],
   files: readonly string[],
   tasks: readonly BoardTask[],
+  lexical: LexicalOptions = {},
 ): ConflictPair[] {
   const modOf = moduleOfFile(analysis);
   const idOf = new Map(files.map((f, i) => [f, i] as const));
   const edgeIndex = buildEdgeIndex(edges);
-  const surfaces = tasks.map((t) => surfaceFor(t, files, modOf));
+  const surfaces = tasks.map((t) => surfaceFor(t, files, modOf, lexical));
+  // Memoized across pairs: `isNoiseOnItsOwn` scans the whole corpus, and the
+  // same handful of predicted files recur in every pair a task takes part in.
+  const noise = new Map<string, boolean>();
+  const isNoise = (f: string): boolean => {
+    const cached = noise.get(f);
+    if (cached !== undefined) return cached;
+    const value = isNoiseOnItsOwn(f, files);
+    noise.set(f, value);
+    return value;
+  };
 
   const pairs: ConflictPair[] = [];
   for (let i = 0; i < surfaces.length; i++) {
@@ -257,16 +295,16 @@ export function conflicts(
       if (x === undefined || y === undefined) continue;
       const [left, right] = compare(x.task.id, y.task.id) <= 0 ? [x, y] : [y, x];
 
-      const rawShared = left.files.filter((f) => right.files.includes(f));
-      const suppressed = suppressedSharedFiles(rawShared);
-      const shared = rawShared.filter((f) => !suppressed.has(f)).sort(compare);
+      const shared = left.files
+        .filter((f) => right.files.includes(f) && !isNoise(f))
+        .sort(compare);
 
       const coupled = coupledScore(left.files, right.files, idOf, edgeIndex);
       if (shared.length === 0 && coupled <= 0) continue;
 
       const modules = [...left.modules].filter((m) => right.modules.has(m)).sort(compare);
 
-      pairs.push({ a: left.task.id, b: right.task.id, shared, coupled, modules });
+      pairs.push({ a: left.task.id, b: right.task.id, mode: "predicted", shared, coupled, modules });
     }
   }
 

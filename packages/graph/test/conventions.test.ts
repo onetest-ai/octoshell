@@ -482,6 +482,11 @@ describe("package conventions", () => {
       // surface machinery `own` reads. Added in the same commit, same
       // reason as every entry above.
       "conflicts",
+      // The single spelling of "which `predictFiles` gate did this repo
+      // configure" — an in-process caller of `own`/`conflicts` (M6's VS Code
+      // commands) needs it, and the alternative to exporting it is that the
+      // caller writes a second translation of the same two config keys.
+      "lexicalOptions",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }

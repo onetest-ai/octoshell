@@ -702,6 +702,63 @@ describe("runCli — conflicts", () => {
   });
 
   /**
+   * Mission criterion: "every answer from `own` or `conflicts` names which
+   * mode produced it". Asserted on the RENDERED output and on the JSON, not
+   * in memory — an unlabelled row printed beside `own`'s labelled ones is
+   * where a reader would actually be misled.
+   */
+  it("labels every rendered and JSON conflict row with the mode that produced it", () => {
+    const { repo, missionA } = conflictFixture();
+
+    const text = runCli(["conflicts", missionA.id], repo, NOW);
+    expect(text.code).toBe(0);
+    for (const line of text.stdout.trimEnd().split("\n")) {
+      expect(line).toContain("(predicted)");
+    }
+
+    const json = runCli(["conflicts", missionA.id, "--json"], repo, NOW);
+    const pairs = JSON.parse(json.stdout) as Array<{ mode: string }>;
+    expect(pairs.length).toBeGreaterThan(0);
+    for (const p of pairs) expect(p.mode).toBe("predicted");
+  });
+
+  /**
+   * `octograph.yaml`'s lexical keys must reach `predictFiles`. The
+   * regression: `own` and `conflicts` both called it with no options, so
+   * `lexicalConfidenceFloor` / `lexicalRunnerUpMargin` were parsed,
+   * range-checked, documented — and changed no answer this CLI produced,
+   * the same silent-ignore defect `parseArgs` exists to make impossible for
+   * flags.
+   */
+  it("applies octograph.yaml's lexical floor to conflicts rather than ignoring it", () => {
+    // `session.ts` recovers 2 of the query's 3 scoring tokens (`token` is the
+    // other file's, `validated` is nobody's) — 2/3, over the default floor
+    // and under the configured one.
+    const repo = buildRepo([
+      { files: ["src/auth/session.ts", "src/token/store.ts"] },
+      { files: ["src/auth/session.ts", "src/token/store.ts"], daysAgo: 1 },
+    ]);
+    const octobotsDir = join(repo, ".octobots");
+    mkdirSync(octobotsDir, { recursive: true });
+    const campaign = createCampaign(octobotsDir, { name: "Q4" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    for (const name of ["T1.1 - JWT", "T1.2 - Refresh"]) {
+      createTask(octobotsDir, mission.id, {
+        name,
+        acceptanceCriteria: "- [ ] the auth session token is validated",
+      });
+    }
+
+    const byDefault = runCli(["conflicts", mission.id, "--json"], repo, NOW);
+    expect(JSON.parse(byDefault.stdout)).toHaveLength(1);
+
+    writeFileSync(join(repo, "octograph.yaml"), "lexicalConfidenceFloor: 0.7\n");
+    const strict = runCli(["conflicts", mission.id, "--json"], repo, NOW);
+    expect(strict.code).toBe(0);
+    expect(JSON.parse(strict.stdout)).toEqual([]);
+  });
+
+  /**
    * `conflicts` runs in `predicted` mode permanently and never reads the
    * worklog (see conflicts.ts's doc comment) — its answer for the SAME task
    * set must be byte-identical whether the worklog holds nothing at all, a

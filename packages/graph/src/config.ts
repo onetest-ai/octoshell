@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { load as loadYaml } from "js-yaml";
-import { CONFIDENCE_FLOOR, RUNNER_UP_MARGIN } from "./lexical.js";
+import { CONFIDENCE_FLOOR, RUNNER_UP_MARGIN, type LexicalOptions } from "./lexical.js";
 import { insideRepo } from "./paths.js";
 
 export interface Config {
@@ -95,6 +95,32 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
     if (value !== undefined) Object.assign(cfg, { [key]: value });
   }
   return cfg;
+}
+
+/**
+ * The `Config` half of this file's lexical settings, in the shape
+ * `predictFiles` takes — the ONE place `lexicalConfidenceFloor` /
+ * `lexicalRunnerUpMargin` are translated into `LexicalOptions`.
+ *
+ * It exists because both consumers of the lexical tier (`own` and
+ * `conflicts`, via `cli.ts`) need the same translation, and the first version
+ * of each did the same thing instead: nothing. `predictFiles` was called with
+ * no options at all, so both keys were parsed, range-checked, documented in
+ * `lexical.ts` as "settable per repo from `octograph.yaml`" — and had no
+ * effect whatsoever on any answer the CLI produced. A setting a user writes
+ * and the tool silently ignores is the defect `parseArgs` was rewritten to
+ * make impossible for flags (`--half-life-days`, see cli.ts); this is the
+ * same defect one layer down.
+ *
+ * Exported from `index.ts` for the same reason: an in-process caller (M6's VS
+ * Code commands) calling `own`/`conflicts` directly needs this mapping, and
+ * the alternative to handing it one is that it writes a second one.
+ */
+export function lexicalOptions(config: Config): LexicalOptions {
+  return {
+    confidenceFloor: config.lexicalConfidenceFloor,
+    runnerUpMargin: config.lexicalRunnerUpMargin,
+  };
 }
 
 /**
