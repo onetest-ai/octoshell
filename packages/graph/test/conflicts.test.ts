@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { Analysis } from "../src/analyze.js";
 import type { BoardTask } from "../src/board.js";
-import { conflicts } from "../src/conflicts.js";
+import { conflicts as conflictReport, type ConflictPair } from "../src/conflicts.js";
 import type { Edge } from "../src/weights.js";
+
+/** The `pairs` half of a {@link conflictReport}, for the assertions that
+ *  predate its coverage fields — every one of them is about which PAIRS come
+ *  out, and reading `.pairs` at each of ~15 call sites would say nothing the
+ *  name does not. The coverage half has its own tests at the bottom of this
+ *  file, and they call `conflictReport` directly. */
+function conflicts(...args: Parameters<typeof conflictReport>): ConflictPair[] {
+  return conflictReport(...args).pairs;
+}
 
 /** `conflicts` only ever reads `analysis.modules` — every other field is
  *  filled with an inert placeholder so a test can hand in just the module
@@ -214,6 +223,44 @@ describe("conflicts", () => {
   });
 
   /**
+   * The other half of the same suppression, and the half that shipped
+   * missing: a manifest only ONE of the two tasks predicts.
+   *
+   * `shared` filtered its files through {@link isNoiseOnItsOwn} — the
+   * corpus-wide question "does `classifyPair` call this file mechanical
+   * against anything in this repository" — while `coupled` asked only the
+   * pairwise `classifyPair(fa, fb)`, which grades `package.json` against
+   * `src/app/server.ts` a perfectly good `"candidate"`. So the identical
+   * `package.json`, with the identical lockfile sitting in the corpus, was
+   * noise when both tasks named it and evidence of a real conflict when one
+   * did: `coupled: 0.9` off a mechanical file the other half of this module
+   * had already ruled out. `coupledScore`'s own comment asserted it skipped
+   * "the same noise `shared` filters through"; it did not, and the function
+   * it named by then no longer existed.
+   *
+   * One rule, both halves — a file that is not evidence on its own is not
+   * evidence as one endpoint of a cross pair either.
+   */
+  it("suppresses a manifest as a coupled endpoint too, not only when both tasks predict it", () => {
+    const files = ["package.json", "pnpm-lock.yaml", "src/app/server.ts"];
+    const analysis = moduleAnalysis([
+      { id: 0, name: "(repo root)", members: ["package.json", "pnpm-lock.yaml"], layer: null },
+      { id: 1, name: "src/app", members: ["src/app/server.ts"], layer: null },
+    ]);
+    // package.json (0) <-> src/app/server.ts (2): strong history, but one
+    // endpoint is a file this corpus's own lockfile says moves mechanically.
+    const edges = [edge(0, 2, 0.9)];
+    const manifestTask = task({ id: "t-a", criteria: ["bump the express dependency in package json"] });
+    const appTask = task({ id: "t-b", criteria: ["the app server handles requests"] });
+
+    const report = conflictReport(analysis, edges, files, [manifestTask, appTask]);
+    expect(report.pairs).toEqual([]);
+    // Both tasks WERE predicted for — this is a suppression, not an absence
+    // of evidence, and the two must stay distinguishable.
+    expect(report.covered).toEqual(["t-a", "t-b"]);
+  });
+
+  /**
    * The boundary of the rule above, pinned so nobody "fixes" it into a
    * name-shaped predicate: `classifyPair` calls a manifest mechanical only
    * when a lockfile that GOVERNS it exists. With no lockfile anywhere in the
@@ -263,16 +310,24 @@ describe("conflicts", () => {
     expect(strict).toEqual([]);
   });
 
-  it("reports nothing for a clean decomposition with no shared file and no coupling", () => {
-    const files = ["src/moduleA/x.ts", "src/moduleB/y.ts"];
-    const analysis = moduleAnalysis([
-      { id: 0, name: "src/moduleA", members: ["src/moduleA/x.ts"], layer: null },
-      { id: 1, name: "src/moduleB", members: ["src/moduleB/y.ts"], layer: null },
-    ]);
-    const taskA = task({ id: "t-a", criteria: ["the moduleA x behaviour is correct"] });
-    const taskB = task({ id: "t-b", criteria: ["the moduleB y behaviour is correct"] });
+  /**
+   * The fixture matters as much as the assertion here. This test's first
+   * version used a `src/moduleA/x.ts` / `src/moduleB/y.ts` corpus whose every
+   * shared token (`src`, `module`, `ts`) has `df === n`, so every idf is
+   * `ln(1) === 0` and `predictFiles` answered NOTHING for either task — the
+   * empty result it asserted came from a predictor with no signal, not from a
+   * clean decomposition, and the test would have passed just as well against
+   * a `conflicts` that reported nothing ever. It is built on `ownershipFixture`
+   * now, where both tasks demonstrably predict a file (see `covered`), those
+   * files differ, and no edge couples them: clean because it was looked at.
+   */
+  it("reports nothing for a clean decomposition it did predict surfaces for", () => {
+    const { files, analysis, taskA, taskC } = ownershipFixture();
+    const report = conflictReport(analysis, [], files, [taskA, taskC]);
 
-    expect(conflicts(analysis, [], files, [taskA, taskB])).toEqual([]);
+    expect(report.pairs).toEqual([]);
+    expect(report.covered).toEqual(["t-a", "t-c"]);
+    expect(report.uncovered).toEqual([]);
   });
 
   it("finds the same conflict regardless of whether the two tasks share a mission or a campaign", () => {
@@ -308,5 +363,69 @@ describe("conflicts", () => {
     const { files, analysis, taskA } = ownershipFixture();
     const boilerplate = task({ id: "t-boilerplate", criteria: ["the code is well tested"] });
     expect(conflicts(analysis, [], files, [taskA, boilerplate])).toEqual([]);
+  });
+
+  /**
+   * **The claim this command makes when it reports nothing.**
+   *
+   * `predictFiles` answers for a minority of real tasks — the calibration in
+   * `lexical.ts` measured 3 of 8 on this repo's own labelled dataset, and
+   * `conflicts` on this repo's M4 mission produced a surface for 1 task of 6.
+   * A task with no surface takes part in no pair, so a mission whose tasks
+   * the predictor had nothing to say about returns exactly what a genuinely
+   * clean decomposition returns: an empty list.
+   *
+   * Those two are not the same answer and must never render as one. "Nothing
+   * predicted, therefore no conflict" is this campaign's recurring defect in
+   * its purest form — a verdict outrunning what was computed, in a command
+   * whose entire product is that verdict. So the report carries which tasks
+   * it actually covers alongside the pairs, and neither is derivable from the
+   * other.
+   */
+  it("distinguishes a clean decomposition from one nothing was predicted for", () => {
+    const { files, analysis } = ownershipFixture();
+    const boilerplateA = task({ id: "t-a", criteria: ["the code is well tested"] });
+    const boilerplateB = task({ id: "t-b", criteria: ["the change is reviewed"] });
+
+    const nothingPredicted = conflictReport(analysis, [], files, [boilerplateA, boilerplateB]);
+    expect(nothingPredicted.pairs).toEqual([]);
+    expect(nothingPredicted.covered).toEqual([]);
+    expect(nothingPredicted.uncovered).toEqual(["t-a", "t-b"]);
+
+    // A genuinely clean decomposition: both tasks predicted a surface, the
+    // surfaces do not collide, and nothing couples them. Identical `pairs`,
+    // opposite meaning — which is the whole point of carrying coverage.
+    const { taskA, taskC } = ownershipFixture();
+    const clean = conflictReport(analysis, [], files, [taskA, taskC]);
+    expect(clean.pairs).toEqual(nothingPredicted.pairs);
+    expect(clean.covered).toEqual(["t-a", "t-c"]);
+    expect(clean.uncovered).toEqual([]);
+  });
+
+  /** Partial coverage is the ordinary case, not an edge case: a reported pair
+   *  and an unanswered task in the same report, each named, so a reader can
+   *  see the answer is about two of three tasks rather than all of them. */
+  it("names the uncovered tasks alongside the pairs it did find", () => {
+    const { files, analysis, edges, taskA, taskB } = ownershipFixture();
+    const boilerplate = task({ id: "t-z", criteria: ["the code is well tested"] });
+
+    const report = conflictReport(analysis, edges, files, [taskA, taskB, boilerplate]);
+    expect(report.pairs).toHaveLength(1);
+    expect(report.covered).toEqual(["t-a", "t-b"]);
+    expect(report.uncovered).toEqual(["t-z"]);
+  });
+
+  /** Deterministic like everything else here: both lists are `compare`-sorted
+   *  rather than left in whatever order `tasks` arrived in. */
+  it("sorts covered and uncovered through compare, not by input order", () => {
+    const { files, analysis } = ownershipFixture();
+    const forward = conflictReport(analysis, [], files, [
+      task({ id: "t-b", criteria: ["the auth session token is validated"] }),
+      task({ id: "t-a", criteria: ["the auth session token is validated"] }),
+      task({ id: "t-z", criteria: ["the code is well tested"] }),
+      task({ id: "t-c", criteria: ["the change is reviewed"] }),
+    ]);
+    expect(forward.covered).toEqual(["t-a", "t-b"]);
+    expect(forward.uncovered).toEqual(["t-c", "t-z"]);
   });
 });

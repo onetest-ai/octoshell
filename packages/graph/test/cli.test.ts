@@ -662,7 +662,9 @@ describe("runCli — conflicts", () => {
     const { repo, missionA, taskA1, taskA2 } = conflictFixture();
     const result = runCli(["conflicts", missionA.id, "--json"], repo, NOW);
     expect(result.code).toBe(0);
-    const pairs = JSON.parse(result.stdout) as Array<{ a: string; b: string; shared: string[] }>;
+    const { pairs } = JSON.parse(result.stdout) as {
+      pairs: Array<{ a: string; b: string; shared: string[] }>;
+    };
     expect(pairs).toHaveLength(1);
     expect([pairs[0]?.a, pairs[0]?.b].sort()).toEqual([taskA1.id, taskA2.id].sort());
     expect(pairs[0]?.shared).toEqual(["src/auth/session.ts"]);
@@ -672,7 +674,9 @@ describe("runCli — conflicts", () => {
     const { repo, campaign, taskA1, taskA2, taskB1 } = conflictFixture();
     const result = runCli(["conflicts", campaign.id, "--json"], repo, NOW);
     expect(result.code).toBe(0);
-    const pairs = JSON.parse(result.stdout) as Array<{ a: string; b: string; coupled: number }>;
+    const { pairs } = JSON.parse(result.stdout) as {
+      pairs: Array<{ a: string; b: string; coupled: number }>;
+    };
     const pairKeys = pairs.map((p) => [p.a, p.b].sort().join("|")).sort();
     expect(pairKeys).toEqual(
       [
@@ -687,7 +691,9 @@ describe("runCli — conflicts", () => {
     const { repo, taskA1, taskB1 } = conflictFixture();
     const result = runCli(["conflicts", taskA1.id, taskB1.id, "--json"], repo, NOW);
     expect(result.code).toBe(0);
-    const pairs = JSON.parse(result.stdout) as Array<{ a: string; b: string; coupled: number }>;
+    const { pairs } = JSON.parse(result.stdout) as {
+      pairs: Array<{ a: string; b: string; coupled: number }>;
+    };
     expect(pairs).toHaveLength(1);
     expect([pairs[0]?.a, pairs[0]?.b].sort()).toEqual([taskA1.id, taskB1.id].sort());
     expect(pairs[0]?.coupled).toBeGreaterThan(0);
@@ -717,9 +723,51 @@ describe("runCli — conflicts", () => {
     }
 
     const json = runCli(["conflicts", missionA.id, "--json"], repo, NOW);
-    const pairs = JSON.parse(json.stdout) as Array<{ mode: string }>;
+    const { pairs } = JSON.parse(json.stdout) as { pairs: Array<{ mode: string }> };
     expect(pairs.length).toBeGreaterThan(0);
     for (const p of pairs) expect(p.mode).toBe("predicted");
+  });
+
+  /**
+   * The rendered form of the claim `conflicts` makes when it finds nothing.
+   *
+   * `predictFiles` answers for a minority of real tasks (see `lexical.ts`'s
+   * calibration: 3 of 8 on this repo's own labelled dataset; 1 of 6 on this
+   * repo's M4 mission), and a task with no predicted surface takes part in no
+   * pair. So a mission the predictor had nothing to say about printed exactly
+   * what a genuinely clean decomposition prints — `(no conflicts found)`,
+   * with no way for a reader to tell a verdict from an absence of evidence.
+   * That is a claim outrunning what was computed, in the one command whose
+   * whole product is that verdict.
+   */
+  it("states how many tasks it actually predicted a surface for, so an empty answer is not read as a clean one", () => {
+    const { repo, campaign } = conflictFixture();
+    const octobotsDir = join(repo, ".octobots");
+    // Two more tasks whose criteria are pure boilerplate: no distinctive
+    // token, so `predictFiles` returns nothing for either and neither can
+    // appear in any pair.
+    const mission = createMission(octobotsDir, campaign.id, { title: "M3 - Boilerplate" });
+    const boilerplate = ["T3.1 - One", "T3.2 - Two"].map((name) =>
+      createTask(octobotsDir, mission.id, {
+        name,
+        acceptanceCriteria: "- [ ] the code is well tested",
+      }),
+    );
+
+    const text = runCli(["conflicts", mission.id], repo, NOW);
+    expect(text.code).toBe(0);
+    expect(text.stdout).toContain("(no conflicts found)");
+    // The distinguishing fact: nothing was predicted for either task, so the
+    // empty result says nothing whatever about this decomposition — and the
+    // tasks it says nothing about are named, not merely counted.
+    expect(text.stdout).toContain("0 of 2");
+    for (const t of boilerplate) expect(text.stdout).toContain(t.id);
+
+    const json = runCli(["conflicts", mission.id, "--json"], repo, NOW);
+    const report = JSON.parse(json.stdout) as { pairs: unknown[]; covered: string[]; uncovered: string[] };
+    expect(report.pairs).toEqual([]);
+    expect(report.covered).toEqual([]);
+    expect(report.uncovered).toHaveLength(2);
   });
 
   /**
@@ -750,12 +798,17 @@ describe("runCli — conflicts", () => {
     }
 
     const byDefault = runCli(["conflicts", mission.id, "--json"], repo, NOW);
-    expect(JSON.parse(byDefault.stdout)).toHaveLength(1);
+    expect((JSON.parse(byDefault.stdout) as { pairs: unknown[] }).pairs).toHaveLength(1);
 
     writeFileSync(join(repo, "octograph.yaml"), "lexicalConfidenceFloor: 0.7\n");
     const strict = runCli(["conflicts", mission.id, "--json"], repo, NOW);
     expect(strict.code).toBe(0);
-    expect(JSON.parse(strict.stdout)).toEqual([]);
+    // Raising the floor stops the predictor answering at all, which is a
+    // DIFFERENT outcome from a clean decomposition — and the report says so
+    // rather than reporting an empty list that reads as "no conflict".
+    const stricter = JSON.parse(strict.stdout) as { pairs: unknown[]; covered: string[] };
+    expect(stricter.pairs).toEqual([]);
+    expect(stricter.covered).toEqual([]);
   });
 
   /**

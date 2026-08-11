@@ -4,7 +4,7 @@ import { analyze, type Analysis } from "./analyze.js";
 import { readArtifact, resolveOut, writeArtifact, type StoredGraph } from "./artifact.js";
 import { readBoard, type BoardTask, type BoardView } from "./board.js";
 import { lexicalOptions, loadConfig, type Config } from "./config.js";
-import { conflicts as computeConflicts, type ConflictPair } from "./conflicts.js";
+import { conflicts as computeConflicts, type ConflictPair, type ConflictReport } from "./conflicts.js";
 import { doctor, exitCode, type Report } from "./doctor.js";
 import { drift as computeDrift, type DriftRow } from "./drift.js";
 import { impact as computeImpact, type ImpactRow } from "./impact.js";
@@ -466,9 +466,35 @@ function formatConflictPair(p: ConflictPair): string {
   );
 }
 
-function formatConflicts(pairs: ConflictPair[]): string {
-  if (pairs.length === 0) return "(no conflicts found)\n";
-  return pairs.map(formatConflictPair).join("\n") + "\n";
+/**
+ * What this answer actually rests on — printed on EVERY run, empty result or
+ * not, because `pairs.length === 0` alone means two incompatible things.
+ *
+ * `predictFiles` answers for a minority of real tasks (`lexical.ts`'s
+ * calibration measured 3 of 8 on this repo; `conflicts` on this repo's own M4
+ * mission predicted a surface for 1 task of 6), and a task with no surface
+ * takes part in no pair. So `(no conflicts found)` printed alone reads as
+ * "this decomposition is clean" when the truth is "nothing was predicted for
+ * five of these six tasks" — a verdict outrunning what was computed, in the
+ * command whose whole product is that verdict.
+ *
+ * Uncovered tasks are NAMED, not just counted: a bare count is the "21 files"
+ * row again — a number a reader cannot act on or check. `(predicted)` sits on
+ * this line too, for the same reason it sits on every pair row.
+ */
+function formatCoverage(report: ConflictReport): string {
+  const total = report.covered.length + report.uncovered.length;
+  const head = `coverage (predicted): ${report.covered.length} of ${total} tasks produced a predicted surface`;
+  if (report.uncovered.length === 0) return head;
+  return (
+    `${head} — this answer says nothing about the other ${report.uncovered.length}: ` +
+    report.uncovered.map(oneLine).join(", ")
+  );
+}
+
+function formatConflicts(report: ConflictReport): string {
+  const rows = report.pairs.length === 0 ? ["(no conflicts found)"] : report.pairs.map(formatConflictPair);
+  return [...rows, formatCoverage(report)].join("\n") + "\n";
 }
 
 /**
@@ -540,8 +566,8 @@ function runConflictsCommand(
 
   // Same co-change graph `impact`/`drift`/`own` already answer against.
   const { analysis, edges, files } = analyze(repoRoot, config, { now, since });
-  const pairs = computeConflicts(analysis, edges, files, resolved.tasks, lexicalOptions(config));
-  const stdout = json ? JSON.stringify(pairs) + "\n" : formatConflicts(pairs);
+  const report = computeConflicts(analysis, edges, files, resolved.tasks, lexicalOptions(config));
+  const stdout = json ? JSON.stringify(report) + "\n" : formatConflicts(report);
   return { code: 0, stdout, stderr: "" };
 }
 

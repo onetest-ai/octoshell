@@ -342,6 +342,11 @@ describe("end-to-end via the shipped bundle: conflicts", () => {
       // shipping, in the assertion instead of the code.
       expect(result.stdout).toContain("shared=src/auth/session.ts");
       expect(result.stdout).not.toContain("provenance");
+      // What the answer rests on, printed on the run that FOUND something as
+      // well as on the run that found nothing — a partial answer read as a
+      // total one is the same defect as an empty one read as a clean bill of
+      // health, and only this line separates either from its opposite.
+      expect(result.stdout).toContain("coverage (predicted): 2 of 2 tasks");
     },
     30_000,
   );

@@ -38,7 +38,7 @@ export { own, type OwnAnswer } from "./own.js";
 // decomposes cleanly, reported as `shared`/`coupled` on two separate fields
 // (see conflicts.ts's doc comment for why they are never summed into one
 // score). Added in the same commit, same reason as every entry above.
-export { conflicts, type ConflictPair } from "./conflicts.js";
+export { conflicts, type ConflictPair, type ConflictReport } from "./conflicts.js";
 export {
   hasBoard,
   readArtifact,

@@ -70,13 +70,51 @@ export interface ConflictPair {
    *  noise through {@link classifyPair} — see {@link isNoiseOnItsOwn}. */
   shared: string[];
   /** Summed `edgeWeight` over every pair of DISTINCT files (one predicted by
-   *  `a`, one by `b`) that survive the same noise floor — evidence the two
-   *  tasks' work areas move together historically even though they name no
-   *  file in common. Always `>= 0`; `0` when no such pair exists. */
+   *  `a`, one by `b`) that survive the same noise floor `shared` is filtered
+   *  through, per endpoint AND per pair (see {@link coupledScore}) —
+   *  evidence the two tasks' work areas move together historically even
+   *  though they name no file in common. Always `>= 0`; `0` when no such
+   *  pair exists. */
   coupled: number;
   /** Declared modules (`analysis.modules`) that BOTH tasks' predicted
    *  surfaces touch — `compare`-ordered, deduplicated. */
   modules: string[];
+}
+
+/**
+ * What `conflicts` found, AND what it was able to look at — two facts that
+ * are not derivable from each other and are therefore both returned.
+ *
+ * An empty `pairs` alone is ambiguous, and dangerously so in the one command
+ * whose entire product is a verdict on a decomposition. `predictFiles`
+ * answers for a minority of real tasks (see `lexical.ts`'s calibration:
+ * 3 of 8 on this repo's labelled dataset), and a task with no predicted
+ * surface takes part in no pair — so "this decomposition is clean" and "the
+ * predictor had nothing to say about any of these tasks" both come back as
+ * `[]`. Reporting the first when the truth is the second is this campaign's
+ * recurring defect exactly: a claim outrunning what was computed.
+ *
+ * {@link covered} is what the answer rests on; {@link uncovered} is what it
+ * is silent about. `cli.ts` prints both on every run, empty result or not,
+ * so a partial answer is never read as a total one either.
+ */
+export interface ConflictReport {
+  /** The conflicting pairs, ranked — see {@link conflicts}. Only tasks in
+   *  {@link covered} can appear here. */
+  pairs: ConflictPair[];
+  /** Task ids `predictFiles` produced a confident surface for: the tasks
+   *  this answer is actually about. `compare`-sorted.
+   *
+   *  "Produced a surface", not "produced a surface that survived the noise
+   *  floor" — a task predicting only a manifest is covered (the predictor
+   *  answered) even though {@link isNoiseOnItsOwn} then declines to call the
+   *  manifest a conflict. Those are two different rules and folding them
+   *  together here would make this count mean two things at once, which is
+   *  the defect it exists to prevent. */
+  covered: string[];
+  /** Task ids `predictFiles` had no confident match for — this answer says
+   *  nothing about them, in either direction. `compare`-sorted. */
+  uncovered: string[];
 }
 
 /** path -> declared module name, built once per call so every task's
@@ -203,22 +241,39 @@ function edgeBetween(index: ReadonlyMap<number, Map<number, Edge>>, i: number, j
  * would inflate the sum for a reason that has nothing to do with the
  * evidence — the pair is still backed by exactly one edge.
  *
- * `classifyPair(fa, fb) !== "candidate"` skips the same noise
- * {@link suppressedSharedFiles} filters `shared` through — a manifest paired
- * cross-task with its own lockfile, or a test file paired with anything, is
- * not evidence of a real conflict either.
+ * Two noise gates, because they answer two different questions and only one
+ * of them was here at first:
+ *
+ *  - `isNoise` — {@link isNoiseOnItsOwn}, memoized by the caller — on EACH
+ *    endpoint. This is the same corpus-wide rule `shared` is filtered
+ *    through, and it has to be, or the identical file is noise on one path
+ *    and evidence on the other: a `package.json` both tasks predicted was
+ *    suppressed, while the same `package.json` predicted by only ONE of them
+ *    scored `coupled: 0.9` against the other's `src/app/server.ts` — a
+ *    mechanical file the module had already ruled out, reported as a real
+ *    conflict because `classifyPair(package.json, src/app/server.ts)` alone
+ *    says `"candidate"`. This comment claimed that parity before the code
+ *    had it, naming a function (`suppressedSharedFiles`) that no longer
+ *    existed.
+ *  - `classifyPair(fa, fb)` on the PAIR, which catches what per-endpoint
+ *    grading cannot: two files each fine on their own whose coupling to each
+ *    other is mechanical (a manifest and its own lockfile, one predicted by
+ *    each task).
  */
 function coupledScore(
   surfaceA: readonly string[],
   surfaceB: readonly string[],
   idOf: ReadonlyMap<string, number>,
   edgeIndex: ReadonlyMap<number, Map<number, Edge>>,
+  isNoise: (file: string) => boolean,
 ): number {
   const seen = new Set<string>();
   let sum = 0;
   for (const fa of surfaceA) {
+    if (isNoise(fa)) continue;
     for (const fb of surfaceB) {
       if (fa === fb) continue; // the same file is `shared`, not `coupled`
+      if (isNoise(fb)) continue;
       const ia = idOf.get(fa);
       const ib = idOf.get(fb);
       if (ia === undefined || ib === undefined) continue;
@@ -253,6 +308,9 @@ function coupledScore(
  * A pair with neither a shared file nor any surviving cross-file coupling is
  * OMITTED, not reported at a floor of zero: a clean decomposition must
  * report nothing, never the weakest pair the corpus happens to produce.
+ * Which is exactly why the return is a {@link ConflictReport} rather than a
+ * bare pair list — "clean" and "nothing was predicted" are both empty, and
+ * only `covered`/`uncovered` tell them apart.
  *
  * Ranked by `shared.length` first (a literal collision outranks a mere
  * historical correlation), then `coupled`, then `compare` on both task ids —
@@ -271,7 +329,7 @@ export function conflicts(
   files: readonly string[],
   tasks: readonly BoardTask[],
   lexical: LexicalOptions = {},
-): ConflictPair[] {
+): ConflictReport {
   const modOf = moduleOfFile(analysis);
   const idOf = new Map(files.map((f, i) => [f, i] as const));
   const edgeIndex = buildEdgeIndex(edges);
@@ -299,7 +357,7 @@ export function conflicts(
         .filter((f) => right.files.includes(f) && !isNoise(f))
         .sort(compare);
 
-      const coupled = coupledScore(left.files, right.files, idOf, edgeIndex);
+      const coupled = coupledScore(left.files, right.files, idOf, edgeIndex, isNoise);
       if (shared.length === 0 && coupled <= 0) continue;
 
       const modules = [...left.modules].filter((m) => right.modules.has(m)).sort(compare);
@@ -315,5 +373,13 @@ export function conflicts(
       compare(p.a, q.a) ||
       compare(p.b, q.b),
   );
-  return pairs;
+
+  // Read off the SAME surfaces the pairs above were computed from — never a
+  // second `predictFiles` pass, which could disagree with the answer it is
+  // supposed to describe.
+  const covered: string[] = [];
+  const uncovered: string[] = [];
+  for (const s of surfaces) (s.files.length > 0 ? covered : uncovered).push(s.task.id);
+
+  return { pairs, covered: covered.sort(compare), uncovered: uncovered.sort(compare) };
 }
