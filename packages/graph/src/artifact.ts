@@ -45,6 +45,20 @@ export function hasBoard(repoRoot: string): boolean {
 }
 
 /**
+ * The `.octobots/` directory path itself, or `null` when this repo has no
+ * board — read through {@link hasBoard}, the ONE predicate this package uses
+ * to answer "does a board exist", so a caller that needs the concrete path
+ * (M4's `board.ts`/`worklog.ts` readers) can never disagree with `doctor` or
+ * `resolveOut` about whether one is there. Those readers get the path from
+ * here rather than re-spelling `.octobots` a second time, which is exactly
+ * what `test/conventions.test.ts`'s "spells the board directory only in
+ * artifact.ts" guard exists to keep true.
+ */
+export function boardDir(repoRoot: string): string | null {
+  return hasBoard(repoRoot) ? join(repoRoot, ".octobots") : null;
+}
+
+/**
  * `.octobots/graph/` when a board exists, else `.octograph/`. An explicit
  * `config.out` wins over both, even when a board exists.
  *

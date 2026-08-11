@@ -24,7 +24,9 @@ already current as of 2026-08-09.
   a third, unrelated background component (the suite's own `backgroundChurn`
   pattern).
 - [graph-e2e-heaviest-fixture-flaked-once-on-ci-pull-request-run.md](graph-e2e-heaviest-fixture-flaked-once-on-ci-pull-request-run.md)
-  — single-instance CI-only failure in `e2e.test.ts`'s heaviest (most
-  git-subprocess-intensive) fixture; same-commit `push` run and a manual
-  rerun both went green. Logged as one data point, not a confirmed recurring
-  flake — read before re-investigating from scratch if it recurs.
+  — CONFIRMED recurring CI-only failure (2 independent occurrences, PR #55
+  and PR #62) in `e2e.test.ts`'s heaviest (most git-subprocess-intensive)
+  fixture; both times the same-commit `push` run and a manual rerun went
+  green, but the two occurrences threw different concrete errors. Read
+  before re-investigating from scratch; a third occurrence should trigger
+  real remediation, not another log entry.

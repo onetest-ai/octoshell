@@ -2,16 +2,20 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { analyze, type Analysis } from "./analyze.js";
 import { readArtifact, resolveOut, writeArtifact, type StoredGraph } from "./artifact.js";
-import { loadConfig, type Config } from "./config.js";
+import { readBoard, type BoardTask, type BoardView } from "./board.js";
+import { lexicalOptions, loadConfig, type Config } from "./config.js";
+import { conflicts as computeConflicts, type ConflictPair, type ConflictReport } from "./conflicts.js";
 import { doctor, exitCode, type Report } from "./doctor.js";
 import { drift as computeDrift, type DriftRow } from "./drift.js";
 import { impact as computeImpact, type ImpactRow } from "./impact.js";
+import { own as computeOwn, type OwnAnswer } from "./own.js";
 import { repoRelative } from "./paths.js";
-import { renderMap } from "./render.js";
+import { oneLine, renderMap } from "./render.js";
+import { readWorklog } from "./worklog.js";
 
-export type Command = "map" | "impact" | "drift" | "doctor";
+export type Command = "map" | "impact" | "drift" | "doctor" | "own" | "conflicts";
 
-const COMMANDS: readonly Command[] = ["map", "impact", "drift", "doctor"];
+const COMMANDS: readonly Command[] = ["map", "impact", "drift", "doctor", "own", "conflicts"];
 
 function isCommand(value: string): value is Command {
   return (COMMANDS as readonly string[]).includes(value);
@@ -361,6 +365,67 @@ function runImpactCommand(
   return { code: 0, stdout, stderr: "" };
 }
 
+/**
+ * One `own` row, with the mode of EACH half of it spelled out where that half
+ * is printed — `(provenance)` on the ownership clause, `(predicted)` on the
+ * criterion clause. A single trailing `(mode)` covering the whole line read as
+ * a claim that the criterion, too, came off a recorded merge; it never can
+ * (see `own.ts`'s `OwnAnswer.criterionMode`).
+ *
+ * `oneLine` on every interpolated identifier, for the reason render.ts
+ * documents: a repo-relative path may legally contain a newline, and this
+ * formatter joins rows with `\n`, so an unescaped one splits a single answer
+ * into two rendered rows — the phantom-line defect M7 shipped into `map.md`,
+ * reaching stdout here instead.
+ */
+function formatOwnAnswer(a: OwnAnswer): string {
+  const criterion =
+    a.criterion === null || a.criterionMode === null
+      ? "criterion: none — no acceptance criterion's own words single out this path"
+      : `criterion (${a.criterionMode}): ${oneLine(a.criterion)}`;
+  return `${oneLine(a.path)}\towned by ${oneLine(a.mission)} / ${oneLine(a.task)} (${a.mode})\t${criterion}`;
+}
+
+function formatOwn(answers: OwnAnswer[]): string {
+  if (answers.length === 0) return "(no owner found)\n";
+  return answers.map(formatOwnAnswer).join("\n") + "\n";
+}
+
+/**
+ * `own [<path>]` needs a board — the ONE signal `board.ts`'s `readBoard`
+ * exists to give (see its doc comment). Every other command keeps working
+ * on a boardless repo; this is the single early-exit point that keeps it
+ * that way, a clear message and a non-zero exit rather than `own.ts`
+ * reaching into a `null` board and throwing.
+ */
+function runOwnCommand(
+  repoRoot: string,
+  config: Config,
+  since: string | undefined,
+  now: number,
+  rawPath: string | null,
+  json: boolean,
+): CliResult {
+  const board = readBoard(repoRoot);
+  if (board === null) {
+    return {
+      code: 1,
+      stdout: "",
+      stderr: "octograph: no .octobots board found — own needs one to answer\n",
+    };
+  }
+
+  const log = readWorklog(repoRoot);
+  // Same candidate universe `impact`/`drift` already answer against — the
+  // co-change file corpus `analyze` harvests, not a second file listing.
+  const { files } = analyze(repoRoot, config, { now, since });
+  const path = rawPath === null ? null : (repoRelative(repoRoot, rawPath) ?? rawPath);
+
+  const answers = computeOwn(repoRoot, board, log, files, path, lexicalOptions(config));
+  const stdout = json ? JSON.stringify(answers) + "\n" : formatOwn(answers);
+  return { code: 0, stdout, stderr: "" };
+}
+
 function runDriftCommand(
   repoRoot: string,
   config: Config,
@@ -371,6 +436,138 @@ function runDriftCommand(
   const { edges, files, spine } = analyze(repoRoot, config, { now, since });
   const rows = computeDrift(edges, files, spine);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatDrift(rows);
+  return { code: 0, stdout, stderr: "" };
+}
+
+function formatModuleList(modules: string[]): string {
+  return modules.length === 0 ? "(none)" : modules.map(oneLine).join(", ");
+}
+
+/**
+ * One `conflicts` row, carrying the mode that produced it — `(predicted)`,
+ * always, for the reason {@link ConflictPair.mode} states.
+ *
+ * Printed rather than left implicit: `own` labels every row it emits, and an
+ * unlabelled row from a sibling command in the same CLI reads as the stronger
+ * claim. Both halves of this row rest on a lexical guess about which files
+ * each task will touch, so the label sits on the pair, covering the whole
+ * line — there is no second, differently-evidenced half here of the kind that
+ * forced `own` to label its two clauses separately.
+ *
+ * `oneLine` on every interpolated identifier, same reason as
+ * {@link formatOwnAnswer}: a path or a board id may legally contain a control
+ * character, and this formatter joins rows with `\n` and fields with `\t`.
+ */
+function formatConflictPair(p: ConflictPair): string {
+  const shared = p.shared.length === 0 ? "(none)" : p.shared.map(oneLine).join(", ");
+  return (
+    `${oneLine(p.a)} <-> ${oneLine(p.b)} (${p.mode})` +
+    `\tshared=${shared}\tcoupled=${p.coupled.toFixed(3)}\tmodules=${formatModuleList(p.modules)}`
+  );
+}
+
+/**
+ * What this answer actually rests on — printed on EVERY run, empty result or
+ * not, because `pairs.length === 0` alone means two incompatible things.
+ *
+ * `predictFiles` answers for a minority of real tasks (`lexical.ts`'s
+ * calibration measured 3 of 8 on this repo; `conflicts` on this repo's own M4
+ * mission predicted a surface for 1 task of 6), and a task with no surface
+ * takes part in no pair. So `(no conflicts found)` printed alone reads as
+ * "this decomposition is clean" when the truth is "nothing was predicted for
+ * five of these six tasks" — a verdict outrunning what was computed, in the
+ * command whose whole product is that verdict.
+ *
+ * Uncovered tasks are NAMED, not just counted: a bare count is the "21 files"
+ * row again — a number a reader cannot act on or check. `(predicted)` sits on
+ * this line too, for the same reason it sits on every pair row.
+ */
+function formatCoverage(report: ConflictReport): string {
+  const total = report.covered.length + report.uncovered.length;
+  const head = `coverage (predicted): ${report.covered.length} of ${total} tasks produced a predicted surface`;
+  if (report.uncovered.length === 0) return head;
+  return (
+    `${head} — this answer says nothing about the other ${report.uncovered.length}: ` +
+    report.uncovered.map(oneLine).join(", ")
+  );
+}
+
+function formatConflicts(report: ConflictReport): string {
+  const rows = report.pairs.length === 0 ? ["(no conflicts found)"] : report.pairs.map(formatConflictPair);
+  return [...rows, formatCoverage(report)].join("\n") + "\n";
+}
+
+/**
+ * `conflicts <mission|campaign|...tasks>` resolves its positional(s) against
+ * the board it already read, trying exactly three shapes in order: a single
+ * id naming a CAMPAIGN (every task under it, from every mission it spans —
+ * `BoardTask.campaign` is a real field per task, not a second board read),
+ * a single id naming a MISSION (every task under it), or two-or-more ids
+ * naming TASKS directly (exactly those tasks, nothing inferred).
+ *
+ * `BoardTask.campaign`/`.mission`/`.id` are three disjoint folder-path
+ * namespaces (see attribution.ts's `SHORT_ID` doc comment for the sibling
+ * argument about why a board id is never ambiguous with another kind), so at
+ * most one of the three branches below can ever match a given single id.
+ */
+function resolveConflictTasks(
+  board: BoardView,
+  positionals: string[],
+): { ok: true; tasks: BoardTask[] } | { ok: false; error: string } {
+  if (positionals.length === 1) {
+    const id = positionals[0];
+    if (id === undefined) return { ok: false, error: "conflicts requires an id" };
+    const byCampaign = board.tasks.filter((t) => t.campaign === id);
+    if (byCampaign.length > 0) return { ok: true, tasks: byCampaign };
+    const byMission = board.tasks.filter((t) => t.mission === id);
+    if (byMission.length > 0) return { ok: true, tasks: byMission };
+    const byTask = board.tasks.filter((t) => t.id === id);
+    if (byTask.length > 0) return { ok: true, tasks: byTask };
+    return { ok: false, error: `no campaign, mission, or task matches "${id}"` };
+  }
+
+  // Two or more positionals: an EXPLICIT task list, every id required to
+  // resolve — a typo in one of several ids must be reported, not silently
+  // dropped from the set it names.
+  const wanted = new Set(positionals);
+  const tasks = board.tasks.filter((t) => wanted.has(t.id));
+  const found = new Set(tasks.map((t) => t.id));
+  const missing = positionals.filter((id) => !found.has(id));
+  if (missing.length > 0) return { ok: false, error: `no task matches: ${missing.join(", ")}` };
+  return { ok: true, tasks };
+}
+
+/**
+ * `conflicts` needs a board for the same reason `own` does (see
+ * `runOwnCommand`) — resolving the positional into a task set reads
+ * `board.tasks`. Deliberately never calls `readWorklog`: this command runs
+ * in `predicted` mode permanently (see conflicts.ts's doc comment), so there
+ * is nothing a worklog entry could add to its answer.
+ */
+function runConflictsCommand(
+  repoRoot: string,
+  config: Config,
+  since: string | undefined,
+  now: number,
+  positionals: string[],
+  json: boolean,
+): CliResult {
+  const board = readBoard(repoRoot);
+  if (board === null) {
+    return {
+      code: 1,
+      stdout: "",
+      stderr: "octograph: no .octobots board found — conflicts needs one to answer\n",
+    };
+  }
+
+  const resolved = resolveConflictTasks(board, positionals);
+  if (!resolved.ok) return usageError(resolved.error);
+
+  // Same co-change graph `impact`/`drift`/`own` already answer against.
+  const { analysis, edges, files } = analyze(repoRoot, config, { now, since });
+  const report = computeConflicts(analysis, edges, files, resolved.tasks, lexicalOptions(config));
+  const stdout = json ? JSON.stringify(report) + "\n" : formatConflicts(report);
   return { code: 0, stdout, stderr: "" };
 }
 
@@ -396,6 +593,24 @@ export function runCli(argv: string[], repoRoot: string, now: number): CliResult
     if (positionals.length !== 1) {
       return usageError("impact requires exactly one <path> argument");
     }
+  } else if (command === "own") {
+    // `own [<path>]` — the optional positional every other non-`impact`
+    // command lacks. An extra positional is REJECTED, not silently ignored:
+    // `octograph own a.ts b.ts` names a real ambiguity (which of the two did
+    // the caller mean?), the same "recognise, don't guess" rule the flag
+    // parser above applies to an unrecognised `--flag`.
+    if (positionals.length > 1) {
+      return usageError("own accepts at most one <path> argument");
+    }
+  } else if (command === "conflicts") {
+    // `conflicts <mission|campaign|...tasks>` — needs at least ONE id.
+    // Unlike `own`'s optional path, there is no "answer about everything"
+    // shape here: a mission-scale co-change graph makes an all-tasks
+    // O(tasks^2) sweep expensive enough that it should be opted into
+    // explicitly (a campaign id), never implied by omitting the argument.
+    if (positionals.length === 0) {
+      return usageError("conflicts requires a <mission>, <campaign>, or one or more <task> ids");
+    }
   } else if (positionals.length > 0) {
     return usageError(`${command} takes no positional arguments`);
   }
@@ -415,6 +630,10 @@ export function runCli(argv: string[], repoRoot: string, now: number): CliResult
         if (path === undefined) return usageError("impact requires exactly one <path> argument");
         return runImpactCommand(repoRoot, config, since, now, path, json);
       }
+      case "own":
+        return runOwnCommand(repoRoot, config, since, now, positionals[0] ?? null, json);
+      case "conflicts":
+        return runConflictsCommand(repoRoot, config, since, now, positionals, json);
     }
   } catch (err) {
     return runtimeError(err);

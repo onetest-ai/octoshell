@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { load as loadYaml } from "js-yaml";
+import { CONFIDENCE_FLOOR, RUNNER_UP_MARGIN, type LexicalOptions } from "./lexical.js";
 import { insideRepo } from "./paths.js";
 
 export interface Config {
@@ -11,6 +12,12 @@ export interface Config {
   hubZThreshold: number;
   budgetTokens: number;
   out: string | null;
+  /** {@link CONFIDENCE_FLOOR} — settable per repo because a naming
+   *  convention this floor was calibrated against (this repo's own commit
+   *  history, 8 provenance-attributed samples) need not hold everywhere. */
+  lexicalConfidenceFloor: number;
+  /** {@link RUNNER_UP_MARGIN} — same caveat as the floor above. */
+  lexicalRunnerUpMargin: number;
 }
 
 export const DEFAULTS: Config = {
@@ -21,11 +28,17 @@ export const DEFAULTS: Config = {
   hubZThreshold: 3,
   budgetTokens: 2000,
   out: null,
+  // Values live in lexical.ts, next to the calibration comment that justifies
+  // them — a single spelling of each pinned number, read here rather than
+  // re-typed.
+  lexicalConfidenceFloor: CONFIDENCE_FLOOR,
+  lexicalRunnerUpMargin: RUNNER_UP_MARGIN,
 };
 
 const NUMERIC = [
   "maxCommitFiles", "halfLifeDays", "minSupport",
   "minCommits", "hubZThreshold", "budgetTokens",
+  "lexicalConfidenceFloor", "lexicalRunnerUpMargin",
 ] as const;
 
 /** Defaults <- octograph.yaml <- explicit overrides. */
@@ -82,6 +95,32 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
     if (value !== undefined) Object.assign(cfg, { [key]: value });
   }
   return cfg;
+}
+
+/**
+ * The `Config` half of this file's lexical settings, in the shape
+ * `predictFiles` takes — the ONE place `lexicalConfidenceFloor` /
+ * `lexicalRunnerUpMargin` are translated into `LexicalOptions`.
+ *
+ * It exists because both consumers of the lexical tier (`own` and
+ * `conflicts`, via `cli.ts`) need the same translation, and the first version
+ * of each did the same thing instead: nothing. `predictFiles` was called with
+ * no options at all, so both keys were parsed, range-checked, documented in
+ * `lexical.ts` as "settable per repo from `octograph.yaml`" — and had no
+ * effect whatsoever on any answer the CLI produced. A setting a user writes
+ * and the tool silently ignores is the defect `parseArgs` was rewritten to
+ * make impossible for flags (`--half-life-days`, see cli.ts); this is the
+ * same defect one layer down.
+ *
+ * Exported from `index.ts` for the same reason: an in-process caller (M6's VS
+ * Code commands) calling `own`/`conflicts` directly needs this mapping, and
+ * the alternative to handing it one is that it writes a second one.
+ */
+export function lexicalOptions(config: Config): LexicalOptions {
+  return {
+    confidenceFloor: config.lexicalConfidenceFloor,
+    runnerUpMargin: config.lexicalRunnerUpMargin,
+  };
 }
 
 /**
