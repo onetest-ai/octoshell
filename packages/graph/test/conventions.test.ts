@@ -393,6 +393,12 @@ describe("package conventions", () => {
       // `workingSets` came back empty (thin history vs. genuine agreement
       // with the declared spine) needs this, not just `doctor`'s report.
       "historyIsThin",
+      // M4/T4.1's own surface: the board and worklog readers `own` and
+      // `conflicts` are built on. Added in the same commit, for the same
+      // reason every entry above was — a symbol this package's own tests can
+      // reach only from inside the package is not part of its public API.
+      "readBoard",
+      "readWorklog",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }
