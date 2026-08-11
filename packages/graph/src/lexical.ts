@@ -70,8 +70,14 @@ const STOPWORDS = new Set(
  * `_`, whitespace, and camelCase boundaries (per the M4 plan's Task 3 spec),
  * then drops stopwords, bare numbers, and single characters — none of which
  * ever distinguish one file from another.
+ *
+ * Exported so `own.ts` (T4.4) can rank a task's own criteria against a
+ * single path with the SAME token boundaries this module scores files by —
+ * a second, hand-rolled tokenizer there would be exactly the kind of
+ * divergent second spelling `test/conventions.test.ts` already guards for
+ * `edgeWeight`/`compare`/`isTestPath`, just not (yet) added to that list.
  */
-function tokenize(text: string): string[] {
+export function tokenize(text: string): string[] {
   return text
     .split(/[/.\-_\s]+/)
     .flatMap((word) => word.split(/(?<=[a-z0-9])(?=[A-Z0-9])/))

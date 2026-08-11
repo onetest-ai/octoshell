@@ -2,16 +2,19 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { analyze, type Analysis } from "./analyze.js";
 import { readArtifact, resolveOut, writeArtifact, type StoredGraph } from "./artifact.js";
+import { readBoard } from "./board.js";
 import { loadConfig, type Config } from "./config.js";
 import { doctor, exitCode, type Report } from "./doctor.js";
 import { drift as computeDrift, type DriftRow } from "./drift.js";
 import { impact as computeImpact, type ImpactRow } from "./impact.js";
+import { own as computeOwn, type OwnAnswer } from "./own.js";
 import { repoRelative } from "./paths.js";
 import { renderMap } from "./render.js";
+import { readWorklog } from "./worklog.js";
 
-export type Command = "map" | "impact" | "drift" | "doctor";
+export type Command = "map" | "impact" | "drift" | "doctor" | "own";
 
-const COMMANDS: readonly Command[] = ["map", "impact", "drift", "doctor"];
+const COMMANDS: readonly Command[] = ["map", "impact", "drift", "doctor", "own"];
 
 function isCommand(value: string): value is Command {
   return (COMMANDS as readonly string[]).includes(value);
@@ -361,6 +364,50 @@ function runImpactCommand(
   return { code: 0, stdout, stderr: "" };
 }
 
+function formatOwnAnswer(a: OwnAnswer): string {
+  return `${a.path}\towned by ${a.mission} / ${a.task} (${a.mode})\tcriterion: ${a.criterion}`;
+}
+
+function formatOwn(answers: OwnAnswer[]): string {
+  if (answers.length === 0) return "(no owner found)\n";
+  return answers.map(formatOwnAnswer).join("\n") + "\n";
+}
+
+/**
+ * `own [<path>]` needs a board — the ONE signal `board.ts`'s `readBoard`
+ * exists to give (see its doc comment). Every other command keeps working
+ * on a boardless repo; this is the single early-exit point that keeps it
+ * that way, a clear message and a non-zero exit rather than `own.ts`
+ * reaching into a `null` board and throwing.
+ */
+function runOwnCommand(
+  repoRoot: string,
+  config: Config,
+  since: string | undefined,
+  now: number,
+  rawPath: string | null,
+  json: boolean,
+): CliResult {
+  const board = readBoard(repoRoot);
+  if (board === null) {
+    return {
+      code: 1,
+      stdout: "",
+      stderr: "octograph: no .octobots board found — own needs one to answer\n",
+    };
+  }
+
+  const log = readWorklog(repoRoot);
+  // Same candidate universe `impact`/`drift` already answer against — the
+  // co-change file corpus `analyze` harvests, not a second file listing.
+  const { files } = analyze(repoRoot, config, { now, since });
+  const path = rawPath === null ? null : (repoRelative(repoRoot, rawPath) ?? rawPath);
+
+  const answers = computeOwn(repoRoot, board, log, files, path);
+  const stdout = json ? JSON.stringify(answers) + "\n" : formatOwn(answers);
+  return { code: 0, stdout, stderr: "" };
+}
+
 function runDriftCommand(
   repoRoot: string,
   config: Config,
@@ -396,6 +443,15 @@ export function runCli(argv: string[], repoRoot: string, now: number): CliResult
     if (positionals.length !== 1) {
       return usageError("impact requires exactly one <path> argument");
     }
+  } else if (command === "own") {
+    // `own [<path>]` — the optional positional every other non-`impact`
+    // command lacks. An extra positional is REJECTED, not silently ignored:
+    // `octograph own a.ts b.ts` names a real ambiguity (which of the two did
+    // the caller mean?), the same "recognise, don't guess" rule the flag
+    // parser above applies to an unrecognised `--flag`.
+    if (positionals.length > 1) {
+      return usageError("own accepts at most one <path> argument");
+    }
   } else if (positionals.length > 0) {
     return usageError(`${command} takes no positional arguments`);
   }
@@ -415,6 +471,8 @@ export function runCli(argv: string[], repoRoot: string, now: number): CliResult
         if (path === undefined) return usageError("impact requires exactly one <path> argument");
         return runImpactCommand(repoRoot, config, since, now, path, json);
       }
+      case "own":
+        return runOwnCommand(repoRoot, config, since, now, positionals[0] ?? null, json);
     }
   } catch (err) {
     return runtimeError(err);

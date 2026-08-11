@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { createCampaign, createMission, createTask } from "@octoshell/board";
 import { runCli } from "../src/cli.js";
 import { appendCommits, buildRepo } from "./fixtures/repo.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
@@ -408,6 +410,128 @@ describe("runCli — commands", () => {
     const result = runCli(["doctor"], noGit, NOW);
     expect(result.code).not.toBe(0);
     expect(result.stdout).toContain("blocked");
+  });
+});
+
+describe("runCli — own", () => {
+  /** A repo that is both a git repository and an Octobots board — `own`
+   *  needs both. Mirrors `own.test.ts`'s and `attribution.test.ts`'s
+   *  fixtures. */
+  function repoWithBoardAndGit(): { root: string; octobotsDir: string; git: (args: string[]) => string } {
+    const root = mkdtempClean("octograph-cli-own-");
+    const git = (args: string[]): string =>
+      execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" });
+    git(["init", "-q", "-b", "main"]);
+    git(["config", "user.email", "test@example.com"]);
+    git(["config", "user.name", "Test"]);
+    const octobotsDir = join(root, ".octobots");
+    mkdirSync(octobotsDir, { recursive: true });
+    return { root, octobotsDir, git };
+  }
+
+  function commit(root: string, git: (args: string[]) => string, files: Record<string, string>): string {
+    for (const [rel, content] of Object.entries(files)) {
+      const abs = join(root, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, content);
+    }
+    git(["add", "-A"]);
+    git(["commit", "-q", "-m", "test commit"]);
+    return git(["rev-parse", "HEAD"]).trim();
+  }
+
+  /** Writes `.octobots/tokenomics/worklog.jsonl` in the shape
+   *  `hooks/work-log.mjs` actually writes — snake_case keys. */
+  function writeWorklog(root: string, lines: Array<Record<string, unknown>>): void {
+    const dir = join(root, ".octobots", "tokenomics");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "worklog.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  }
+
+  it("exits 2 when own is given more than one positional argument", () => {
+    // The regression this guards: `runCli` today accepts a positional only
+    // for `impact` and rejects one for every other command — `own [<path>]`
+    // needs its OWN explicit handling, not silent acceptance of extras.
+    const result = runCli(["own", "a.ts", "b.ts"], tinyRepo(), NOW);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("own");
+  });
+
+  it("accepts own with zero positional arguments", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "a.ts": "content\n", "b.ts": "content\n" });
+    createCampaign(octobotsDir, { name: "Q3" });
+    const result = runCli(["own"], root, NOW);
+    expect(result.code).toBe(0);
+  });
+
+  it("own on a repo with no board exits non-zero naming the missing board, and no other command's behaviour changes", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+
+    const ownResult = runCli(["own"], repo, NOW);
+    expect(ownResult.code).not.toBe(0);
+    expect(ownResult.stderr).toContain("board");
+
+    const ownWithPath = runCli(["own", "a.ts"], repo, NOW);
+    expect(ownWithPath.code).not.toBe(0);
+    expect(ownWithPath.stderr).toContain("board");
+
+    // Every other command still produces its normal, unaffected output on
+    // the SAME boardless repo.
+    expect(runCli(["map"], repo, NOW).code).toBe(0);
+    expect(runCli(["impact", "a.ts"], repo, NOW).code).toBe(0);
+    expect(runCli(["drift"], repo, NOW).code).toBe(0);
+    expect(runCli(["doctor"], repo, NOW).stdout).toContain("no board");
+  });
+
+  it("own <path> names the owning mission and criterion, labelled provenance, through the CLI", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, { "src/auth.ts": "export {}\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    const task = createTask(octobotsDir, mission.id, {
+      name: "T1.1 - JWT",
+      acceptanceCriteria: "- [ ] jwt is validated",
+    });
+    writeWorklog(root, [
+      { session_id: "s1", task: task.id, branch: "feat/x-t1", merged_sha: sha, at: "2026-08-10T00:00:00.000Z" },
+    ]);
+
+    const result = runCli(["own", "src/auth.ts"], root, NOW);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(mission.id);
+    expect(result.stdout).toContain("jwt is validated");
+    expect(result.stdout).toContain("provenance");
+  });
+
+  it("own <path> against a worklog holding only mission-level entries still answers, labelled predicted", () => {
+    const { root, octobotsDir } = repoWithBoardAndGit();
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    createTask(octobotsDir, mission.id, {
+      name: "T1.1 - JWT",
+      acceptanceCriteria: "- [ ] the session token is validated on every login attempt",
+    });
+    writeWorklog(root, [{ session_id: "s1", mission: mission.id, at: "2026-08-10T00:00:00.000Z" }]);
+
+    const repo = buildRepo([
+      { files: ["src/auth/session.ts", "src/auth/login.ts"] },
+      { files: ["src/auth/session.ts", "src/auth/login.ts"], daysAgo: 1 },
+      { files: ["src/billing/invoice.ts", "src/billing/ledger.ts"] },
+      { files: ["src/billing/invoice.ts", "src/billing/ledger.ts"], daysAgo: 1 },
+    ]);
+    // Reuse the git history from `repo`, but the board/worklog from `root` —
+    // `own` reads the board and worklog off the SAME repo it harvests, so
+    // graft the board directory across rather than maintaining two fixtures.
+    execFileSync("cp", ["-R", join(root, ".octobots"), join(repo, ".octobots")]);
+
+    const result = runCli(["own", "src/auth/session.ts"], repo, NOW);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(mission.id);
+    expect(result.stdout).toContain("predicted");
+    expect(result.stdout).not.toContain("provenance");
   });
 });
 
