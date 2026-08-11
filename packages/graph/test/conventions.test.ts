@@ -536,6 +536,74 @@ describe("package conventions", () => {
   });
 
   /**
+   * T5.2's own guard, and the reason it is aimed at `setup-io.ts` and NOT at
+   * `setup.ts`. `setup.ts` calls only `io.exec(file, argv)` with a literal
+   * command and a literal argv array — by that construction it can never
+   * contain `curl`, `|`, or `sh -c`, so a source-text scan aimed at it would
+   * pass forever regardless of what the real spawning code does. That is
+   * theatre, not a guard. `setup-io.ts` is the one module the guard above
+   * confines every spawn primitive to, so it is the one file that CAN
+   * violate "never spawn through a shell" — and this is what actually would:
+   * `child_process.exec(` (the shell-interpreting sibling of `execFile`,
+   * never used here), a `shell: true` option on any call (`execFile`,
+   * `spawn`, or a future primitive — it runs the whole argv through
+   * `/bin/sh` regardless of which function carries it), or a `spawn(` call
+   * whose second argument is not a literal `[...]` array (a variable there
+   * could resolve to a shell string at runtime, and the "no string for an
+   * interpolated value to escape out of" argument only holds for an argv a
+   * reviewer can read on the spot).
+   *
+   * Not baked into `usesUnsafeSpawn` itself: comment/string stripping, same
+   * split as `isChecklistRegex` above — the function is a plain regex test,
+   * and callers choose whether to strip first.
+   */
+  function usesUnsafeSpawn(text: string): boolean {
+    return (
+      /\bchild_process\.exec\s*\(/.test(text) ||
+      /\bshell\s*:\s*true\b/.test(text) ||
+      // The lookahead skips whitespace INSIDE itself (`(?!\s*\[)`), not via
+      // a `\s*` sitting outside it — a `,\s*(?!\[)` spelling let `\s*`
+      // backtrack to zero characters so the assertion ran against the space
+      // itself rather than the `[` after it, and `spawn(file, ['a', 'b'])`
+      // (a literal array, perfectly legal) matched as a violation.
+      /\bspawn\s*\(\s*[^,\n]+,(?!\s*\[)/.test(text)
+    );
+  }
+
+  it("never gives setup-io.ts a shell-spawning primitive — child_process.exec(, shell: true, or a non-literal spawn argv", () => {
+    expect(usesUnsafeSpawn(code("setup-io.ts"))).toBe(false);
+  });
+
+  /** The guard above is a regex, so what it can see is a claim of its own,
+   *  and one nothing exercises now that the tree has no offenders. Pin the
+   *  spellings it must catch and the ones it must not — same shape as every
+   *  other paired test in this file. */
+  it("recognises every spelling of an unsafe spawn, and no unrelated call", () => {
+    const violatesGuard = (text: string): boolean => usesUnsafeSpawn(stripped(text));
+    for (const violation of [
+      "child_process.exec(cmd);",
+      "child_process.exec(cmd, cb);",
+      "spawn(file, args, { shell: true });",
+      "execFile(file, args, { shell: true });",
+      "const opts = { shell: true }; spawn(file, argv, opts);",
+      "spawn(file, argv);",
+      "child_process.spawn(cmd, userArgs);",
+    ]) {
+      expect([violation, violatesGuard(violation)]).toEqual([violation, true]);
+    }
+    for (const legal of [
+      "execFile(file, args);",
+      "execFileAsync(file, args);",
+      "spawn(file, ['a', 'b']);",
+      "spawn(file, [...args]);",
+      "// never child_process.exec( or shell: true",
+      "const shell = false;",
+    ]) {
+      expect([legal, violatesGuard(legal)]).toEqual([legal, false]);
+    }
+  });
+
+  /**
    * A twelfth single-spelling rule: `setup.ts`'s build step calls the SAME
    * `analyze -> renderMap -> writeArtifact` sequence `octograph map` runs,
    * through `runMapCommand` (cli.ts) — never a second, hand-assembled copy

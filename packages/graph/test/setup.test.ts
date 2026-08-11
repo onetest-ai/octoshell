@@ -49,9 +49,10 @@ interface FakePort {
  *  a test can make the fake install ACTUALLY change the machine — which is
  *  the only reason a real one is worth consenting to, and the only way to
  *  tell a postflight that re-observes from one that replays what `doctor`
- *  said before the mutation. */
+ *  said before the mutation. `uvMissing` makes `which("uv")` resolve `null`
+ *  — every other lookup still resolves a path — the one case T5.2 adds. */
 function fakePort(
-  opts: { consent?: boolean; execCode?: number; onExec?: () => void } = {},
+  opts: { consent?: boolean; execCode?: number; onExec?: () => void; uvMissing?: boolean } = {},
 ): FakePort {
   const execCalls: Array<{ file: string; args: string[] }> = [];
   const promptCalls: string[] = [];
@@ -69,7 +70,7 @@ function fakePort(
       opts.onExec?.();
       return { code: opts.execCode ?? 0, stdout: "", stderr: "" };
     },
-    which: async (file) => `/usr/bin/${file}`,
+    which: async (file) => (opts.uvMissing && file === "uv" ? null : `/usr/bin/${file}`),
   };
   return { io, execCalls, promptCalls, logLines };
 }
@@ -98,6 +99,27 @@ describe("runSetup", () => {
     const logged = port.logLines.join("\n");
     expect(logged).toContain("graphify");
     expect(logged).toContain("uv tool install graphifyy");
+  });
+
+  /**
+   * `which("uv")` is the ONE gate `runSetup` checks before it ever asks for
+   * consent: there is nothing to prompt about if the install command itself
+   * cannot run. This is a DIFFERENT outcome than an explicit decline —
+   * declining is a choice a healthy run can still exit 0 on; an absent `uv`
+   * means the run could not do what it set out to do, so it is reported with
+   * a non-zero exit even though `graphify` is only an optional check.
+   */
+  it("with uv absent, prints uv's install URL, makes zero exec calls, never prompts, and exits non-zero", async () => {
+    const repo = healthyRepo(); // no graph.json written — graphify is "missing"
+    const port = fakePort({ consent: true, uvMissing: true });
+
+    const code = await runSetup(repo, healthyConfig(), NOW, port.io);
+
+    expect(port.promptCalls).toEqual([]);
+    expect(port.execCalls).toEqual([]);
+    const logged = port.logLines.join("\n");
+    expect(logged).toContain("https://docs.astral.sh/uv/getting-started/installation/");
+    expect(code).not.toBe(0);
   });
 
   it("with Graphify missing and the port consenting, makes exactly one install call — the argv array", async () => {

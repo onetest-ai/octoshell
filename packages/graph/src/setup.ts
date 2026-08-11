@@ -42,6 +42,15 @@ const GRAPHIFY_CHECK = "graphify";
  *  repo name. */
 const INSTALL_ARGV: readonly [string, readonly string[]] = ["uv", ["tool", "install", "graphifyy"]];
 
+/**
+ * uv's own documented install instructions — never astral.sh's raw
+ * `install.sh`, which IS meant to be piped to a shell. Printing that URL
+ * would be exactly the `curl … | sh` affordance this package's safety rules
+ * exist to forbid; the docs page tells a human how to install it themselves,
+ * on their own terms.
+ */
+const UV_INSTALL_URL = "https://docs.astral.sh/uv/getting-started/installation/";
+
 function findCheck(report: Report, name: string): Check | undefined {
   return report.checks.find((c) => c.name === name);
 }
@@ -118,22 +127,44 @@ export async function runSetup(
   // to be re-observed rather than remembered.
   let mutated = false;
 
+  // Whether this run wanted to install Graphify and COULD NOT, because `uv`
+  // itself is not on `PATH`. Distinct from an explicit decline: declining is
+  // a choice a healthy repo can still exit 0 on (see the exit-code
+  // computation below), but an absent `uv` means the run could not do what
+  // it set out to do — that is reported with a non-zero exit even though
+  // `graphify` is only an optional check and never moves `Report.status`.
+  let uvMissing = false;
+
   const graphify = findCheck(report, GRAPHIFY_CHECK);
   if (graphify !== undefined && graphify.state === "missing") {
     const [file, args] = INSTALL_ARGV;
-    const consent = await io.prompt(
-      `octograph: Graphify is not installed. Install it now via \`uv tool install graphifyy\`? [y/N] `,
-    );
-    if (consent) {
-      const result = await io.exec(file, [...args]);
-      mutated = true;
+    // Checked BEFORE prompting: there is nothing to ask consent for if the
+    // install command itself cannot run. Piping astral.sh's `install.sh` to
+    // a shell as a fallback would "fix" this transparently — and is exactly
+    // the affordance this package's safety rules forbid, so the fix is
+    // handed back to the human instead.
+    const uvPath = await io.which(file);
+    if (uvPath === null) {
+      uvMissing = true;
       io.log(
-        result.code === 0
-          ? "octograph: `uv tool install graphifyy` succeeded."
-          : `octograph: \`uv tool install graphifyy\` failed (exit ${result.code}).`,
+        `octograph: \`uv\` not found on PATH — install it yourself from ${UV_INSTALL_URL}, ` +
+          `then re-run \`octograph setup\` to install Graphify.`,
       );
     } else {
-      io.log("octograph: skipping Graphify install — continuing without it.");
+      const consent = await io.prompt(
+        `octograph: Graphify is not installed. Install it now via \`uv tool install graphifyy\`? [y/N] `,
+      );
+      if (consent) {
+        const result = await io.exec(file, [...args]);
+        mutated = true;
+        io.log(
+          result.code === 0
+            ? "octograph: `uv tool install graphifyy` succeeded."
+            : `octograph: \`uv tool install graphifyy\` failed (exit ${result.code}).`,
+        );
+      } else {
+        io.log("octograph: skipping Graphify install — continuing without it.");
+      }
     }
   }
 
@@ -165,6 +196,11 @@ export async function runSetup(
 
   // A failed build is a failed `setup`, whatever the checks say about the
   // repo: the artifact this run claims to have written is the thing it was
-  // asked to produce.
-  return build.code !== 0 ? build.code : doctorExitCode(finalReport);
+  // asked to produce. An absent `uv` is reported next: `graphify` is an
+  // optional check that never moves `Report.status`, so `doctorExitCode`
+  // alone would return 0 on an otherwise-healthy repo even though this run
+  // could not do what it set out to do.
+  if (build.code !== 0) return build.code;
+  if (uvMissing) return 1;
+  return doctorExitCode(finalReport);
 }
