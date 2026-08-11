@@ -491,6 +491,36 @@ describe("package conventions", () => {
    * modes, the same argument the `edgeWeight`/`compare` guards above rest
    * on — only the source distinguishes "exactly two" from "two, so far".
    */
+  /**
+   * A tenth single-spelling rule: **every** reader that asks git for file
+   * names passes `-z`.
+   *
+   * Without it git applies `core.quotePath` and hands back a C-quoted
+   * rendering — `src/résumé.ts` arrives as `"src/r\303\251sum\303\251.ts"`,
+   * quotes and octal escapes included. That is not a path on disk, so the two
+   * readers disagree about the same file's name: `harvest` (which passes
+   * `-z`) names the node `src/résumé.ts` while a reader that omits it claims
+   * provenance over `"src/r\303\251sum\303\251.ts"`, a phantom that matches
+   * nothing. `attribution.ts` shipped exactly that, in the same package whose
+   * `harvest.ts` already carried a comment explaining why not to.
+   *
+   * Invisible on any ASCII fixture, which is every fixture this suite builds
+   * by default — so it is guarded at the source, like the rules above.
+   */
+  it("passes -z wherever it asks git for file names, so no reader gets C-quoted paths", () => {
+    // Comments only: `code()` strips string literals, which are the very
+    // argv tokens this rule is about.
+    const argv = (f: string) =>
+      readFileSync(join(SRC, f), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/\/\/[^\n]*/g, " ");
+    const offenders = sources.filter((f) => {
+      const text = argv(f);
+      return /["']--name-only["']/.test(text) && !/["']-z["']/.test(text);
+    });
+    expect(offenders).toEqual([]);
+  });
+
   it("gives AttributionMode exactly two members — no third mode for commit-subject scanning", () => {
     // `code()` strips string literals too, which would erase the very
     // members this guard reads — comments only, same as the graphify-path

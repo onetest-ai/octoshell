@@ -200,6 +200,45 @@ describe("backfill-worklog-sha.mjs", () => {
     expect(existsSync(marker)).toBe(true);
   });
 
+  /**
+   * The rewrite is a read-modify-WRITE over the one surviving record of work
+   * whose transcripts are pruned outside the repo, so it goes through a tmp
+   * file and an atomic `rename`, never a truncate-in-place. This pins both
+   * halves: the untouched lines survive byte-for-byte alongside the filled
+   * one, and no `.tmp` scratch file is left in `.octobots/tokenomics/` for
+   * the gate to commit.
+   */
+  it("rewrites atomically — other lines survive verbatim and no tmp file is left behind", () => {
+    const already = line({
+      session_id: "s0",
+      task: "T1.0",
+      branch: "feat/x-t0",
+      merged_sha: "abc123",
+      at: "2026-08-09T00:00:00.000Z",
+    });
+    const noBranch = line({ session_id: "s2", mission: "M1", at: "2026-08-10T01:00:00.000Z" });
+    const repo = repoWithWorklog(
+      [
+        already,
+        line({ session_id: "s1", task: "T1.1", branch: "feat/x-t1", at: "2026-08-10T00:00:00.000Z" }),
+        noBranch,
+      ],
+      { octograph: true },
+    );
+    const sha = "2222222222222222222222222222222222222222";
+    const bin = fakeGh("merged", join(repo, "gh-was-called"), sha);
+
+    const { code } = run(repo, bin);
+
+    expect(code).toBe(0);
+    const raw = readFileSync(LOG(repo), "utf8");
+    expect(raw.split("\n")[0]).toBe(already); // untouched line, byte-for-byte
+    expect(raw).toContain(noBranch); // no branch to resolve from — also untouched
+    expect(raw.endsWith("\n")).toBe(true); // trailing newline preserved
+    expect(entries(repo)[1]).toMatchObject({ task: "T1.1", merged_sha: sha });
+    expect(existsSync(`${LOG(repo)}.backfill.tmp`)).toBe(false);
+  });
+
   it("emits nothing on stdout — informational lines go to stderr, matching the pack's other scripts", () => {
     const repo = repoWithWorklog([], { octograph: false });
     expect(run(repo).stdout).toBe("");

@@ -313,7 +313,16 @@ What survives is cross-boundary coupling with no declared edge. A `drift` run wh
   field — see Input 3's 2026-08-11 amendment: `mission-execution`'s `--delete-branch` merges leave
   no branch to resolve by the time a task is worth attributing) diffed against git. Rolled up to
   **mission ↔ module** ownership, which is stabler than task↔file because modules persist while
-  files churn. `AttributionMode` has exactly two members, `provenance` and `predicted` — never a
+  files churn. **The join key is the short board id, and it is only evidence while it is unique.**
+  `hooks/work-log.mjs` records the `T4.2`-style id it reads off the `set-status.js` title;
+  `@octoshell/board` identifies a task by a folder path (`folder:campaigns/…/tasks/t4-2-…`). The two
+  namespaces never meet, so comparing them directly yields no provenance at all (measured on this
+  repo 2026-08-11: 52 tasks × 18 entries → 0 rows). And a short id is unique only *within* a
+  campaign — 14 of this board's are shared across two or three — so an ambiguous one attributes to
+  nothing rather than to the wrong campaign's task. Removing that ambiguity means teaching
+  work-log.mjs to record the full board id; guessing the campaign from a branch name would
+  reintroduce exactly the inference this whole section replaces.
+  `AttributionMode` has exactly two members, `provenance` and `predicted` — never a
   third for scanning squash-commit subjects, which was considered and rejected: every merged PR's
   merge SHA is recoverable from GitHub permanently, so the branch-name-convention inference a third
   mode would reinvent is both unnecessary and lossy (some tasks have no commit whose subject

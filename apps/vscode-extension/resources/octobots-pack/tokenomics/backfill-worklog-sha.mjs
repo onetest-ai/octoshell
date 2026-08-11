@@ -34,10 +34,17 @@
 //   * A branch with no merged PR is left alone, never guessed.
 //   * Never fails the gate: a `gh` failure (offline, not installed, no
 //     auth, no merged PR) is noted per-branch and the script still exits 0.
-//   * Writes only if at least one line actually changed.
+//   * Writes only if at least one line actually changed, and writes by
+//     tmp-file + rename so the log is never observed truncated. This is a
+//     read-modify-WRITE over an append-only file that is the only surviving
+//     record of work whose transcripts are pruned outside the repo — a
+//     `writeFileSync` straight onto the path truncates first, so a crash
+//     between truncate and write destroys exactly what this script exists to
+//     preserve. `rename(2)` within the same directory is atomic: a reader
+//     sees the old file or the new one, never a half-written one.
 //
 // Usage: node backfill-worklog-sha.mjs [--project-dir DIR] [--quiet]
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 
@@ -133,7 +140,19 @@ const rewritten = lines.map((line) => {
   return JSON.stringify({ ...entry, merged_sha: sha });
 });
 
-if (changed) writeFileSync(WORKLOG_PATH, rewritten.join("\n"));
+if (changed) {
+  const tmp = `${WORKLOG_PATH}.backfill.tmp`;
+  try {
+    writeFileSync(tmp, rewritten.join("\n"));
+    renameSync(tmp, WORKLOG_PATH);
+  } catch (err) {
+    // The original is still intact — the rename either happened or it did
+    // not. Report and exit 0, same rule as every other failure here.
+    try { unlinkSync(tmp); } catch { /* nothing to clean up */ }
+    log(`worklog-sha-backfill: could not write worklog — ${String(err.message ?? err).split("\n")[0]}`);
+    process.exit(0);
+  }
+}
 
 log(`worklog-sha-backfill: filled ${filled} entr${filled === 1 ? "y" : "ies"}.`);
 process.exit(0);
