@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import { launchInstallGraph, launchRebuildGraph } from "../src/host/octograph-command.js";
 import { GRAPH_ENTRY, GRAPH_RELATIVE_PATH, graphStatus } from "../src/host/octograph-install.js";
 import { OCTOBOTS_PACK_VERSION } from "../src/host/octobots-skill.js";
+import { TERMINAL_EVENTS } from "./fixtures/terminal-events.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 /** The extension's own shipped pack resources — the real source these commands install from. */
@@ -45,23 +46,16 @@ function strictTerminal(): {
 }
 
 /**
- * Every terminal-lifecycle event registrar VS Code exposes on `window`, temporarily installed on
- * the stub as a function that throws BY NAME. Registering an exit/close handler is the one
- * thin-launcher violation the terminal Proxy above cannot see (it happens on `window`, not on the
- * terminal), and relying on the stub simply lacking the member is not a guard — the day another
- * test adds `onDidCloseTerminal` to `test/vscode-stub.ts`, that accident evaporates silently.
+ * Every registrar in the shared {@link TERMINAL_EVENTS} list, temporarily installed on the stub as
+ * a function that throws BY NAME. Registering an exit/close handler is the one thin-launcher
+ * violation the terminal Proxy above cannot see (it happens on `window`, not on the terminal), and
+ * relying on the stub simply lacking the member is not a guard — the day another test adds
+ * `onDidCloseTerminal` to `test/vscode-stub.ts`, that accident evaporates silently.
+ *
+ * The list itself is `test/fixtures/terminal-events.ts`, imported rather than re-typed:
+ * `test/octograph-e2e.test.ts`'s source-text half of the same gate reads the SAME array, so a
+ * registrar can never be covered by one suite and missed by the other.
  */
-const TERMINAL_EVENTS = [
-  "onDidCloseTerminal",
-  "onDidOpenTerminal",
-  "onDidChangeActiveTerminal",
-  "onDidChangeTerminalState",
-  "onDidChangeTerminalShellIntegration",
-  "onDidStartTerminalShellExecution",
-  "onDidEndTerminalShellExecution",
-  "onDidWriteTerminalData",
-] as const;
-
 function trapTerminalEvents(): void {
   const win = vscode.window as unknown as Record<string, unknown>;
   for (const name of TERMINAL_EVENTS) {
