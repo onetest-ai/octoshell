@@ -135,8 +135,27 @@ one adapter function rather than the tool.
 ### Input 3 — board overlay (optional)
 
 `.octobots/tokenomics/worklog.jsonl` records `session_id → task → branch`. Git maps
-`branch → commits → files`. Joining them yields **task ↔ file** provenance as a fact rather than
-an inference from branch-name convention.
+`branch → commits → files` — **while the branch still exists.**
+
+**Amended 2026-08-11 — the branch join does not survive `--delete-branch`.** Measured on this
+repo, 2026-08-10: `mission-execution` merges every task PR with `gh pr merge --squash
+--delete-branch`, so by the time a task is worth attributing, its worklog branch is already gone.
+13 worklog entries, 13 distinct branches recorded, **0** still resolved to a commit
+(`git ls-remote` confirmed the 4 that looked like surviving `origin/…` refs were stale local
+tracking refs, not remote branches). `branch → commits → files` is not "a fact rather than an
+inference" — as this section originally claimed — it is close to useless once a mission gate has
+run.
+
+The recovery is not a smarter branch-name inference: GitHub retains a merged PR's `headRefName`
+and `mergeCommit` **permanently**, including for deleted branches (`gh pr list --state merged
+--json headRefName,mergeCommit` recovered all 13). So provenance now comes from a **recorded merge
+SHA** — backfilled once for existing history and captured going forward at the one guaranteed
+post-merge checkpoint this pack has, `mission-completion-gate`'s Tokenomics phase (see
+`backfill-worklog-sha.mjs` in the pack) — not from resolving the worklog's `branch` field directly.
+`branch → commits → files` still works for the rare case a branch survives, but `merged_sha →
+commits → files` is the path that actually produces task ↔ file provenance **as a fact**, which is
+what this section's original claim gets right about the *destination*, just not about how to reach
+it.
 
 ---
 
@@ -290,8 +309,15 @@ What survives is cross-boundary coupling with no declared edge. A `drift` run wh
 
 ### A7 — Board overlay
 
-- **Provenance** — task ↔ file from worklog + git. Rolled up to **mission ↔ module** ownership,
-  which is stabler than task↔file because modules persist while files churn.
+- **Provenance** — task ↔ file from a worklog entry's **recorded merge SHA** (not its `branch`
+  field — see Input 3's 2026-08-11 amendment: `mission-execution`'s `--delete-branch` merges leave
+  no branch to resolve by the time a task is worth attributing) diffed against git. Rolled up to
+  **mission ↔ module** ownership, which is stabler than task↔file because modules persist while
+  files churn. `AttributionMode` has exactly two members, `provenance` and `predicted` — never a
+  third for scanning squash-commit subjects, which was considered and rejected: every merged PR's
+  merge SHA is recoverable from GitHub permanently, so the branch-name-convention inference a third
+  mode would reinvent is both unnecessary and lossy (some tasks have no commit whose subject
+  carries their id at all).
 - **Cold start is the modal case, not the fallback.** A task that has never run has no commits.
   Attach it by lexical match of its acceptance-criteria text against file paths and identifiers
   (tf-idf over identifier tokens) — the non-vector tier of `wikis`' three-tier orphan cascade, with

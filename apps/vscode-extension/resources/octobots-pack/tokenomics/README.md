@@ -8,11 +8,12 @@ Output conforms to the EPAM *AI Factory Run Submission* schema v1.0 —
 `stop: implementation`, `owner_group: dev`, one row per Octobots **mission**.
 
 ```
-node .octobots/tokenomics/run.mjs             # collect -> rollup -> render (idempotent, safe to re-run)
-node .octobots/tokenomics/render.mjs          # re-render report.html from runs.json only
-node .octobots/tokenomics/update-prices.mjs   # refresh the cached price table (occasional; commit it)
-node .octobots/tokenomics/selftest.mjs        # run the pipeline against a synthetic project
-node .octobots/tokenomics/verify.mjs          # cross-check totals against ccusage
+node .octobots/tokenomics/run.mjs                    # collect -> rollup -> render (idempotent, safe to re-run)
+node .octobots/tokenomics/render.mjs                 # re-render report.html from runs.json only
+node .octobots/tokenomics/update-prices.mjs          # refresh the cached price table (occasional; commit it)
+node .octobots/tokenomics/selftest.mjs               # run the pipeline against a synthetic project
+node .octobots/tokenomics/verify.mjs                 # cross-check totals against ccusage
+node .octobots/tokenomics/backfill-worklog-sha.mjs   # fill merge SHAs deleted branches took with them
 ```
 
 ## Why it runs at the mission gate
