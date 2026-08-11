@@ -126,19 +126,33 @@ describe("end-to-end via the shipped bundle: a repo with no .octobots board", ()
       // own/conflicts are the two commands that need a board — the one
       // divergence from every command above, and the whole point of this
       // fixture.
+      //
+      // Asserted on the WHOLE message, never on the substring "board": a
+      // bundle that failed to inline `@octoshell/board` dies with `Cannot
+      // find package '@octoshell/board' imported from …` on stderr, an empty
+      // stdout and a non-zero exit — which satisfies "exits non-zero",
+      // "prints nothing to stdout" AND "stderr mentions board", all three, so
+      // the crash this whole file exists to catch is indistinguishable from
+      // the deliberate refusal it means to pin. The criterion asks for a CLEAR
+      // MESSAGE; the message is the thing to assert, and `ERR_MODULE_NOT_FOUND`
+      // is named explicitly so the one failure that could impersonate it
+      // cannot.
       const own = runNode([bundle, "own"], repo);
       expect(own.code).not.toBe(0);
       expect(own.stdout).toBe("");
-      expect(own.stderr).toContain("board");
+      expect(own.stderr).toContain("no .octobots board found — own needs one to answer");
+      expect(own.stderr).not.toContain("ERR_MODULE_NOT_FOUND");
 
       const ownWithPath = runNode([bundle, "own", "a.ts"], repo);
       expect(ownWithPath.code).not.toBe(0);
-      expect(ownWithPath.stderr).toContain("board");
+      expect(ownWithPath.stderr).toContain("no .octobots board found — own needs one to answer");
+      expect(ownWithPath.stderr).not.toContain("ERR_MODULE_NOT_FOUND");
 
       const conflicts = runNode([bundle, "conflicts", "anything"], repo);
       expect(conflicts.code).not.toBe(0);
       expect(conflicts.stdout).toBe("");
-      expect(conflicts.stderr).toContain("board");
+      expect(conflicts.stderr).toContain("no .octobots board found — conflicts needs one to answer");
+      expect(conflicts.stderr).not.toContain("ERR_MODULE_NOT_FOUND");
     },
     30_000,
   );
@@ -163,7 +177,7 @@ describe("end-to-end via the shipped bundle: a day-one, mission-only worklog", (
       mkdirSync(octobotsDir, { recursive: true });
       const campaign = createCampaign(octobotsDir, { name: "Q3" });
       const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
-      createTask(octobotsDir, mission.id, {
+      const task = createTask(octobotsDir, mission.id, {
         name: "T1.1 - JWT",
         acceptanceCriteria: "- [ ] the session token is validated on every login attempt",
       });
@@ -171,12 +185,32 @@ describe("end-to-end via the shipped bundle: a day-one, mission-only worklog", (
       // `task` field at all) — the shape every adopting repo starts in, per
       // this task's own name, and the shape this repo was actually in on
       // 2026-08-09 per the mission plan's own measurement.
-      writeWorklog(repo, [{ session_id: "s1", mission: mission.id, at: "2026-08-10T00:00:00.000Z" }]);
+      //
+      // The entry carries a RESOLVABLE merge SHA, and one whose commit really
+      // did touch the queried file. Without it this fixture could not fail for
+      // the reason the criterion names: `attribution.ts`'s `latestShaFor`
+      // returns `null` for an entry with no `merged_sha` WHETHER OR NOT it
+      // also refuses mission-level entries, so a regression that started
+      // joining provenance on `mission` would have kept this test green while
+      // breaking exactly the thing it is named for. With the SHA present, that
+      // regression renders a `(provenance)` row for `src/auth/session.ts` and
+      // trips both assertions below.
+      const missionSha = gitIn(repo)(["log", "-n", "1", "--format=%H", "--", "src/auth/session.ts"]).trim();
+      expect(missionSha).not.toBe("");
+      writeWorklog(repo, [
+        { session_id: "s1", mission: mission.id, merged_sha: missionSha, at: "2026-08-10T00:00:00.000Z" },
+      ]);
 
       const result = runNode([bundle, "own", "src/auth/session.ts"], repo);
       expect(result.code).toBe(0);
-      expect(result.stdout).toContain(mission.id);
-      expect(result.stdout).toContain("(predicted)");
+      // The OWNERSHIP clause specifically, not a bare `(predicted)` anywhere
+      // on the line: `formatOwnAnswer` prints `criterion (predicted): …`
+      // unconditionally on every row that names a criterion, so
+      // `toContain("(predicted)")` is satisfied by the criterion half and
+      // asserts nothing whatever about the mode this test is named for. The
+      // spec's "there is no third mode to fall into" is only policed by
+      // reading the label where it is printed.
+      expect(result.stdout).toContain(`owned by ${mission.id} / ${task.id} (predicted)`);
       // Criterion 4, checked at the point of production: nothing in this
       // rendered line may claim provenance when the only evidence behind it
       // is a lexical guess.
@@ -192,6 +226,7 @@ describe("end-to-end via the shipped bundle: the mode moves when the evidence do
     () => {
       const bundle = buildIsolatedBundle();
       const { root, octobotsDir, git } = repoWithBoardAndGit();
+      expect(existsSync(join(root, "node_modules"))).toBe(false);
       commit(root, git, { "README.md": "seed\n" });
       // Background churn so the lexical corpus (exercised once the SHA is no
       // longer usable) has more than the one owned pair to discriminate
@@ -217,8 +252,20 @@ describe("end-to-end via the shipped bundle: the mode moves when the evidence do
       ]);
       const provenanceResult = runNode([bundle, "own", "src/auth/session.ts"], root);
       expect(provenanceResult.code).toBe(0);
-      expect(provenanceResult.stdout).toContain(mission.id);
-      expect(provenanceResult.stdout).toContain("(provenance)");
+      expect(provenanceResult.stdout).toContain(`owned by ${mission.id} / ${task.id} (provenance)`);
+      // Criterion 4 at the ONE place in this file where it can actually be
+      // violated. This is the only row the whole suite renders that carries a
+      // `provenance` badge, and its criterion half is a lexical guess like
+      // every other criterion this CLI prints — no commit, hook or worklog
+      // entry records which acceptance criterion a file was written to
+      // satisfy. `own` really did ship `(provenance) criterion: …` once (see
+      // own.ts's `OwnAnswer.criterionMode`), and a bare
+      // `toContain("(provenance)")` passes whichever label the criterion
+      // clause wears, so the label has to be read where it is printed.
+      expect(provenanceResult.stdout).toContain(
+        "criterion (predicted): the auth session token is validated",
+      );
+      expect(provenanceResult.stdout).not.toContain("criterion (provenance)");
 
       // (2) The SAME entry, merged_sha removed. The mode must move with the
       // evidence, not stay pinned to what an earlier run against this same
@@ -228,7 +275,11 @@ describe("end-to-end via the shipped bundle: the mode moves when the evidence do
       ]);
       const noShaResult = runNode([bundle, "own", "src/auth/session.ts"], root);
       expect(noShaResult.code).toBe(0);
-      expect(noShaResult.stdout).toContain("(predicted)");
+      expect(noShaResult.stderr).toBe("");
+      // Read on the ownership clause, for the same reason the day-one fixture
+      // above spells it out: the criterion clause prints `(predicted)` on
+      // every row regardless.
+      expect(noShaResult.stdout).toContain(`owned by ${mission.id} / ${task.id} (predicted)`);
       expect(noShaResult.stdout).not.toContain("provenance");
 
       // (3) A syntactically valid SHA that names no object in this repo — a
@@ -243,7 +294,7 @@ describe("end-to-end via the shipped bundle: the mode moves when the evidence do
       const goneShaResult = runNode([bundle, "own", "src/auth/session.ts"], root);
       expect(goneShaResult.code).toBe(0);
       expect(goneShaResult.stderr).toBe("");
-      expect(goneShaResult.stdout).toContain("(predicted)");
+      expect(goneShaResult.stdout).toContain(`owned by ${mission.id} / ${task.id} (predicted)`);
       expect(goneShaResult.stdout).not.toContain("provenance");
     },
     30_000,
@@ -279,9 +330,17 @@ describe("end-to-end via the shipped bundle: conflicts", () => {
       const result = runNode([bundle, "conflicts", mission.id], repo);
       expect(result.stderr).not.toContain("ERR_MODULE_NOT_FOUND");
       expect(result.code).toBe(0);
-      expect(result.stdout).toContain(taskA.id);
-      expect(result.stdout).toContain(taskB.id);
-      expect(result.stdout).toContain("(predicted)");
+      // The pair AND its mode in one assertion, in the `compare` order
+      // `conflicts` emits (`t1-1-jwt` before `t1-2-refresh`) — naming the two
+      // ids separately would pass on any pairing of them at all.
+      expect(result.stdout).toContain(`${taskA.id} <-> ${taskB.id} (predicted)`);
+      // A SHARED-file conflict, which is what this test is named for. Without
+      // this, a run whose `shared` collapsed to `(none)` while `coupled`
+      // stayed above zero still prints a row for the same two tasks and the
+      // test goes green under a name that no longer describes it — the
+      // narrower-count-behind-a-broader-label defect this campaign keeps
+      // shipping, in the assertion instead of the code.
+      expect(result.stdout).toContain("shared=src/auth/session.ts");
       expect(result.stdout).not.toContain("provenance");
     },
     30_000,
