@@ -212,12 +212,23 @@ function resolveEntryTask(
  * {@link disambiguateByBranch} whenever exactly one candidate's campaign
  * slug appears in the branch text.
  *
- * When it still cannot resolve — the branch names none of the candidates, or
- * more than one — the entry is not silently dropped: `warn` (real stderr by
- * default) names the ambiguous id and the candidates it could not choose
- * between, for every entry whose `mergedSha` actually resolves in this repo
- * (an unresolvable one already falls through to `predicted` for an unrelated
- * reason, and warning about it too would just be noise). The task itself
+ * When it still cannot resolve, the entry is not silently dropped: `warn`
+ * (real stderr by default) says so, for every entry whose `mergedSha`
+ * actually resolves in this repo (an unresolvable one already falls through
+ * to `predicted` for an unrelated reason, and warning about it too would
+ * just be noise). Both ways an entry fails to join are warned, because both
+ * discard the same evidence:
+ *
+ *  - the short id names MORE THAN ONE task and the branch could not narrow
+ *    it — the warning names the ambiguous id and the candidates;
+ *  - the short id names NO task on this board — a task renamed out of the
+ *    `T<m>.<n>` notation `work-log.mjs` records, or deleted outright. This
+ *    half shipped silent while the ambiguous half warned, which left the
+ *    hole the warning was added to close still open on the commoner of the
+ *    two paths (a board is renamed far more often than it grows a duplicate
+ *    short id).
+ *
+ * The task itself
  * still answers `predicted` either way — {@link AttributionMode} keeps
  * exactly two members — but a reader watching stderr can tell "provenance
  * existed but could not be joined" apart from "no provenance existed at
@@ -248,16 +259,35 @@ export function attribute(
     if (entry.task === null || entry.mergedSha === null) continue;
     const resolved = resolveEntryTask(entry, byId, byShortId);
     if (resolved.length !== 1) {
-      // Ambiguous (0 candidates means "names no task on this board" — not
-      // this module's problem; >1 means the branch could not narrow it).
       const candidates = byShortId.get(entry.task) ?? [];
-      if (candidates.length > 1 && filesChangedBy(repoRoot, entry.mergedSha) !== null) {
-        const names = candidates.map((t) => t.id).sort(compare).join(", ");
-        warn(
-          `octograph: worklog entry for task "${entry.task}" (branch: ` +
-            `${entry.branch ?? "(none)"}) matches ${candidates.length} board tasks and could not ` +
-            `be resolved to exactly one — candidates: ${names}\n`,
-        );
+      // Gated on the SHA still resolving, for BOTH branches below: an entry
+      // whose evidence is already gone falls through to `predicted` for its
+      // own stated reason, and warning about it too would bury the case that
+      // means "evidence exists and was lost" under every case that means
+      // "there was never any evidence".
+      if (filesChangedBy(repoRoot, entry.mergedSha) !== null) {
+        if (candidates.length > 1) {
+          // The branch could not narrow a short id more than one task shares.
+          const names = candidates.map((t) => t.id).sort(compare).join(", ");
+          warn(
+            `octograph: worklog entry for task "${entry.task}" (branch: ` +
+              `${entry.branch ?? "(none)"}) matches ${candidates.length} board tasks and could not ` +
+              `be resolved to exactly one — candidates: ${names}\n`,
+          );
+        } else {
+          // Zero candidates: the id names nothing on this board. A task
+          // renamed out of the `T<m>.<n>` notation `work-log.mjs` recorded it
+          // under, or deleted outright, leaves exactly this — and it is the
+          // same failure as the ambiguous case, not a lesser one. Real,
+          // still-resolvable evidence is being discarded, and the mode alone
+          // cannot say so: `predicted` reads identically whether provenance
+          // never existed or existed and could not be joined.
+          warn(
+            `octograph: worklog entry for task "${entry.task}" (branch: ` +
+              `${entry.branch ?? "(none)"}) carries a merge SHA that still resolves here but ` +
+              `names no task on this board — its provenance is dropped\n`,
+          );
+        }
       }
       continue;
     }

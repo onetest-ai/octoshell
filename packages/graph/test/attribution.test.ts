@@ -299,6 +299,76 @@ describe("attribute", () => {
   });
 
   /**
+   * The sibling of the ambiguity warning above, and the hole it left open:
+   * an entry whose short id names **no** task on the board at all.
+   *
+   * `work-log.mjs` records the short id it pulls off a `set-status.js` title
+   * (`/^(T\d+\.\d+)\b/`) and nothing else, while the join looks that id up in
+   * a table built from board task NAMES. A task renamed out of that notation
+   * — "T2.1 - Sign-up" edited to "Sign-up" — or removed from the board
+   * outright leaves its worklog entry naming an id nothing answers to. The
+   * entry still carries a merge SHA that still resolves: real, recorded
+   * evidence, thrown away.
+   *
+   * That is the same failure the ambiguity warning exists for (evidence that
+   * cannot be joined must SAY so), and the first version of the fix guarded
+   * it behind `candidates.length > 1`, so only the ambiguous half warned.
+   * The zero-candidate half stayed silent, and the mode alone cannot tell
+   * "provenance existed but could not be joined" from "no provenance
+   * existed" — which is precisely the distinction the warning was added to
+   * make visible.
+   */
+  it("warns rather than silently dropping an entry whose task id names no task on the board", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, { "src/orphaned.ts": "export {}\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Alpha" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M2 - Onboarding" });
+    // Renamed out of the `T<m>.<n>` notation the worklog recorded it under.
+    const task = createTask(octobotsDir, mission.id, { name: "Sign-up" });
+    const board = requireBoard(root);
+
+    const log = [entry({ task: "T2.1", branch: "feat/alpha-m2-t1", mergedSha: sha })];
+    const warnings: string[] = [];
+    const rows = attribute(root, board, log, (m) => warnings.push(m));
+
+    expect(rows).toEqual([{ task: task.id, files: [], mode: "predicted" }]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("T2.1");
+    expect(warnings[0]).toContain("names no task on this board");
+  });
+
+  /**
+   * The other half of the same rule, and the reason the warning is gated on
+   * the SHA resolving: an unrecorded or long-rewritten SHA already falls
+   * through to `predicted` for its own stated reason, so warning about it
+   * too would bury the one case that means "evidence exists and was lost"
+   * under noise from every case that means "there was never any evidence".
+   */
+  it("stays silent for an unjoinable entry whose SHA no longer resolves here", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Alpha" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M2 - Onboarding" });
+    createTask(octobotsDir, mission.id, { name: "Sign-up" });
+    const board = requireBoard(root);
+
+    const log = [
+      entry({
+        task: "T2.1",
+        branch: "feat/alpha-m2-t1",
+        mergedSha: "0123456789abcdef0123456789abcdef01234567",
+      }),
+    ];
+    const warnings: string[] = [];
+    attribute(root, board, log, (m) => warnings.push(m));
+
+    expect(warnings).toEqual([]);
+  });
+
+  /**
    * `harvest` passes `-z` and says why: without it git applies
    * `core.quotePath` and returns `"src/r\303\251sum\303\251.ts"`, quotes and
    * octal escapes included. That string is not a path on disk and matches no
