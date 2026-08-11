@@ -9,10 +9,14 @@
 // share no code — is exactly the drift trap this script exists to avoid: one
 // source (`src/cli.ts`), one bundle, no hand-maintained second copy.
 //
-// `bundle: true` with no `external` inlines every dependency (js-yaml
-// included) rather than leaving a `require`/`import` for something that
-// will not exist at the run site.
+// The esbuild options themselves live in `bundle-options.mjs`, because a
+// SECOND caller builds this same bundle: the VS Code extension's
+// `scripts/graph-payload.mjs`, which ships it as pack payload. Spelled twice,
+// the two configs drift and this package's five e2e gates keep testing
+// `dist/octograph.mjs` while users run different bytes. `bundle: true` with no
+// `external`, and everything else that shapes the code, is stated there once.
 import { build } from "esbuild";
+import { octographBundleOptions } from "./bundle-options.mjs";
 
 // Optional argv[2]: where to write the bundle. `dist/octograph.mjs` is the
 // shipped location and stays the default, so `pnpm --filter @octoshell/graph
@@ -26,14 +30,10 @@ import { build } from "esbuild";
 // a torn or half-written .mjs, on whichever machine happens to schedule them
 // together. That is a failure nobody can reproduce locally and everybody sees
 // on CI, the same shape as the fixture-repo leak `mkdtempClean` closed.
+// A relative path resolves against THIS PACKAGE (`absWorkingDir`), not the
+// caller's cwd, so `dist/octograph.mjs` means the same file wherever the
+// script is invoked from. Every in-repo caller passes an absolute path or runs
+// with `cwd: packages/graph`, so this changes nothing for them.
 const outfile = process.argv[2] ?? "dist/octograph.mjs";
 
-await build({
-  entryPoints: ["bin/octograph.mjs"],
-  outfile,
-  bundle: true,
-  platform: "node",
-  format: "esm",
-  target: "node22",
-  logLevel: "info",
-});
+await build(octographBundleOptions({ outfile, logLevel: "info" }));

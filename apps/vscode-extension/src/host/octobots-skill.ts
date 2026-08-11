@@ -2,9 +2,11 @@ import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSyn
 import { join } from "node:path";
 import { installPrimer, registerClaudeHook, claudeHookStatus } from "./octobots-hooks.js";
 import { installTokenomics, tokenomicsStatus } from "./octobots-tokenomics.js";
+import { installGraph, graphStatus } from "./octograph-install.js";
+import { parsePackVersionMarker } from "./pack-version-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
-export const OCTOBOTS_PACK_VERSION = 41;
+export const OCTOBOTS_PACK_VERSION = 42;
 
 /** The skills the pack ships, by directory name under `skill/` and `.claude/skills/`. */
 export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate"] as const;
@@ -26,10 +28,12 @@ export function parseVersion(text: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** Read the `// octobots-pack-version: N` marker from the primer script; null if absent. */
+/**
+ * Read the `// octobots-pack-version: N` marker from the primer script; null if absent.
+ * Delegates to the shared rule (`pack-version-marker.ts`) — same marker, one spelling.
+ */
 export function parsePrimerVersion(text: string): number | null {
-  const m = text.match(/octobots-pack-version:\s*(\d+)/);
-  return m ? Number(m[1]) : null;
+  return parsePackVersionMarker(text);
 }
 
 export interface PackStatus {
@@ -59,9 +63,14 @@ export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERS
   if (skillVs.some((v) => v === null) || primerV === null || !claude.present || !tokenomics.present) {
     return { installed: false, currentVersion, upToDate: false };
   }
+  // Graph (octograph, M6) is opt-in via its own "Install Graph" command — a workspace that never
+  // ran it must not be reported not-installed just because this optional payload is absent. Once
+  // installed, though, staleness feeds the same `upToDate` verdict a stale skill/primer/tokenomics
+  // already drives: one drift mechanism, not a second one bolted on beside it.
+  const graph = graphStatus(repoRoot, currentVersion);
   const upToDate =
     skillVs.every((v) => v === currentVersion) && primerV === currentVersion && claude.current &&
-    tokenomics.current;
+    tokenomics.current && (!graph.present || graph.current);
   return { installed: true, currentVersion, upToDate };
 }
 
@@ -82,7 +91,8 @@ function copyTree(from: string, to: string): number {
  * Install the pack from `srcRoot` (the resources/octobots-pack dir) into <repoRoot>:
  * each skill → .claude/skills/<name>, the session primer and its Claude hook, and the tokenomics
  * CLI → .octobots/tokenomics. Skill dirs retired by a rename are removed first, so an upgrade never
- * leaves two copies on disk.
+ * leaves two copies on disk. The graph payload (`.claude/skills/graph/octograph.mjs`) is refreshed
+ * here too, but only when already present — see `graphStatus`'s doc comment for why it's opt-in.
  *
  * The pack installs **no agents**. Planning and execution run under whatever agent the user is
  * already in, driven by the skills; agent rosters belong to the repo, not to us.
@@ -100,6 +110,13 @@ export function installPack(srcRoot: string, repoRoot: string): { written: numbe
   }
   written += installPrimer(srcRoot, repoRoot);
   written += installTokenomics(srcRoot, repoRoot);
+  // Graph is opt-in (see `graphStatus`'s doc comment): a general pack (re)install only refreshes
+  // an already-present graph payload, so re-running this after an upgrade is what clears the
+  // staleness `packStatus` flagged — without silently installing graph into a workspace that
+  // never asked for it via "Octobots: Install Graph".
+  if (graphStatus(repoRoot, OCTOBOTS_PACK_VERSION).present) {
+    written += installGraph(srcRoot, repoRoot);
+  }
   registerClaudeHook(repoRoot, OCTOBOTS_PACK_VERSION);
   return { written };
 }
