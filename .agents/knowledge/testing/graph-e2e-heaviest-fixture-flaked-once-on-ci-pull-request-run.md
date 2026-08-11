@@ -229,3 +229,33 @@ small retry) still stands as the next move — deliberately not applied here, be
 regression test that can prove it addresses a failure this session couldn't reproduce. **If it
 recurs a third time, the assertions now in place will surface the exact git error immediately; that
 message decides which of the two remediations (or a third) is right — don't guess ahead of it.**
+
+## Fourth observation — 2026-08-11 (the predicted "third time" — confirmed, REMEDIATION NOW OVERDUE)
+
+Seen on PR #72 (T6.2, octograph extension bridge; `apps/vscode-extension/src/host/octograph.ts` +
+two test files — nowhere near `packages/graph`'s e2e fixture). `gh pr view 72
+--json statusCheckRollup` showed the identical signature: two `build` checks on the same head SHA,
+the `pull_request` run FAILURE, the `push` run SUCCESS. Same test:
+`(g) keeps every surviving entry whole and every module it names headed when the budget truncates
+the section itself`. **A third distinct concrete error shape**, captured directly in the Vitest
+summary this time — proof the diagnostics improvement from the third investigation pass works as
+designed:
+
+```
+Error: Command failed: git commit -q -m commit 26
+error: invalid object 100644 573dd5863eb26452a6a9b25ec4b0e869f3f85123 for 'a2/f0.ts'
+fatal: unable to read tree (019d1729fc83812de6c658dc036784863aa62080)
+```
+
+Thrown from `test/fixtures/repo.ts`'s `gitIn` → `appendCommits` → `buildRepo`, same call path as
+occurrence 2 — but a **write-time object-store corruption** (`git commit`'s own tree write reports
+its just-staged blob unreadable), not occurrence 2's ref-resolution failure (`could not parse HEAD`)
+or occurrence 1's downstream `git log` parent-traversal failure. Three occurrences, three shapes, all
+inside the same ~62-commit sequential `git commit` loop, all clearing on `gh run rerun --failed`
+(confirmed here too — rerun of job 31520588786 went SUCCESS, `mergeStateStatus` CLEAN).
+
+This is the note's own predicted third-occurrence trigger. Per the existing remediation menu, this
+should now get **real remediation** (lighten the fixture, or wrap `buildRepo`/`appendCommits`'s git
+subprocess calls in a small retry) rather than a fifth log entry next time. This session (a QA merge
+gate, not a dev/js-dev session) reported it explicitly and reran rather than applying a fix — flagging
+here for whichever role picks up `packages/graph`'s test fixtures next.
