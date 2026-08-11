@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 40
+version: 41
 ---
 
 # mission-completion-gate
@@ -152,8 +152,13 @@ const tokenomics = await agent(
   `Run \`node .octobots/tokenomics/run.mjs\` at the repo root, then report the row ` +
   `for mission ${missionId} from .octobots/tokenomics/runs.json (cost, tokens, turns, ` +
   `dispatches, net_loc) and whether its authored sizing (effort_days/size_tshirt) is ` +
-  `present. Commit the refreshed .octobots/tokenomics/ artifacts. If anything fails, ` +
-  `report it and continue — do NOT block.`,
+  `present. Also run \`node .octobots/tokenomics/backfill-worklog-sha.mjs\` — it fills a ` +
+  `merge SHA into worklog entries whose branch \`gh pr merge --delete-branch\` already ` +
+  `deleted, which octograph's \`own\`/\`conflicts\` need for provenance-mode task<->file ` +
+  `attribution; it detects octograph and skips cleanly when the workspace doesn't have it. ` +
+  `Report how many entries it filled. Commit the refreshed .octobots/tokenomics/ artifacts, ` +
+  `including worklog.jsonl if the backfill changed it. If anything fails, report it and ` +
+  `continue — do NOT block.`,
   { phase: 'Tokenomics', schema: TOKENOMICS_SCHEMA })
 
 phase('Complete')
@@ -189,6 +194,37 @@ Produces, under `.octobots/tokenomics/` (all committed):
 | `runs.json` | One schema-conformant row per mission + the segment header. Costs re-priced from raw tokens on every run. |
 | `prices.json` | Cached LiteLLM price table (verbatim). Refresh occasionally with the pack's price-refresh command; the pipeline itself never fetches. |
 | `report.html` | Self-contained analytics report, rendered from `runs.json` alone. |
+
+### Merge-SHA backfill — the same reasoning, applied to task<->file provenance
+
+```
+node .octobots/tokenomics/backfill-worklog-sha.mjs   # fills merged_sha where it can
+```
+
+`.octobots/hooks/work-log.mjs` appends a worklog line on every `set-status.js` active/done
+transition — but `mission-execution` flips a task's status **before** merging its PR, so at the
+only moment that line is written no merge SHA exists anywhere to record. Once the PR merges via
+`gh pr merge --squash --delete-branch`, the branch the worklog recorded is gone: `branch ->
+commits -> files` resolves to nothing for exactly the tasks worth attributing. The gate is the
+first and only guaranteed **post-merge** checkpoint in this pack, which is why the backfill lives
+in this phase rather than a new hook — the same "capture it now, because it is about to become
+unrecoverable" reasoning phase 4 already runs on for session transcripts, applied to a second kind
+of loss.
+
+It resolves each unfilled entry's `branch -> merged PR -> mergeCommit.oid` via `gh` and rewrites
+that line — idempotent (an entry that already carries `merged_sha` is left byte-unchanged), and it
+never guesses (a branch with no merged PR is left alone). This is what lets octograph's `own` label
+a task<->file answer `provenance` (a recorded fact) instead of `predicted` (a lexical guess) — see
+`packages/graph`'s `attribution.ts` if this pack is installed alongside that package's source.
+
+**Conditional, and non-blocking like every step in this phase.** octograph does **not** ship in
+this pack — most workspaces installing Octobots will never have it — so the script first checks
+for octograph's own footprint (an `octograph.yaml` at the repo root, or an existing graph
+artifact) and skips cleanly, with no `gh` call and no write, when neither is present. That skip
+costs nothing: the backfill is historical as well as idempotent, so a workspace that adopts
+octograph later recovers every prior mission's provenance on its very next gate run. A `gh`
+failure (offline, not installed, not authenticated) is reported and the script still exits 0 —
+same rule as `run.mjs` above.
 
 Missions are matched to segments through the **branch name** (`feat/<campaign>-m<n>-…`),
 so the existing branch convention is what makes attribution work. A mission may

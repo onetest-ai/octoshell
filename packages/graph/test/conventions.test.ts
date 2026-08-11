@@ -466,8 +466,72 @@ describe("package conventions", () => {
       // reach only from inside the package is not part of its public API.
       "readBoard",
       "readWorklog",
+      // T4.2's own surface: the two-mode task<->file attribution `own` and
+      // `conflicts` read provenance/prediction through. Added in the same
+      // commit, same reason as every entry above.
+      "attribute",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }
+  });
+
+  /**
+   * A ninth single-spelling rule, and the first one this suite pins by
+   * EXACT membership rather than "at least contains": `AttributionMode` must
+   * have exactly two members, `"provenance"` and `"predicted"`, and no third.
+   *
+   * An earlier draft of the M4 plan proposed a third `inferred` mode that
+   * would scan squash-merge commit subjects for task ids. Measuring killed
+   * it: `gh pr list --state merged --json headRefName,mergeCommit` recovers
+   * every merged PR's merge SHA permanently, including for branches
+   * `--delete-branch` already removed, so the branch-name-convention
+   * inference a third mode would have re-invented is unnecessary — and
+   * lossy (T2.1, on this repo, has no commit subject carrying its id). A
+   * blurred third mode is invisible behaviourally on fixtures built for two
+   * modes, the same argument the `edgeWeight`/`compare` guards above rest
+   * on — only the source distinguishes "exactly two" from "two, so far".
+   */
+  /**
+   * A tenth single-spelling rule: **every** reader that asks git for file
+   * names passes `-z`.
+   *
+   * Without it git applies `core.quotePath` and hands back a C-quoted
+   * rendering — `src/résumé.ts` arrives as `"src/r\303\251sum\303\251.ts"`,
+   * quotes and octal escapes included. That is not a path on disk, so the two
+   * readers disagree about the same file's name: `harvest` (which passes
+   * `-z`) names the node `src/résumé.ts` while a reader that omits it claims
+   * provenance over `"src/r\303\251sum\303\251.ts"`, a phantom that matches
+   * nothing. `attribution.ts` shipped exactly that, in the same package whose
+   * `harvest.ts` already carried a comment explaining why not to.
+   *
+   * Invisible on any ASCII fixture, which is every fixture this suite builds
+   * by default — so it is guarded at the source, like the rules above.
+   */
+  it("passes -z wherever it asks git for file names, so no reader gets C-quoted paths", () => {
+    // Comments only: `code()` strips string literals, which are the very
+    // argv tokens this rule is about.
+    const argv = (f: string) =>
+      readFileSync(join(SRC, f), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/\/\/[^\n]*/g, " ");
+    const offenders = sources.filter((f) => {
+      const text = argv(f);
+      return /["']--name-only["']/.test(text) && !/["']-z["']/.test(text);
+    });
+    expect(offenders).toEqual([]);
+  });
+
+  it("gives AttributionMode exactly two members — no third mode for commit-subject scanning", () => {
+    // `code()` strips string literals too, which would erase the very
+    // members this guard reads — comments only, same as the graphify-path
+    // and board-directory guards above, which read a literal for the same
+    // reason.
+    const withoutComments = readFileSync(join(SRC, "attribution.ts"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/\/\/[^\n]*/g, " ");
+    const m = /type AttributionMode\s*=\s*("[^"]+"(?:\s*\|\s*"[^"]+")*)/.exec(withoutComments);
+    expect(m).not.toBeNull();
+    const members = (m ? m[1] : "").split("|").map((s) => s.trim());
+    expect(members.sort()).toEqual(['"predicted"', '"provenance"']);
   });
 });
