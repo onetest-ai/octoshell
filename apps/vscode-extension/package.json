@@ -157,6 +157,14 @@
         "title": "Octobots: Update SDLC Team Bundle"
       },
       {
+        "command": "octoshell.installGraph",
+        "title": "Octobots: Install Graph"
+      },
+      {
+        "command": "octoshell.rebuildGraph",
+        "title": "Octobots: Rebuild Graph"
+      },
+      {
         "command": "octoshell.openTokenomics",
         "title": "Octobots: Tokenomics",
         "icon": "$(graph)"
