@@ -37,11 +37,19 @@ describe("predictFiles", () => {
     const second = predictFiles(criteria, candidates);
     expect(second).toEqual(first);
 
-    // "bar.ts" < "baz.ts" under `compare` (plain code-point order).
-    if (first.length === 2) {
-      expect(first[0]?.file).toBe("src/foo/bar.ts");
-      expect(first[1]?.file).toBe("src/foo/baz.ts");
-    }
+    // Unconditionally, not `if (first.length === 2)`: a guarded assertion
+    // passes silently the day the tie stops being a tie, which is the one
+    // regression this test exists to catch.
+    expect(first.map((m) => m.file)).toEqual(["src/foo/bar.ts", "src/foo/baz.ts"]);
+
+    // The criterion is "byte-identical across runs", and a run does not
+    // promise the caller assembled `candidates` in the same order — `harvest`
+    // yields paths in commit order, and `own`/`conflicts` will hand this
+    // whatever order they built. Ranking must come out of `compare` and the
+    // score alone, never out of input position, so a reversed corpus is the
+    // same answer.
+    const reversed = predictFiles(criteria, [...candidates].reverse());
+    expect(reversed).toEqual(first);
   });
 
   it("returns no match for boilerplate criteria carrying no distinctive identifiers", () => {
@@ -49,6 +57,23 @@ describe("predictFiles", () => {
     const criteria = ["the code is well tested", "this behaves as expected in every case"];
 
     expect(predictFiles(criteria, candidates)).toEqual([]);
+  });
+
+  it("never answers with a zero-score candidate, however permissive the configured floor", () => {
+    const candidates = ["src/auth/session.ts", "src/billing/invoice.ts", "src/checkout/cart.ts"];
+    const criteria = ["the code is well tested", "this behaves as expected in every case"];
+
+    // `lexicalConfidenceFloor: 0` is the natural spelling of "no floor, show
+    // me everything you have", and it is settable from octograph.yaml (see
+    // config.test.ts). Before the `top <= 0` guard it returned EVERY candidate
+    // in the corpus — each with `score: 0`, i.e. sharing not one distinctive
+    // token with the criteria — as a `predicted` attribution: the arbitrary
+    // top-N this module's fourth acceptance criterion forbids, in its worst
+    // form. A zero score is the absence of evidence, not weak evidence, so no
+    // threshold may admit it.
+    expect(predictFiles(criteria, candidates, { confidenceFloor: 0, runnerUpMargin: 0 })).toEqual([]);
+    // A negative value reaches the same place through the same config key.
+    expect(predictFiles(criteria, candidates, { confidenceFloor: -1, runnerUpMargin: -1 })).toEqual([]);
   });
 
   it("returns no match against an empty candidate list, without throwing", () => {

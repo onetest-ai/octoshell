@@ -148,14 +148,31 @@ function rank(criteria: readonly string[], candidates: readonly string[]): Lexic
  * calibration has to fit. **8 samples is a weak prior for a constant meant to
  * generalize; this comment says so rather than presenting the number as
  * tuned.** Method: ranked every provenance task's true file set against a
- * 220-file candidate corpus (every path touched by any commit in this repo's
- * history, via `harvest()`) using its own acceptance-criteria text, at
- * `runnerUpMargin` held at {@link RUNNER_UP_MARGIN}, sweeping the floor.
+ * 223-file candidate corpus (every path touched by any commit in this repo's
+ * history, via `harvest()`) using its own acceptance-criteria text, sweeping
+ * the floor at two margins. **Reproduce with
+ * `node scripts/calibrate-lexical.mjs` after `pnpm --filter @octoshell/graph
+ * build`** — the table below is that script's output, not a hand-copied one.
+ * The first version of this comment WAS hand-copied and got two cells and its
+ * conclusion wrong (it read the `margin: 0` row of the sweep while claiming
+ * the margin was held at {@link RUNNER_UP_MARGIN}); a table nobody can re-run
+ * is a claim, and this campaign's recurring defect is a claim that outran its
+ * measurement.
+ *
+ * At `runnerUpMargin` held at {@link RUNNER_UP_MARGIN} (`0.05`):
+ *
+ * | confidenceFloor | precision | recall | tasks answered |
+ * |---|---|---|---|
+ * | 0.05 | 0.50 | 0.06 | 3/8 |
+ * | 0.20 | 0.50 | 0.06 | 3/8 |
+ * | 0.30 | 0.67 | 0.06 | 2/8 |
+ *
+ * At `runnerUpMargin: 0`, i.e. the floor working alone:
  *
  * | confidenceFloor | precision | recall | tasks answered |
  * |---|---|---|---|
  * | 0.05 | 0.20 | 0.06 | 8/8 |
- * | 0.20 | **0.50** | 0.06 | 3/8 |
+ * | 0.20 | 0.29 | 0.06 | 5/8 |
  * | 0.30 | 0.67 | 0.06 | 2/8 |
  *
  * Recall is capped at 0.06 (2 of 36 true files, across every floor tried) —
@@ -166,24 +183,32 @@ function rank(criteria: readonly string[], candidates: readonly string[]): Lexic
  * the honest shape of a lexical-only, no-embeddings cold-start predictor
  * against prose-style criteria, not a bug in this module.
  *
- * `0.20` is chosen for precision over the marginal recall a lower floor buys
- * (0.05's 0.20 vs. 0.20's 0.50, for the same 2 true positives either way) —
- * a wrong `predicted` answer is worse than an honest "no match", since
- * nothing downstream can currently tell a low-confidence guess from a good
- * one except this floor. Revisit this number once `own`/`conflicts` (Task
- * 4/5) accumulate a larger labelled sample than 8 — this is a first fit, not
- * a final one.
+ * **What this dataset does and does not justify.** It does NOT discriminate
+ * `0.20` from `0.05`: at the pinned margin both answer the same 3 tasks with
+ * the same 2 true positives, so the earlier "0.05's 0.20 vs. 0.20's 0.50"
+ * argument for this number was comparing two different margins and is
+ * withdrawn. On these 8 samples the **margin**, not the floor, is what buys
+ * precision (see {@link RUNNER_UP_MARGIN}). `0.20` is kept as the more
+ * conservative of two choices this dataset cannot separate, and because the
+ * floor is the only guard that still bites on a repo where near-ties are
+ * rare and the margin therefore never fires. What the dataset DOES show is
+ * the cost of going further: `0.30` buys precision `0.50 -> 0.67` by dropping
+ * a third of the answered tasks for no recall gain — a trade worth revisiting
+ * once `own`/`conflicts` (Task 4/5) accumulate a larger labelled sample than
+ * 8. This is a first fit, not a final one.
  */
 export const CONFIDENCE_FLOOR = 0.2;
 
 /**
- * Measured alongside {@link CONFIDENCE_FLOOR}, same dataset, same 2026-08-11
- * run: holding the floor at `0.2`, margin `0.05` cuts 2 of the 5 remaining
- * false-positive predictions (the ones where a runner-up sat within 5
- * points of the top score — an ambiguous near-tie, not a confident pick)
- * while keeping both true positives, moving precision from `0.20` (at
- * `margin: 0`) to `0.50`. Same caveat as the floor: fit to 8 samples, and a
- * first pass rather than a settled constant.
+ * Measured alongside {@link CONFIDENCE_FLOOR}, same dataset, same script
+ * (`scripts/calibrate-lexical.mjs`), same 2026-08-11 run: holding the floor
+ * at `0.2`, the predictor makes 7 predictions of which 2 are true; margin
+ * `0.05` cuts **3 of those 5 false positives** (the ones where a runner-up
+ * sat within 5 points of the top score — an ambiguous near-tie, not a
+ * confident pick) while keeping **both** true positives, moving precision
+ * from `0.29` to `0.50`. It is this constant, not the floor, that carries
+ * the precision on this dataset. Same caveat as the floor: fit to 8 samples,
+ * and a first pass rather than a settled constant.
  */
 export const RUNNER_UP_MARGIN = 0.05;
 
@@ -198,6 +223,22 @@ export const RUNNER_UP_MARGIN = 0.05;
  * one), ranked by `compare` — never just the first one Array#sort happens to
  * put in slot 0, which would be an unspecified pick between two candidates
  * this module has no actual basis for ranking against each other.
+ *
+ * **A zero score is never an answer, at any threshold.** `score === 0` means
+ * the candidate shares NOT ONE distinctive token with the criteria — there is
+ * no weak evidence to weigh, there is no evidence — so it is rejected before
+ * the configured floor is consulted rather than by it. The floor is a
+ * tunable, and both it and {@link RUNNER_UP_MARGIN} are settable per repo
+ * from `octograph.yaml` (`lexicalConfidenceFloor` / `lexicalRunnerUpMargin`,
+ * see `config.ts`); `lexicalConfidenceFloor: 0` is the natural spelling of
+ * "no floor, show me everything you have", and without this guard it returned
+ * the ENTIRE candidate corpus — every file in the repo, each scored `0` —
+ * as a `predicted` attribution for a task whose criteria are pure
+ * boilerplate. That is not a degraded prediction, it is a claim with zero
+ * evidence behind it wearing a mode label, which is exactly the defect the
+ * two-mode design (see `attribution.ts`) exists to make impossible. A
+ * negative floor or margin from the same config key reaches the same place;
+ * this guard closes both, so `config.ts` needs no second range check.
  */
 export function predictFiles(
   criteria: readonly string[],
@@ -209,6 +250,7 @@ export function predictFiles(
 
   const scored = rank(criteria, candidates);
   const top = scored[0]?.score ?? 0;
+  if (top <= 0) return [];
   if (top < floor) return [];
 
   const runnerUp = scored.find((m) => m.score < top)?.score ?? 0;
