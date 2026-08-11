@@ -48,16 +48,33 @@ export {
 } from "./artifact.js";
 // The CLI is a library entry, not just a bin: `runCli` deliberately returns its
 // exit code and output text rather than touching `process` (see cli.ts), which
-// is precisely so an in-process caller — M6's VS Code commands — can run a
-// command without spawning one. M3 built it across two task PRs and neither
-// reached this file, the identical gap the comment at the top of this module
-// records for M2's analysis pipeline; `test/conventions.test.ts` now names
-// these symbols so the third recurrence fails the build instead of review.
+// makes every command testable without capturing globals — that is the reason,
+// and the test suite is the consumer that proves it.
+//
+// It is NOT because the VS Code extension calls this in-process. An earlier
+// version of this comment said "precisely so an in-process caller — M6's VS
+// Code commands — can run a command without spawning one", and that was never
+// true: M6 is a THIN LAUNCHER that opens a terminal on the binary and captures
+// no output, and its acceptance criteria require that "the extension gains no
+// runtime dependency on @octoshell/graph". A module cannot both be depended on
+// in-process and not be depended on at all. Corrected 2026-08-11 — a stale
+// claim in the file that documents this package's contract is the same defect
+// class this tool exists to find, and it had already misled a reader once.
+//
+// M3 built the CLI across two task PRs and neither reached this file, the
+// identical gap the comment at the top of this module records for M2's
+// analysis pipeline; `test/conventions.test.ts` now names these symbols so the
+// third recurrence fails the build instead of review.
 export { runCli, parseArgs, type CliResult, type Command } from "./cli.js";
 // M5/T5.1's own surface: `setup` is deliberately NOT a `runCli` command (see
 // setup.ts's doc comment) — it is a second, async entry point over an
 // injected `SetupIO` port, because prompting before an install cannot be
-// synchronous the way `runCli` is on purpose. Exported here for the same
-// reason `runCli` is: an in-process caller (M6's VS Code commands) needs
-// this, not a deep path into `src/`.
+// synchronous the way `runCli` is on purpose.
+//
+// The port earns its place on testability alone: it is what lets the whole
+// consent-and-install flow be driven with no TTY, no network and no installs.
+// It is NOT here because M6 calls it in-process — see the correction above
+// `runCli`; M6 spawns the binary and depends on this package not at all.
+// Exported for the same reason everything else here is: a consumer outside
+// this package must never reach a deep path into `src/`.
 export { runSetup, type SetupIO } from "./setup.js";

@@ -112,9 +112,14 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
  * make impossible for flags (`--half-life-days`, see cli.ts); this is the
  * same defect one layer down.
  *
- * Exported from `index.ts` for the same reason: an in-process caller (M6's VS
- * Code commands) calling `own`/`conflicts` directly needs this mapping, and
- * the alternative to handing it one is that it writes a second one.
+ * Exported from `index.ts` for the same reason: any consumer calling
+ * `own`/`conflicts` as a library needs this mapping, and the alternative to
+ * handing it one is that it writes a second one.
+ *
+ * Not, as an earlier version of this comment said, because "M6's VS Code
+ * commands" call them in-process — M6 spawns the binary and adds no runtime
+ * dependency on this package. Corrected 2026-08-11; see `index.ts` above
+ * `runCli`.
  */
 export function lexicalOptions(config: Config): LexicalOptions {
   return {

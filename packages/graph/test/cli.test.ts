@@ -501,13 +501,63 @@ describe("runCli — own", () => {
 
     const result = runCli(["own", "src/auth.ts"], root, NOW);
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain(mission.id);
+    // Named by the words a person gave the mission/task, not by their
+    // folder-derived ids — the bug this test now pins the fix for.
+    expect(result.stdout).toContain("M1 - Auth");
+    expect(result.stdout).toContain("T1.1 - JWT");
+    expect(result.stdout).not.toContain(mission.id);
     expect(result.stdout).toContain("the auth token is validated");
     // The ownership clause carries `provenance`; the criterion clause carries
     // its OWN, different label. A single mode on the row read as a claim that
     // the criterion came off the merge too — it cannot (see own.ts).
     expect(result.stdout).toContain(`(provenance)`);
     expect(result.stdout).toContain("criterion (predicted): the auth token is validated");
+  });
+
+  /**
+   * The bug this fixes, pinned directly: `own`'s stated reader is a person
+   * asking why code exists, and a folder id (`folder:campaigns/.../missions/
+   * <slug>`) answers a different question than a name does. The stable id
+   * stays reachable — for a MACHINE consumer, through `own --json`, which is
+   * a contract (see own.ts's `OwnAnswer.task`/`.mission`) — but the rendered
+   * text a human reads must never fall back to it.
+   */
+  it("own's human-readable output names the mission and task, never their folder ids", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, { "src/auth.ts": "export {}\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    const task = createTask(octobotsDir, mission.id, {
+      name: "T1.1 - JWT",
+      acceptanceCriteria: "- [ ] the auth token is validated",
+    });
+    writeWorklog(root, [
+      { session_id: "s1", task: task.id, branch: "feat/x-t1", merged_sha: sha, at: "2026-08-10T00:00:00.000Z" },
+    ]);
+
+    const text = runCli(["own", "src/auth.ts"], root, NOW);
+    expect(text.code).toBe(0);
+    expect(text.stdout).toContain("M1 - Auth");
+    expect(text.stdout).toContain("T1.1 - JWT");
+    expect(text.stdout).not.toContain("folder:");
+
+    // The same query with `--json`: the stable id is still the join key a
+    // machine consumer gets, alongside the human-readable name.
+    const json = runCli(["own", "src/auth.ts", "--json"], root, NOW);
+    expect(json.code).toBe(0);
+    const answers = JSON.parse(json.stdout) as Array<{
+      mission: string;
+      missionName: string;
+      task: string;
+      taskName: string;
+    }>;
+    expect(answers).toHaveLength(1);
+    expect(answers[0]?.mission).toBe(mission.id);
+    expect(answers[0]?.missionName).toBe("M1 - Auth");
+    expect(answers[0]?.task).toBe(task.id);
+    expect(answers[0]?.taskName).toBe("T1.1 - JWT");
   });
 
   /**
@@ -632,7 +682,7 @@ describe("runCli — own", () => {
 
     const result = runCli(["own", "src/auth/session.ts"], repo, NOW);
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain(mission.id);
+    expect(result.stdout).toContain("M1 - Auth");
     expect(result.stdout).toContain("predicted");
     expect(result.stdout).not.toContain("provenance");
   });

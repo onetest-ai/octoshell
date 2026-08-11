@@ -177,7 +177,11 @@ describe("end-to-end via the shipped bundle: a day-one, mission-only worklog", (
       mkdirSync(octobotsDir, { recursive: true });
       const campaign = createCampaign(octobotsDir, { name: "Q3" });
       const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
-      const task = createTask(octobotsDir, mission.id, {
+      // Task id unused below: this fixture's whole point is a worklog entry
+      // that names no task (see the comment beneath), so nothing here reads
+      // `task.id` — the created task only needs to exist on the board for
+      // `own` to have somewhere to attribute the file.
+      createTask(octobotsDir, mission.id, {
         name: "T1.1 - JWT",
         acceptanceCriteria: "- [ ] the session token is validated on every login attempt",
       });
@@ -210,7 +214,7 @@ describe("end-to-end via the shipped bundle: a day-one, mission-only worklog", (
       // asserts nothing whatever about the mode this test is named for. The
       // spec's "there is no third mode to fall into" is only policed by
       // reading the label where it is printed.
-      expect(result.stdout).toContain(`owned by ${mission.id} / ${task.id} (predicted)`);
+      expect(result.stdout).toContain(`owned by M1 - Auth / T1.1 - JWT (predicted)`);
       // Criterion 4, checked at the point of production: nothing in this
       // rendered line may claim provenance when the only evidence behind it
       // is a lexical guess.
@@ -252,7 +256,7 @@ describe("end-to-end via the shipped bundle: the mode moves when the evidence do
       ]);
       const provenanceResult = runNode([bundle, "own", "src/auth/session.ts"], root);
       expect(provenanceResult.code).toBe(0);
-      expect(provenanceResult.stdout).toContain(`owned by ${mission.id} / ${task.id} (provenance)`);
+      expect(provenanceResult.stdout).toContain(`owned by M1 - Auth / T1.1 - JWT (provenance)`);
       // Criterion 4 at the ONE place in this file where it can actually be
       // violated. This is the only row the whole suite renders that carries a
       // `provenance` badge, and its criterion half is a lexical guess like
@@ -279,7 +283,7 @@ describe("end-to-end via the shipped bundle: the mode moves when the evidence do
       // Read on the ownership clause, for the same reason the day-one fixture
       // above spells it out: the criterion clause prints `(predicted)` on
       // every row regardless.
-      expect(noShaResult.stdout).toContain(`owned by ${mission.id} / ${task.id} (predicted)`);
+      expect(noShaResult.stdout).toContain(`owned by M1 - Auth / T1.1 - JWT (predicted)`);
       expect(noShaResult.stdout).not.toContain("provenance");
 
       // (3) A syntactically valid SHA that names no object in this repo — a
@@ -294,7 +298,7 @@ describe("end-to-end via the shipped bundle: the mode moves when the evidence do
       const goneShaResult = runNode([bundle, "own", "src/auth/session.ts"], root);
       expect(goneShaResult.code).toBe(0);
       expect(goneShaResult.stderr).toBe("");
-      expect(goneShaResult.stdout).toContain(`owned by ${mission.id} / ${task.id} (predicted)`);
+      expect(goneShaResult.stdout).toContain(`owned by M1 - Auth / T1.1 - JWT (predicted)`);
       expect(goneShaResult.stdout).not.toContain("provenance");
     },
     30_000,

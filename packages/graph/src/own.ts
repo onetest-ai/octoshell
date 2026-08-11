@@ -28,8 +28,20 @@ import type { WorklogEntry } from "./worklog.js";
 
 export interface OwnAnswer {
   path: string;
+  /** Stable id — `@octoshell/board`'s folder-derived entity id, e.g.
+   *  `folder:campaigns/.../tasks/<slug>`. Never rendered to a human (see
+   *  `cli.ts`'s `formatOwnAnswer`, which prints {@link taskName} instead):
+   *  this is the JOIN KEY a machine consumer re-queries `own`/`conflicts` by,
+   *  and a name is not unique across the board the way this id is. */
   task: string;
+  /** The task's board-authored name (`task.yaml`'s `name`), for a human
+   *  reading this row — never a second parse of the board, just `BoardTask
+   *  .name`, which `readBoard` already carries. */
+  taskName: string;
+  /** Stable id, same contract as {@link task}. */
   mission: string;
+  /** The mission's board-authored title, same contract as {@link taskName}. */
+  missionName: string;
   /** The acceptance criterion this file most plausibly exists to satisfy, or
    *  `null` when nothing in the path's own words singles one out — see
    *  {@link bestCriterion}. `null` is an ANSWER ("this file's owner is
@@ -203,13 +215,17 @@ export function own(
     if (task === undefined) continue; // defensive: attribute() only ever emits ids sourced from board.tasks
     const mission = board.missionOf(task.id);
     if (mission === null) continue; // defensive: same as above
+    const missionName = board.missionNameOf(task.id);
+    if (missionName === null) continue; // defensive: same map, same keys as missionOf above
 
     for (const file of filesFor(repoRoot, task, a.mode, a.files, candidates, path, lexical)) {
       const criterion = bestCriterion(task.criteria, file);
       answers.push({
         path: file,
         task: task.id,
+        taskName: task.name,
         mission,
+        missionName,
         criterion,
         mode: a.mode,
         // Derived from whether a criterion was named, never from `a.mode`:
