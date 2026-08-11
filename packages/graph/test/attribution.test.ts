@@ -136,7 +136,11 @@ describe("attribute", () => {
    * A short id is unique within a campaign and nowhere else — this repo's
    * board shares 14 of them across campaigns. Attributing one campaign's
    * `T1.1` merge to another campaign's `T1.1` would be a wrong answer
-   * wearing the `provenance` label, which is worse than no answer.
+   * wearing the `provenance` label, which is worse than no answer — and here
+   * the branch (`feat/x-t1`) names NEITHER campaign's slug, so there is
+   * nothing to disambiguate with either: the entry stays genuinely
+   * ambiguous, which is exactly when `warn` must fire (never dropped
+   * silently, see the dedicated ambiguity tests below).
    */
   it("refuses provenance for a short id that names more than one task on the board", () => {
     const { root, octobotsDir, git } = repoWithBoardAndGit();
@@ -152,9 +156,12 @@ describe("attribute", () => {
     const board = requireBoard(root);
 
     const log = [entry({ task: "T1.1", branch: "feat/x-t1", mergedSha: sha })];
-    const rows = attribute(root, board, log);
+    const warnings: string[] = [];
+    const rows = attribute(root, board, log, (m) => warnings.push(m));
     expect(rows.map((r) => r.mode)).toEqual(["predicted", "predicted"]);
     expect(new Set(rows.map((r) => r.task))).toEqual(new Set([a.id, b.id]));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("T1.1");
 
     // …and the ambiguity is what withheld it: the same log against a board
     // where only one T1.1 exists does attribute.
@@ -162,6 +169,133 @@ describe("attribute", () => {
     expect(attribute(root, soloBoard, log)).toEqual([
       { task: a.id, files: ["src/auth.ts"], mode: "provenance" },
     ]);
+  });
+
+  /**
+   * The bug this whole disambiguation exists to fix: `T3.1` names a task in
+   * BOTH `octograph-code-architecture-graph` and `octobots-pack-ergonomics`
+   * on the real board (measured 2026-08-11), and the worklog's own `branch`
+   * field carries the campaign slug even after the branch is long deleted as
+   * a git ref. This test fails on pre-fix code — the old join dropped BOTH
+   * tasks to `predicted` the moment the short id was ambiguous, regardless
+   * of what the branch said.
+   */
+  it("disambiguates an ambiguous short id using the campaign slug embedded in the branch name", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, { "src/drift.ts": "export {}\n" });
+
+    const graph = createCampaign(octobotsDir, { name: "Octograph Code Architecture Graph" });
+    const graphMission = createMission(octobotsDir, graph.id, { title: "M3 - Drift" });
+    const graphTask = createTask(octobotsDir, graphMission.id, { name: "T3.1 - Noise floor and drift" });
+
+    const pack = createCampaign(octobotsDir, { name: "Octobots Pack Ergonomics" });
+    const packMission = createMission(octobotsDir, pack.id, { title: "M3 - Schema" });
+    const packTask = createTask(octobotsDir, packMission.id, { name: "T3.1 - entity-schema.ts" });
+
+    const board = requireBoard(root);
+    const log = [
+      entry({
+        task: "T3.1",
+        branch: "feat/octograph-code-architecture-graph-m3-t1",
+        mergedSha: sha,
+      }),
+    ];
+
+    const warnings: string[] = [];
+    const rows = attribute(root, board, log, (m) => warnings.push(m));
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { task: graphTask.id, files: ["src/drift.ts"], mode: "provenance" },
+        { task: packTask.id, files: [], mode: "predicted" },
+      ]),
+    );
+    expect(rows).toHaveLength(2);
+    // Resolved cleanly — nothing ambiguous left to warn about.
+    expect(warnings).toEqual([]);
+  });
+
+  /**
+   * A branch matching NEITHER candidate campaign's slug must not vanish: the
+   * SHA is real and resolvable, and dropping it silently would look exactly
+   * like "this task has no provenance at all" — the distinction the mode
+   * labels exist to preserve. Fails on pre-fix code because that code has no
+   * warning channel at all.
+   */
+  it("warns rather than silently dropping when the branch names no candidate campaign", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, { "src/shared.ts": "export {}\n" });
+
+    const first = createCampaign(octobotsDir, { name: "Alpha" });
+    const firstMission = createMission(octobotsDir, first.id, { title: "M2 - Onboarding" });
+    createTask(octobotsDir, firstMission.id, { name: "T2.1 - Sign-up" });
+    const second = createCampaign(octobotsDir, { name: "Beta" });
+    const secondMission = createMission(octobotsDir, second.id, { title: "M2 - Billing" });
+    createTask(octobotsDir, secondMission.id, { name: "T2.1 - Invoices" });
+    const board = requireBoard(root);
+
+    const log = [entry({ task: "T2.1", branch: "feat/unrelated-cleanup", mergedSha: sha })];
+    const warnings: string[] = [];
+    const rows = attribute(root, board, log, (m) => warnings.push(m));
+
+    expect(rows.map((r) => r.mode)).toEqual(["predicted", "predicted"]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("T2.1");
+    expect(warnings[0]).toContain("could not be resolved");
+  });
+
+  /**
+   * A branch that names MORE THAN ONE candidate campaign is exactly as
+   * unresolvable as one naming none — a substring match is not a rank, so
+   * two matches is still ambiguous, still warned, never guessed.
+   */
+  it("warns rather than guessing when the branch names more than one candidate campaign", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, { "src/shared.ts": "export {}\n" });
+
+    const first = createCampaign(octobotsDir, { name: "Alpha" });
+    const firstMission = createMission(octobotsDir, first.id, { title: "M2 - Onboarding" });
+    createTask(octobotsDir, firstMission.id, { name: "T2.1 - Sign-up" });
+    const second = createCampaign(octobotsDir, { name: "Alpha Beta" });
+    const secondMission = createMission(octobotsDir, second.id, { title: "M2 - Billing" });
+    createTask(octobotsDir, secondMission.id, { name: "T2.1 - Invoices" });
+    const board = requireBoard(root);
+
+    // Contains both "alpha" and "alpha-beta" — two slugs, not one.
+    const log = [entry({ task: "T2.1", branch: "feat/alpha-beta-migration", mergedSha: sha })];
+    const warnings: string[] = [];
+    const rows = attribute(root, board, log, (m) => warnings.push(m));
+
+    expect(rows.map((r) => r.mode)).toEqual(["predicted", "predicted"]);
+    expect(warnings).toHaveLength(1);
+  });
+
+  /**
+   * The non-regression case: a short id unique on the whole board must keep
+   * joining exactly as it did before this fix, branch text or no — the
+   * ambiguity machinery must never engage for a task nothing else shares an
+   * id with.
+   */
+  it("still joins a genuinely unique short id straight through, unaffected by branch disambiguation", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, { "src/unique.ts": "export {}\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Solo" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M5 - Only" });
+    const task = createTask(octobotsDir, mission.id, { name: "T5.1 - The only one" });
+    const board = requireBoard(root);
+
+    // A branch that names no campaign at all — irrelevant here, since a
+    // unique short id never needs the branch to resolve.
+    const log = [entry({ task: "T5.1", branch: "feat/completely-unrelated", mergedSha: sha })];
+    const warnings: string[] = [];
+    expect(attribute(root, board, log, (m) => warnings.push(m))).toEqual([
+      { task: task.id, files: ["src/unique.ts"], mode: "provenance" },
+    ]);
+    expect(warnings).toEqual([]);
   });
 
   /**

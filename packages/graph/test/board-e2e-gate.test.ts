@@ -188,10 +188,10 @@ describe("end-to-end via the shipped bundle: a day-one, mission-only worklog", (
       //
       // The entry carries a RESOLVABLE merge SHA, and one whose commit really
       // did touch the queried file. Without it this fixture could not fail for
-      // the reason the criterion names: `attribution.ts`'s `latestShaFor`
-      // returns `null` for an entry with no `merged_sha` WHETHER OR NOT it
-      // also refuses mission-level entries, so a regression that started
-      // joining provenance on `mission` would have kept this test green while
+      // the reason the criterion names: `attribution.ts`'s `attribute()`
+      // skips an entry with no `merged_sha` WHETHER OR NOT it also refuses
+      // mission-level entries, so a regression that started joining
+      // provenance on `mission` would have kept this test green while
       // breaking exactly the thing it is named for. With the SHA present, that
       // regression renders a `(provenance)` row for `src/auth/session.ts` and
       // trips both assertions below.
