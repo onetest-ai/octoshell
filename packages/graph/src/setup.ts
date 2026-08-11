@@ -1,4 +1,4 @@
-import { runMapCommand } from "./cli.js";
+import { formatDoctor, runMapCommand, runtimeError, type CliResult } from "./cli.js";
 import type { Config } from "./config.js";
 import { doctor, exitCode as doctorExitCode, type Check, type Report } from "./doctor.js";
 
@@ -46,23 +46,22 @@ function findCheck(report: Report, name: string): Check | undefined {
   return report.checks.find((c) => c.name === name);
 }
 
-/** One line per non-`ok` check, naming what is degraded and how to fix it by
- *  hand — reusing `Check.detail`/`Check.fix` verbatim rather than
- *  re-deriving the message doctor already computed. Printed unconditionally
- *  at the end of every run, consented install or not: a decline leaves the
- *  repo exactly as thin on this front as `octograph doctor` would already
- *  have reported, and this is where that gets said out loud one more time,
- *  next to what was just built. */
+/**
+ * What state this run LEFT BEHIND — every check, its own grade, and its
+ * manual fix, rendered by `formatDoctor` (cli.ts), the same function
+ * `octograph doctor` prints through. Never a second rendering of a check:
+ * the first one here open-coded `octograph: degraded — <name>: <detail>` and
+ * had already drifted from what `doctor` computes, stamping the report-level
+ * word "degraded" onto optional checks (`board`) that by construction never
+ * move `Report.status`.
+ *
+ * `report` is the report observed at the END of the run — see `runSetup`.
+ * Printed on every path, consented install or not, and even after a build
+ * that failed: the postflight is how a human tells what happened to their
+ * machine, so the one run that must not skip it is the one that went wrong.
+ */
 function postflight(report: Report): string {
-  const degraded = report.checks.filter((c) => c.state !== "ok");
-  if (degraded.length === 0) {
-    return "octograph: setup complete — every check is ok.";
-  }
-  const lines = degraded.map((c) => {
-    const fix = c.fix !== undefined ? ` — fix: ${c.fix}` : "";
-    return `octograph: degraded — ${c.name}: ${c.detail}${fix}`;
-  });
-  return lines.join("\n");
+  return `octograph: setup finished — final state:\n${formatDoctor(report).trimEnd()}`;
 }
 
 /**
@@ -86,6 +85,13 @@ function postflight(report: Report): string {
  * There is deliberately no way to skip the prompt: no `--yes`, no config
  * flag. A flag that skips it is the exact affordance this function's one
  * safety rule forbids.
+ *
+ * Every failure this flow can produce comes back as an exit code, not a
+ * rejection — a repo `doctor` grades `blocked`, a declined install, a failed
+ * install, and a build that throws are each reported and then returned. By
+ * the time the build can fail, this function may already have changed the
+ * user's machine; handing the caller an exception instead of a code loses
+ * the postflight, which is the only record of what was done.
  */
 export async function runSetup(
   repoRoot: string,
@@ -95,6 +101,23 @@ export async function runSetup(
 ): Promise<number> {
   const report = doctor(repoRoot, config);
 
+  // `blocked` means the one required input is absent — no git history at all
+  // — so there is nothing to build and nothing an install could fix.
+  // Building anyway threw `git log`'s own error out of `analyze`, past this
+  // function's `Promise<number>` contract, and past the postflight, while
+  // `doctor` had already computed the exact diagnosis and its fix. Print
+  // that instead, and touch nothing.
+  if (report.status === "blocked") {
+    io.log(postflight(report));
+    return doctorExitCode(report);
+  }
+
+  // Whether this run ran a command that can change the machine — NOT whether
+  // that command reported success. A failed `uv tool install` can still have
+  // left something behind, so either way the state reported at the end has
+  // to be re-observed rather than remembered.
+  let mutated = false;
+
   const graphify = findCheck(report, GRAPHIFY_CHECK);
   if (graphify !== undefined && graphify.state === "missing") {
     const [file, args] = INSTALL_ARGV;
@@ -103,9 +126,10 @@ export async function runSetup(
     );
     if (consent) {
       const result = await io.exec(file, [...args]);
+      mutated = true;
       io.log(
         result.code === 0
-          ? "octograph: Graphify installed."
+          ? "octograph: `uv tool install graphifyy` succeeded."
           : `octograph: \`uv tool install graphifyy\` failed (exit ${result.code}).`,
       );
     } else {
@@ -114,12 +138,33 @@ export async function runSetup(
   }
 
   // The SAME pipeline `octograph map` runs — no second `analyze` /
-  // `renderMap` / `writeArtifact` sequence in this file.
-  const build = runMapCommand(repoRoot, config, undefined, now, false);
+  // `renderMap` / `writeArtifact` sequence in this file. Caught here because
+  // this call sits OUTSIDE `runCli`'s try/catch, through the same
+  // `runtimeError` spelling that one uses.
+  let build: CliResult;
+  try {
+    build = runMapCommand(repoRoot, config, undefined, now, false);
+  } catch (err) {
+    build = runtimeError(err);
+  }
   if (build.stdout) io.log(build.stdout.trimEnd());
   if (build.stderr) io.log(build.stderr.trimEnd());
 
-  io.log(postflight(report));
+  // Re-observed, never replayed: once this run has installed something, the
+  // report `doctor` produced BEFORE the install describes a machine that no
+  // longer exists. Replaying it printed "`uv tool install graphifyy`
+  // succeeded" and, three lines later, "graphify: not installed — fix: uv
+  // tool install graphifyy" — a postflight contradicting its own run and
+  // telling a human to re-run the command that had just worked. A postflight
+  // that reports a state it did not verify is this campaign's one recurring
+  // defect; the second `doctor()` call is what makes this one a report
+  // rather than a memory. Skipped entirely when nothing was installed, where
+  // the first report is still a true observation.
+  const finalReport = mutated ? doctor(repoRoot, config) : report;
+  io.log(postflight(finalReport));
 
-  return doctorExitCode(report);
+  // A failed build is a failed `setup`, whatever the checks say about the
+  // repo: the artifact this run claims to have written is the thing it was
+  // asked to produce.
+  return build.code !== 0 ? build.code : doctorExitCode(finalReport);
 }

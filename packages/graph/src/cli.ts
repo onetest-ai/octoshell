@@ -180,12 +180,31 @@ function usageError(message: string): CliResult {
   return { code: 2, stdout: "", stderr: `octograph: ${message}\n` };
 }
 
-function runtimeError(err: unknown): CliResult {
+/**
+ * The ONE spelling of "a command threw — say so and exit non-zero". Exported
+ * for `setup.ts`, which runs `runMapCommand` from OUTSIDE `runCli`'s
+ * try/catch below and so has to catch for itself: a `runSetup` that let the
+ * exception escape would reject the `Promise<number>` it promises, and — on
+ * the consent path — do it after having already changed the user's machine.
+ * Formatting that message a second way there would be a second spelling of
+ * what a failed command reads like.
+ */
+export function runtimeError(err: unknown): CliResult {
   const message = err instanceof Error ? err.message : String(err);
   return { code: 1, stdout: "", stderr: `octograph: ${message}\n` };
 }
 
-function formatDoctor(report: Report): string {
+/**
+ * How a `Report` reads, for `octograph doctor` AND for `setup`'s postflight
+ * — one spelling, so the two can never disagree about what a check's grade
+ * is called. `setup.ts` printed its own rendering first and had already
+ * drifted: it stamped every non-`ok` check with the word "degraded", which
+ * is a `Report.status` value the report itself may not hold (`board` is
+ * optional and never moves the status), announcing a report-level grade
+ * `doctor` had not given. That is the defect the comment inside this
+ * function's loop describes, made from the outside instead.
+ */
+export function formatDoctor(report: Report): string {
   const lines = [`status: ${report.status}`, ""];
   for (const c of report.checks) {
     // `c.state` verbatim, never re-mapped. A `formatCheck` helper here spelled

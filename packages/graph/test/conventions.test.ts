@@ -514,15 +514,23 @@ describe("package conventions", () => {
    * Matched against the raw source with comments stripped but string
    * literals KEPT — the import specifier itself is the violation, same
    * treatment as the graphify-path and board-directory guards above.
+   *
+   * The `node:` prefix is matched as OPTIONAL, and that is the whole
+   * difference between a guard and a decoration here: `import { exec } from
+   * "child_process"` is a legal Node specifier that resolves identically,
+   * nothing in this repo's eslint config requires the prefix, and a pattern
+   * anchored on `node:child_process` would have waved exactly that import
+   * through — the one edit this guard exists to stop, written the one way a
+   * developer who is not thinking about the prefix would write it.
    */
-  it("imports node:child_process only in setup-io.ts (and the two pre-existing git readers)", () => {
+  it("imports child_process only in setup-io.ts (and the two pre-existing git readers), with or without the node: prefix", () => {
     const withoutComments = (file: string): string =>
       readFileSync(join(SRC, file), "utf8")
         .replace(/\/\*[\s\S]*?\*\//g, " ")
         .replace(/\/\/[^\n]*/g, " ");
     const allowed = new Set(["setup-io.ts", "harvest.ts", "attribution.ts"]);
     const offenders = sources.filter(
-      (f) => !allowed.has(f) && /node:child_process/.test(withoutComments(f)),
+      (f) => !allowed.has(f) && /\b(?:node:)?child_process\b/.test(withoutComments(f)),
     );
     expect(offenders).toEqual([]);
   });

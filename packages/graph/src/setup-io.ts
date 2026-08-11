@@ -68,15 +68,31 @@ async function which(file: string): Promise<string | null> {
   return first ?? null;
 }
 
-/** A y/N prompt over a real TTY (`node:readline`), resolving `true` only on
- *  an explicit yes — anything else, including a bare Enter, is a no. */
+/**
+ * A y/N prompt over a real TTY (`node:readline`), resolving `true` only on
+ * an explicit yes — anything else, including a bare Enter, is a no.
+ *
+ * `close` is listened for as well as `question`, because stdin at EOF with
+ * nothing typed never fires `question`'s callback: `octograph setup <
+ * /dev/null`, a CI runner, a closed pipe, or a terminal whose input is not
+ * attached printed the question and then hung forever with the interface
+ * still open, holding the process up with no way to answer it. EOF is not
+ * consent, so it settles the same way a bare Enter does — a no. `settled`
+ * makes the two paths exclusive, since `rl.close()` on the answer path fires
+ * `close` in turn.
+ */
 function prompt(question: string): Promise<boolean> {
   return new Promise((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(question, (answer) => {
+    let settled = false;
+    const settle = (answer: string): void => {
+      if (settled) return;
+      settled = true;
       rl.close();
       resolve(/^\s*y(es)?\s*$/i.test(answer));
-    });
+    };
+    rl.on("close", () => settle(""));
+    rl.question(question, settle);
   });
 }
 
