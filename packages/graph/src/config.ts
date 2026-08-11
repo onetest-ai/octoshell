@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { load as loadYaml } from "js-yaml";
+import { CONFIDENCE_FLOOR, RUNNER_UP_MARGIN } from "./lexical.js";
 import { insideRepo } from "./paths.js";
 
 export interface Config {
@@ -11,6 +12,12 @@ export interface Config {
   hubZThreshold: number;
   budgetTokens: number;
   out: string | null;
+  /** {@link CONFIDENCE_FLOOR} — settable per repo because a naming
+   *  convention this floor was calibrated against (this repo's own commit
+   *  history, 8 provenance-attributed samples) need not hold everywhere. */
+  lexicalConfidenceFloor: number;
+  /** {@link RUNNER_UP_MARGIN} — same caveat as the floor above. */
+  lexicalRunnerUpMargin: number;
 }
 
 export const DEFAULTS: Config = {
@@ -21,11 +28,17 @@ export const DEFAULTS: Config = {
   hubZThreshold: 3,
   budgetTokens: 2000,
   out: null,
+  // Values live in lexical.ts, next to the calibration comment that justifies
+  // them — a single spelling of each pinned number, read here rather than
+  // re-typed.
+  lexicalConfidenceFloor: CONFIDENCE_FLOOR,
+  lexicalRunnerUpMargin: RUNNER_UP_MARGIN,
 };
 
 const NUMERIC = [
   "maxCommitFiles", "halfLifeDays", "minSupport",
   "minCommits", "hubZThreshold", "budgetTokens",
+  "lexicalConfidenceFloor", "lexicalRunnerUpMargin",
 ] as const;
 
 /** Defaults <- octograph.yaml <- explicit overrides. */

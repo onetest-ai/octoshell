@@ -25,6 +25,13 @@ export { readBoard, type BoardTask, type BoardView } from "./board.js";
 export { readWorklog, type WorklogEntry } from "./worklog.js";
 export { attribute, type Attribution, type AttributionMode } from "./attribution.js";
 export {
+  predictFiles,
+  CONFIDENCE_FLOOR,
+  RUNNER_UP_MARGIN,
+  type LexicalMatch,
+  type LexicalOptions,
+} from "./lexical.js";
+export {
   hasBoard,
   readArtifact,
   resolveOut,

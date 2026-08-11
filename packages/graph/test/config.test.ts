@@ -17,6 +17,16 @@ describe("loadConfig", () => {
     expect(cfg.minSupport).toBe(DEFAULTS.minSupport);
   });
 
+  it("reads T4.3's lexical thresholds from octograph.yaml, same as any other numeric key", () => {
+    const root = mkdtempClean("cfg-");
+    writeFileSync(join(root, "octograph.yaml"), "lexicalConfidenceFloor: 0.4\nlexicalRunnerUpMargin: 0.1\n");
+    const cfg = loadConfig(root);
+    expect(cfg.lexicalConfidenceFloor).toBe(0.4);
+    expect(cfg.lexicalRunnerUpMargin).toBe(0.1);
+    // Untouched sibling still falls back to its own default.
+    expect(cfg.minSupport).toBe(DEFAULTS.minSupport);
+  });
+
   it("lets explicit overrides beat the file", () => {
     const root = mkdtempClean("cfg-");
     writeFileSync(join(root, "octograph.yaml"), "halfLifeDays: 90\n");

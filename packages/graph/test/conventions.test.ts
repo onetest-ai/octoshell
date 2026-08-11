@@ -470,6 +470,11 @@ describe("package conventions", () => {
       // `conflicts` read provenance/prediction through. Added in the same
       // commit, same reason as every entry above.
       "attribute",
+      // T4.3's own surface: the lexical cold-start predictor that fills in
+      // `predicted` mode when there is no recorded merge SHA — the modal
+      // case, not the fallback (see attribution.ts). Added in the same
+      // commit, same reason as every entry above.
+      "predictFiles",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }
