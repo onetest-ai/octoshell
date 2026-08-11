@@ -6,6 +6,18 @@ export interface Run {
   stderr: string;
 }
 
+export interface RunNodeOptions {
+  /**
+   * Piped verbatim to the child's stdin — `execFileSync`'s own `input`
+   * option. Every command this helper ran before M5 (`doctor`, `map`,
+   * `drift`, …) reads no stdin at all, so this was never needed; `setup` is
+   * the first command that blocks on a `readline` prompt, and a scripted
+   * answer has to reach the child BEFORE it exits, not be written to a pipe
+   * nobody reads. Omit for any command that doesn't prompt.
+   */
+  input?: string;
+}
+
 /**
  * Run `node <args>` in `cwd` and return its exit code, stdout and stderr.
  *
@@ -20,9 +32,13 @@ export interface Run {
  * an `ERR_MODULE_NOT_FOUND` on stderr, and an assertion that can only say
  * "expected '' to contain 'status:'" hides the reason.
  */
-export function runNode(args: string[], cwd: string): Run {
+export function runNode(args: string[], cwd: string, options: RunNodeOptions = {}): Run {
   try {
-    const stdout = execFileSync("node", args, { cwd, stdio: "pipe" }).toString();
+    const stdout = execFileSync("node", args, {
+      cwd,
+      stdio: "pipe",
+      input: options.input,
+    }).toString();
     return { code: 0, stdout, stderr: "" };
   } catch (err) {
     const e = err as { status: number | null; stdout: Buffer; stderr: Buffer };
