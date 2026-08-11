@@ -7,7 +7,7 @@
 export { harvest, type HarvestOptions } from "./harvest.js";
 export type { Commit } from "./types.js";
 
-export { loadConfig, DEFAULTS, historyIsThin, type Config } from "./config.js";
+export { loadConfig, lexicalOptions, DEFAULTS, historyIsThin, type Config } from "./config.js";
 export { analyze, type Analysis, type AnalyzeOptions, type ModuleSummary } from "./analyze.js";
 export { workingSets, type WorkingSet } from "./working-sets.js";
 export { renderMap, estimateTokens } from "./render.js";
@@ -34,6 +34,11 @@ export {
 // T4.4's own surface: the `own` query itself, over `board.ts`/`attribution.ts`/
 // `lexical.ts`. Added in the same commit, same reason as every entry above.
 export { own, type OwnAnswer } from "./own.js";
+// T4.5's own surface: the `conflicts` query — whether a set of tasks
+// decomposes cleanly, reported as `shared`/`coupled` on two separate fields
+// (see conflicts.ts's doc comment for why they are never summed into one
+// score). Added in the same commit, same reason as every entry above.
+export { conflicts, type ConflictPair } from "./conflicts.js";
 export {
   hasBoard,
   readArtifact,

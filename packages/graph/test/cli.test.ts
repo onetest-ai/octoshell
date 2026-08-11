@@ -595,6 +595,204 @@ describe("runCli — own", () => {
   });
 });
 
+describe("runCli — conflicts", () => {
+  /** A campaign spanning two missions, each with its own task(s), on a repo
+   *  whose git history co-changes the two files those tasks' criteria
+   *  predict — enough to exercise `shared` (two tasks in the SAME mission
+   *  naming the same file), `coupled` (a cross-mission pair whose files
+   *  differ but historically co-change), and every one of `conflicts`'
+   *  positional shapes (mission id, campaign id, explicit task ids). */
+  function conflictFixture() {
+    const repo = buildRepo([
+      { files: ["src/auth/session.ts", "src/billing/invoice.ts"] },
+      { files: ["src/auth/session.ts", "src/billing/invoice.ts"], daysAgo: 1 },
+    ]);
+    const octobotsDir = join(repo, ".octobots");
+    mkdirSync(octobotsDir, { recursive: true });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const missionA = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    // Both tasks in mission A predict the SAME file — a `shared` conflict.
+    const taskA1 = createTask(octobotsDir, missionA.id, {
+      name: "T1.1 - JWT",
+      acceptanceCriteria: "- [ ] the auth session token is validated",
+    });
+    const taskA2 = createTask(octobotsDir, missionA.id, {
+      name: "T1.2 - Refresh",
+      acceptanceCriteria: "- [ ] the auth session token is validated",
+    });
+    const missionB = createMission(octobotsDir, campaign.id, { title: "M2 - Billing" });
+    // Predicts a DIFFERENT file that historically co-changes with session.ts
+    // — a `coupled` conflict, visible only once the campaign spans mission B.
+    const taskB1 = createTask(octobotsDir, missionB.id, {
+      name: "T2.1 - Invoicing",
+      acceptanceCriteria: "- [ ] the billing invoice totals are correct",
+    });
+
+    return { repo, campaign, missionA, missionB, taskA1, taskA2, taskB1 };
+  }
+
+  function writeWorklog(root: string, lines: Array<Record<string, unknown>>): void {
+    const dir = join(root, ".octobots", "tokenomics");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "worklog.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  }
+
+  it("exits 2 when conflicts is given no id at all", () => {
+    const result = runCli(["conflicts"], tinyRepo(), NOW);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("conflicts");
+  });
+
+  it("conflicts on a repo with no board exits non-zero naming the missing board", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    const result = runCli(["conflicts", "anything"], repo, NOW);
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("board");
+  });
+
+  it("exits with a usage error naming an id that matches no campaign, mission, or task", () => {
+    const { repo } = conflictFixture();
+    const result = runCli(["conflicts", "does-not-exist"], repo, NOW);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("does-not-exist");
+  });
+
+  it("a mission id reports the shared-file conflict between that mission's own tasks", () => {
+    const { repo, missionA, taskA1, taskA2 } = conflictFixture();
+    const result = runCli(["conflicts", missionA.id, "--json"], repo, NOW);
+    expect(result.code).toBe(0);
+    const pairs = JSON.parse(result.stdout) as Array<{ a: string; b: string; shared: string[] }>;
+    expect(pairs).toHaveLength(1);
+    expect([pairs[0]?.a, pairs[0]?.b].sort()).toEqual([taskA1.id, taskA2.id].sort());
+    expect(pairs[0]?.shared).toEqual(["src/auth/session.ts"]);
+  });
+
+  it("a campaign id spanning more than one mission also surfaces the cross-mission coupled conflict", () => {
+    const { repo, campaign, taskA1, taskA2, taskB1 } = conflictFixture();
+    const result = runCli(["conflicts", campaign.id, "--json"], repo, NOW);
+    expect(result.code).toBe(0);
+    const pairs = JSON.parse(result.stdout) as Array<{ a: string; b: string; coupled: number }>;
+    const pairKeys = pairs.map((p) => [p.a, p.b].sort().join("|")).sort();
+    expect(pairKeys).toEqual(
+      [
+        [taskA1.id, taskA2.id].sort().join("|"),
+        [taskA1.id, taskB1.id].sort().join("|"),
+        [taskA2.id, taskB1.id].sort().join("|"),
+      ].sort(),
+    );
+  });
+
+  it("an explicit task list reports only the conflict between exactly those tasks", () => {
+    const { repo, taskA1, taskB1 } = conflictFixture();
+    const result = runCli(["conflicts", taskA1.id, taskB1.id, "--json"], repo, NOW);
+    expect(result.code).toBe(0);
+    const pairs = JSON.parse(result.stdout) as Array<{ a: string; b: string; coupled: number }>;
+    expect(pairs).toHaveLength(1);
+    expect([pairs[0]?.a, pairs[0]?.b].sort()).toEqual([taskA1.id, taskB1.id].sort());
+    expect(pairs[0]?.coupled).toBeGreaterThan(0);
+  });
+
+  it("names every missing id when an explicit task list has more than one bad entry", () => {
+    const { repo, taskA1 } = conflictFixture();
+    const result = runCli(["conflicts", taskA1.id, "nope-1", "nope-2"], repo, NOW);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("nope-1");
+    expect(result.stderr).toContain("nope-2");
+  });
+
+  /**
+   * Mission criterion: "every answer from `own` or `conflicts` names which
+   * mode produced it". Asserted on the RENDERED output and on the JSON, not
+   * in memory — an unlabelled row printed beside `own`'s labelled ones is
+   * where a reader would actually be misled.
+   */
+  it("labels every rendered and JSON conflict row with the mode that produced it", () => {
+    const { repo, missionA } = conflictFixture();
+
+    const text = runCli(["conflicts", missionA.id], repo, NOW);
+    expect(text.code).toBe(0);
+    for (const line of text.stdout.trimEnd().split("\n")) {
+      expect(line).toContain("(predicted)");
+    }
+
+    const json = runCli(["conflicts", missionA.id, "--json"], repo, NOW);
+    const pairs = JSON.parse(json.stdout) as Array<{ mode: string }>;
+    expect(pairs.length).toBeGreaterThan(0);
+    for (const p of pairs) expect(p.mode).toBe("predicted");
+  });
+
+  /**
+   * `octograph.yaml`'s lexical keys must reach `predictFiles`. The
+   * regression: `own` and `conflicts` both called it with no options, so
+   * `lexicalConfidenceFloor` / `lexicalRunnerUpMargin` were parsed,
+   * range-checked, documented — and changed no answer this CLI produced,
+   * the same silent-ignore defect `parseArgs` exists to make impossible for
+   * flags.
+   */
+  it("applies octograph.yaml's lexical floor to conflicts rather than ignoring it", () => {
+    // `session.ts` recovers 2 of the query's 3 scoring tokens (`token` is the
+    // other file's, `validated` is nobody's) — 2/3, over the default floor
+    // and under the configured one.
+    const repo = buildRepo([
+      { files: ["src/auth/session.ts", "src/token/store.ts"] },
+      { files: ["src/auth/session.ts", "src/token/store.ts"], daysAgo: 1 },
+    ]);
+    const octobotsDir = join(repo, ".octobots");
+    mkdirSync(octobotsDir, { recursive: true });
+    const campaign = createCampaign(octobotsDir, { name: "Q4" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    for (const name of ["T1.1 - JWT", "T1.2 - Refresh"]) {
+      createTask(octobotsDir, mission.id, {
+        name,
+        acceptanceCriteria: "- [ ] the auth session token is validated",
+      });
+    }
+
+    const byDefault = runCli(["conflicts", mission.id, "--json"], repo, NOW);
+    expect(JSON.parse(byDefault.stdout)).toHaveLength(1);
+
+    writeFileSync(join(repo, "octograph.yaml"), "lexicalConfidenceFloor: 0.7\n");
+    const strict = runCli(["conflicts", mission.id, "--json"], repo, NOW);
+    expect(strict.code).toBe(0);
+    expect(JSON.parse(strict.stdout)).toEqual([]);
+  });
+
+  /**
+   * `conflicts` runs in `predicted` mode permanently and never reads the
+   * worklog (see conflicts.ts's doc comment) — its answer for the SAME task
+   * set must be byte-identical whether the worklog holds nothing at all, a
+   * mission-level-only entry (the day-one state `own`'s own test covers),
+   * or a fully task-attributed one with a resolvable `merged_sha`. `own`'s
+   * mode changes with the evidence; `conflicts`' output must not change at
+   * all.
+   */
+  it("answers identically regardless of the worklog's contents — mission-only, fully-attributed, or absent", () => {
+    const { repo, campaign, missionA, taskA1 } = conflictFixture();
+    const noWorklog = runCli(["conflicts", campaign.id, "--json"], repo, NOW);
+
+    writeWorklog(repo, [
+      { session_id: "s1", mission: missionA.id, at: "2026-08-10T00:00:00.000Z" },
+    ]);
+    const missionOnly = runCli(["conflicts", campaign.id, "--json"], repo, NOW);
+
+    const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+    writeWorklog(repo, [
+      {
+        session_id: "s1",
+        task: taskA1.id,
+        branch: "feat/x-t1",
+        merged_sha: sha,
+        at: "2026-08-10T00:00:00.000Z",
+      },
+    ]);
+    const fullyAttributed = runCli(["conflicts", campaign.id, "--json"], repo, NOW);
+
+    expect(missionOnly.stdout).toBe(noWorklog.stdout);
+    expect(fullyAttributed.stdout).toBe(noWorklog.stdout);
+  });
+});
+
 describe("runCli — map records --since provenance and warns on a mismatched history window", () => {
   it("records the --since window on clusters.json", () => {
     const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
