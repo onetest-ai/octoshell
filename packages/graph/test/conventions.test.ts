@@ -42,6 +42,21 @@ function testCode(file: string): string {
   return stripped(readFileSync(join(TEST, file), "utf8"));
 }
 
+/** Source with comments stripped but string literals KEPT — what a guard
+ *  over an import SPECIFIER has to read, since the specifier is itself a
+ *  string literal that `stripped` would erase. */
+function sourceKeepingStrings(file: string): string {
+  return readFileSync(join(SRC, file), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/[^\n]*/g, " ");
+}
+
+/** The only modules allowed to import `node:child_process` — `setup-io.ts`,
+ *  plus the two git readers that already did before M5. Spelled once, and
+ *  read by both the import guard and the call-shape guard below, so the two
+ *  can never come to disagree about which files they cover. */
+const CHILD_PROCESS_MODULES = ["setup-io.ts", "harvest.ts", "attribution.ts"];
+
 /**
  * Whether `text` compares something against `minCommits` — the thin-history
  * rule open-coded instead of called. Both operand orders, and every ordering
@@ -524,15 +539,108 @@ describe("package conventions", () => {
    * developer who is not thinking about the prefix would write it.
    */
   it("imports child_process only in setup-io.ts (and the two pre-existing git readers), with or without the node: prefix", () => {
-    const withoutComments = (file: string): string =>
-      readFileSync(join(SRC, file), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, " ")
-        .replace(/\/\/[^\n]*/g, " ");
-    const allowed = new Set(["setup-io.ts", "harvest.ts", "attribution.ts"]);
+    const allowed = new Set(CHILD_PROCESS_MODULES);
     const offenders = sources.filter(
-      (f) => !allowed.has(f) && /\b(?:node:)?child_process\b/.test(withoutComments(f)),
+      (f) => !allowed.has(f) && /\b(?:node:)?child_process\b/.test(sourceKeepingStrings(f)),
     );
     expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The other half of that rule, and the half that decides whether any of
+   * this is a guard at all: the modules allowed to import
+   * `node:child_process` may take only `execFile`/`execFileSync` out of it.
+   *
+   * `usesUnsafeSpawn` below scans CALL sites, and the only shell-interpreting
+   * call it can recognise is a NAMESPACE one (`child_process.exec(`) — a form
+   * no file in this package uses, because all three import named bindings.
+   * The edit that actually lands a shell in here is one line long and
+   * invisible to it: add `exec` to `setup-io.ts`'s existing named import and
+   * call `exec("curl " + url + " | sh")`. Verified against the shipped guard
+   * — it returns false for exactly that source, and for `execSync` and
+   * `spawnSync` written the same way. A guard aimed at a spelling the file
+   * cannot contain is the "scans setup.ts for `curl`" defect this mission's
+   * plan caught in its own early draft, reproduced one level down, and it is
+   * worse than no guard because it reads as coverage.
+   *
+   * The import list is the chokepoint the call site is not: `exec`,
+   * `execSync`, `spawn`, `spawnSync` and `fork` cannot be called without
+   * being named there — or reached through a namespace/default import or a
+   * `require`, which is why those count as taking all of them. An allowlist
+   * over the bindings therefore catches every route to a shell no matter how
+   * the call is later written, including a `const run = exec;` alias that no
+   * call-shape regex can follow.
+   */
+  const SAFE_CHILD_PROCESS_BINDINGS = new Set(["execFile", "execFileSync"]);
+
+  /** Every binding `text` takes out of `child_process`, with `"*"` standing
+   *  for a namespace import, a default import, a `require(...)` or a dynamic
+   *  `import(...)` — each of which hands the module object over whole. */
+  function childProcessBindings(text: string): string[] {
+    const spec = String.raw`["'](?:node:)?child_process["']`;
+    const found: string[] = [];
+    for (const m of text.matchAll(new RegExp(String.raw`import\s+([^;]*?)\s+from\s*${spec}`, "g"))) {
+      const clause = m[1] ?? "";
+      const named = /\{([^}]*)\}/.exec(clause);
+      for (const part of (named?.[1] ?? "").split(",")) {
+        // `execFile as run` — the imported name is what decides, not the
+        // local alias it is bound to.
+        const name = part.trim().split(/\s+as\s+/)[0]?.trim();
+        if (name !== undefined && name !== "") found.push(name);
+      }
+      // Anything outside the braces is a default or namespace binding.
+      if (clause.replace(/\{[^}]*\}/, "").replace(/,/g, "").trim() !== "") found.push("*");
+    }
+    for (const _m of text.matchAll(
+      new RegExp(String.raw`(?:require|import)\s*\(\s*${spec}`, "g"),
+    )) {
+      found.push("*");
+    }
+    return found;
+  }
+
+  function unsafeChildProcessBindings(text: string): string[] {
+    return childProcessBindings(text).filter((b) => !SAFE_CHILD_PROCESS_BINDINGS.has(b));
+  }
+
+  it("takes only execFile/execFileSync out of child_process — never exec, execSync, spawn, or the whole namespace", () => {
+    const offenders = sources
+      .map((f) => `${f}: ${unsafeChildProcessBindings(sourceKeepingStrings(f)).join(", ")}`)
+      .filter((line) => !line.endsWith(": "));
+    expect(offenders).toEqual([]);
+  });
+
+  /** The guard above is a regex, so what it can see is a claim of its own,
+   *  and one nothing exercises while the tree has no offenders. Pin the
+   *  spellings it must catch — every one of which the call-shape guard below
+   *  misses — and the ones it must not. */
+  it("recognises every route from child_process to a shell, and no safe import", () => {
+    for (const violation of [
+      'import { exec } from "node:child_process";',
+      'import { exec } from "child_process";',
+      'import { execFile, execSync } from "node:child_process";',
+      'import { spawn } from "node:child_process";',
+      'import { spawnSync as run } from "node:child_process";',
+      'import * as cp from "node:child_process";',
+      'import cp from "node:child_process";',
+      'const cp = require("child_process");',
+      'const { exec } = await import("node:child_process");',
+    ]) {
+      expect([violation, unsafeChildProcessBindings(violation).length > 0]).toEqual([
+        violation,
+        true,
+      ]);
+    }
+    for (const legal of [
+      'import { execFile } from "node:child_process";',
+      'import { execFileSync } from "node:child_process";',
+      'import { execFile, execFileSync } from "node:child_process";',
+      'import { execFile as run } from "node:child_process";',
+      'import { readFileSync } from "node:fs";',
+      'import { createInterface } from "node:readline";',
+    ]) {
+      expect([legal, unsafeChildProcessBindings(legal)]).toEqual([legal, []]);
+    }
   });
 
   /**
@@ -553,6 +661,12 @@ describe("package conventions", () => {
    * interpolated value to escape out of" argument only holds for an argv a
    * reviewer can read on the spot).
    *
+   * It is the SECOND guard, never the only one: on its own it reads a
+   * namespace spelling no module here uses, so the import-binding allowlist
+   * above is what actually closes the route to a shell. This one covers what
+   * an import list cannot see — a `shell: true` option on an otherwise
+   * allowed `execFile`, and an argv a reviewer cannot read on the spot.
+   *
    * Not baked into `usesUnsafeSpawn` itself: comment/string stripping, same
    * split as `isChecklistRegex` above — the function is a plain regex test,
    * and callers choose whether to strip first.
@@ -570,8 +684,13 @@ describe("package conventions", () => {
     );
   }
 
-  it("never gives setup-io.ts a shell-spawning primitive — child_process.exec(, shell: true, or a non-literal spawn argv", () => {
-    expect(usesUnsafeSpawn(code("setup-io.ts"))).toBe(false);
+  it("never gives a child_process module a shell-spawning primitive — child_process.exec(, shell: true, or a non-literal spawn argv", () => {
+    // Every module that can spawn at all, not `setup-io.ts` alone: a
+    // `shell: true` in `harvest.ts`'s `execFileSync("git", args, {…})` runs
+    // the same argv through `/bin/sh`, and the rule is about the primitive,
+    // not about which file happens to be user-facing.
+    const offenders = CHILD_PROCESS_MODULES.filter((f) => usesUnsafeSpawn(code(f)));
+    expect(offenders).toEqual([]);
   });
 
   /** The guard above is a regex, so what it can see is a claim of its own,
