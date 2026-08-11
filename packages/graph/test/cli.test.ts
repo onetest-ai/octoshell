@@ -493,7 +493,7 @@ describe("runCli — own", () => {
     const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
     const task = createTask(octobotsDir, mission.id, {
       name: "T1.1 - JWT",
-      acceptanceCriteria: "- [ ] jwt is validated",
+      acceptanceCriteria: "- [ ] the auth token is validated",
     });
     writeWorklog(root, [
       { session_id: "s1", task: task.id, branch: "feat/x-t1", merged_sha: sha, at: "2026-08-10T00:00:00.000Z" },
@@ -502,8 +502,68 @@ describe("runCli — own", () => {
     const result = runCli(["own", "src/auth.ts"], root, NOW);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain(mission.id);
-    expect(result.stdout).toContain("jwt is validated");
-    expect(result.stdout).toContain("provenance");
+    expect(result.stdout).toContain("the auth token is validated");
+    // The ownership clause carries `provenance`; the criterion clause carries
+    // its OWN, different label. A single mode on the row read as a claim that
+    // the criterion came off the merge too — it cannot (see own.ts).
+    expect(result.stdout).toContain(`(provenance)`);
+    expect(result.stdout).toContain("criterion (predicted): the auth token is validated");
+  });
+
+  /**
+   * The rendered half of `own.test.ts`'s "names no criterion…" regression: a
+   * file whose owning task's criteria share nothing with its path must not
+   * print a criterion under the row's `provenance` badge. It used to print
+   * the alphabetically-first criterion there.
+   */
+  it("own prints no criterion, rather than one under the provenance label, when nothing supports one", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, { "src/louvain.ts": "export {}\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Clustering" });
+    const task = createTask(octobotsDir, mission.id, {
+      name: "T1.5 - Louvain",
+      acceptanceCriteria: "- [ ] autoResolution returns 1.0 below 2 nodes",
+    });
+    writeWorklog(root, [
+      { session_id: "s1", task: task.id, branch: "feat/x-t1", merged_sha: sha, at: "2026-08-10T00:00:00.000Z" },
+    ]);
+
+    const result = runCli(["own", "src/louvain.ts"], root, NOW);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("(provenance)");
+    expect(result.stdout).not.toContain("autoResolution");
+    expect(result.stdout).toContain("criterion: none");
+  });
+
+  /**
+   * M7 shipped a defect where a newline in a filename injected a phantom line
+   * into rendered markdown; `own`'s stdout is line-oriented for the same
+   * reason `map.md` is, and its rows come from the same repo-controlled path
+   * strings. One answer must stay one line.
+   */
+  it("own renders a path containing a newline as one line, not two", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, { "src/a\nb.ts": "export {}\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    const task = createTask(octobotsDir, mission.id, {
+      name: "T1.1 - JWT",
+      acceptanceCriteria: "- [ ] the auth token is validated",
+    });
+    writeWorklog(root, [
+      { session_id: "s1", task: task.id, branch: "feat/x-t1", merged_sha: sha, at: "2026-08-10T00:00:00.000Z" },
+    ]);
+
+    const result = runCli(["own"], root, NOW);
+    expect(result.code).toBe(0);
+    const lines = result.stdout.split("\n").filter((l) => l !== "");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("src/a\\x0ab.ts");
   });
 
   it("own <path> against a worklog holding only mission-level entries still answers, labelled predicted", () => {

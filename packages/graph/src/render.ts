@@ -30,8 +30,12 @@ export function estimateTokens(text: string): number {
  * identifier of the file it names. Applied to every path and module name this
  * renderer emits, not only to the working-set section, because a module
  * directory is a prefix of the same paths and inherits the same freedom.
+ *
+ * Exported so `cli.ts`'s line-oriented `own` output escapes through THIS
+ * spelling of the rule rather than a second one — the output medium differs
+ * (stdout rather than a committed `map.md`), the defect does not.
  */
-const oneLine = (s: string): string =>
+export const oneLine = (s: string): string =>
   // eslint-disable-next-line no-control-regex
   s.replace(/[\u0000-\u001f\u007f]/gu, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
 

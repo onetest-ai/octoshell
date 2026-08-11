@@ -9,7 +9,7 @@ import { drift as computeDrift, type DriftRow } from "./drift.js";
 import { impact as computeImpact, type ImpactRow } from "./impact.js";
 import { own as computeOwn, type OwnAnswer } from "./own.js";
 import { repoRelative } from "./paths.js";
-import { renderMap } from "./render.js";
+import { oneLine, renderMap } from "./render.js";
 import { readWorklog } from "./worklog.js";
 
 export type Command = "map" | "impact" | "drift" | "doctor" | "own";
@@ -364,8 +364,25 @@ function runImpactCommand(
   return { code: 0, stdout, stderr: "" };
 }
 
+/**
+ * One `own` row, with the mode of EACH half of it spelled out where that half
+ * is printed — `(provenance)` on the ownership clause, `(predicted)` on the
+ * criterion clause. A single trailing `(mode)` covering the whole line read as
+ * a claim that the criterion, too, came off a recorded merge; it never can
+ * (see `own.ts`'s `OwnAnswer.criterionMode`).
+ *
+ * `oneLine` on every interpolated identifier, for the reason render.ts
+ * documents: a repo-relative path may legally contain a newline, and this
+ * formatter joins rows with `\n`, so an unescaped one splits a single answer
+ * into two rendered rows — the phantom-line defect M7 shipped into `map.md`,
+ * reaching stdout here instead.
+ */
 function formatOwnAnswer(a: OwnAnswer): string {
-  return `${a.path}\towned by ${a.mission} / ${a.task} (${a.mode})\tcriterion: ${a.criterion}`;
+  const criterion =
+    a.criterion === null || a.criterionMode === null
+      ? "criterion: none — no acceptance criterion's own words single out this path"
+      : `criterion (${a.criterionMode}): ${oneLine(a.criterion)}`;
+  return `${oneLine(a.path)}\towned by ${oneLine(a.mission)} / ${oneLine(a.task)} (${a.mode})\t${criterion}`;
 }
 
 function formatOwn(answers: OwnAnswer[]): string {
