@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULTS, type Config } from "../src/config.js";
@@ -254,5 +255,48 @@ describe("runSetup", () => {
     expect(logged).toContain("octograph:");
     // The postflight still ran — the run says what state it left behind.
     expect(logged).toContain("[ok] repository");
+  });
+
+  /**
+   * `git status --porcelain --untracked-files=no` — TRACKED paths only. New
+   * artifacts under the resolved out directory are new, untracked files (the
+   * whole point of `setup`), so they never appear here; this is exactly "no
+   * modified or added tracked file", checked without first computing where
+   * the out directory landed. `git ls-files` alongside it is a second, coarser
+   * check that the tracked SET itself didn't change (nothing `git add`ed,
+   * nothing removed) — same fixture repos every other test in this file
+   * builds, via `execFileSync("git", …)`, the same primitive `fixtures/
+   * repo.ts` already uses for git plumbing outside `runSetup` itself.
+   */
+  function trackedFiles(root: string): string[] {
+    return execFileSync("git", ["ls-files", "-z"], { cwd: root })
+      .toString()
+      .split("\0")
+      .filter((f) => f !== "");
+  }
+
+  function trackedStatus(root: string): string {
+    return execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
+      cwd: root,
+    }).toString();
+  }
+
+  it("touches no tracked file outside the resolved out directory — none added, none modified", async () => {
+    const repo = healthyRepo(); // no board — the resolved out dir is .octograph, untracked
+    const port = fakePort({ consent: true });
+
+    const filesBefore = trackedFiles(repo);
+    const statusBefore = trackedStatus(repo);
+    expect(statusBefore).toBe(""); // sanity: the fixture starts clean
+
+    await runSetup(repo, healthyConfig(), NOW, port.io);
+
+    // The consented (faked) install and the real build both ran — proof this
+    // assertion isn't vacuously true because nothing happened.
+    expect(port.execCalls.length).toBe(1);
+    expect(existsSync(join(repo, ".octograph", "map.md"))).toBe(true);
+
+    expect(trackedFiles(repo)).toEqual(filesBefore);
+    expect(trackedStatus(repo)).toBe(statusBefore);
   });
 });
