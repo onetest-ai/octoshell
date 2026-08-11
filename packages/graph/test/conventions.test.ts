@@ -487,9 +487,57 @@ describe("package conventions", () => {
       // commands) needs it, and the alternative to exporting it is that the
       // caller writes a second translation of the same two config keys.
       "lexicalOptions",
+      // M5/T5.1's own surface: `runSetup`, the async entry point `setup.ts`
+      // exports precisely because it is NOT a `runCli` command (see its doc
+      // comment) — an in-process caller needs this the same way it needs
+      // `runCli` itself.
+      "runSetup",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }
+  });
+
+  /**
+   * An eleventh single-spelling rule, and the safety-critical one this
+   * mission exists for: no NEW module may import `node:child_process` —
+   * only `setup-io.ts`, plus the two readers that already did before this
+   * mission (`harvest.ts` and `attribution.ts`, both `execFileSync("git",
+   * …)` for repo history, never a user-facing install). `setup.ts` and
+   * every other module reach the outside world only through the `SetupIO`
+   * port `setup.ts` defines. A second module spawning a process is exactly
+   * the surface a reviewer checking "does this ever pipe a remote script to
+   * a shell" has to read; keeping the INSTALL-capable spawn primitive in one
+   * file is what makes that review tractable, and what lets
+   * `test/setup-io.test.ts` be the only place a real process gets spawned by
+   * this suite.
+   *
+   * Matched against the raw source with comments stripped but string
+   * literals KEPT — the import specifier itself is the violation, same
+   * treatment as the graphify-path and board-directory guards above.
+   */
+  it("imports node:child_process only in setup-io.ts (and the two pre-existing git readers)", () => {
+    const withoutComments = (file: string): string =>
+      readFileSync(join(SRC, file), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/\/\/[^\n]*/g, " ");
+    const allowed = new Set(["setup-io.ts", "harvest.ts", "attribution.ts"]);
+    const offenders = sources.filter(
+      (f) => !allowed.has(f) && /node:child_process/.test(withoutComments(f)),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * A twelfth single-spelling rule: `setup.ts`'s build step calls the SAME
+   * `analyze -> renderMap -> writeArtifact` sequence `octograph map` runs,
+   * through `runMapCommand` (cli.ts) — never a second, hand-assembled copy
+   * of that pipeline. A second copy of exactly this shape (one rule,
+   * expressed twice, free to drift) is the `entity-io.mjs` vs
+   * `entity-schema.ts` defect this whole tool exists to detect; shipping one
+   * inside the tool itself would be the sharpest possible irony.
+   */
+  it("setup.ts calls the shared build pipeline through runMapCommand — never analyze/renderMap/writeArtifact directly", () => {
+    expect(/\banalyze\(|\brenderMap\(|\bwriteArtifact\(/.test(code("setup.ts"))).toBe(false);
   });
 
   /**

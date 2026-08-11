@@ -287,7 +287,17 @@ function sinceMismatchWarning(previous: StoredGraph | null, since: string | unde
   );
 }
 
-function runMapCommand(
+/**
+ * `map`'s whole pipeline — `analyze` -> `renderMap` -> `writeArtifact` — as
+ * ONE function, exported so a second caller never reassembles that sequence
+ * by hand. `setup.ts`'s build step calls this directly rather than
+ * re-deriving `resolveOut`/`analyze`/`renderMap`/`writeArtifact` itself,
+ * which would be a second implementation of the exact shape this package
+ * exists to catch (the `entity-io.mjs` vs `entity-schema.ts` drift, one repo
+ * over). `test/conventions.test.ts` guards that `setup.ts` never open-codes
+ * `analyze(`/`renderMap(`/`writeArtifact(` itself.
+ */
+export function runMapCommand(
   repoRoot: string,
   config: Config,
   since: string | undefined,
