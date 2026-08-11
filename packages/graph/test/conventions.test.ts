@@ -104,6 +104,21 @@ function listTs(dir: string, relPrefix = ""): string[] {
 const sources = readdirSync(SRC).filter((f) => f.endsWith(".ts"));
 const testFiles = listTs(TEST);
 
+/** The shipped entry points under `bin/` — bundled into the artifact every
+ *  user downloads, and NOT covered by `sources`, which reads `src/` alone.
+ *  `bin/octograph.mjs` is where the real `SetupIO` is constructed, so it is
+ *  the composition root a "just spawn it here" edit would land in — the one
+ *  shipped file outside `src/` that can reach a shell. */
+const BIN = join(dirname(fileURLToPath(import.meta.url)), "..", "bin");
+const binFiles = readdirSync(BIN).filter((f) => f.endsWith(".mjs"));
+
+/** Same as `sourceKeepingStrings`, for a file under `bin/`. */
+function binSourceKeepingStrings(file: string): string {
+  return readFileSync(join(BIN, file), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/[^\n]*/g, " ");
+}
+
 describe("package conventions", () => {
   it("has sources to check", () => {
     expect(sources.length).toBeGreaterThan(10);
@@ -603,6 +618,24 @@ describe("package conventions", () => {
     return childProcessBindings(text).filter((b) => !SAFE_CHILD_PROCESS_BINDINGS.has(b));
   }
 
+  /**
+   * The same rule, over the half of the shipped code `sources` cannot see.
+   * Every guard in this file reads `src/`, but `bin/octograph.mjs` ships too
+   * — it is bundled into `dist/octograph.mjs`, it is what `octograph setup`
+   * actually runs, and it is where the real `SetupIO` gets constructed. So
+   * it is precisely where a future edit that wants a process ("open a
+   * terminal for the user", M6) would put one, with every `src/`-scoped
+   * guard above staying green. The bin needs no `child_process` at all: it
+   * calls `runCli` or `runSetup` and hands the latter the port that owns
+   * spawning. Nothing here is allowlisted, unlike the `src/` rule.
+   */
+  it("no shipped bin entry point imports child_process at all — spawning belongs to the port", () => {
+    const offenders = binFiles.filter((f) =>
+      /\b(?:node:)?child_process\b/.test(binSourceKeepingStrings(f)),
+    );
+    expect([binFiles.length > 0, offenders]).toEqual([true, []]);
+  });
+
   it("takes only execFile/execFileSync out of child_process — never exec, execSync, spawn, or the whole namespace", () => {
     const offenders = sources
       .map((f) => `${f}: ${unsafeChildProcessBindings(sourceKeepingStrings(f)).join(", ")}`)
@@ -653,9 +686,9 @@ describe("package conventions", () => {
    * confines every spawn primitive to, so it is the one file that CAN
    * violate "never spawn through a shell" — and this is what actually would:
    * `child_process.exec(` (the shell-interpreting sibling of `execFile`,
-   * never used here), a `shell: true` option on any call (`execFile`,
-   * `spawn`, or a future primitive — it runs the whole argv through
-   * `/bin/sh` regardless of which function carries it), or a `spawn(` call
+   * never used here), ANY `shell:` option other than `false` on any call
+   * (`execFile`, `spawn`, or a future primitive — it runs the whole argv
+   * through a shell regardless of which function carries it), or a `spawn(` call
    * whose second argument is not a literal `[...]` array (a variable there
    * could resolve to a shell string at runtime, and the "no string for an
    * interpolated value to escape out of" argument only holds for an argv a
@@ -664,8 +697,20 @@ describe("package conventions", () => {
    * It is the SECOND guard, never the only one: on its own it reads a
    * namespace spelling no module here uses, so the import-binding allowlist
    * above is what actually closes the route to a shell. This one covers what
-   * an import list cannot see — a `shell: true` option on an otherwise
-   * allowed `execFile`, and an argv a reviewer cannot read on the spot.
+   * an import list cannot see — a `shell:` option on an otherwise allowed
+   * `execFile`, and an argv a reviewer cannot read on the spot.
+   *
+   * The shell option is matched as "anything that is not `false`", NOT as
+   * `shell: true`, and that is the difference between a guard and a
+   * decoration. `execFile(file, args, { shell: "/bin/sh" })` runs the argv
+   * through a shell exactly as `shell: true` does — it is the documented way
+   * to name WHICH shell — and a `true`-anchored pattern waved it through, as
+   * it did `shell: process.env.SHELL`. Both are the shape the one plausible
+   * edit here takes ("Windows can't find `uv` without a shell"), and both
+   * were invisible to this guard while its own name claimed to cover them.
+   * String literals are stripped before the match, so the `"/bin/sh"` case
+   * arrives as `shell: ""` — matched by "not `false`", missed by any pattern
+   * that tries to enumerate the values a shell can be spelled with.
    *
    * Not baked into `usesUnsafeSpawn` itself: comment/string stripping, same
    * split as `isChecklistRegex` above — the function is a plain regex test,
@@ -674,7 +719,12 @@ describe("package conventions", () => {
   function usesUnsafeSpawn(text: string): boolean {
     return (
       /\bchild_process\.exec\s*\(/.test(text) ||
-      /\bshell\s*:\s*true\b/.test(text) ||
+      // The whitespace lives INSIDE the lookahead (`(?!\s*false\b)`), never
+      // as a `\s*` in front of it — the identical backtracking trap the
+      // spawn-argv comment below documents, and it bit here too: with
+      // `\s*(?!false\b)`, `shell: false` matched, because `\s*` gave back
+      // the space so the assertion ran at the space instead of at `false`.
+      /\bshell\s*:(?!\s*false\b)/.test(text) ||
       // The lookahead skips whitespace INSIDE itself (`(?!\s*\[)`), not via
       // a `\s*` sitting outside it — a `,\s*(?!\[)` spelling let `\s*`
       // backtrack to zero characters so the assertion ran against the space
@@ -707,6 +757,12 @@ describe("package conventions", () => {
       "const opts = { shell: true }; spawn(file, argv, opts);",
       "spawn(file, argv);",
       "child_process.spawn(cmd, userArgs);",
+      // A shell named rather than switched on — the same shell, and the
+      // spelling a `shell: true` pattern let straight through.
+      'execFile(file, args, { shell: "/bin/sh" });',
+      'execFileSync("git", args, { cwd, shell: "/bin/bash" });',
+      "execFile(file, args, { shell: process.env.SHELL });",
+      "spawn(file, ['a'], { shell: shellPath });",
     ]) {
       expect([violation, violatesGuard(violation)]).toEqual([violation, true]);
     }
@@ -717,6 +773,10 @@ describe("package conventions", () => {
       "spawn(file, [...args]);",
       "// never child_process.exec( or shell: true",
       "const shell = false;",
+      // Explicitly opting OUT of a shell is the safe spelling, not a
+      // violation — the rule is "no shell", not "no mention of one".
+      "execFile(file, args, { shell: false });",
+      "spawn(file, ['a'], { cwd, shell: false });",
     ]) {
       expect([legal, violatesGuard(legal)]).toEqual([legal, false]);
     }

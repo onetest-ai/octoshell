@@ -140,14 +140,84 @@ function assertNoRealUv(dirs: string[]): void {
   }
 }
 
-/** The ONE spelling of the child's `PATH`: the three real directories, plus
- *  whatever throwaway decoy directories this scenario controls. Every
- *  scenario builds its `PATH` through here, so the "uv absent" run and the
- *  "uv present, decoy on PATH" run differ in exactly one thing — the decoy —
- *  and neither can quietly drift onto a different base. */
+/** The ONE spelling of the child's `PATH`: whatever throwaway decoy
+ *  directories this scenario controls, then the three real directories.
+ *  Every scenario builds its `PATH` through here, so the "uv absent" run and
+ *  the "uv present, decoy on PATH" run differ in exactly one thing — the
+ *  decoy — and neither can quietly drift onto a different base.
+ *
+ *  Decoys come FIRST, and that ordering is the difference between an
+ *  instrument and a decoration. Appended LAST, a decoy is shadowed by any
+ *  real binary of the same name in the three real directories — and two of
+ *  the three decoys this file uses are exactly that: `curl` lives in
+ *  `/usr/bin` on macOS, and on the ubuntu-latest CI this suite targets
+ *  (usr-merged, curl preinstalled) so do `sh` AND `curl`. The "nothing was
+ *  spawned to work around a missing `uv`" assertion — the single most
+ *  load-bearing safety claim in this file — was therefore true on every
+ *  machine no matter what the product did, because the decoys it watches
+ *  could never be the binary a lookup resolved. `uv` alone worked, and only
+ *  because `assertNoRealUv` guarantees no real `uv` sits in those
+ *  directories. Putting the decoys first makes the rule uniform instead of
+ *  accidental, and `assertDecoysWin` below turns "is the instrument live"
+ *  from an argument about PATH layout into an assertion each scenario
+ *  makes. */
 function controlledPath(...extra: string[]): string {
   assertNoRealUv(REAL_DIRS);
-  return [...REAL_DIRS, ...extra].join(delimiter);
+  return [...extra, ...REAL_DIRS].join(delimiter);
+}
+
+/** Where `name` ACTUALLY resolves on `pathValue` — the same `which`/`where`
+ *  lookup `setup-io.ts`'s own `which()` spawns, run with the PATH a scenario
+ *  is about to hand its child, so this answers the child's question and not
+ *  this process's. `null` when nothing resolves.
+ *
+ *  The lookup binary is spawned by ABSOLUTE path, so `pathValue` controls
+ *  only what is being searched FOR and never whether the tool doing the
+ *  searching can be found: a `pathValue` that happens not to contain
+ *  `which` itself would otherwise report every name as absent — the same
+ *  broken-lookup verdict `LOOKUP_DIR`'s own comment describes, arrived at
+ *  from the other side. */
+function resolveOnPath(name: string, pathValue: string): string | null {
+  try {
+    const out = execFileSync(join(LOOKUP_DIR, LOOKUP), [name], {
+      env: { ...process.env, PATH: pathValue },
+      stdio: "pipe",
+    }).toString();
+    return (
+      out
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line !== "") ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Refuses to run a scenario unless every decoy it is about to watch is the
+ * binary a lookup on this `PATH` really resolves. A decoy that never ran
+ * proves nothing if a real binary of the same name would have run instead —
+ * that is not a hypothetical, it is what this file shipped: `sh` and `curl`
+ * decoys sitting behind `/usr/bin` on the very CI the suite names.
+ *
+ * Asserted per scenario rather than argued once in a comment, because the
+ * thing that decides it (what happens to live in node's, git's or `which`'s
+ * directory on this machine) is exactly the sort of fact a comment cannot
+ * keep true.
+ */
+function assertDecoysWin(pathValue: string, decoyDir: string, names: string[]): void {
+  for (const name of names) {
+    const resolved = resolveOnPath(name, pathValue);
+    if (resolved === null || dirname(resolved) !== decoyDir) {
+      throw new Error(
+        `test setup: the \`${name}\` decoy is not what a lookup on this PATH resolves ` +
+          `(got ${resolved ?? "nothing"}, expected one under ${decoyDir}). A scenario below ` +
+          `asserts that this decoy was never EXECUTED; shadowed by a real \`${name}\`, that ` +
+          "assertion would hold no matter what the product did. Fix the PATH, not the assertion.",
+      );
+    }
+  }
 }
 
 /**
@@ -364,9 +434,12 @@ describe("end-to-end: octograph setup, driven as a real subprocess with scripted
     // there is none on this PATH to do it — the run would hang on stdin
     // instead of exiting, and this test would time out rather than pass by
     // accident.
-    const result = withPath(controlledPath(decoy.dir), () =>
-      runNode([bundle, "setup"], repo, { input: "y\n" }),
-    );
+    const pathValue = controlledPath(decoy.dir);
+    // The instrument is live: these two decoys, not `/usr/bin`'s real
+    // binaries, are what this child would reach. Without this line the
+    // "nothing was spawned" verdict below is unfalsifiable.
+    assertDecoysWin(pathValue, decoy.dir, ["sh", "curl"]);
+    const result = withPath(pathValue, () => runNode([bundle, "setup"], repo, { input: "y\n" }));
 
     expect(result.stdout).toContain(
       "octograph: `uv` not found on PATH — install it yourself from " +
@@ -510,6 +583,56 @@ describe("end-to-end: verifying the BUILD, not just the postflight", () => {
 
     expect(trackedSnapshot(repoViaSetup)).toBe(snapshotBefore);
     expect(trackedStatus(repoViaSetup)).toBe(statusBefore);
+  });
+});
+
+/**
+ * The decoys are this file's only instrument for "nothing was spawned", so
+ * whether they can be reached at all is a claim in its own right — and it
+ * was false. Every scenario above asserts on product behaviour; these two
+ * assert on the apparatus, which is the thing that silently stopped working.
+ */
+describe("the decoy instrument itself", () => {
+  /**
+   * THE REGRESSION TEST. With the decoy directory appended after the real
+   * directories (as this file shipped), `curl` resolved to `/usr/bin/curl`
+   * on macOS — and on the ubuntu-latest CI this suite names, so did `sh` —
+   * so `expect(decoy.ran("sh"|"curl")).toBe(false)` in the uv-absent
+   * scenario was true on every machine regardless of what `setup` did. A
+   * `curl … | sh` fallback added to `setup-io.ts` would have shipped through
+   * a green suite whose most safety-critical assertion was watching two
+   * files that could never run.
+   */
+  it("a decoy on the controlled PATH is what a lookup resolves — not a real binary of the same name", () => {
+    const decoy = decoys(["sh", "curl", "uv"]);
+    const pathValue = controlledPath(decoy.dir);
+
+    for (const name of ["sh", "curl", "uv"]) {
+      const resolved = resolveOnPath(name, pathValue);
+      expect([name, resolved === null ? null : dirname(resolved)]).toEqual([name, decoy.dir]);
+    }
+  });
+
+  /** …and the detection itself detects: shadowed by a real binary earlier on
+   *  the PATH, `assertDecoysWin` throws rather than waving the scenario
+   *  through. Built from a throwaway directory rather than from whatever
+   *  this machine happens to have in `/usr/bin`, so the check is the same on
+   *  every platform. */
+  it("assertDecoysWin throws when something earlier on the PATH shadows a decoy", () => {
+    const decoy = decoys(["sh"]);
+    const shadowDir = mkdtempClean("octograph-shadow-");
+    const shadow = join(shadowDir, "sh");
+    writeFileSync(shadow, "#!/bin/sh\nexit 0\n");
+    chmodSync(shadow, 0o755);
+
+    expect(() => assertDecoysWin([shadowDir, decoy.dir].join(delimiter), decoy.dir, ["sh"])).toThrow(
+      /is not what a lookup on this PATH resolves/,
+    );
+    // …and passes when the decoy comes first, so the throw above is about
+    // the ordering and not about the helper rejecting everything.
+    expect(() =>
+      assertDecoysWin([decoy.dir, shadowDir].join(delimiter), decoy.dir, ["sh"]),
+    ).not.toThrow();
   });
 });
 
