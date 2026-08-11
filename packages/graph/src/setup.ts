@@ -36,11 +36,28 @@ export interface SetupIO {
  *  install to fix either of them. */
 const GRAPHIFY_CHECK = "graphify";
 
+/** The Graphify EXECUTABLE's name on `PATH` — deliberately not folded into
+ *  `GRAPHIFY_CHECK` above, which it happens to spell the same. They are two
+ *  different facts: one is the key `doctor` files its report under, the other
+ *  is what `which` looks for, and a run that verifies an install has to ask
+ *  the second question. Merging them would make renaming either one silently
+ *  rename the other. */
+const GRAPHIFY_BIN = "graphify";
+
 /** `uv tool install graphifyy` — the ONLY command `runSetup` ever runs, and
  *  the only reason `SetupIO.exec` exists at all. The double-`y` is correct:
  *  the published package is `graphifyy`, not the `Graphify-Labs/graphify`
  *  repo name. */
 const INSTALL_ARGV: readonly [string, readonly string[]] = ["uv", ["tool", "install", "graphifyy"]];
+
+/**
+ * uv's own documented install instructions — never astral.sh's raw
+ * `install.sh`, which IS meant to be piped to a shell. Printing that URL
+ * would be exactly the `curl … | sh` affordance this package's safety rules
+ * exist to forbid; the docs page tells a human how to install it themselves,
+ * on their own terms.
+ */
+const UV_INSTALL_URL = "https://docs.astral.sh/uv/getting-started/installation/";
 
 function findCheck(report: Report, name: string): Check | undefined {
   return report.checks.find((c) => c.name === name);
@@ -118,22 +135,78 @@ export async function runSetup(
   // to be re-observed rather than remembered.
   let mutated = false;
 
+  // Whether this run set out to install Graphify and did not end with it
+  // installed. THREE ways that happens, all one outcome for the caller:
+  // `uv` is not on `PATH`, `uv tool install` exited non-zero, or it exited 0
+  // and left no `graphify` on `PATH`. Distinct from an explicit decline —
+  // declining is a choice a healthy repo can still exit 0 on — but every
+  // other way means the run could not do what it set out to do.
+  //
+  // It has to be tracked here rather than read off the final report, because
+  // `graphify` is an optional check that never moves `Report.status`: on an
+  // otherwise-healthy repo `doctorExitCode` returns 0 for all three, so
+  // `octograph setup` printed "`uv tool install graphifyy` failed (exit 3)."
+  // and then exited 0 — a green CI gate over a machine that was not set up.
+  let installFailed = false;
+
   const graphify = findCheck(report, GRAPHIFY_CHECK);
   if (graphify !== undefined && graphify.state === "missing") {
     const [file, args] = INSTALL_ARGV;
-    const consent = await io.prompt(
-      `octograph: Graphify is not installed. Install it now via \`uv tool install graphifyy\`? [y/N] `,
-    );
-    if (consent) {
-      const result = await io.exec(file, [...args]);
-      mutated = true;
+    // Checked BEFORE prompting: there is nothing to ask consent for if the
+    // install command itself cannot run. Piping astral.sh's `install.sh` to
+    // a shell as a fallback would "fix" this transparently — and is exactly
+    // the affordance this package's safety rules forbid, so the fix is
+    // handed back to the human instead.
+    const uvPath = await io.which(file);
+    if (uvPath === null) {
+      installFailed = true;
       io.log(
-        result.code === 0
-          ? "octograph: `uv tool install graphifyy` succeeded."
-          : `octograph: \`uv tool install graphifyy\` failed (exit ${result.code}).`,
+        `octograph: \`uv\` not found on PATH — install it yourself from ${UV_INSTALL_URL}, ` +
+          `then re-run \`octograph setup\` to install Graphify.`,
       );
     } else {
-      io.log("octograph: skipping Graphify install — continuing without it.");
+      // What this prompt states is what `doctor` actually observed — the
+      // absence of a graph.json in THIS repo. It said "Graphify is not
+      // installed", which the report it is built from never checked: the
+      // `graphify` grade is `existsSync`/`declaredSpine` over
+      // `graphify-out/graph.json`, so a machine with Graphify installed and
+      // simply never run in this repo was told it had no Graphify.
+      const consent = await io.prompt(
+        `octograph: this repo has no Graphify output. Install Graphify now via ` +
+          `\`uv tool install graphifyy\`? [y/N] `,
+      );
+      if (consent) {
+        const result = await io.exec(file, [...args]);
+        mutated = true;
+        if (result.code !== 0) {
+          installFailed = true;
+          io.log(`octograph: \`uv tool install graphifyy\` failed (exit ${result.code}).`);
+        } else {
+          // OBSERVED, never inferred: "succeeded" was printed off an exit
+          // code alone, and the postflight underneath it cannot check the
+          // claim either — `doctor` grades this repo's graph.json, not the
+          // process table. `which` is the one thing in this run that can see
+          // whether a `graphify` now exists to be run, so the line that says
+          // so is built from it. An exit 0 that left nothing on `PATH` is a
+          // failed install reported as a success — the half-changed machine
+          // with no way to tell.
+          const installed = await io.which(GRAPHIFY_BIN);
+          if (installed === null) {
+            installFailed = true;
+            io.log(
+              "octograph: `uv tool install graphifyy` exited 0 but left no `graphify` on PATH — " +
+                "nothing was installed that this run can find.",
+            );
+          } else {
+            io.log(
+              `octograph: \`uv tool install graphifyy\` succeeded — \`graphify\` is on PATH at ${installed}. ` +
+                "Run it in this repo to produce the graph the checks below grade.",
+            );
+          }
+        }
+      } else {
+        io.log("octograph: skipping Graphify install — continuing without it.");
+      }
     }
   }
 
@@ -165,6 +238,10 @@ export async function runSetup(
 
   // A failed build is a failed `setup`, whatever the checks say about the
   // repo: the artifact this run claims to have written is the thing it was
-  // asked to produce.
-  return build.code !== 0 ? build.code : doctorExitCode(finalReport);
+  // asked to produce. An install this run attempted and did not finish is
+  // reported next — see `installFailed`, which is tracked rather than read
+  // off the report precisely because the report cannot see it.
+  if (build.code !== 0) return build.code;
+  if (installFailed) return 1;
+  return doctorExitCode(finalReport);
 }
