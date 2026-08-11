@@ -88,10 +88,15 @@ function postflight(report: Report): string {
  * degraded and how to fix it by hand.
  *
  * NOT a `runCli` command (see `cli.ts`'s `runCli`, and the mission plan this
- * implements): `runCli` is synchronous and never touches `process`,
- * precisely so an in-process caller (M6's VS Code commands) can run it
- * without spawning one — and prompting is unavoidably async. This is a
- * separate exported entry point instead.
+ * implements): `runCli` is synchronous and never touches `process` so that
+ * every command is testable without capturing globals — and prompting is
+ * unavoidably async. This is a separate exported entry point instead.
+ *
+ * That reason is testability, not an in-process VS Code caller. An earlier
+ * version of this comment named "M6's VS Code commands" as the consumer;
+ * M6 is a thin launcher that spawns the binary and is required to add no
+ * runtime dependency on this package at all. Corrected 2026-08-11 — see
+ * `index.ts` above `runCli` for the full note.
  *
  * `now` is a required parameter, never read off the wall clock in here —
  * `analyze()`'s `AnalyzeOptions.now` (via `runMapCommand`) takes the same
