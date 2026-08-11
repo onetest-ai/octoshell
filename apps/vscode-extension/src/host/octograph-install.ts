@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, mkdirSync, copyFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, copyFileSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { parsePackVersionMarker } from "./pack-version-marker.js";
 
 /**
  * octograph's pack payload: a self-contained bundle of `packages/graph` (see
@@ -14,10 +15,15 @@ export const GRAPH_ENTRY = "octograph.mjs";
 /** `<repoRoot>`-relative path to the installed payload. */
 export const GRAPH_RELATIVE_PATH = join(".claude", "skills", "graph", GRAPH_ENTRY);
 
-/** Read the `// octobots-pack-version: N` marker esbuild's banner emits; null if absent. */
+/**
+ * Read the `// octobots-pack-version: N` marker esbuild's banner emits; null if absent.
+ *
+ * Delegates to the shared `parsePackVersionMarker` — the primer, the tokenomics runner and this
+ * payload all carry the SAME marker, so the rule that reads it is spelled once (see
+ * `pack-version-marker.ts`).
+ */
 export function parseGraphVersion(text: string): number | null {
-  const m = text.match(/octobots-pack-version:\s*(\d+)/);
-  return m ? Number(m[1]) : null;
+  return parsePackVersionMarker(text);
 }
 
 export interface GraphStatus {
@@ -28,8 +34,13 @@ export interface GraphStatus {
 /**
  * Inspect the installed graph payload: present if the file exists, current if its version marker
  * matches `packVersion`. Mirrors `tokenomicsStatus`'s shape exactly (see `octobots-tokenomics.ts`)
- * — same three-state result (absent / present-but-stale / current), same "any read failure reads
- * as absent" behavior, so a corrupt or half-written file never masquerades as current.
+ * — same three-state result (absent / present-but-stale / current), and a read that THROWS
+ * (a directory in the file's place, a permission error) reads as absent rather than propagating.
+ *
+ * What this does NOT detect, stated plainly rather than implied: a file that reads fine but is
+ * TRUNCATED still carries the banner on line 2, so it reports `current`. That is why `installGraph`
+ * writes atomically (temp file + rename) instead of copying in place — the version marker is not a
+ * content check and must not be asked to act as one.
  *
  * Unlike tokenomics, graph is **opt-in**: a workspace that never ran "Octobots: Install Graph"
  * (M6/T3) is expected to report `present: false`, and that alone must never make the general pack
@@ -53,14 +64,31 @@ export function graphStatus(repoRoot: string, packVersion: number): GraphStatus 
  * `<repoRoot>/.claude/skills/graph/octograph.mjs`. Returns the number of files written (0 if the
  * pack ships no graph payload — e.g. a test fixture `srcRoot` that only stubs the parts it needs).
  *
- * A plain overwrite, unlike `installTokenomics`: the payload is a single build artifact with no
+ * A whole-file replace, unlike `installTokenomics`: the payload is a single build artifact with no
  * per-workspace collected state to preserve.
+ *
+ * **Atomic on purpose — temp file then `renameSync`, never `copyFileSync` onto the live path.**
+ * `copyFileSync` opens the destination with `O_TRUNC` before it has read a byte of the source, so a
+ * copy that fails part-way (ENOSPC, a source that turns out not to be a regular file, a killed
+ * editor) leaves the workspace with the destination destroyed or half-written. Verified 2026-08-11
+ * on macOS: a failing `copyFileSync` DELETED an existing, perfectly good `octograph.mjs`. A
+ * truncated one would be worse — it still carries the version banner on line 2, so `graphStatus`
+ * would report it `current` while `node` on it dies mid-file. Renaming within the same directory is
+ * atomic, so a workspace holds either the old payload or the complete new one, never a fragment.
  */
 export function installGraph(srcRoot: string, repoRoot: string): number {
   const from = join(srcRoot, "graph", GRAPH_ENTRY);
   if (!existsSync(from)) return 0;
   const toDir = join(repoRoot, ".claude", "skills", "graph");
   mkdirSync(toDir, { recursive: true });
-  copyFileSync(from, join(toDir, GRAPH_ENTRY));
+  // Same directory as the target, so the rename is a same-filesystem (atomic) operation.
+  const staged = join(toDir, `.${GRAPH_ENTRY}.tmp`);
+  try {
+    copyFileSync(from, staged);
+    renameSync(staged, join(toDir, GRAPH_ENTRY));
+  } catch (err) {
+    rmSync(staged, { force: true });
+    throw err;
+  }
   return 1;
 }

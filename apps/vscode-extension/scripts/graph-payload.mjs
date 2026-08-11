@@ -26,11 +26,16 @@
 import { build } from "esbuild";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+// The one spelling of octograph's bundle configuration, shared with
+// `packages/graph/scripts/bundle.mjs` — see that file's doc comment. This is a BUILD-TIME relative
+// import of a plain .mjs, not a package dependency: `apps/vscode-extension/package.json` still has
+// no `@octoshell/graph` entry under `dependencies` OR `devDependencies` (mission criterion 4), and
+// the extension's own TypeScript imports nothing from that package.
+import { octographBundleOptions } from "../../../packages/graph/scripts/bundle-options.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXT_ROOT = join(HERE, "..");
-const GRAPH_ENTRY_SRC = join(EXT_ROOT, "..", "..", "packages", "graph", "bin", "octograph.mjs");
 const SKILL_SRC = join(EXT_ROOT, "src", "host", "octobots-skill.ts");
 
 export const PAYLOAD_PATH = join(EXT_ROOT, "resources", "octobots-pack", "graph", "octograph.mjs");
@@ -55,25 +60,22 @@ export function readPackVersionFromSource(text = readFileSync(SKILL_SRC, "utf8")
 
 /**
  * Builds octograph.mjs fresh from packages/graph's current source, in memory (`write: false` — no
- * temp file, nothing to clean up). Mirrors `packages/graph/scripts/bundle.mjs`'s esbuild config
- * (entry point, `bundle: true`, platform/format/target) but adds the
- * `// octobots-pack-version: N` banner that script does not emit: this bundle IS pack payload,
+ * temp file, nothing to clean up). Uses `packages/graph/scripts/bundle.mjs`'s OWN options
+ * (`octographBundleOptions`) rather than restating them, so the payload can never be built with
+ * different options than the `dist/octograph.mjs` that package's e2e gates test. The only delta is
+ * the `// octobots-pack-version: N` banner that script does not emit: this bundle IS pack payload,
  * `packages/graph`'s own `dist/octograph.mjs` is not, and `graphStatus` (`octograph-install.ts`)
  * depends on the marker being explicit rather than relying on esbuild's default comment retention.
+ * `test/graph-payload.test.ts` pins the two outputs byte-for-byte.
  *
  * Returns the built bytes as a `Uint8Array`.
  */
 export async function buildFreshPayload(version = readPackVersionFromSource()) {
-  const result = await build({
-    entryPoints: [GRAPH_ENTRY_SRC],
-    bundle: true,
-    platform: "node",
-    format: "esm",
-    target: "node22",
+  const result = await build(octographBundleOptions({
     write: false,
     logLevel: "silent",
     banner: { js: `// octobots-pack-version: ${version}` },
-  });
+  }));
   const file = result.outputFiles[0];
   if (!file) throw new Error("esbuild produced no output for the octograph payload");
   return file.contents;
@@ -116,9 +118,25 @@ async function main() {
   process.stdout.write("octograph payload is current.\n");
 }
 
-// Only run as a CLI when invoked directly (`node scripts/graph-payload.mjs`), not when imported
-// by `test/graph-payload.test.ts`.
-if (import.meta.url === `file://${process.argv[1]}`) {
+/**
+ * True when this module IS the process entry point (`node scripts/graph-payload.mjs`), false when
+ * some other module imported it (`test/graph-payload.test.ts`).
+ *
+ * `pathToFileURL` rather than the tempting `` metaUrl === `file://${argv1}` ``: `import.meta.url`
+ * is a URL and therefore PERCENT-ENCODED, while `process.argv[1]` is a raw filesystem path. A
+ * checkout under `/Users/me/my projects/…` makes those two strings differ (`my%20projects` vs
+ * `my projects`) — as does any `#`, `?`, or non-ASCII character in the path, and every path on
+ * Windows (`file:///C:/…` vs `file://C:\…`). The naive spelling then makes this whole script a
+ * SILENT no-op: `main()` never runs, `pnpm build` sees exit 0, and the freshness gate reports
+ * nothing while enforcing nothing. Verified 2026-08-11 by running this script from a directory
+ * with a space in its name: exit 0, no output, no verification.
+ */
+export function isDirectRun(metaUrl, argv1) {
+  if (!argv1) return false;
+  return metaUrl === pathToFileURL(argv1).href;
+}
+
+if (isDirectRun(import.meta.url, process.argv[1])) {
   main().catch((err) => {
     process.stderr.write(`${err?.stack ?? err}\n`);
     process.exit(1);

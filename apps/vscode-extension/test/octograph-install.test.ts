@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { graphStatus, installGraph, parseGraphVersion, GRAPH_RELATIVE_PATH } from "../src/host/octograph-install.js";
@@ -61,6 +61,30 @@ describe("installGraph", () => {
     const repo = mkdtempClean("octograph-install-");
     installGraph(PACK_SRC, repo);
     expect(graphStatus(repo, OCTOBOTS_PACK_VERSION)).toEqual({ present: true, current: true });
+  });
+
+  it("a failed install leaves the previously installed payload intact, and no temp file behind", () => {
+    // REGRESSION: this used a plain `copyFileSync` onto the live path. `copyFileSync` opens the
+    // destination with O_TRUNC before reading a byte of the source, so a copy that fails part-way
+    // destroys what was already installed — verified 2026-08-11 on macOS, where the failing copy
+    // DELETED the destination outright. A truncated survivor is worse still: it keeps the version
+    // banner on line 2, so `graphStatus` reports it `current` while `node` on it dies mid-file.
+    //
+    // A source directory where a file is expected is the cheapest reproducible mid-copy failure:
+    // the open succeeds, the read does not.
+    const repo = mkdtempClean("octograph-install-");
+    installGraph(PACK_SRC, repo);
+    const target = join(repo, GRAPH_RELATIVE_PATH);
+    const good = readFileSync(target);
+
+    const brokenSrc = mkdtempClean("octograph-broken-src-");
+    mkdirSync(join(brokenSrc, "graph", "octograph.mjs"), { recursive: true });
+
+    expect(() => installGraph(brokenSrc, repo)).toThrow();
+
+    expect(readFileSync(target)).toEqual(good);
+    expect(graphStatus(repo, OCTOBOTS_PACK_VERSION)).toEqual({ present: true, current: true });
+    expect(readdirSync(join(repo, ".claude", "skills", "graph"))).toEqual(["octograph.mjs"]);
   });
 
   it("returns 0 and writes nothing when the pack ships no graph payload", () => {

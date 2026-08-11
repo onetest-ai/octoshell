@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // octobots-pack-version: 41
 
-// ../../packages/graph/src/cli.ts
+// src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join9, relative as relative3 } from "node:path";
 
-// ../../packages/graph/src/harvest.ts
+// src/harvest.ts
 import { execFileSync } from "node:child_process";
 var RECORD = "\0";
 var HEADER = /^[0-9a-f]{40} \d+$/;
@@ -39,7 +39,7 @@ function harvest(repoRoot, opts = {}) {
   return out;
 }
 
-// ../../packages/graph/src/cochange.ts
+// src/cochange.ts
 var MS_PER_DAY = 864e5;
 function countPairs(commits, opts) {
   const halfLife = opts.halfLifeDays ?? 180;
@@ -104,7 +104,7 @@ function countPairs(commits, opts) {
   return { files, single, singleWeight, pairs, commitCount: commits.length, weightTotal };
 }
 
-// ../../packages/graph/src/weights.ts
+// src/weights.ts
 function weighEdges(table, opts = {}) {
   const minSupport = opts.minSupport ?? 2;
   const out = [];
@@ -142,7 +142,7 @@ function edgeWeight(edge) {
   return edge.npmi > 0 ? edge.npmi : 0;
 }
 
-// ../../packages/graph/src/hubs.ts
+// src/hubs.ts
 function detectHubs(edges, fileCount, opts = {}) {
   const z = opts.zThreshold ?? 3;
   const hubs = /* @__PURE__ */ new Set();
@@ -163,7 +163,7 @@ function detectHubs(edges, fileCount, opts = {}) {
   return hubs;
 }
 
-// ../../packages/graph/src/components.ts
+// src/components.ts
 var BRIDGE_WEIGHT = 0.01;
 function findComponents(edges, nodes) {
   const adj = /* @__PURE__ */ new Map();
@@ -255,7 +255,7 @@ function bridgeComponents(edges, files) {
   return out;
 }
 
-// ../../packages/graph/src/louvain.ts
+// src/louvain.ts
 function autoResolution(nodeCount) {
   if (nodeCount < 2) return 1;
   return Math.max(0.3, 1 - 0.2 * Math.log10(nodeCount));
@@ -321,7 +321,7 @@ function louvain(edges, opts = {}) {
   return community;
 }
 
-// ../../packages/graph/src/rollup.ts
+// src/rollup.ts
 function pageRank(edges, nodes, damping = 0.85, iterations = 40) {
   const adj = /* @__PURE__ */ new Map();
   const strength = /* @__PURE__ */ new Map();
@@ -420,7 +420,7 @@ function compare(x, y) {
   return x < y ? -1 : x > y ? 1 : 0;
 }
 
-// ../../packages/graph/src/spine.ts
+// src/spine.ts
 import { existsSync as existsSync2, readFileSync as readFileSync2, readdirSync, statSync } from "node:fs";
 import { join as join3 } from "node:path";
 
@@ -2655,11 +2655,11 @@ var DEFAULT_DUMP_OPTIONS = {
   }
 };
 
-// ../../packages/graph/src/graphify.ts
+// src/graphify.ts
 import { existsSync, readFileSync } from "node:fs";
 import { join as join2 } from "node:path";
 
-// ../../packages/graph/src/paths.ts
+// src/paths.ts
 import { realpathSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 function resolvedRoot(repoRoot) {
@@ -2699,7 +2699,7 @@ function repoRelative(repoRoot, path) {
   return rel.split(sep).join("/");
 }
 
-// ../../packages/graph/src/graphify.ts
+// src/graphify.ts
 var IMPORT_TYPES = /* @__PURE__ */ new Set(["imports", "import", "calls", "inherits", "extends"]);
 var str = (v) => typeof v === "string" && v ? v : null;
 var isNil = (v) => v === null || v === void 0;
@@ -2752,7 +2752,7 @@ function readGraphify(repoRoot, moduleOf) {
   );
 }
 
-// ../../packages/graph/src/spine.ts
+// src/spine.ts
 function pnpmPackageGlobs(text) {
   let doc;
   try {
@@ -2889,7 +2889,7 @@ function declaredSpine(repoRoot, files) {
   return { source, modules, moduleOf, imports };
 }
 
-// ../../packages/graph/src/layers.ts
+// src/layers.ts
 function layerRanks(modules, imports) {
   if (imports.length === 0) return null;
   const out = new Map(modules.map((m) => [m, []]));
@@ -2954,7 +2954,7 @@ function layerRanks(modules, imports) {
   return rank2;
 }
 
-// ../../packages/graph/src/noise.ts
+// src/noise.ts
 function isTestPath(path) {
   const segments = path.split("/");
   const filename = segments[segments.length - 1] ?? "";
@@ -2991,7 +2991,7 @@ function classifyPair(a, b) {
   return "candidate";
 }
 
-// ../../packages/graph/src/stability.ts
+// src/stability.ts
 function jaccard(a, b) {
   if (a.size === 0 && b.size === 0) return 0;
   let inter = 0;
@@ -3039,7 +3039,7 @@ function remapClusters(oldClusters, newClusters, opts = {}) {
   return remap;
 }
 
-// ../../packages/graph/src/working-sets.ts
+// src/working-sets.ts
 function workingSets(byCommunity, edges, files, moduleOf) {
   const out = [];
   for (const [, members] of [...byCommunity.entries()].sort((x, y) => x[0] - y[0])) {
@@ -3073,11 +3073,11 @@ function workingSets(byCommunity, edges, files, moduleOf) {
   return out.sort((x, y) => y.files.length - x.files.length || compare(x.name, y.name));
 }
 
-// ../../packages/graph/src/config.ts
+// src/config.ts
 import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
 import { join as join4 } from "node:path";
 
-// ../../packages/graph/src/lexical.ts
+// src/lexical.ts
 var STOPWORDS = new Set(
   `a an the is are was were be been being to of and or in on at by for with from
    as that this these those it its into over under given when returns return
@@ -3134,7 +3134,7 @@ function predictFiles(criteria, candidates, opts = {}) {
   return scored.filter((m) => m.score === top);
 }
 
-// ../../packages/graph/src/config.ts
+// src/config.ts
 var DEFAULTS = {
   maxCommitFiles: 50,
   halfLifeDays: 180,
@@ -3194,7 +3194,7 @@ function historyIsThin(analysableCommits, config) {
   return analysableCommits < config.minCommits;
 }
 
-// ../../packages/graph/src/analyze.ts
+// src/analyze.ts
 function analyze(repoRoot, config, opts) {
   const commits = harvest(repoRoot, {
     maxCommitFiles: config.maxCommitFiles,
@@ -3320,7 +3320,7 @@ function analyze(repoRoot, config, opts) {
   };
 }
 
-// ../../packages/graph/src/artifact.ts
+// src/artifact.ts
 import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync4, writeFileSync } from "node:fs";
 import { join as join5, resolve as resolve2 } from "node:path";
 function hasBoard(repoRoot) {
@@ -3380,7 +3380,7 @@ function withSortedKeys(record) {
   return out;
 }
 
-// ../../packages/board/dist/managed-block.js
+// ../board/dist/managed-block.js
 var PLACEHOLDER = "_(not set)_";
 function mapBoardStatus(raw) {
   const key = raw.trim().toLowerCase().replace(/[\s_-]+/g, " ");
@@ -3450,7 +3450,7 @@ function boardLineEntityName(bareTitle) {
   return sep2 ? cleaned.slice(0, sep2.index).trim() : cleaned;
 }
 
-// ../../packages/board/dist/entity-schema.js
+// ../board/dist/entity-schema.js
 var ENTITY_STATUSES = ["draft", "executing", "awaitingApproval", "done", "failed", "cancelled"];
 var KNOWN_KEYS = /* @__PURE__ */ new Set([
   "name",
@@ -3563,7 +3563,7 @@ function loadEntity(text) {
   };
 }
 
-// ../../packages/board/dist/workflow-meta.js
+// ../board/dist/workflow-meta.js
 import { runInNewContext } from "node:vm";
 function skipString(source, i) {
   const quote = source[i];
@@ -3685,7 +3685,7 @@ function parseWorkflowMeta(source) {
   return { name, description: asString2(o["description"]) ?? "", phases };
 }
 
-// ../../packages/board/dist/board-model.js
+// ../board/dist/board-model.js
 import { readdirSync as readdirSync2, readFileSync as readFileSync5, statSync as statSync2 } from "node:fs";
 import { join as join6 } from "node:path";
 var BoardModel = class {
@@ -4206,7 +4206,7 @@ function sortEntities(entities) {
   });
 }
 
-// ../../packages/board/dist/write.js
+// ../board/dist/write.js
 function parseCriteriaString(s) {
   const out = [];
   for (const line of (s ?? "").split("\n")) {
@@ -4217,7 +4217,7 @@ function parseCriteriaString(s) {
   return out;
 }
 
-// ../../packages/graph/src/board.ts
+// src/board.ts
 function readCriteria(rendered) {
   return parseCriteriaString(rendered).map((c) => c.text);
 }
@@ -4254,7 +4254,7 @@ function readBoard(repoRoot) {
   };
 }
 
-// ../../packages/graph/src/conflicts.ts
+// src/conflicts.ts
 function moduleOfFile(analysis) {
   const map = /* @__PURE__ */ new Map();
   for (const m of analysis.modules) for (const f of m.members) map.set(f, m.name);
@@ -4355,7 +4355,7 @@ function conflicts(analysis, edges, files, tasks, lexical = {}) {
   return { pairs, covered: covered.sort(compare), uncovered: uncovered.sort(compare) };
 }
 
-// ../../packages/graph/src/doctor.ts
+// src/doctor.ts
 import { existsSync as existsSync5 } from "node:fs";
 import { join as join7, relative as relative2 } from "node:path";
 function doctor(repoRoot, config) {
@@ -4435,7 +4435,7 @@ function exitCode(report) {
   return report.status === "ok" ? 0 : 1;
 }
 
-// ../../packages/graph/src/drift.ts
+// src/drift.ts
 function declaredPairs(imports) {
   const byModule = /* @__PURE__ */ new Map();
   const relate = (from, to) => {
@@ -4487,7 +4487,7 @@ function drift(edges, files, spine, limit = 20) {
   return scored.slice(0, keep).map((s) => s.row);
 }
 
-// ../../packages/graph/src/impact.ts
+// src/impact.ts
 function impact(path, edges, files, limit = 20) {
   const id = files.indexOf(path);
   if (id === -1) return [];
@@ -4505,10 +4505,10 @@ function impact(path, edges, files, limit = 20) {
   return scored.slice(0, limit).map((s) => s.row);
 }
 
-// ../../packages/graph/src/own.ts
+// src/own.ts
 import { statSync as statSync3 } from "node:fs";
 
-// ../../packages/graph/src/attribution.ts
+// src/attribution.ts
 import { execFileSync as execFileSync2 } from "node:child_process";
 var OBJECT_NAME = /^[0-9a-f]{7,64}$/;
 function filesChangedBy(repoRoot, sha) {
@@ -4603,7 +4603,7 @@ function attribute(repoRoot, board, log2, warn = defaultWarn) {
   });
 }
 
-// ../../packages/graph/src/own.ts
+// src/own.ts
 function bestCriterion(criteria, path) {
   const pathTokens = new Set(tokenize(path));
   let top = null;
@@ -4676,7 +4676,7 @@ function own(repoRoot, board, log2, candidates, path, lexical = {}) {
   return answers;
 }
 
-// ../../packages/graph/src/render.ts
+// src/render.ts
 function estimateTokens(text) {
   return Math.ceil(text.length / 4);
 }
@@ -4800,7 +4800,7 @@ function renderMap(analysis, budgetTokens) {
   return out;
 }
 
-// ../../packages/graph/src/worklog.ts
+// src/worklog.ts
 import { readFileSync as readFileSync6 } from "node:fs";
 import { join as join8 } from "node:path";
 function optString2(raw, key) {
@@ -4846,7 +4846,7 @@ function readWorklog(repoRoot) {
   return entries;
 }
 
-// ../../packages/graph/src/cli.ts
+// src/cli.ts
 var COMMANDS = ["map", "impact", "drift", "doctor", "own", "conflicts"];
 function isCommand(value) {
   return COMMANDS.includes(value);
@@ -5172,7 +5172,7 @@ function runCli(argv2, repoRoot, now) {
   }
 }
 
-// ../../packages/graph/src/setup-io.ts
+// src/setup-io.ts
 import { execFile } from "node:child_process";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
@@ -5219,7 +5219,7 @@ function log(line) {
 }
 var realSetupIO = { prompt, log, exec, which };
 
-// ../../packages/graph/src/setup.ts
+// src/setup.ts
 var GRAPHIFY_CHECK = "graphify";
 var GRAPHIFY_BIN = "graphify";
 var INSTALL_ARGV = ["uv", ["tool", "install", "graphifyy"]];
@@ -5291,7 +5291,7 @@ async function runSetup(repoRoot, config, now, io) {
   return exitCode(finalReport);
 }
 
-// ../../packages/graph/bin/octograph.mjs
+// bin/octograph.mjs
 var argv = process.argv.slice(2);
 if (argv[0] === "setup") {
   if (argv.length > 1) {

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { installPrimer, registerClaudeHook, claudeHookStatus } from "./octobots-hooks.js";
 import { installTokenomics, tokenomicsStatus } from "./octobots-tokenomics.js";
 import { installGraph, graphStatus } from "./octograph-install.js";
+import { parsePackVersionMarker } from "./pack-version-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
 export const OCTOBOTS_PACK_VERSION = 41;
@@ -27,10 +28,12 @@ export function parseVersion(text: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** Read the `// octobots-pack-version: N` marker from the primer script; null if absent. */
+/**
+ * Read the `// octobots-pack-version: N` marker from the primer script; null if absent.
+ * Delegates to the shared rule (`pack-version-marker.ts`) — same marker, one spelling.
+ */
 export function parsePrimerVersion(text: string): number | null {
-  const m = text.match(/octobots-pack-version:\s*(\d+)/);
-  return m ? Number(m[1]) : null;
+  return parsePackVersionMarker(text);
 }
 
 export interface PackStatus {
