@@ -478,6 +478,10 @@ describe("package conventions", () => {
       // T4.4's own surface: the `own` query itself. Added in the same
       // commit, same reason as every entry above.
       "own",
+      // T4.5's own surface: the `conflicts` query, over the same predicted-
+      // surface machinery `own` reads. Added in the same commit, same
+      // reason as every entry above.
+      "conflicts",
     ]) {
       expect(index).toMatch(new RegExp(`\\b${symbol}\\b`));
     }

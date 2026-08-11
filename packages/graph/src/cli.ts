@@ -2,8 +2,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { analyze, type Analysis } from "./analyze.js";
 import { readArtifact, resolveOut, writeArtifact, type StoredGraph } from "./artifact.js";
-import { readBoard } from "./board.js";
+import { readBoard, type BoardTask, type BoardView } from "./board.js";
 import { loadConfig, type Config } from "./config.js";
+import { conflicts as computeConflicts, type ConflictPair } from "./conflicts.js";
 import { doctor, exitCode, type Report } from "./doctor.js";
 import { drift as computeDrift, type DriftRow } from "./drift.js";
 import { impact as computeImpact, type ImpactRow } from "./impact.js";
@@ -12,9 +13,9 @@ import { repoRelative } from "./paths.js";
 import { oneLine, renderMap } from "./render.js";
 import { readWorklog } from "./worklog.js";
 
-export type Command = "map" | "impact" | "drift" | "doctor" | "own";
+export type Command = "map" | "impact" | "drift" | "doctor" | "own" | "conflicts";
 
-const COMMANDS: readonly Command[] = ["map", "impact", "drift", "doctor", "own"];
+const COMMANDS: readonly Command[] = ["map", "impact", "drift", "doctor", "own", "conflicts"];
 
 function isCommand(value: string): value is Command {
   return (COMMANDS as readonly string[]).includes(value);
@@ -438,6 +439,97 @@ function runDriftCommand(
   return { code: 0, stdout, stderr: "" };
 }
 
+function formatModuleList(modules: string[]): string {
+  return modules.length === 0 ? "(none)" : modules.map(oneLine).join(", ");
+}
+
+function formatConflictPair(p: ConflictPair): string {
+  const shared = p.shared.length === 0 ? "(none)" : p.shared.map(oneLine).join(", ");
+  return (
+    `${oneLine(p.a)} <-> ${oneLine(p.b)}` +
+    `\tshared=${shared}\tcoupled=${p.coupled.toFixed(3)}\tmodules=${formatModuleList(p.modules)}`
+  );
+}
+
+function formatConflicts(pairs: ConflictPair[]): string {
+  if (pairs.length === 0) return "(no conflicts found)\n";
+  return pairs.map(formatConflictPair).join("\n") + "\n";
+}
+
+/**
+ * `conflicts <mission|campaign|...tasks>` resolves its positional(s) against
+ * the board it already read, trying exactly three shapes in order: a single
+ * id naming a CAMPAIGN (every task under it, from every mission it spans —
+ * `BoardTask.campaign` is a real field per task, not a second board read),
+ * a single id naming a MISSION (every task under it), or two-or-more ids
+ * naming TASKS directly (exactly those tasks, nothing inferred).
+ *
+ * `BoardTask.campaign`/`.mission`/`.id` are three disjoint folder-path
+ * namespaces (see attribution.ts's `SHORT_ID` doc comment for the sibling
+ * argument about why a board id is never ambiguous with another kind), so at
+ * most one of the three branches below can ever match a given single id.
+ */
+function resolveConflictTasks(
+  board: BoardView,
+  positionals: string[],
+): { ok: true; tasks: BoardTask[] } | { ok: false; error: string } {
+  if (positionals.length === 1) {
+    const id = positionals[0];
+    if (id === undefined) return { ok: false, error: "conflicts requires an id" };
+    const byCampaign = board.tasks.filter((t) => t.campaign === id);
+    if (byCampaign.length > 0) return { ok: true, tasks: byCampaign };
+    const byMission = board.tasks.filter((t) => t.mission === id);
+    if (byMission.length > 0) return { ok: true, tasks: byMission };
+    const byTask = board.tasks.filter((t) => t.id === id);
+    if (byTask.length > 0) return { ok: true, tasks: byTask };
+    return { ok: false, error: `no campaign, mission, or task matches "${id}"` };
+  }
+
+  // Two or more positionals: an EXPLICIT task list, every id required to
+  // resolve — a typo in one of several ids must be reported, not silently
+  // dropped from the set it names.
+  const wanted = new Set(positionals);
+  const tasks = board.tasks.filter((t) => wanted.has(t.id));
+  const found = new Set(tasks.map((t) => t.id));
+  const missing = positionals.filter((id) => !found.has(id));
+  if (missing.length > 0) return { ok: false, error: `no task matches: ${missing.join(", ")}` };
+  return { ok: true, tasks };
+}
+
+/**
+ * `conflicts` needs a board for the same reason `own` does (see
+ * `runOwnCommand`) — resolving the positional into a task set reads
+ * `board.tasks`. Deliberately never calls `readWorklog`: this command runs
+ * in `predicted` mode permanently (see conflicts.ts's doc comment), so there
+ * is nothing a worklog entry could add to its answer.
+ */
+function runConflictsCommand(
+  repoRoot: string,
+  config: Config,
+  since: string | undefined,
+  now: number,
+  positionals: string[],
+  json: boolean,
+): CliResult {
+  const board = readBoard(repoRoot);
+  if (board === null) {
+    return {
+      code: 1,
+      stdout: "",
+      stderr: "octograph: no .octobots board found — conflicts needs one to answer\n",
+    };
+  }
+
+  const resolved = resolveConflictTasks(board, positionals);
+  if (!resolved.ok) return usageError(resolved.error);
+
+  // Same co-change graph `impact`/`drift`/`own` already answer against.
+  const { analysis, edges, files } = analyze(repoRoot, config, { now, since });
+  const pairs = computeConflicts(analysis, edges, files, resolved.tasks);
+  const stdout = json ? JSON.stringify(pairs) + "\n" : formatConflicts(pairs);
+  return { code: 0, stdout, stderr: "" };
+}
+
 /**
  * Parse `argv` (excluding the `node`/script elements), run the named
  * command against `repoRoot`, and return an exit code plus the text a
@@ -469,6 +561,15 @@ export function runCli(argv: string[], repoRoot: string, now: number): CliResult
     if (positionals.length > 1) {
       return usageError("own accepts at most one <path> argument");
     }
+  } else if (command === "conflicts") {
+    // `conflicts <mission|campaign|...tasks>` — needs at least ONE id.
+    // Unlike `own`'s optional path, there is no "answer about everything"
+    // shape here: a mission-scale co-change graph makes an all-tasks
+    // O(tasks^2) sweep expensive enough that it should be opted into
+    // explicitly (a campaign id), never implied by omitting the argument.
+    if (positionals.length === 0) {
+      return usageError("conflicts requires a <mission>, <campaign>, or one or more <task> ids");
+    }
   } else if (positionals.length > 0) {
     return usageError(`${command} takes no positional arguments`);
   }
@@ -490,6 +591,8 @@ export function runCli(argv: string[], repoRoot: string, now: number): CliResult
       }
       case "own":
         return runOwnCommand(repoRoot, config, since, now, positionals[0] ?? null, json);
+      case "conflicts":
+        return runConflictsCommand(repoRoot, config, since, now, positionals, json);
     }
   } catch (err) {
     return runtimeError(err);
