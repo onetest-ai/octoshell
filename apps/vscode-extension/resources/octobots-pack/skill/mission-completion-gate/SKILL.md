@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 48
+version: 49
 ---
 
 # mission-completion-gate
@@ -103,7 +103,12 @@ export const meta = {
 // baseBranch = the branch this mission was cut from: the campaign branch when the
 // campaign lands atomically, else `main`. The review diffs against it (three-dot from
 // `main` would sweep in prior missions already merged into the campaign branch).
-const { missionId, criteria, baseBranch = 'main' } = args   // criteria: [{id, text}]
+// `args` arrives as a JSON STRING, not an object — parse it once. Destructuring
+// the raw global gives `undefined` for every field, and `baseBranch` then falls
+// through to 'main' SILENTLY: the whole-mission review diffs against the wrong
+// range and reports a clean gate. See workflow-designer § Body constraints.
+const ARGS = typeof args === 'string' ? JSON.parse(args || '{}') : (args || {})
+const { missionId, criteria, baseBranch = 'main' } = ARGS   // criteria: [{id, text}]
 
 phase('Tests+Coverage')
 const tests = await agent(
