@@ -250,18 +250,30 @@ describe("runCli — each documented flag changes the behaviour it names", () =>
     expect(existsSync(join(repo, "map.md"))).toBe(true);
   });
 
-  it("--out escaping the repo root falls back to the default via insideRepo", () => {
+  it("--out escaping the repo root is REJECTED, and writes nothing anywhere", () => {
+    // This test used to assert that an escaping `--out` fell back to the
+    // default. Its real intent was the security property — that
+    // `../../../escaped` never gets written — and that is unchanged and still
+    // asserted below.
+    //
+    // What changed (2026-08-12) is the silence. A flag the parser accepts and
+    // then discards is the defect `--half-life-days` was rewritten to make
+    // impossible, and here it had teeth: running octograph against ANOTHER
+    // repository with `--out` pointed at a scratch directory wrote `map.md`
+    // and `clusters.json` into that repository's tracked `.octobots/`
+    // instead, exit 0, no warning. Falling back to a default the caller did
+    // not name is the harm; refusing is the fix.
     const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
 
     const result = runCli(["map", "--out", "../../../escaped", "--json"], repo, NOW);
-    expect(result.code).toBe(0);
-    const parsed = JSON.parse(result.stdout) as { outDir: string };
-    // Falls back to the same default `resolveOut` picks with no `--out` at
-    // all (no `.octobots/` in this fixture -> `.octograph`), never a path
-    // that climbs out of the repo.
-    expect(parsed.outDir).toBe(".octograph");
-    expect(existsSync(join(repo, ".octograph", "map.md"))).toBe(true);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("--out must name a path inside the repository");
+
+    // The original security assertion, kept verbatim in spirit: nothing
+    // climbs out of the repo.
     expect(existsSync(join(repo, "..", "..", "..", "escaped"))).toBe(false);
+    // And now also: no quiet write to the default the caller never asked for.
+    expect(existsSync(join(repo, ".octograph"))).toBe(false);
   });
 });
 
@@ -1061,5 +1073,61 @@ describe("runCli — map records --since provenance and warns on a mismatched hi
     const second = runCli(["map", "--since", "2026-01-01"], repo, NOW);
     expect(second.code).toBe(0);
     expect(second.stderr).toBe("");
+  });
+});
+
+describe("--out containment", () => {
+  /**
+   * `resolveOut` only honours `config.out` when `insideRepo` accepts it, and
+   * an escaping path falls through to the default. For `octograph.yaml`'s
+   * `out:` that degradation is deliberate — a config file should not fail a
+   * build over one bad key. For a FLAG it is the defect `--half-life-days`
+   * was rewritten to make impossible: typed for this run, accepted by the
+   * parser, then silently ignored.
+   *
+   * Observed harm: running octograph against another repository with `--out`
+   * pointed at a scratch directory wrote `map.md` and `clusters.json` into
+   * THAT repository instead, where `.octobots/` was tracked rather than
+   * ignored. No warning, exit 0.
+   */
+  it("rejects an --out that resolves outside the repository", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
+    const outside = join(mkdtempClean("octograph-outside-"), "artifacts");
+    const res = runCli(["map", "--out", outside], repo, NOW);
+
+    expect(res.code).toBe(2);
+    expect(res.stderr).toContain("--out must name a path inside the repository");
+    // The value is quoted back, because "outside it" is unactionable without
+    // saying which path the tool actually resolved.
+    expect(res.stderr).toContain(outside);
+  });
+
+  it("does not fall back to the default location when --out is rejected", () => {
+    // The whole harm was the silent WRITE, not the ignored flag: a rejected
+    // --out must produce nothing at all, or the caller gets artifacts in a
+    // directory they never named.
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
+    const outside = join(mkdtempClean("octograph-outside-"), "artifacts");
+    runCli(["map", "--out", outside], repo, NOW);
+
+    expect(existsSync(join(repo, ".octograph"))).toBe(false);
+    expect(existsSync(join(repo, ".octobots", "graph"))).toBe(false);
+    expect(existsSync(outside)).toBe(false);
+  });
+
+  it("still honours an --out inside the repository", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
+    const res = runCli(["map", "--out", "artifacts/graph"], repo, NOW);
+
+    expect(res.code).toBe(0);
+    expect(existsSync(join(repo, "artifacts", "graph", "map.md"))).toBe(true);
+  });
+
+  it("uses the same exit code as any other usage error", () => {
+    // A caller scripting octograph branches on the code, not the prose.
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
+    const outside = join(mkdtempClean("octograph-outside-"), "artifacts");
+    expect(runCli(["map", "--out", outside], repo, NOW).code)
+      .toBe(runCli(["map", "--nonsense-flag"], repo, NOW).code);
   });
 });

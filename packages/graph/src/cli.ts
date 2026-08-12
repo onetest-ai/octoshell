@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { analyze, type Analysis } from "./analyze.js";
 import { readArtifact, resolveOut, writeArtifact, type StoredGraph } from "./artifact.js";
+import { insideRepo } from "./paths.js";
 import { readBoard, type BoardTask, type BoardView } from "./board.js";
 import { lexicalOptions, loadConfig, type Config } from "./config.js";
 import { conflicts as computeConflicts, type ConflictPair, type ConflictReport } from "./conflicts.js";
@@ -668,6 +669,31 @@ export function runCli(argv: string[], repoRoot: string, now: number): CliResult
   const parsed = parseArgs(argv);
   if (!parsed.ok) return usageError(parsed.error);
   const { command, positionals, overrides, since, json } = parsed.parsed;
+
+  // `--out` is REJECTED here rather than quietly dropped later.
+  //
+  // `resolveOut` only honours `config.out` when `insideRepo` accepts it, and
+  // an escaping path falls through to the default. For `octograph.yaml`'s
+  // `out:` that degradation is deliberate and documented — a config file
+  // should not fail a build over one bad key. For a FLAG it is the defect
+  // `--half-life-days` was rewritten to make impossible: a value the user
+  // typed for this run, accepted by the parser, and then silently ignored.
+  //
+  // The harm is not hypothetical. Running octograph against another
+  // repository with `--out` pointed at a scratch directory wrote `map.md` and
+  // `clusters.json` into THAT repository instead, where `.octobots/` was
+  // tracked rather than ignored — no warning, exit 0.
+  //
+  // Containment itself is not relaxed: writing outside the repository is a
+  // genuine path-escape hazard and the check exists for that. Only the
+  // silence is fixed.
+  // `null` is the "no explicit out" value the config type uses, not a path.
+  const outFlag = typeof overrides.out === "string" ? overrides.out : null;
+  if (outFlag !== null && insideRepo(repoRoot, outFlag) === null) {
+    return usageError(
+      `--out must name a path inside the repository, and "${outFlag}" resolves outside it`,
+    );
+  }
 
   if (command === "impact") {
     if (positionals.length !== 1) {

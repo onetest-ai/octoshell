@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 45
+// octobots-pack-version: 46
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -5268,6 +5268,12 @@ function runCli(argv2, repoRoot, now) {
   const parsed = parseArgs(argv2);
   if (!parsed.ok) return usageError(parsed.error);
   const { command, positionals, overrides, since, json } = parsed.parsed;
+  const outFlag = typeof overrides.out === "string" ? overrides.out : null;
+  if (outFlag !== null && insideRepo(repoRoot, outFlag) === null) {
+    return usageError(
+      `--out must name a path inside the repository, and "${outFlag}" resolves outside it`
+    );
+  }
   if (command === "impact") {
     if (positionals.length !== 1) {
       return usageError("impact requires exactly one <path> argument");
