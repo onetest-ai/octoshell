@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
-import { harvest } from "./harvest.js";
+import { harvest, squashShape } from "./harvest.js";
 import { hasBoard } from "./artifact.js";
 import { graphifyGraphPath } from "./graphify.js";
 import { declaredSpine } from "./spine.js";
@@ -86,16 +86,68 @@ export function doctor(repoRoot: string, config: Config): Report {
   }
   checks.push({ name: "repository", state: "ok", detail: repoRoot, required: true });
 
+  // Whether this repository squash-merges. It matters here for one specific
+  // reason: it changes what advice is HONEST when history is thin.
+  //
+  // A squash merge collapses a whole branch into one commit, so the
+  // fine-grained co-change this package mines — which files moved together
+  // within a unit of work — is discarded at merge time and cannot be
+  // recovered from the repository. Worse, the surviving commit is often large
+  // enough that `maxCommitFiles` drops it as a mega-commit, so a squashed
+  // feature branch can contribute NOTHING at all. Measured on this repo:
+  // seven missions and 102 commits became one 147-file commit, dropped.
+  //
+  // What is NOT lost is the task-to-code link: the board records a task's
+  // merge SHA, and that SHA resolves to the squashed commit perfectly, which
+  // is what `own` reads. Squashing costs the discovered half of the graph,
+  // not the declared half and not provenance. Do not "fix" this by
+  // reconstructing branch history from the forge — that rebuilds, badly, a
+  // grouping the board already records precisely, and the workflow discarded
+  // those commits on purpose.
+  const squash = squashShape(repoRoot, { maxCommitFiles: config.maxCommitFiles });
   const thin = historyIsThin(analysable, config);
   checks.push({
     name: "history depth",
     state: thin ? "warn" : "ok",
     detail: thin
-      ? `${analysable} analysable commits — co-change needs ~${config.minCommits} to be meaningful (shallow clone, or a squashed migration?)`
+      ? `${analysable} analysable commits — co-change needs ~${config.minCommits} to be meaningful`
       : `${analysable} analysable commits`,
-    fix: thin ? "unshallow the clone, or accept sparse output" : undefined,
+    // The default advice is wrong on a squash-merged repository, and wrong in
+    // the expensive direction: it sends someone to re-clone a repository whose
+    // clone is already complete. Say what actually happened instead.
+    fix: thin
+      ? squash.dominated
+        ? "nothing to unshallow — this repository squash-merges, so per-branch history was discarded at merge time; expect a sparse discovered graph and rely on the declared spine"
+        : "unshallow the clone, or accept sparse output"
+      : undefined,
     required: true,
   });
+
+  if (squash.squashed > 0) {
+    checks.push({
+      name: "history shape",
+      state: squash.dominated ? "warn" : "ok",
+      detail:
+        `${squash.squashed} of ${squash.total} commits look like squashed pull requests`
+        + (squash.droppedSquash > 0
+          ? `, and ${squash.droppedSquash} exceeded max-commit-files and were dropped entirely`
+          : ""),
+      // This module's contract is that every non-`ok` check names a fix,
+      // because "a degradation reported without a remedy is a complaint" —
+      // and `test/doctor.test.ts` enforces it. Nothing here RECOVERS the
+      // discarded history, so the honest remedy is what to do given it,
+      // not a repair. Saying "none available" would satisfy the letter of
+      // the invariant and betray its point.
+      fix: squash.dominated
+        ? "read `map` as declared-structure-first: the spine and its dependency edges are unaffected, and `own` still resolves through each task's merge SHA — it is `drift` and working sets that will be sparse, so treat their absence as missing evidence rather than as evidence of absence"
+        : undefined,
+      // `required: false` on purpose: this is a property of how the project
+      // merges, not a broken input, and grading a repository degraded forever
+      // for its merge strategy is noise rather than honesty. `history depth`
+      // already carries the grade.
+      required: false,
+    });
+  }
 
   // Grade Graphify on what the pipeline will ACTUALLY get out of it, not on
   // whether a file exists at that path. `readGraphify` returns null for a

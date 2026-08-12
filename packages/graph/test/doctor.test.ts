@@ -190,3 +190,72 @@ describe("doctor", () => {
     expect(board?.state === "ok").toBe(out === join(repo, ".octobots", "graph"));
   });
 });
+
+describe("doctor — squashed history", () => {
+  /**
+   * These exist because `doctor` gave ADVICE THAT WAS WRONG on a
+   * squash-merged repository: it told the reader to unshallow a clone that
+   * was already complete. The clone is not the problem — the history was
+   * discarded at merge time and cannot be recovered from the repository.
+   *
+   * Measured on this repo when the defect was found: a seven-mission campaign
+   * of 102 commits landed as one 147-file commit, which `maxCommitFiles` then
+   * dropped, so the entire campaign contributed nothing to the co-change
+   * graph while `doctor` blamed the clone depth.
+   */
+  it("reports the shape when most commits are squashed pull requests", () => {
+    const repo = buildRepo([
+      { files: ["a.ts", "b.ts"], message: "feat: one (#1)" },
+      { files: ["c.ts", "d.ts"], message: "feat: two (#2)" },
+      { files: ["e.ts", "f.ts"], message: "fix: three (#3)" },
+      { files: ["g.ts", "h.ts"], message: "ordinary commit" },
+    ]);
+    const shape = check(doctor(repo, { ...DEFAULTS, minCommits: 200 }), "history shape");
+    expect(shape?.state).toBe("warn");
+    expect(shape?.detail).toContain("3 of 4");
+    expect(shape?.fix ?? "").not.toBe("");
+  });
+
+  it("corrects the unshallow advice, which is wrong on a squashed repo", () => {
+    const squashed = buildRepo([
+      { files: ["a.ts", "b.ts"], message: "feat: one (#1)" },
+      { files: ["c.ts", "d.ts"], message: "feat: two (#2)" },
+      { files: ["e.ts", "f.ts"], message: "fix: three (#3)" },
+    ]);
+    const depth = check(doctor(squashed, { ...DEFAULTS, minCommits: 200 }), "history depth");
+    expect(depth?.state).toBe("warn");
+    expect(depth?.fix).not.toContain("unshallow the clone");
+    expect(depth?.fix).toContain("squash");
+
+    // And the generic advice survives where it IS right.
+    const plain = buildRepo([
+      { files: ["a.ts", "b.ts"] },
+      { files: ["c.ts", "d.ts"] },
+    ]);
+    expect(check(doctor(plain, { ...DEFAULTS, minCommits: 200 }), "history depth")?.fix)
+      .toContain("unshallow");
+  });
+
+  it("says nothing at all on a repository that does not squash", () => {
+    const repo = buildRepo([
+      { files: ["a.ts", "b.ts"] },
+      { files: ["c.ts", "d.ts"] },
+    ]);
+    // Absent, not `ok` — a check that is always present and always green
+    // trains a reader to skip it, and there is nothing to report here.
+    expect(check(doctor(repo, { ...DEFAULTS, minCommits: 200 }), "history shape")).toBeUndefined();
+  });
+
+  it("counts a squashed PR the mega-commit filter dropped entirely", () => {
+    // The compounding failure: squashing collapses the branch, and then the
+    // surviving commit is too big to survive `maxCommitFiles`, so it
+    // contributes NOTHING rather than merely contributing coarse signal.
+    const wide = Array.from({ length: 12 }, (_, i) => `wide/f${i}.ts`);
+    const repo = buildRepo([
+      { files: wide, message: "feat: a whole campaign (#99)" },
+      { files: ["a.ts", "b.ts"], message: "feat: small (#100)" },
+    ]);
+    const shape = check(doctor(repo, { ...DEFAULTS, minCommits: 200, maxCommitFiles: 5 }), "history shape");
+    expect(shape?.detail).toContain("1 exceeded max-commit-files");
+  });
+});
