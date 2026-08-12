@@ -149,3 +149,22 @@ export function squashShape(repoRoot: string, opts: HarvestOptions = {}): Squash
     dominated: squashedShas.size * 2 > total,
   };
 }
+
+/**
+ * Whether git ignores `path` — used by `doctor` to notice that the directory
+ * the graph artifact lands in will never be committed.
+ *
+ * `git check-ignore` exits 0 when a path IS ignored and 1 when it is not, so
+ * a non-zero exit is an answer here rather than a failure. Any other failure
+ * (not a repo, git missing) resolves to `false`: this backs an advisory
+ * check, and guessing "ignored" on an unrelated error would produce a
+ * confident recommendation about a file the caller may be committing fine.
+ */
+export function isIgnored(repoRoot: string, path: string): boolean {
+  try {
+    execFileSync("git", ["check-ignore", "-q", "--", path], { cwd: repoRoot, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}

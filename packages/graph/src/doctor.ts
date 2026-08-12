@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
-import { harvest, squashShape } from "./harvest.js";
-import { hasBoard } from "./artifact.js";
+import { harvest, squashShape, isIgnored } from "./harvest.js";
+import { hasBoard, resolveOut } from "./artifact.js";
 import { graphifyGraphPath } from "./graphify.js";
 import { declaredSpine } from "./spine.js";
 import { compare } from "./rollup.js";
@@ -145,6 +145,44 @@ export function doctor(repoRoot: string, config: Config): Report {
       // merges, not a broken input, and grading a repository degraded forever
       // for its merge strategy is noise rather than honesty. `history depth`
       // already carries the grade.
+      required: false,
+    });
+  }
+
+  // Whether the artifact this run writes will survive a fresh clone.
+  //
+  // `clusters.json` is what cluster-id STABILITY reads: the Jaccard remap
+  // compares this run's communities against the previous run's, and its whole
+  // purpose is that an unchanged codebase reports unchanged ids. Read from a
+  // file that is never committed, it silently degrades to "every cluster is
+  // fresh" on every clone, every new machine and every CI run — a false churn
+  // signal, which is exactly what the feature exists to prevent.
+  //
+  // This is a RECOMMENDATION and never a requirement. octograph runs inside
+  // other people's repositories and does not get to dictate their .gitignore,
+  // so `required: false`: it must degrade honestly and say what the choice
+  // costs, not grade a project down for a policy that is theirs to set.
+  //
+  // Note the asymmetry worth reporting: `resolveOut` picks `.octobots/graph`
+  // when a board exists so the artifact sits beside the board — but a project
+  // that ignores `.octobots/` wholesale (as this one does) then ignores the
+  // artifact too, while a repo with no board writes to `.octograph/` and is
+  // usually fine. The feature works by default for non-board users and
+  // silently does not for the users it was built for.
+  const outDir = resolveOut(repoRoot, config);
+  const outRel = relative(repoRoot, outDir) || outDir;
+  // Probe the FILE, never the directory. A trailing-slash pattern like
+  // `.octograph/` cannot match a path git has no reason to believe is a
+  // directory, so asking about the directory answers "not ignored" on exactly
+  // the run that matters most — the first one, before any artifact exists.
+  // Asking about `<out>/clusters.json` matches in both cases, and it is also
+  // the honest question: whether THAT file will be committed.
+  if (isIgnored(repoRoot, join(outDir, "clusters.json"))) {
+    checks.push({
+      name: "artifact durability",
+      state: "warn",
+      detail: `${outRel} is gitignored, so clusters.json is never committed and cluster ids reset on every fresh clone and CI run`,
+      fix: `commit ${outRel}/clusters.json if you want stable cluster ids across machines — or leave it ignored and read clusterIds as meaningless, but do not read "N fresh" as churn`,
       required: false,
     });
   }

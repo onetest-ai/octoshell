@@ -259,3 +259,47 @@ describe("doctor — squashed history", () => {
     expect(shape?.detail).toContain("1 exceeded max-commit-files");
   });
 });
+
+describe("doctor — artifact durability", () => {
+  /**
+   * Cluster-id stability reads the PREVIOUS run's clusters.json. If that file
+   * is never committed, the remap silently degrades to "every cluster is
+   * fresh" on every clone and every CI run — the false-churn signal the
+   * feature exists to prevent — while reporting nothing wrong.
+   *
+   * Advisory on purpose. octograph runs inside other people's repositories
+   * and does not get to dictate their .gitignore, so this recommends and
+   * never requires: `required: false`, and it must not change `status`.
+   */
+  it("warns when the resolved out directory is gitignored", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
+    writeFileSync(join(repo, ".gitignore"), ".octograph/\n");
+    const report = doctor(repo, { ...DEFAULTS, minCommits: 1 });
+    const durability = check(report, "artifact durability");
+    expect(durability?.state).toBe("warn");
+    expect(durability?.detail).toContain(".octograph");
+    expect(durability?.fix ?? "").not.toBe("");
+  });
+
+  it("says nothing when the artifact will be committed", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
+    expect(check(doctor(repo, { ...DEFAULTS, minCommits: 1 }), "artifact durability")).toBeUndefined();
+  });
+
+  it("never grades a project down for its own gitignore policy", () => {
+    // The whole point of `required: false`. A healthy repo that happens to
+    // ignore its artifact directory is still `ok` — recommending is not the
+    // same as failing someone's build over a policy that is theirs to set.
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["c.ts", "d.ts"] }]);
+    writeFileSync(join(repo, ".gitignore"), ".octograph/\n");
+    const report = doctor(repo, { ...DEFAULTS, minCommits: 1 });
+    expect(check(report, "artifact durability")?.state).toBe("warn");
+    // `ok`, with a `warn` check sitting in the report. That combination IS the
+    // assertion: an advisory check reports without grading, so a project whose
+    // inputs are all healthy stays green no matter what it chooses to ignore.
+    // (Graphify is absent here too and also does not degrade — optional inputs
+    // never touch `status`; only `required` ones do.)
+    expect(report.status).toBe("ok");
+    expect(check(report, "history depth")?.state).toBe("ok");
+  });
+});
