@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyPair, isTestPath } from "../src/noise.js";
+import { classifyPair, isExcludedPath, isTestPath } from "../src/noise.js";
 
 describe("isTestPath", () => {
   it("matches a path segment equal to test/tests/__tests__", () => {
@@ -179,5 +179,50 @@ describe("classifyPair", () => {
 
   it("classifies everything else as a candidate", () => {
     expect(classifyPair("a/one.ts", "b/two.ts")).toBe("candidate");
+  });
+});
+
+describe("isExcludedPath", () => {
+  it("matches a path under a configured prefix", () => {
+    expect(isExcludedPath(".agents/memory/js-dev/daily/2026-01-01.md", [".agents/"])).toBe(true);
+    expect(isExcludedPath(".claude/skills/tdd/SKILL.md", [".claude/"])).toBe(true);
+    expect(isExcludedPath(".octobots/campaigns/x/mission.yaml", [".octobots/"])).toBe(true);
+  });
+
+  it("matches the entry itself as a bare file, not only as a directory", () => {
+    expect(isExcludedPath("CLAUDE.md", ["CLAUDE.md"])).toBe(true);
+  });
+
+  it("does not match ordinary source paths against the default tooling prefixes", () => {
+    expect(isExcludedPath("packages/board/src/write.ts", [".agents/", ".claude/", ".octobots/"]))
+      .toBe(false);
+  });
+
+  /**
+   * Segment-bounded, the same discipline `isTestPath` applies to its own
+   * directory-segment rule: a prefix matches only at a `/` boundary (or the
+   * path's own end), never as a bare string prefix. Without this,
+   * `.claude/` (with the guard's own trailing-slash stripped) would also
+   * swallow an unrelated `.claudefoo/` directory.
+   */
+  it("does not match a path that merely starts with the same characters as the prefix", () => {
+    expect(isExcludedPath(".claudefoo/notes.md", [".claude/"])).toBe(false);
+    expect(isExcludedPath(".agentsX/y.ts", [".agents/"])).toBe(false);
+  });
+
+  it("treats a trailing slash on the configured entry as optional", () => {
+    expect(isExcludedPath(".agents/x.md", [".agents"])).toBe(true);
+    expect(isExcludedPath(".agents/x.md", [".agents/"])).toBe(true);
+  });
+
+  it("never matches anything against an empty exclude list", () => {
+    expect(isExcludedPath(".agents/x.md", [])).toBe(false);
+  });
+
+  /** A blank entry (e.g. a stray line in `octograph.yaml`) is inert rather
+   *  than matching every path — the same "degrade, never crash or over-match"
+   *  discipline `config.ts` applies to every other malformed setting. */
+  it("ignores an empty-string entry rather than matching every path", () => {
+    expect(isExcludedPath("packages/board/src/write.ts", [""])).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 44
+// octobots-pack-version: 45
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -3000,6 +3000,14 @@ function isTestPath(path) {
   if (/_test\.go$/.test(filename)) return true;
   return false;
 }
+function isExcludedPath(path, excludePaths) {
+  for (const raw of excludePaths) {
+    const prefix = raw.endsWith("/") ? raw.slice(0, -1) : raw;
+    if (prefix.length === 0) continue;
+    if (path === prefix || path.startsWith(`${prefix}/`)) return true;
+  }
+  return false;
+}
 var LOCK_PAIRS = [
   [/(^|\/)package\.json$/, /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/],
   [/(^|\/)Cargo\.toml$/, /(^|\/)Cargo\.lock$/],
@@ -3181,7 +3189,11 @@ var DEFAULTS = {
   // them — a single spelling of each pinned number, read here rather than
   // re-typed.
   lexicalConfidenceFloor: CONFIDENCE_FLOOR,
-  lexicalRunnerUpMargin: RUNNER_UP_MARGIN
+  lexicalRunnerUpMargin: RUNNER_UP_MARGIN,
+  // This tool's own working state, never the codebase under analysis — see
+  // `isExcludedPath`'s doc comment (noise.ts) for the octoweb measurement
+  // that justifies the default and `drift.ts` for why only `drift()` reads it.
+  excludePaths: [".agents/", ".claude/", ".octobots/"]
 };
 var NUMERIC = [
   "maxCommitFiles",
@@ -3207,6 +3219,9 @@ function loadConfig(repoRoot, overrides = {}) {
         }
         if (typeof parsed.out === "string" && insideRepo(repoRoot, parsed.out) !== null) {
           cfg.out = parsed.out;
+        }
+        if (Array.isArray(parsed.excludePaths) && parsed.excludePaths.every((v) => typeof v === "string")) {
+          cfg.excludePaths = parsed.excludePaths;
         }
       }
     } catch {
@@ -4522,7 +4537,7 @@ function declaredPairs(imports) {
   }
   return byModule;
 }
-function drift(edges, files, spine, limit = 20, minSupport = 2) {
+function drift(edges, files, spine, limit = 20, minSupport = 2, excludePaths = []) {
   const declared = declaredPairs(spine.imports);
   const keep = limit > 0 ? limit : 0;
   const scored = [];
@@ -4533,6 +4548,7 @@ function drift(edges, files, spine, limit = 20, minSupport = 2) {
     const left = files[e.a];
     const right = files[e.b];
     if (left === void 0 || right === void 0) continue;
+    if (isExcludedPath(left, excludePaths) || isExcludedPath(right, excludePaths)) continue;
     const swapped = compare(left, right) > 0;
     const pa = swapped ? right : left;
     const pb = swapped ? left : right;
@@ -5192,7 +5208,7 @@ function runOwnCommand(repoRoot, config, since, now, rawPath, json) {
 }
 function runDriftCommand(repoRoot, config, since, now, json) {
   const { edges, files, spine } = analyze(repoRoot, config, { now, since });
-  const rows = drift(edges, files, spine, void 0, config.minSupport);
+  const rows = drift(edges, files, spine, void 0, config.minSupport, config.excludePaths);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatDrift(rows);
   return { code: 0, stdout, stderr: "" };
 }

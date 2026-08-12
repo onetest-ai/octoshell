@@ -148,4 +148,53 @@ describe("loadConfig", () => {
     expect(cfg.halfLifeDays).toBe(90);
     expect(cfg.minSupport).toBe(4);
   });
+
+  describe("excludePaths", () => {
+    it("defaults to this tool's own tooling directories", () => {
+      expect(loadConfig(mkdtempClean("cfg-")).excludePaths).toEqual([
+        ".agents/", ".claude/", ".octobots/",
+      ]);
+    });
+
+    it("reads a list value from octograph.yaml, the same as any other key", () => {
+      const root = mkdtempClean("cfg-");
+      writeFileSync(
+        join(root, "octograph.yaml"),
+        "excludePaths:\n  - vendor/\n  - generated/\n",
+      );
+      expect(loadConfig(root).excludePaths).toEqual(["vendor/", "generated/"]);
+    });
+
+    it("lets an explicit empty list mean 'exclude nothing', not 'use the default'", () => {
+      const root = mkdtempClean("cfg-");
+      writeFileSync(join(root, "octograph.yaml"), "excludePaths: []\n");
+      expect(loadConfig(root).excludePaths).toEqual([]);
+    });
+
+    /**
+     * Same "wrong type degrades to the default" discipline every NUMERIC key
+     * gets, extended to a list: a scalar instead of a list, or a list with a
+     * non-string element, is rejected WHOLESALE rather than partially applied
+     * or crashing the run.
+     */
+    it("falls back to the default on a wrong-shaped value, but still applies a valid sibling key", () => {
+      const root = mkdtempClean("cfg-");
+      writeFileSync(join(root, "octograph.yaml"), "excludePaths: not-a-list\nminSupport: 5\n");
+      const cfg = loadConfig(root);
+      expect(cfg.excludePaths).toEqual([".agents/", ".claude/", ".octobots/"]);
+      expect(cfg.minSupport).toBe(5);
+    });
+
+    it("falls back to the default when the list contains a non-string element", () => {
+      const root = mkdtempClean("cfg-");
+      writeFileSync(join(root, "octograph.yaml"), "excludePaths:\n  - vendor/\n  - 7\n");
+      expect(loadConfig(root).excludePaths).toEqual([".agents/", ".claude/", ".octobots/"]);
+    });
+
+    it("lets an explicit override beat both the file and the default", () => {
+      const root = mkdtempClean("cfg-");
+      writeFileSync(join(root, "octograph.yaml"), "excludePaths:\n  - vendor/\n");
+      expect(loadConfig(root, { excludePaths: ["dist/"] }).excludePaths).toEqual(["dist/"]);
+    });
+  });
 });

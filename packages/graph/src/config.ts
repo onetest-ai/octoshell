@@ -18,6 +18,13 @@ export interface Config {
   lexicalConfidenceFloor: number;
   /** {@link RUNNER_UP_MARGIN} — same caveat as the floor above. */
   lexicalRunnerUpMargin: number;
+  /**
+   * Repo-relative path prefixes {@link isExcludedPath} (noise.ts) matches
+   * against — read ONLY by `drift()`, not by `harvest`/`analyze`/`impact`. See
+   * `drift.ts`'s own doc comment for why the exclusion applies at that one
+   * surface and nowhere else.
+   */
+  excludePaths: string[];
 }
 
 export const DEFAULTS: Config = {
@@ -33,6 +40,10 @@ export const DEFAULTS: Config = {
   // re-typed.
   lexicalConfidenceFloor: CONFIDENCE_FLOOR,
   lexicalRunnerUpMargin: RUNNER_UP_MARGIN,
+  // This tool's own working state, never the codebase under analysis — see
+  // `isExcludedPath`'s doc comment (noise.ts) for the octoweb measurement
+  // that justifies the default and `drift.ts` for why only `drift()` reads it.
+  excludePaths: [".agents/", ".claude/", ".octobots/"],
 };
 
 const NUMERIC = [
@@ -72,6 +83,21 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
         // every NUMERIC key above: skip the assignment rather than throw.
         if (typeof parsed.out === "string" && insideRepo(repoRoot, parsed.out) !== null) {
           cfg.out = parsed.out;
+        }
+        // `excludePaths` is the first LIST-valued key this file validates —
+        // same spirit as every scalar key above, extended to an array: the
+        // whole value is accepted only when every element is the right type,
+        // and a wrong-shaped value (a bare string, a list with a number in
+        // it, `null`) degrades to the default rather than throwing or letting
+        // a malformed entry silently do nothing later at the point it's
+        // matched. A caller that wants "no exclusions" writes `excludePaths:
+        // []` explicitly — an empty array is a valid, meaningful value here,
+        // not a falsy one to reject.
+        if (
+          Array.isArray(parsed.excludePaths)
+          && parsed.excludePaths.every((v): v is string => typeof v === "string")
+        ) {
+          cfg.excludePaths = parsed.excludePaths;
         }
       }
     } catch {

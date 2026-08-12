@@ -60,6 +60,36 @@ export function isTestPath(path: string): boolean {
   return false;
 }
 
+/**
+ * Whether `path` falls under one of `excludePaths` — a repo-relative prefix
+ * list, sourced from `octograph.yaml`'s `excludePaths` key (see config.ts)
+ * and defaulting to this tool's own tooling directories: `.agents/`,
+ * `.claude/`, `.octobots/`.
+ *
+ * Those three are an agent's own working notes and board entities, not the
+ * codebase under analysis — they co-change with real code for a reason that
+ * has nothing to do with architecture (an agent edits its notes while it
+ * edits code). Measured on `octoweb`: five of `drift`'s top ten rows named a
+ * `.agents/` or `.claude/` path, burying every real cross-module finding
+ * beneath tooling-state noise the repo's own architecture never produced.
+ *
+ * Segment-bounded, the same discipline `isTestPath` applies to `test`/
+ * `tests`: an entry matches a path only at a `/` boundary (or the path's own
+ * end), so `.claude` does not swallow `.claudefoo/`. A trailing slash on the
+ * configured entry is optional and behaves identically either way, because
+ * `octograph.yaml` is hand-edited and both spellings read as "this
+ * directory" to whoever writes it. An empty entry (a stray blank line) never
+ * matches anything, rather than matching every path.
+ */
+export function isExcludedPath(path: string, excludePaths: readonly string[]): boolean {
+  for (const raw of excludePaths) {
+    const prefix = raw.endsWith("/") ? raw.slice(0, -1) : raw;
+    if (prefix.length === 0) continue;
+    if (path === prefix || path.startsWith(`${prefix}/`)) return true;
+  }
+  return false;
+}
+
 /** Manifest -> lockfile pairs whose coupling is mechanical and already known. */
 const LOCK_PAIRS: Array<[RegExp, RegExp]> = [
   [/(^|\/)package\.json$/, /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/],

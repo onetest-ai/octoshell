@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 44
+// octobots-pack-version: 45
 // Backfills a merge SHA into worklog.jsonl entries whose branch has since
 // been deleted by `gh pr merge --delete-branch` — the ONLY moment
 // `packages/graph`'s `attribute()` (task <-> file, `provenance` mode) has
