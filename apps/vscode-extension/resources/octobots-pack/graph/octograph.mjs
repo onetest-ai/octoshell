@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 46
+// octobots-pack-version: 47
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -3193,7 +3193,57 @@ var DEFAULTS = {
   // This tool's own working state, never the codebase under analysis — see
   // `isExcludedPath`'s doc comment (noise.ts) for the octoweb measurement
   // that justifies the default and `drift.ts` for why only `drift()` reads it.
-  excludePaths: [".agents/", ".claude/", ".octobots/"]
+  excludePaths: [
+    // MOST OF THIS LIST IS INSURANCE, NOT ROUTINE.
+    //
+    // `harvest` reads `git log`, so only TRACKED files can enter the graph at
+    // all: an ordinary `node_modules`, `.venv` or `target/` is gitignored and
+    // excluded by the nature of the input, not by anything here. Measured on
+    // two real repos, none of them appeared even once.
+    //
+    // They are listed anyway because a project that COMMITS them — a vendored
+    // dependency tree, a checked-in virtualenv, build output kept for a
+    // deploy — would otherwise have its graph flooded by someone else's code,
+    // and would have to discover that by reading confusing output and then
+    // enumerating directories by hand. Onboarding should not cost that.
+    //
+    // These filter the REPORTING surfaces (`drift`, and doctor's composition
+    // check), not clustering or `impact`, so a wrong entry hides a row from
+    // one ranked list rather than reshaping the module map — a recoverable
+    // mistake, and one line of `octograph.yaml` to undo.
+    // This tool's own working state and the board it edits. Measured at 32% of
+    // octoweb's graph, burying every real cross-module finding beneath it.
+    ".agents/",
+    ".claude/",
+    ".octobots/",
+    // CI, editor and tool configuration: co-changes with whatever it
+    // configures, which is nearly everything, and is not architecture.
+    ".github/",
+    ".vscode/",
+    ".idea/",
+    // Dependencies a project chose to commit — someone else's architecture.
+    "node_modules/",
+    "vendor/",
+    "third_party/",
+    // Python environments and caches.
+    ".venv/",
+    "venv/",
+    "__pycache__/",
+    ".tox/",
+    ".mypy_cache/",
+    ".pytest_cache/",
+    // JVM / Rust / general build output kept in tree.
+    "target/",
+    ".gradle/",
+    "dist/",
+    "build/",
+    "out/",
+    "coverage/",
+    // Framework build caches.
+    ".next/",
+    ".nuxt/",
+    ".cache/"
+  ]
 };
 var NUMERIC = [
   "maxCommitFiles",
@@ -4478,6 +4528,27 @@ function doctor(repoRoot, config) {
       required: false
     });
   }
+  const counted = files.filter((f) => !isExcludedPath(f, config.excludePaths));
+  const shares = /* @__PURE__ */ new Map();
+  for (const f of counted) {
+    const top = f.includes("/") ? f.slice(0, f.indexOf("/")) : "(root files)";
+    shares.set(top, (shares.get(top) ?? 0) + 1);
+  }
+  const ranked = [...shares.entries()].sort((a, b) => b[1] - a[1] || compare(a[0], b[0])).map(([dir, n]) => ({ dir, n, pct: Math.round(100 * n / Math.max(1, counted.length)) }));
+  const composition = ranked.slice(0, 3).map((r) => `${r.dir} ${r.pct}%`).join(", ");
+  const unexcludedTooling = ranked.filter((r) => r.dir.startsWith(".") && r.pct >= 5);
+  checks.push({
+    name: "graph composition",
+    state: unexcludedTooling.length > 0 ? "warn" : "ok",
+    detail: `${counted.length} files after exclusions; largest contributors ${composition}` + (unexcludedTooling.length > 0 ? ` \u2014 ${unexcludedTooling.map((r) => `${r.dir} (${r.pct}%)`).join(", ")} look like tooling rather than architecture` : ""),
+    fix: unexcludedTooling.length > 0 ? `if those are not part of your architecture, add them to octograph.yaml:
+    excludePaths:
+` + unexcludedTooling.map((r) => `      - ${r.dir}/`).join("\n") + `
+  octograph does not decide this for you \u2014 a directory can legitimately dominate a graph.` : void 0,
+    // Advisory. A repository's layout is not a broken input, and grading it
+    // down for one would be the same overreach as excluding docs by default.
+    required: false
+  });
   const spine = declaredSpine(repoRoot, files);
   const graphPath = graphifyGraphPath(repoRoot);
   const graphRel = relative2(repoRoot, graphPath);
