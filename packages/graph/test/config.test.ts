@@ -150,10 +150,25 @@ describe("loadConfig", () => {
   });
 
   describe("excludePaths", () => {
-    it("defaults to this tool's own tooling directories", () => {
-      expect(loadConfig(mkdtempClean("cfg-")).excludePaths).toEqual([
-        ".agents/", ".claude/", ".octobots/",
-      ]);
+    it("defaults to a list nobody has to assemble by hand", () => {
+      // Asserted by PROPERTY, not by pinning the exact array. The list exists
+      // so onboarding does not cost half an hour of enumerating directories,
+      // so it will grow as ecosystems are added — and a test that pins every
+      // element turns each addition into a mechanical edit that teaches
+      // nothing. What must hold is that the categories are covered.
+      const paths = loadConfig(mkdtempClean("cfg-")).excludePaths;
+      for (const required of [
+        ".agents/", ".claude/", ".octobots/",   // this tool's own state
+        ".github/",                              // CI configuration
+        "node_modules/", "vendor/",              // committed dependencies
+        ".venv/", "__pycache__/",                // python environments
+        "target/", "dist/",                      // build output kept in tree
+      ]) {
+        expect(paths, `${required} should be excluded by default`).toContain(required);
+      }
+      // Every entry is a directory prefix; `isExcludedPath` matches on
+      // segment boundaries, so a bare name would silently match a FILE too.
+      for (const p of paths) expect(p.endsWith("/"), `${p} should end with /`).toBe(true);
     });
 
     it("reads a list value from octograph.yaml, the same as any other key", () => {
@@ -181,14 +196,14 @@ describe("loadConfig", () => {
       const root = mkdtempClean("cfg-");
       writeFileSync(join(root, "octograph.yaml"), "excludePaths: not-a-list\nminSupport: 5\n");
       const cfg = loadConfig(root);
-      expect(cfg.excludePaths).toEqual([".agents/", ".claude/", ".octobots/"]);
+      expect(cfg.excludePaths).toEqual(DEFAULTS.excludePaths);
       expect(cfg.minSupport).toBe(5);
     });
 
     it("falls back to the default when the list contains a non-string element", () => {
       const root = mkdtempClean("cfg-");
       writeFileSync(join(root, "octograph.yaml"), "excludePaths:\n  - vendor/\n  - 7\n");
-      expect(loadConfig(root).excludePaths).toEqual([".agents/", ".claude/", ".octobots/"]);
+      expect(loadConfig(root).excludePaths).toEqual(DEFAULTS.excludePaths);
     });
 
     it("lets an explicit override beat both the file and the default", () => {

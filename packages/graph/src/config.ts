@@ -43,7 +43,63 @@ export const DEFAULTS: Config = {
   // This tool's own working state, never the codebase under analysis — see
   // `isExcludedPath`'s doc comment (noise.ts) for the octoweb measurement
   // that justifies the default and `drift.ts` for why only `drift()` reads it.
-  excludePaths: [".agents/", ".claude/", ".octobots/"],
+  excludePaths: [
+    // MOST OF THIS LIST IS INSURANCE, NOT ROUTINE.
+    //
+    // `harvest` reads `git log`, so only TRACKED files can enter the graph at
+    // all: an ordinary `node_modules`, `.venv` or `target/` is gitignored and
+    // excluded by the nature of the input, not by anything here. Measured on
+    // two real repos, none of them appeared even once.
+    //
+    // They are listed anyway because a project that COMMITS them — a vendored
+    // dependency tree, a checked-in virtualenv, build output kept for a
+    // deploy — would otherwise have its graph flooded by someone else's code,
+    // and would have to discover that by reading confusing output and then
+    // enumerating directories by hand. Onboarding should not cost that.
+    //
+    // These filter the REPORTING surfaces (`drift`, and doctor's composition
+    // check), not clustering or `impact`, so a wrong entry hides a row from
+    // one ranked list rather than reshaping the module map — a recoverable
+    // mistake, and one line of `octograph.yaml` to undo.
+
+    // This tool's own working state and the board it edits. Measured at 32% of
+    // octoweb's graph, burying every real cross-module finding beneath it.
+    ".agents/",
+    ".claude/",
+    ".octobots/",
+
+    // CI, editor and tool configuration: co-changes with whatever it
+    // configures, which is nearly everything, and is not architecture.
+    ".github/",
+    ".vscode/",
+    ".idea/",
+
+    // Dependencies a project chose to commit — someone else's architecture.
+    "node_modules/",
+    "vendor/",
+    "third_party/",
+
+    // Python environments and caches.
+    ".venv/",
+    "venv/",
+    "__pycache__/",
+    ".tox/",
+    ".mypy_cache/",
+    ".pytest_cache/",
+
+    // JVM / Rust / general build output kept in tree.
+    "target/",
+    ".gradle/",
+    "dist/",
+    "build/",
+    "out/",
+    "coverage/",
+
+    // Framework build caches.
+    ".next/",
+    ".nuxt/",
+    ".cache/",
+  ],
 };
 
 const NUMERIC = [
