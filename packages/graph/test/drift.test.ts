@@ -171,4 +171,41 @@ describe("drift", () => {
     // so it must not produce a second row or otherwise perturb the result.
     expect(drift([...edges, bridge], files, spine)).toHaveLength(1);
   });
+
+  /**
+   * The regression this test exists for: `drift` ranked by nPMI alone, so a
+   * pair seen exactly `minSupport` times at the maximum nPMI (1.0) outranked
+   * a pair with far more repeated evidence and a moderately lower nPMI —
+   * confirmed on octoweb (1,784 commits), where the pair with the HIGHEST
+   * support in the whole result (9) ranked 18th of 20. See
+   * `.octobots/campaigns/octograph-code-architecture-graph/bugs/
+   * drift-ranks-a-pair-seen-twice-above-a-pair-seen-ni/` and `rank.ts`.
+   *
+   * Shaped after the real octoweb finding: `coincidence` mirrors the
+   * two-observation pairs that dominated the old top 10 (nPMI 1.0, support
+   * 2 — the admission floor); `repeatedCoupling` mirrors the buried finding
+   * (nPMI 0.873, support 9). Both are undeclared, cross-module, non-noise
+   * pairs, so nothing but the ranking decides their order.
+   */
+  it("ranks a pair with repeated real evidence above a two-observation coincidence at the maximum nPMI", () => {
+    const pairFiles = [
+      "modA/coincidence-x.ts",
+      "modB/coincidence-y.ts",
+      "modC/repeated-x.ts",
+      "modD/repeated-y.ts",
+    ];
+    const pairSpine: Spine = {
+      source: "manifests",
+      modules: ["modA", "modB", "modC", "modD"],
+      moduleOf: (p) => p.split("/")[0] ?? p,
+      imports: [],
+    };
+    const coincidence: Edge = { a: 0, b: 1, support: 2, npmi: 1.0, confidence: 1.0 };
+    const repeatedCoupling: Edge = { a: 2, b: 3, support: 9, npmi: 0.873, confidence: 0.707 };
+
+    const rows = drift([coincidence, repeatedCoupling], pairFiles, pairSpine);
+    expect(rows.map((r) => r.support)).toEqual([9, 2]);
+    expect(rows[0]?.a).toBe("modC/repeated-x.ts");
+    expect(rows[0]?.b).toBe("modD/repeated-y.ts");
+  });
 });

@@ -1,5 +1,6 @@
 import { isSyntheticBridge } from "./components.js";
 import { classifyPair } from "./noise.js";
+import { rankScore } from "./rank.js";
 import { compare } from "./rollup.js";
 import { edgeWeight, type Edge } from "./weights.js";
 import type { Spine } from "./spine.js";
@@ -69,6 +70,15 @@ function declaredPairs(imports: Spine["imports"]): Map<string, Set<string>> {
  * tie-break reads them, so neither the row nor the ranking inherits the
  * git-log-dependent order of `Edge.a`/`Edge.b` (see the loop below).
  *
+ * The SORT key is `rankScore` (rank.ts), not `weight` alone — nPMI saturates
+ * near 1 for a pair seen only `minSupport` times, so nPMI-alone ranking let a
+ * two-observation coincidence outrank a pair with far more repeated evidence
+ * and a slightly lower nPMI. `rankScore` shrinks nPMI toward zero by how
+ * little support backs it; see rank.ts for the full defect and the constant's
+ * justification. `DriftRow.npmi` still reports the plain `edgeWeight` value,
+ * never the shrunk score — only the ORDER of the list changes, not the
+ * numbers printed in it.
+ *
  * `limit` is a count of rows to KEEP, so it is floored at zero rather than
  * handed to `slice` raw. `slice(0, -1)` does not mean "no limit" and does not
  * mean "nothing" — it drops the last row and returns the rest, i.e. it hides
@@ -77,11 +87,17 @@ function declaredPairs(imports: Spine["imports"]): Map<string, Set<string>> {
  * means unlimited" is a common enough CLI convention that the value will
  * arrive eventually.
  */
-export function drift(edges: Edge[], files: string[], spine: Spine, limit = 20): DriftRow[] {
+export function drift(
+  edges: Edge[],
+  files: string[],
+  spine: Spine,
+  limit = 20,
+  minSupport = 2,
+): DriftRow[] {
   const declared = declaredPairs(spine.imports);
   const keep = limit > 0 ? limit : 0;
 
-  const scored: Array<{ row: DriftRow; weight: number }> = [];
+  const scored: Array<{ row: DriftRow; score: number }> = [];
   for (const e of edges) {
     if (isSyntheticBridge(e)) continue; // no commit backs it — see components.ts
     const weight = edgeWeight(e);
@@ -120,12 +136,12 @@ export function drift(edges: Edge[], files: string[], spine: Spine, limit = 20):
         support: e.support,
         confidence: e.confidence,
       },
-      weight,
+      score: rankScore(weight, e.support, minSupport),
     });
   }
 
   scored.sort(
-    (x, y) => y.weight - x.weight || compare(x.row.a, y.row.a) || compare(x.row.b, y.row.b),
+    (x, y) => y.score - x.score || compare(x.row.a, y.row.a) || compare(x.row.b, y.row.b),
   );
   return scored.slice(0, keep).map((s) => s.row);
 }

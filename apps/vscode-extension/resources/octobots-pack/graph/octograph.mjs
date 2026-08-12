@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 42
+// octobots-pack-version: 43
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -4435,6 +4435,11 @@ function exitCode(report) {
   return report.status === "ok" ? 0 : 1;
 }
 
+// src/rank.ts
+function rankScore(weight, support, minSupport) {
+  return weight * (support / (support + minSupport));
+}
+
 // src/drift.ts
 function declaredPairs(imports) {
   const byModule = /* @__PURE__ */ new Map();
@@ -4449,7 +4454,7 @@ function declaredPairs(imports) {
   }
   return byModule;
 }
-function drift(edges, files, spine, limit = 20) {
+function drift(edges, files, spine, limit = 20, minSupport = 2) {
   const declared = declaredPairs(spine.imports);
   const keep = limit > 0 ? limit : 0;
   const scored = [];
@@ -4478,17 +4483,17 @@ function drift(edges, files, spine, limit = 20) {
         support: e.support,
         confidence: e.confidence
       },
-      weight
+      score: rankScore(weight, e.support, minSupport)
     });
   }
   scored.sort(
-    (x, y) => y.weight - x.weight || compare(x.row.a, y.row.a) || compare(x.row.b, y.row.b)
+    (x, y) => y.score - x.score || compare(x.row.a, y.row.a) || compare(x.row.b, y.row.b)
   );
   return scored.slice(0, keep).map((s) => s.row);
 }
 
 // src/impact.ts
-function impact(path, edges, files, limit = 20) {
+function impact(path, edges, files, limit = 20, minSupport = 2) {
   const id = files.indexOf(path);
   if (id === -1) return [];
   const scored = [];
@@ -4499,9 +4504,12 @@ function impact(path, edges, files, limit = 20) {
     if (weight <= 0) continue;
     const p = files[other];
     if (p === void 0) continue;
-    scored.push({ row: { path: p, npmi: weight, support: e.support, confidence: e.confidence }, weight });
+    scored.push({
+      row: { path: p, npmi: weight, support: e.support, confidence: e.confidence },
+      score: rankScore(weight, e.support, minSupport)
+    });
   }
-  scored.sort((x, y) => y.weight - x.weight || compare(x.row.path, y.row.path));
+  scored.sort((x, y) => y.score - x.score || compare(x.row.path, y.row.path));
   return scored.slice(0, limit).map((s) => s.row);
 }
 
@@ -5043,7 +5051,7 @@ function runMapCommand(repoRoot, config, since, now, json) {
 function runImpactCommand(repoRoot, config, since, now, rawPath, json) {
   const { edges, files } = analyze(repoRoot, config, { now, since });
   const path = repoRelative(repoRoot, rawPath) ?? rawPath;
-  const rows = impact(path, edges, files);
+  const rows = impact(path, edges, files, void 0, config.minSupport);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatImpact(rows);
   return { code: 0, stdout, stderr: "" };
 }
@@ -5073,7 +5081,7 @@ function runOwnCommand(repoRoot, config, since, now, rawPath, json) {
 }
 function runDriftCommand(repoRoot, config, since, now, json) {
   const { edges, files, spine } = analyze(repoRoot, config, { now, since });
-  const rows = drift(edges, files, spine);
+  const rows = drift(edges, files, spine, void 0, config.minSupport);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatDrift(rows);
   return { code: 0, stdout, stderr: "" };
 }

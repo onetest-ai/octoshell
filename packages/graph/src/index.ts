@@ -17,6 +17,7 @@ export { readGraphify } from "./graphify.js";
 export { layerRanks } from "./layers.js";
 export { rollUp, compare, type ModuleEdge } from "./rollup.js";
 export { edgeWeight, weighEdges, type Edge, type WeightOptions } from "./weights.js";
+export { rankScore } from "./rank.js";
 export { countPairs, type PairTable, type PairStat, type DecayOptions } from "./cochange.js";
 export { isTestPath, classifyPair, type PairClass } from "./noise.js";
 export { drift, type DriftRow } from "./drift.js";

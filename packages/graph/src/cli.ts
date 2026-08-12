@@ -389,7 +389,12 @@ function runImpactCommand(
   // either way, so falling back to the raw string here just yields the
   // empty result `impact` already returns for an unknown path.
   const path = repoRelative(repoRoot, rawPath) ?? rawPath;
-  const rows = computeImpact(path, edges, files);
+  // `undefined` for `limit` keeps `impact`'s own default (20) — only
+  // `minSupport` is overridden here, from the SAME `config.minSupport`
+  // `weighEdges` already admitted these edges against (analyze.ts), so the
+  // ranking's shrinkage constant never disagrees with the admission floor
+  // that produced the edges it is ranking.
+  const rows = computeImpact(path, edges, files, undefined, config.minSupport);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatImpact(rows);
   return { code: 0, stdout, stderr: "" };
 }
@@ -475,7 +480,9 @@ function runDriftCommand(
   json: boolean,
 ): CliResult {
   const { edges, files, spine } = analyze(repoRoot, config, { now, since });
-  const rows = computeDrift(edges, files, spine);
+  // Same reasoning as `runImpactCommand`: `undefined` keeps `drift`'s own
+  // default `limit` (20), `config.minSupport` is the one override.
+  const rows = computeDrift(edges, files, spine, undefined, config.minSupport);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatDrift(rows);
   return { code: 0, stdout, stderr: "" };
 }
