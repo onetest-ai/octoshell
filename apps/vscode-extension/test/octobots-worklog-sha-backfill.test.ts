@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const SCRIPT = join(
   __dirname,
@@ -15,7 +15,7 @@ const SCRIPT = join(
 const LOG = (repo: string) => join(repo, ".octobots", "tokenomics", "worklog.jsonl");
 
 function repoWithWorklog(lines: string[], opts: { octograph?: boolean } = {}): string {
-  const dir = mkdtempSync(join(tmpdir(), "octo-sha-backfill-"));
+  const dir = mkdtempClean("octo-sha-backfill-");
   mkdirSync(join(dir, ".octobots", "tokenomics"), { recursive: true });
   writeFileSync(LOG(dir), lines.map((l) => `${l}\n`).join(""));
   if (opts.octograph) writeFileSync(join(dir, "octograph.yaml"), "minSupport: 2\n");
@@ -33,7 +33,7 @@ function fakeGh(
   marker: string,
   sha = "cafebabecafebabecafebabecafebabecafebabe",
 ): string {
-  const binDir = mkdtempSync(join(tmpdir(), "octo-fakebin-"));
+  const binDir = mkdtempClean("octo-fakebin-");
   const body =
     behavior === "merged"
       ? [

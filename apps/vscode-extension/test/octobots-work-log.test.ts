@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, existsSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const WORK_LOG = join(__dirname, "..", "resources", "octobots-pack", "hooks", "work-log.mjs");
 const LOG = (repo: string) => join(repo, ".octobots", "tokenomics", "worklog.jsonl");
 
 function repoWithOctobots(): string {
-  const dir = mkdtempSync(join(tmpdir(), "octo-worklog-"));
+  const dir = mkdtempClean("octo-worklog-");
   mkdirSync(join(dir, ".octobots"), { recursive: true });
   return dir;
 }
@@ -90,7 +90,7 @@ describe("work-log.mjs", () => {
   });
 
   it("is inert outside an Octobots repo", () => {
-    const bare = mkdtempSync(join(tmpdir(), "octo-bare-")); // no .octobots/
+    const bare = mkdtempClean("octo-bare-"); // no .octobots/
     run(bare, setStatus("T1.1 - Anything", "active"));
     expect(existsSync(LOG(bare))).toBe(false);
   });

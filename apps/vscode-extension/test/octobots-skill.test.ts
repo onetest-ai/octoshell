@@ -1,6 +1,5 @@
-import { readFileSync, readdirSync, mkdtempSync, existsSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { describe, it, expect } from "vitest";
 import {
   parseVersion,
@@ -11,6 +10,7 @@ import {
   packStatus,
 } from "../src/host/octobots-skill.js";
 import { registerClaudeHook } from "../src/host/octobots-hooks.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
 
@@ -65,7 +65,7 @@ describe("bundled pack payloads", () => {
 
 describe("installPack + packStatus (real payload → temp repo)", () => {
   it("reports not-installed before install, up-to-date after", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     expect(packStatus(repo).installed).toBe(false);
 
     const res = installPack(PACK_SRC, repo);
@@ -82,7 +82,7 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
   });
 
   it("removes the retired `octobots` skill dir a pre-rename pack left behind", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     const stale = join(repo, ".claude", "skills", "octobots");
     mkdirSync(join(stale, "scripts"), { recursive: true });
     writeFileSync(join(stale, "SKILL.md"), "---\nname: octobots\nversion: 18\n---\nold");
@@ -94,7 +94,7 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
   });
 
   it.each(OCTOBOTS_SKILLS)("reports not-installed when %s has no version field", (name) => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     // Corrupt one skill payload by stripping its frontmatter version.
     writeFileSync(join(repo, ".claude", "skills", name, "SKILL.md"), `---\nname: ${name}\n---\nbody`);
@@ -104,20 +104,20 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
   });
 
   it.each(OCTOBOTS_SKILLS)("reports not-installed when %s is missing entirely", (name) => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     rmSync(join(repo, ".claude", "skills", name), { recursive: true, force: true });
     expect(packStatus(repo).installed).toBe(false);
   });
 
   it("reports not-up-to-date when an installed payload is older", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     expect(packStatus(repo, 999).upToDate).toBe(false);
   });
 
   it("installs the primer + Claude hook, and reports up-to-date only when both are current", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     expect(existsSync(join(repo, ".octobots", "hooks", "primer.mjs"))).toBe(true);
     const settings = JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8"));
@@ -129,7 +129,7 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
   });
 
   it("reports not-installed when the Claude hook registration is missing", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     writeFileSync(join(repo, ".claude", "settings.json"), JSON.stringify({ hooks: {} }));
     const st = packStatus(repo);
@@ -138,7 +138,7 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
   });
 
   it("reports installed but not-up-to-date when the Claude hook is a stale version", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     registerClaudeHook(repo, OCTOBOTS_PACK_VERSION - 1); // downgrade our hook entry in place
     const st = packStatus(repo);
@@ -147,7 +147,7 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
   });
 
   it("does not throw when .claude/settings.json is malformed (returns not-up-to-date)", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     writeFileSync(join(repo, ".claude", "settings.json"), "{ bad json ,, }");
     expect(() => packStatus(repo)).not.toThrow();
@@ -160,7 +160,7 @@ describe("tokenomics CLI install", () => {
   // The gate skill tells an agent to run `node .octobots/tokenomics/run.mjs`. If the pack does not
   // put it there, that instruction fails on every install — which is how it behaved before v35.
   it("installs the whole pipeline the gate is told to run", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     const dir = join(repo, ".octobots", "tokenomics");
     for (const f of ["run.mjs", "collect.mjs", "rollup.mjs", "render.mjs", "prices.json"]) {
@@ -169,7 +169,7 @@ describe("tokenomics CLI install", () => {
   });
 
   it("every command the pack's skills name is a file the pack actually installs", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     for (const name of OCTOBOTS_SKILLS) {
       const skill = readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
@@ -200,14 +200,14 @@ describe("tokenomics CLI install", () => {
   });
 
   it("reports not-installed when the tokenomics runner is missing", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     rmSync(join(repo, ".octobots", "tokenomics", "run.mjs"), { force: true });
     expect(packStatus(repo).installed).toBe(false);
   });
 
   it("reports not-up-to-date when the installed runner is from an older pack", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     const entry = join(repo, ".octobots", "tokenomics", "run.mjs");
     writeFileSync(entry, readFileSync(entry, "utf8").replace(/octobots-pack-version: \d+/, "octobots-pack-version: 1"));
@@ -219,7 +219,7 @@ describe("tokenomics CLI install", () => {
   // Transcripts are pruned outside the repo, so a clobbered artifact is unrecoverable — an upgrade
   // may refresh the scripts but must never touch what was already measured.
   it("preserves collected artifacts and a refreshed price table across a re-install", () => {
-    const repo = mkdtempSync(join(tmpdir(), "octobots-pack-"));
+    const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);
     const dir = join(repo, ".octobots", "tokenomics");
     mkdirSync(join(dir, "raw"), { recursive: true });

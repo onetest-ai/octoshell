@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { BoardHost } from "../src/host/board-host.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 function host(): { board: BoardHost; campaignId: string; missionId: string } {
-  const root = mkdtempSync(join(tmpdir(), "host-wf-"));
+  const root = mkdtempClean("host-wf-");
   const c = join(root, "campaigns", "alpha");
   mkdirSync(join(c, "missions", "m1-auth"), { recursive: true });
   writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");

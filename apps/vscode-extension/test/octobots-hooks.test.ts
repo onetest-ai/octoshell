@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { installPrimer, registerClaudeHook, claudeHookStatus } from "../src/host/octobots-hooks.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
 
 function freshRepo(): string {
-  return mkdtempSync(join(tmpdir(), "octo-hooks-"));
+  return mkdtempClean("octo-hooks-");
 }
 
 describe("octobots-hooks: primer copy", () => {

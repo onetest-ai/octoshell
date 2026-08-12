@@ -4,12 +4,12 @@
  * each script is run via spawnSync and its effect asserted in a fresh BoardModel or the child's own
  * `<kind>.yaml`. Children are folder-derived — no parent projection is ever written or read.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { BoardModel, createCampaign, createMission, createTask, createBug } from "@octoshell/board";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const SCRIPTS = join(__dirname, "..", "resources", "octobots-pack", "skill", "mission-planner", "scripts");
 function run(script: string, args: string[], cwd: string): { out: string; code: number } {
@@ -28,12 +28,12 @@ function board(): BoardModel {
   return b;
 }
 
+// `mkdtempClean` is called from inside `beforeEach`, which runs within the current test's
+// context (vitest sets the active test before running its `beforeEach` chain), so the
+// `onTestFinished` cleanup it registers still fires for the right test — see fixtures/tmpdir.ts.
 beforeEach(() => {
-  projectDir = mkdtempSync(join(tmpdir(), "octobots-scripts-"));
+  projectDir = mkdtempClean("octobots-scripts-");
   boardRoot = join(projectDir, ".octobots");
-});
-afterEach(() => {
-  rmSync(projectDir, { recursive: true, force: true });
 });
 
 describe("validate.js", () => {

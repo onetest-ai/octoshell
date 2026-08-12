@@ -1,15 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatch } from "../src/host/rpc-dispatcher.js";
 import { BoardHost } from "../src/host/board-host.js";
 import { AppearanceStore } from "../src/host/appearance-store.js";
 import { FakeMemento } from "./helpers.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 /** Returns a fresh BoardHost backed by a temp dir, plus the workspace root for that temp dir. */
 function makeBoardWithRoot(): { board: BoardHost; repoRoot: string } {
-  const repoRoot = mkdtempSync(join(tmpdir(), "rpc-test-"));
+  const repoRoot = mkdtempClean("rpc-test-");
   return { board: new BoardHost(join(repoRoot, ".octobots")), repoRoot };
 }
 
