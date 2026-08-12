@@ -38,7 +38,23 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const EXT_ROOT = join(HERE, "..");
 const SKILL_SRC = join(EXT_ROOT, "src", "host", "octobots-skill.ts");
 
-export const PAYLOAD_PATH = join(EXT_ROOT, "resources", "octobots-pack", "graph", "octograph.mjs");
+/**
+ * The committed pack payload this script verifies and writes.
+ *
+ * `OCTOGRAPH_PAYLOAD_PATH` overrides it, and exists for ONE reason: the
+ * failure branches below (missing payload, stale payload) can only be tested
+ * by putting the payload into those states, and doing that to the real file
+ * races every other test in the suite that reads it — vitest runs test files
+ * in parallel, so a mutation here surfaced as an unrelated installPack test
+ * failing. A suite that is flaky by construction is worse than an untested
+ * branch, and this repository already carries one flake nobody has explained.
+ *
+ * The build never sets it. If it is somehow set in a shell, the check runs
+ * against that path and fails loudly rather than silently passing.
+ */
+export const PAYLOAD_PATH =
+  process.env.OCTOGRAPH_PAYLOAD_PATH ??
+  join(EXT_ROOT, "resources", "octobots-pack", "graph", "octograph.mjs");
 
 /**
  * Reads `OCTOBOTS_PACK_VERSION` out of `octobots-skill.ts` by regex, WITHOUT executing or
