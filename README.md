@@ -13,6 +13,14 @@ It also installs an **Octobots workflow pack** (a skill + planning agents + a se
 into a workspace, teaching CLI coding agents — Claude Code, OpenAI Codex, GitHub Copilot CLI —
 how to read and drive the same board.
 
+## octograph — the architecture map
+
+Octobots ships `octograph`, which mines your git history for **which files actually change
+together** — the coupling no import edge explains. Two commands from the Command Palette,
+no install step, no LLM, no server.
+
+See [docs/octograph.md](docs/octograph.md).
+
 ## Features
 
 - **Board editor in the sidebar** — browse and edit campaigns, missions, tasks, and bugs from
