@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { createCampaign, createMission, createTask } from "@octoshell/board";
 import { attribute } from "../src/attribution.js";
 import { readBoard, type BoardView } from "../src/board.js";
@@ -73,7 +73,7 @@ describe("attribute", () => {
 
     const log = [entry({ task: task.id, branch: "feat/x-t1", mergedSha: sha })];
     expect(attribute(root, board, log)).toEqual([
-      { task: task.id, files: ["src/auth.test.ts", "src/auth.ts"], mode: "provenance" },
+      { task: task.id, files: ["src/auth.test.ts", "src/auth.ts"], deletedFiles: [], mode: "provenance" },
     ]);
   });
 
@@ -92,7 +92,7 @@ describe("attribute", () => {
     const log = [entry({ task: task.id, branch: "feat/x-t1", mergedSha: goneSha })];
 
     expect(() => attribute(root, board, log)).not.toThrow();
-    expect(attribute(root, board, log)).toEqual([{ task: task.id, files: [], mode: "predicted" }]);
+    expect(attribute(root, board, log)).toEqual([{ task: task.id, files: [], deletedFiles: [], mode: "predicted" }]);
   });
 
   it("labels a task with no recorded SHA predicted rather than omitting it", () => {
@@ -102,7 +102,7 @@ describe("attribute", () => {
     const task = createTask(octobotsDir, mission.id, { name: "T1.1 - JWT" });
     const board = requireBoard(root);
 
-    expect(attribute(root, board, [])).toEqual([{ task: task.id, files: [], mode: "predicted" }]);
+    expect(attribute(root, board, [])).toEqual([{ task: task.id, files: [], deletedFiles: [], mode: "predicted" }]);
   });
 
   /**
@@ -128,7 +128,7 @@ describe("attribute", () => {
 
     const log = [entry({ task: "T1.1", branch: "feat/x-t1", mergedSha: sha })];
     expect(attribute(root, board, log)).toEqual([
-      { task: task.id, files: ["src/auth.ts"], mode: "provenance" },
+      { task: task.id, files: ["src/auth.ts"], deletedFiles: [], mode: "provenance" },
     ]);
   });
 
@@ -167,7 +167,7 @@ describe("attribute", () => {
     // where only one T1.1 exists does attribute.
     const soloBoard: BoardView = { ...board, tasks: board.tasks.filter((t) => t.id === a.id) };
     expect(attribute(root, soloBoard, log)).toEqual([
-      { task: a.id, files: ["src/auth.ts"], mode: "provenance" },
+      { task: a.id, files: ["src/auth.ts"], deletedFiles: [], mode: "provenance" },
     ]);
   });
 
@@ -206,8 +206,8 @@ describe("attribute", () => {
     const rows = attribute(root, board, log, (m) => warnings.push(m));
     expect(rows).toEqual(
       expect.arrayContaining([
-        { task: graphTask.id, files: ["src/drift.ts"], mode: "provenance" },
-        { task: packTask.id, files: [], mode: "predicted" },
+        { task: graphTask.id, files: ["src/drift.ts"], deletedFiles: [], mode: "provenance" },
+        { task: packTask.id, files: [], deletedFiles: [], mode: "predicted" },
       ]),
     );
     expect(rows).toHaveLength(2);
@@ -293,7 +293,7 @@ describe("attribute", () => {
     const log = [entry({ task: "T5.1", branch: "feat/completely-unrelated", mergedSha: sha })];
     const warnings: string[] = [];
     expect(attribute(root, board, log, (m) => warnings.push(m))).toEqual([
-      { task: task.id, files: ["src/unique.ts"], mode: "provenance" },
+      { task: task.id, files: ["src/unique.ts"], deletedFiles: [], mode: "provenance" },
     ]);
     expect(warnings).toEqual([]);
   });
@@ -333,7 +333,7 @@ describe("attribute", () => {
     const warnings: string[] = [];
     const rows = attribute(root, board, log, (m) => warnings.push(m));
 
-    expect(rows).toEqual([{ task: task.id, files: [], mode: "predicted" }]);
+    expect(rows).toEqual([{ task: task.id, files: [], deletedFiles: [], mode: "predicted" }]);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("T2.1");
     expect(warnings[0]).toContain("names no task on this board");
@@ -388,7 +388,7 @@ describe("attribute", () => {
 
     const log = [entry({ task: task.id, branch: "feat/x-t1", mergedSha: sha })];
     expect(attribute(root, board, log)).toEqual([
-      { task: task.id, files: ["src/résumé.ts"], mode: "provenance" },
+      { task: task.id, files: ["src/résumé.ts"], deletedFiles: [], mode: "provenance" },
     ]);
   });
 
@@ -419,7 +419,7 @@ describe("attribute", () => {
     // The merge's own side only — never the commit that landed on main in
     // parallel, which the second-parent diff would have dragged in.
     expect(attribute(root, board, log)).toEqual([
-      { task: task.id, files: ["src/brought-in.ts"], mode: "provenance" },
+      { task: task.id, files: ["src/brought-in.ts"], deletedFiles: [], mode: "provenance" },
     ]);
   });
 
@@ -441,7 +441,7 @@ describe("attribute", () => {
     const pwned = join(root, "pwned.txt");
     const log = [entry({ task: task.id, branch: "feat/x-t1", mergedSha: `--output=${pwned}` })];
 
-    expect(attribute(root, board, log)).toEqual([{ task: task.id, files: [], mode: "predicted" }]);
+    expect(attribute(root, board, log)).toEqual([{ task: task.id, files: [], deletedFiles: [], mode: "predicted" }]);
     expect(existsSync(pwned)).toBe(false);
   });
 
@@ -463,7 +463,7 @@ describe("attribute", () => {
     const board = requireBoard(root);
 
     const log = [entry({ task: task.id, branch: "feat/x-t1", mergedSha: emptySha })];
-    expect(attribute(root, board, log)).toEqual([{ task: task.id, files: [], mode: "predicted" }]);
+    expect(attribute(root, board, log)).toEqual([{ task: task.id, files: [], deletedFiles: [], mode: "predicted" }]);
   });
 
   it("picks the latest recorded SHA when a task logged twice (active, then done)", () => {
@@ -481,6 +481,132 @@ describe("attribute", () => {
       entry({ task: task.id, branch: "feat/x-t1", mergedSha: staleSha, at: "2026-08-09T00:00:00.000Z" }),
       entry({ task: task.id, branch: "feat/x-t1", mergedSha: freshSha, at: "2026-08-10T00:00:00.000Z" }),
     ];
-    expect(attribute(root, board, log)).toEqual([{ task: task.id, files: ["src/new.ts"], mode: "provenance" }]);
+    expect(attribute(root, board, log)).toEqual([{ task: task.id, files: ["src/new.ts"], deletedFiles: [], mode: "provenance" }]);
+  });
+
+  /**
+   * The regression this pins: latest-wins tried ONLY the newest recorded
+   * `{sha, at}` per task. When that newest sha no longer resolves — a
+   * force-push, a rewritten history — the task fell straight to `predicted`,
+   * even though an OLDER entry's sha resolves fine and real evidence is
+   * sitting right there in the same log. The fix falls back to it, and warns
+   * that it did rather than silently answering as if the newer entry had
+   * never been logged at all.
+   */
+  it("falls back to an older resolvable entry when the newest recorded sha no longer resolves, and warns about it", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const staleSha = commit(root, git, { "src/old.ts": "old\n" });
+    // A syntactically valid SHA that names no object in this repo — the
+    // shape a force-push or a rewritten history leaves behind, logged AFTER
+    // the real, resolvable evidence above.
+    const goneSha = "0123456789abcdef0123456789abcdef01234567";
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    const task = createTask(octobotsDir, mission.id, { name: "T1.1 - JWT" });
+    const board = requireBoard(root);
+
+    const log = [
+      entry({ task: task.id, branch: "feat/x-t1", mergedSha: staleSha, at: "2026-08-09T00:00:00.000Z" }),
+      entry({ task: task.id, branch: "feat/x-t1", mergedSha: goneSha, at: "2026-08-10T00:00:00.000Z" }),
+    ];
+    const warnings: string[] = [];
+    const rows = attribute(root, board, log, (m) => warnings.push(m));
+
+    // Still `provenance`, from the OLDER entry — not dropped to `predicted`
+    // just because the newest one turned out unusable.
+    expect(rows).toEqual([{ task: task.id, files: ["src/old.ts"], deletedFiles: [], mode: "provenance" }]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(task.id);
+    expect(warnings[0]).toContain(goneSha);
+    expect(warnings[0]).toContain(staleSha);
+  });
+
+  /**
+   * The sibling case: the newest entry's sha DOES resolve, but its
+   * first-parent diff is empty (an empty commit, a re-merge of already-landed
+   * work) — exactly as unusable as a sha that does not resolve at all, and
+   * the fallback must treat it the same way.
+   */
+  it("falls back to an older resolvable entry when the newest resolves to an empty diff, and warns about it", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const staleSha = commit(root, git, { "src/old.ts": "old\n" });
+    git(["commit", "-q", "--allow-empty", "-m", "empty merge of already-landed work"]);
+    const emptySha = git(["rev-parse", "HEAD"]).trim();
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    const task = createTask(octobotsDir, mission.id, { name: "T1.1 - JWT" });
+    const board = requireBoard(root);
+
+    const log = [
+      entry({ task: task.id, branch: "feat/x-t1", mergedSha: staleSha, at: "2026-08-09T00:00:00.000Z" }),
+      entry({ task: task.id, branch: "feat/x-t1", mergedSha: emptySha, at: "2026-08-10T00:00:00.000Z" }),
+    ];
+    const warnings: string[] = [];
+    const rows = attribute(root, board, log, (m) => warnings.push(m));
+
+    expect(rows).toEqual([{ task: task.id, files: ["src/old.ts"], deletedFiles: [], mode: "provenance" }]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(emptySha);
+  });
+
+  /**
+   * The non-regression case: when the NEWEST entry resolves fine, nothing
+   * about the fallback machinery should engage or warn — exactly the
+   * pre-existing "picks the latest recorded SHA" behaviour above, still
+   * silent.
+   */
+  it("stays silent when the newest recorded entry resolves cleanly on its own", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const staleSha = commit(root, git, { "src/old.ts": "old\n" });
+    const freshSha = commit(root, git, { "src/new.ts": "new\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    const task = createTask(octobotsDir, mission.id, { name: "T1.1 - JWT" });
+    const board = requireBoard(root);
+
+    const log = [
+      entry({ task: task.id, branch: "feat/x-t1", mergedSha: staleSha, at: "2026-08-09T00:00:00.000Z" }),
+      entry({ task: task.id, branch: "feat/x-t1", mergedSha: freshSha, at: "2026-08-10T00:00:00.000Z" }),
+    ];
+    const warnings: string[] = [];
+    attribute(root, board, log, (m) => warnings.push(m));
+    expect(warnings).toEqual([]);
+  });
+
+  /**
+   * `own labels a path DELETED by the very merge it cites as provenance` —
+   * the sibling defect: `git diff-tree --name-only` lists a deletion exactly
+   * like an addition, so a path a task's own recorded merge REMOVED was
+   * indistinguishable from one it still owns. Deleted paths are excluded
+   * from `files` and surfaced separately in `deletedFiles`, never silently
+   * folded into either "owned" or "never touched".
+   */
+  it("excludes a path the recorded merge deleted from files, and reports it in deletedFiles instead", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    commit(root, git, { "src/gone.ts": "export {}\n" });
+    // The commit under test both ADDS a real, kept file and DELETES the
+    // earlier one — so `kept` is non-empty (mode stays `provenance`) while
+    // `deleted` still names the removed path, the shape a real cleanup PR
+    // takes and the only one that can distinguish "no evidence" from
+    // "evidence, minus a path this commit removed".
+    unlinkSync(join(root, "src", "gone.ts"));
+    const sha = commit(root, git, { "src/kept.ts": "export {}\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Cleanup" });
+    const task = createTask(octobotsDir, mission.id, { name: "T1.1 - Remove dead code" });
+    const board = requireBoard(root);
+
+    const log = [entry({ task: task.id, branch: "feat/x-t1", mergedSha: sha })];
+    expect(attribute(root, board, log)).toEqual([
+      { task: task.id, files: ["src/kept.ts"], deletedFiles: ["src/gone.ts"], mode: "provenance" },
+    ]);
   });
 });

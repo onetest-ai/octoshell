@@ -307,6 +307,36 @@ function sinceMismatchWarning(previous: StoredGraph | null, since: string | unde
 }
 
 /**
+ * Non-fatal stderr warning for `own`/`conflicts`: a hazard `sinceMismatchWarning`
+ * above already names for `map`, on a command that keeps no prior run to
+ * compare against, so there is no "mismatch" to detect — only "in use", which
+ * is worth saying every time.
+ *
+ * `--since` narrows the co-change candidate corpus (`analyze`'s `files`)
+ * every PREDICTED answer is scored against — `own`'s lexical fallback, and
+ * the WHOLE of `conflicts` (see conflicts.ts's own doc comment: it runs in
+ * `predicted` mode permanently). The identical query can therefore answer
+ * differently under a different window, and nothing on the page said why:
+ * verified 2026-08-12, `octograph own packages/graph/src/render.ts --since
+ * 2026-08-10` prints nothing to stderr either way. The PROVENANCE half is
+ * unaffected — `attribution.ts`'s `filesChangedBy` resolves a merge SHA
+ * against real git history regardless of `--since` — so this warns about
+ * exactly the half a reader is least able to sanity-check for themselves.
+ *
+ * Fires on every run either command is given `--since`, never only on a
+ * mismatch: unlike `map`'s `clusters.json`, `own`/`conflicts` persist
+ * nothing between runs for this function to compare against.
+ */
+function sincePredictedWarning(since: string | undefined): string {
+  if (since === undefined) return "";
+  return (
+    `octograph: --since ${since} narrows the co-change corpus predicted answers are scored ` +
+    `against — the same query can answer differently under a different window; provenance ` +
+    `answers are unaffected\n`
+  );
+}
+
+/**
  * `map`'s whole pipeline — `analyze` -> `renderMap` -> `writeArtifact` — as
  * ONE function, exported so a second caller never reassembles that sequence
  * by hand. `setup.ts`'s build step calls this directly rather than
@@ -469,7 +499,7 @@ function runOwnCommand(
 
   const answers = computeOwn(repoRoot, board, log, files, path, lexicalOptions(config));
   const stdout = json ? JSON.stringify(answers) + "\n" : formatOwn(answers);
-  return { code: 0, stdout, stderr: "" };
+  return { code: 0, stdout, stderr: sincePredictedWarning(since) };
 }
 
 function runDriftCommand(
@@ -616,7 +646,7 @@ function runConflictsCommand(
   const { analysis, edges, files } = analyze(repoRoot, config, { now, since });
   const report = computeConflicts(analysis, edges, files, resolved.tasks, lexicalOptions(config));
   const stdout = json ? JSON.stringify(report) + "\n" : formatConflicts(report);
-  return { code: 0, stdout, stderr: "" };
+  return { code: 0, stdout, stderr: sincePredictedWarning(since) };
 }
 
 /**

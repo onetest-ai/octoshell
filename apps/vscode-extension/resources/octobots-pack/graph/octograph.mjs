@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 43
+// octobots-pack-version: 44
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -4595,7 +4595,7 @@ function filesChangedBy(repoRoot, sha) {
       [
         "diff-tree",
         "--no-commit-id",
-        "--name-only",
+        "--name-status",
         "-r",
         "-z",
         "--diff-merges=first-parent",
@@ -4604,7 +4604,16 @@ function filesChangedBy(repoRoot, sha) {
       ],
       { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
     );
-    return [...new Set(out.split("\0").filter((f) => f !== ""))].sort(compare);
+    const tokens = out.split("\0").filter((t) => t !== "");
+    const kept = /* @__PURE__ */ new Set();
+    const deleted = /* @__PURE__ */ new Set();
+    for (let i = 0; i + 1 < tokens.length; i += 2) {
+      const status = tokens[i];
+      const file = tokens[i + 1];
+      if (status === void 0 || file === void 0) continue;
+      (status.startsWith("D") ? deleted : kept).add(file);
+    }
+    return { kept: [...kept].sort(compare), deleted: [...deleted].sort(compare) };
   } catch {
     return null;
   }
@@ -4640,7 +4649,7 @@ function attribute(repoRoot, board, log2, warn = defaultWarn) {
     if (existing !== void 0) existing.push(t);
     else byShortId.set(short, [t]);
   }
-  const latest = /* @__PURE__ */ new Map();
+  const evidence = /* @__PURE__ */ new Map();
   for (const entry of log2) {
     if (entry.task === null || entry.mergedSha === null) continue;
     const resolved = resolveEntryTask(entry, byId, byShortId);
@@ -4664,18 +4673,31 @@ function attribute(repoRoot, board, log2, warn = defaultWarn) {
     }
     const task = resolved[0];
     if (task === void 0) continue;
-    const current = latest.get(task.id);
-    if (current === void 0 || compare(entry.at, current.at) > 0) {
-      latest.set(task.id, { sha: entry.mergedSha, at: entry.at });
-    }
+    const rec = { sha: entry.mergedSha, at: entry.at };
+    const existing = evidence.get(task.id);
+    if (existing !== void 0) existing.push(rec);
+    else evidence.set(task.id, [rec]);
   }
   return board.tasks.map((task) => {
-    const rec = latest.get(task.id);
-    if (rec !== void 0) {
-      const files = filesChangedBy(repoRoot, rec.sha);
-      if (files !== null && files.length > 0) return { task: task.id, files, mode: "provenance" };
+    const list = evidence.get(task.id);
+    if (list !== void 0) {
+      const sorted = [...list].sort((a, b) => compare(b.at, a.at));
+      for (let i = 0; i < sorted.length; i++) {
+        const rec = sorted[i];
+        if (rec === void 0) continue;
+        const changed = filesChangedBy(repoRoot, rec.sha);
+        if (changed === null || changed.kept.length === 0) continue;
+        if (i > 0) {
+          const skipped = sorted.slice(0, i).map((r) => `${r.sha} (at ${r.at})`).join(", ");
+          warn(
+            `octograph: task "${task.id}" \u2014 newer worklog evidence could not be used (${skipped}); falling back to older evidence: ${rec.sha} (at ${rec.at})
+`
+          );
+        }
+        return { task: task.id, files: changed.kept, deletedFiles: changed.deleted, mode: "provenance" };
+      }
     }
-    return { task: task.id, files: [], mode: "predicted" };
+    return { task: task.id, files: [], deletedFiles: [], mode: "predicted" };
   });
 }
 
@@ -4718,7 +4740,7 @@ function filesFor(repoRoot, task, mode, provenanceFiles, candidates, path, lexic
   const predicted = predictFiles(task.criteria, corpus, lexical).map((m) => m.file);
   return path === null ? predicted : predicted.filter((f) => f === path);
 }
-function own(repoRoot, board, log2, candidates, path, lexical = {}) {
+function own(repoRoot, board, log2, candidates, path, lexical = {}, warn = defaultWarn) {
   const attributions = attribute(repoRoot, board, log2);
   const byTask = new Map(board.tasks.map((t) => [t.id, t]));
   const answers = [];
@@ -4729,6 +4751,12 @@ function own(repoRoot, board, log2, candidates, path, lexical = {}) {
     if (mission === null) continue;
     const missionName = board.missionNameOf(task.id);
     if (missionName === null) continue;
+    if (path !== null && a.mode === "provenance" && a.deletedFiles.includes(path)) {
+      warn(
+        `octograph: "${path}" was deleted by ${task.name}'s recorded merge \u2014 it has no current owner
+`
+      );
+    }
     for (const file of filesFor(repoRoot, task, a.mode, a.files, candidates, path, lexical)) {
       const criterion = bestCriterion(task.criteria, file);
       answers.push({
@@ -4883,7 +4911,7 @@ function optString2(raw, key) {
   const v = raw[key];
   return typeof v === "string" ? v : null;
 }
-function parseLine(line) {
+function parseLine(line, warn) {
   let parsed;
   try {
     parsed = JSON.parse(line);
@@ -4894,7 +4922,17 @@ function parseLine(line) {
   const raw = parsed;
   const sessionId = optString2(raw, "session_id");
   const at = optString2(raw, "at");
-  if (sessionId === null || at === null) return null;
+  if (sessionId === null || at === null) {
+    const missing = [
+      sessionId === null ? "session_id" : null,
+      at === null ? "at" : null
+    ].filter((field) => field !== null);
+    warn(
+      `octograph: worklog line is valid JSON but missing required field(s) (${missing.join(", ")}) \u2014 dropped: ${line}
+`
+    );
+    return null;
+  }
   return {
     sessionId,
     task: optString2(raw, "task"),
@@ -4904,7 +4942,7 @@ function parseLine(line) {
     at
   };
 }
-function readWorklog(repoRoot) {
+function readWorklog(repoRoot, warn = defaultWarn) {
   const root = boardDir(repoRoot);
   if (root === null) return [];
   let text;
@@ -4916,7 +4954,7 @@ function readWorklog(repoRoot) {
   const entries = [];
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
-    const entry = parseLine(line);
+    const entry = parseLine(line, warn);
     if (entry) entries.push(entry);
   }
   return entries;
@@ -5087,6 +5125,11 @@ function sinceMismatchWarning(previous, since) {
   return `octograph: warning: clusters.json was built with ${describeSince(previousSince)}, this run uses ${describeSince(currentSince)} \u2014 cluster-id stability across mismatched history windows is not meaningful
 `;
 }
+function sincePredictedWarning(since) {
+  if (since === void 0) return "";
+  return `octograph: --since ${since} narrows the co-change corpus predicted answers are scored against \u2014 the same query can answer differently under a different window; provenance answers are unaffected
+`;
+}
 function runMapCommand(repoRoot, config, since, now, json) {
   const outDir = resolveOut(repoRoot, config);
   const previous = readArtifact(outDir);
@@ -5145,7 +5188,7 @@ function runOwnCommand(repoRoot, config, since, now, rawPath, json) {
   const path = rawPath === null ? null : repoRelative(repoRoot, rawPath) ?? rawPath;
   const answers = own(repoRoot, board, log2, files, path, lexicalOptions(config));
   const stdout = json ? JSON.stringify(answers) + "\n" : formatOwn(answers);
-  return { code: 0, stdout, stderr: "" };
+  return { code: 0, stdout, stderr: sincePredictedWarning(since) };
 }
 function runDriftCommand(repoRoot, config, since, now, json) {
   const { edges, files, spine } = analyze(repoRoot, config, { now, since });
@@ -5203,7 +5246,7 @@ function runConflictsCommand(repoRoot, config, since, now, positionals, json) {
   const { analysis, edges, files } = analyze(repoRoot, config, { now, since });
   const report = conflicts(analysis, edges, files, resolved.tasks, lexicalOptions(config));
   const stdout = json ? JSON.stringify(report) + "\n" : formatConflicts(report);
-  return { code: 0, stdout, stderr: "" };
+  return { code: 0, stdout, stderr: sincePredictedWarning(since) };
 }
 function runCli(argv2, repoRoot, now) {
   const parsed = parseArgs(argv2);

@@ -19,7 +19,7 @@
  * prediction machinery, which is why it must land after `own` proves it.
  */
 import { statSync } from "node:fs";
-import { attribute, type AttributionMode } from "./attribution.js";
+import { attribute, defaultWarn, type AttributionMode, type Warn } from "./attribution.js";
 import type { BoardTask, BoardView } from "./board.js";
 import { predictFiles, tokenize, type LexicalOptions } from "./lexical.js";
 import { insideRepo } from "./paths.js";
@@ -197,6 +197,20 @@ function filesFor(
  * `lexical` is the caller's configured `predictFiles` gate — see
  * `config.ts`'s `lexicalOptions` for why it is threaded through rather than
  * defaulted here (both `octograph.yaml` keys were inert until it was).
+ *
+ * `warn` defaults to `attribution.ts`'s real-stderr `defaultWarn` — the same
+ * default `attribute()` (which this function calls) already uses — and fires
+ * when `path` names a file a task's OWN recorded merge deleted: `a.files`
+ * (via {@link filesFor}) already excludes such a path from the answer, so
+ * `own <deleted path>` correctly says nothing rather than mislabelling it
+ * `provenance`, but silently saying nothing is indistinguishable from "this
+ * path was never anyone's". The warning is what tells the two apart — see
+ * `attribution.ts`'s `Attribution.deletedFiles` doc comment for why the
+ * distinction exists at all. Scoped to `path !== null` on purpose: an
+ * `own` inventory (`path === null`) walks every file every task ever
+ * touched, and warning once per deletion there would drown a real query in
+ * noise a caller never asked for; a caller who names ONE path is asking
+ * specifically about it and deserves to know its history ended.
  */
 export function own(
   repoRoot: string,
@@ -205,6 +219,7 @@ export function own(
   candidates: readonly string[],
   path: string | null,
   lexical: LexicalOptions = {},
+  warn: Warn = defaultWarn,
 ): OwnAnswer[] {
   const attributions = attribute(repoRoot, board, log);
   const byTask = new Map(board.tasks.map((t) => [t.id, t] as const));
@@ -217,6 +232,12 @@ export function own(
     if (mission === null) continue; // defensive: same as above
     const missionName = board.missionNameOf(task.id);
     if (missionName === null) continue; // defensive: same map, same keys as missionOf above
+
+    if (path !== null && a.mode === "provenance" && a.deletedFiles.includes(path)) {
+      warn(
+        `octograph: "${path}" was deleted by ${task.name}'s recorded merge — it has no current owner\n`,
+      );
+    }
 
     for (const file of filesFor(repoRoot, task, a.mode, a.files, candidates, path, lexical)) {
       const criterion = bestCriterion(task.criteria, file);
