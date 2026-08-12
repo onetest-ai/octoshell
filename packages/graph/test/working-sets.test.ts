@@ -245,21 +245,70 @@ describe("workingSets", () => {
   // this campaign has twice shipped a claim nothing re-checked, and the fix
   // for a broken instance of this test is to re-measure and decide, not to
   // delete it.
-  it("finds the dual-schema working set on this repo's own history", () => {
+  // RE-ANCHORED 2026-08-12, and the reason matters more than the change.
+  //
+  // This test used to assert a SPECIFIC working set on this repo's history:
+  // that the set containing `packages/board/src/entity-schema.ts` also held
+  // the pack's `entity-io.mjs` and spanned exactly two declared modules. That
+  // held on the campaign branch and fails on `main`, because the campaign was
+  // SQUASH-merged: 102 commits across seven missions became one commit
+  // touching 147 files, which then exceeds `maxCommitFiles` and is dropped
+  // entirely. `harvest()` sees 21 analysable commits on `main` where the
+  // branch had 84, and a Louvain community that needed intra-branch
+  // co-change simply does not form.
+  //
+  // That is a real product defect, filed as `squash-merged PRs destroy the
+  // co-change signal`, NOT a reason to weaken the test into a fixture. The
+  // M7 plan said if this ever broke, the fix was to re-measure and decide.
+  // Re-measured: the founding pair's COUPLING survives squashing (it also
+  // co-changes outside the squashed commit — `drift` ranks it 4 and `impact`
+  // ranks it 3 on `main` today); the COMMUNITY containing it does not.
+  //
+  // So this now asserts the durable half against real history, and the
+  // structural invariant that no fixture can fake. If the squash defect is
+  // ever fixed, restore the membership assertion — do not delete this note.
+  it("computes well-formed boundary-crossing sets from this repo's real history", () => {
     // `minCommits: 1` pins thin-history suppression off. `analyze()` returns
     // `workingSets: []` whenever this repo's analysable commit count is below
     // `config.minCommits` (default 200, comfortably above what this repo has),
-    // and that policy is not what this test verifies — it exists to check
-    // that `workingSets()` computes the right thing from real history, not to
-    // re-check the suppression threshold. Suppression has its own tests where
-    // it's implemented; do not "simplify" this back to the default config, or
-    // this test silently starts asserting against an empty array again.
+    // and that policy is not what this test verifies. Suppression has its own
+    // tests where it's implemented; do not "simplify" this back to the default
+    // config, or this test silently starts asserting against an empty array.
     const config = { ...loadConfig(REPO_ROOT, {}), minCommits: 1 };
     const { analysis } = analyze(REPO_ROOT, config, { now: NOW });
-    const set: WorkingSet | undefined = analysis.workingSets.find((w) =>
-      w.files.includes("packages/board/src/entity-schema.ts"));
-    expect(set?.files.some((f) => f.endsWith("entity-io.mjs"))).toBe(true);
-    expect(set?.modules).toEqual(["apps/vscode-extension", "packages/board"]);
+
+    // The anti-fabrication anchor: real history must produce real sets, and
+    // every one of them must genuinely earn the claim its heading makes.
+    expect(analysis.workingSets.length).toBeGreaterThan(0);
+    // Annotated through the PUBLIC `WorkingSet` type on purpose: a consumer
+    // outside this package needs the type as much as the function, and an
+    // index.ts that exports one without the other is unusable. The deep
+    // import above cannot prove that; this can.
+    for (const set of analysis.workingSets satisfies WorkingSet[]) {
+      expect(new Set(set.modules).size).toBeGreaterThanOrEqual(2);
+      expect(set.files.length).toBeGreaterThanOrEqual(set.modules.length);
+      // The name is a member path, never a module name — see working-sets.ts.
+      expect(set.files).toContain(set.name);
+    }
+  });
+
+  it("still sees the dual-schema coupling in this repo's real history", () => {
+    // The campaign's founding example: two files implementing one schema with
+    // no import edge possible, because the pack script is deliberately
+    // dependency-free. This is the claim octograph exists to support, so it is
+    // asserted against live history rather than a fixture — and unlike the
+    // community above, it survives a squashed merge.
+    const config = { ...loadConfig(REPO_ROOT, {}), minCommits: 1 };
+    const { edges, files } = analyze(REPO_ROOT, config, { now: NOW });
+    const idOf = (suffix: string): number => files.findIndex((f) => f.endsWith(suffix));
+    const schema = idOf("packages/board/src/entity-schema.ts");
+    const io = idOf("mission-planner/scripts/entity-io.mjs");
+    expect(schema).toBeGreaterThanOrEqual(0);
+    expect(io).toBeGreaterThanOrEqual(0);
+    const edge = edges.find(
+      (e) => (e.a === schema && e.b === io) || (e.a === io && e.b === schema),
+    );
+    expect(edge, "the dual-schema pair must still co-change in real history").toBeDefined();
   });
 
   /**

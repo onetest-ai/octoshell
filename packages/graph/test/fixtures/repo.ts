@@ -8,6 +8,10 @@ export interface CommitSpec {
   files: string[];
   /** Age of the commit in days. Defaults to 0 (now). */
   daysAgo?: number;
+  /** Commit subject. Defaults to `commit <n>`. Set it to give a commit the
+   *  shape a forge leaves behind on a squash merge — a trailing `(#123)` —
+   *  which `squashShape` detects and `doctor` reports. */
+  message?: string;
 }
 
 function gitIn(root: string) {
@@ -43,7 +47,7 @@ export function appendCommits(root: string, commits: CommitSpec[], seq = 1000): 
     }
     git(["add", "-A"]);
     const when = new Date(Date.UTC(2026, 0, 1) - (spec.daysAgo ?? 0) * 86400000).toISOString();
-    git(["commit", "-q", "-m", `commit ${stamp}`], {
+    git(["commit", "-q", "-m", spec.message ?? `commit ${stamp}`], {
       GIT_AUTHOR_DATE: when,
       GIT_COMMITTER_DATE: when,
     });

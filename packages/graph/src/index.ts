@@ -4,7 +4,7 @@
 // package. M2 added the whole analysis pipeline across four tasks and none of
 // them reached this file: `analyze`, `renderMap`, `impact` and `loadConfig`
 // were importable only from inside the package's own tests.
-export { harvest, type HarvestOptions } from "./harvest.js";
+export { harvest, squashShape, isIgnored, type HarvestOptions, type SquashShape } from "./harvest.js";
 export type { Commit } from "./types.js";
 
 export { loadConfig, lexicalOptions, DEFAULTS, historyIsThin, type Config } from "./config.js";
@@ -17,6 +17,7 @@ export { readGraphify } from "./graphify.js";
 export { layerRanks } from "./layers.js";
 export { rollUp, compare, type ModuleEdge } from "./rollup.js";
 export { edgeWeight, weighEdges, type Edge, type WeightOptions } from "./weights.js";
+export { rankScore } from "./rank.js";
 export { countPairs, type PairTable, type PairStat, type DecayOptions } from "./cochange.js";
 export { isTestPath, classifyPair, type PairClass } from "./noise.js";
 export { drift, type DriftRow } from "./drift.js";

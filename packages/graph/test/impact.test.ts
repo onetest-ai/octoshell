@@ -81,6 +81,20 @@ describe("impact", () => {
     expect(impact("a.ts", [...tied].reverse(), files).map((r) => r.path)).toEqual(expected);
   });
 
+  /**
+   * `impact` shares `drift`'s ranking fix (rank.ts): nPMI alone let a pair
+   * seen only `minSupport` times at the maximum nPMI outrank one with far
+   * more repeated evidence and a moderately lower nPMI.
+   */
+  it("ranks a pair with repeated real evidence above a two-observation coincidence at the maximum nPMI", () => {
+    const pairFiles = ["target.ts", "coincidence.ts", "repeated.ts"];
+    const coincidence: Edge = { a: 0, b: 1, support: 2, npmi: 1.0, confidence: 1.0 };
+    const repeatedCoupling: Edge = { a: 0, b: 2, support: 9, npmi: 0.873, confidence: 0.707 };
+
+    const rows = impact("target.ts", [coincidence, repeatedCoupling], pairFiles);
+    expect(rows.map((r) => r.path)).toEqual(["repeated.ts", "coincidence.ts"]);
+  });
+
   it("never reports a pair that co-changes less than chance as impact", () => {
     const table = countPairs(ANTI_CORRELATED, { now: NOW });
     const engineEdges = weighEdges(table, { minSupport: 1 });

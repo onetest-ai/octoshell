@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
-import { harvest } from "./harvest.js";
-import { hasBoard } from "./artifact.js";
+import { harvest, squashShape, isIgnored } from "./harvest.js";
+import { hasBoard, resolveOut } from "./artifact.js";
 import { graphifyGraphPath } from "./graphify.js";
 import { declaredSpine } from "./spine.js";
 import { compare } from "./rollup.js";
@@ -86,16 +86,106 @@ export function doctor(repoRoot: string, config: Config): Report {
   }
   checks.push({ name: "repository", state: "ok", detail: repoRoot, required: true });
 
+  // Whether this repository squash-merges. It matters here for one specific
+  // reason: it changes what advice is HONEST when history is thin.
+  //
+  // A squash merge collapses a whole branch into one commit, so the
+  // fine-grained co-change this package mines — which files moved together
+  // within a unit of work — is discarded at merge time and cannot be
+  // recovered from the repository. Worse, the surviving commit is often large
+  // enough that `maxCommitFiles` drops it as a mega-commit, so a squashed
+  // feature branch can contribute NOTHING at all. Measured on this repo:
+  // seven missions and 102 commits became one 147-file commit, dropped.
+  //
+  // What is NOT lost is the task-to-code link: the board records a task's
+  // merge SHA, and that SHA resolves to the squashed commit perfectly, which
+  // is what `own` reads. Squashing costs the discovered half of the graph,
+  // not the declared half and not provenance. Do not "fix" this by
+  // reconstructing branch history from the forge — that rebuilds, badly, a
+  // grouping the board already records precisely, and the workflow discarded
+  // those commits on purpose.
+  const squash = squashShape(repoRoot, { maxCommitFiles: config.maxCommitFiles });
   const thin = historyIsThin(analysable, config);
   checks.push({
     name: "history depth",
     state: thin ? "warn" : "ok",
     detail: thin
-      ? `${analysable} analysable commits — co-change needs ~${config.minCommits} to be meaningful (shallow clone, or a squashed migration?)`
+      ? `${analysable} analysable commits — co-change needs ~${config.minCommits} to be meaningful`
       : `${analysable} analysable commits`,
-    fix: thin ? "unshallow the clone, or accept sparse output" : undefined,
+    // The default advice is wrong on a squash-merged repository, and wrong in
+    // the expensive direction: it sends someone to re-clone a repository whose
+    // clone is already complete. Say what actually happened instead.
+    fix: thin
+      ? squash.dominated
+        ? "nothing to unshallow — this repository squash-merges, so per-branch history was discarded at merge time; expect a sparse discovered graph and rely on the declared spine"
+        : "unshallow the clone, or accept sparse output"
+      : undefined,
     required: true,
   });
+
+  if (squash.squashed > 0) {
+    checks.push({
+      name: "history shape",
+      state: squash.dominated ? "warn" : "ok",
+      detail:
+        `${squash.squashed} of ${squash.total} commits look like squashed pull requests`
+        + (squash.droppedSquash > 0
+          ? `, and ${squash.droppedSquash} exceeded max-commit-files and were dropped entirely`
+          : ""),
+      // This module's contract is that every non-`ok` check names a fix,
+      // because "a degradation reported without a remedy is a complaint" —
+      // and `test/doctor.test.ts` enforces it. Nothing here RECOVERS the
+      // discarded history, so the honest remedy is what to do given it,
+      // not a repair. Saying "none available" would satisfy the letter of
+      // the invariant and betray its point.
+      fix: squash.dominated
+        ? "read `map` as declared-structure-first: the spine and its dependency edges are unaffected, and `own` still resolves through each task's merge SHA — it is `drift` and working sets that will be sparse, so treat their absence as missing evidence rather than as evidence of absence"
+        : undefined,
+      // `required: false` on purpose: this is a property of how the project
+      // merges, not a broken input, and grading a repository degraded forever
+      // for its merge strategy is noise rather than honesty. `history depth`
+      // already carries the grade.
+      required: false,
+    });
+  }
+
+  // Whether the artifact this run writes will survive a fresh clone.
+  //
+  // `clusters.json` is what cluster-id STABILITY reads: the Jaccard remap
+  // compares this run's communities against the previous run's, and its whole
+  // purpose is that an unchanged codebase reports unchanged ids. Read from a
+  // file that is never committed, it silently degrades to "every cluster is
+  // fresh" on every clone, every new machine and every CI run — a false churn
+  // signal, which is exactly what the feature exists to prevent.
+  //
+  // This is a RECOMMENDATION and never a requirement. octograph runs inside
+  // other people's repositories and does not get to dictate their .gitignore,
+  // so `required: false`: it must degrade honestly and say what the choice
+  // costs, not grade a project down for a policy that is theirs to set.
+  //
+  // Note the asymmetry worth reporting: `resolveOut` picks `.octobots/graph`
+  // when a board exists so the artifact sits beside the board — but a project
+  // that ignores `.octobots/` wholesale (as this one does) then ignores the
+  // artifact too, while a repo with no board writes to `.octograph/` and is
+  // usually fine. The feature works by default for non-board users and
+  // silently does not for the users it was built for.
+  const outDir = resolveOut(repoRoot, config);
+  const outRel = relative(repoRoot, outDir) || outDir;
+  // Probe the FILE, never the directory. A trailing-slash pattern like
+  // `.octograph/` cannot match a path git has no reason to believe is a
+  // directory, so asking about the directory answers "not ignored" on exactly
+  // the run that matters most — the first one, before any artifact exists.
+  // Asking about `<out>/clusters.json` matches in both cases, and it is also
+  // the honest question: whether THAT file will be committed.
+  if (isIgnored(repoRoot, join(outDir, "clusters.json"))) {
+    checks.push({
+      name: "artifact durability",
+      state: "warn",
+      detail: `${outRel} is gitignored, so clusters.json is never committed and cluster ids reset on every fresh clone and CI run`,
+      fix: `commit ${outRel}/clusters.json if you want stable cluster ids across machines — or leave it ignored and read clusterIds as meaningless, but do not read "N fresh" as churn`,
+      required: false,
+    });
+  }
 
   // Grade Graphify on what the pipeline will ACTUALLY get out of it, not on
   // whether a file exists at that path. `readGraphify` returns null for a

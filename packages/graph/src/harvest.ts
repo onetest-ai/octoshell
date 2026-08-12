@@ -81,3 +81,90 @@ export function harvest(repoRoot: string, opts: HarvestOptions = {}): Commit[] {
   }
   return out;
 }
+
+/** How much of this repository's history is squashed pull requests, and how
+ *  much of that the mega-commit filter then discards. */
+export interface SquashShape {
+  /** Non-merge commits in the window. */
+  total: number;
+  /** Of those, ones whose subject looks like a squashed PR. */
+  squashed: number;
+  /** Squashed PRs large enough that `maxCommitFiles` dropped them entirely —
+   *  the ones contributing NOTHING to the co-change graph. */
+  droppedSquash: number;
+  /** More than half the window is squashed PRs. */
+  dominated: boolean;
+}
+
+/** GitHub, GitLab and Bitbucket all append the request number to a squashed
+ *  subject. Matching the shape rather than a provider keeps this honest about
+ *  what it is: a heuristic over commit subjects, not a fact from the forge. */
+const SQUASH_SUBJECT = /\(#\d+\)$/;
+
+/**
+ * Diagnose whether thin co-change data is caused by squash-merging rather
+ * than by a shallow clone — the two look identical from a commit count, and
+ * only one of them has a fix.
+ *
+ * This exists because `doctor`'s advice was actively wrong on a squashed
+ * repository: it told the reader to unshallow a clone that was already
+ * complete. Measured on this repo, a seven-mission campaign of 102 commits
+ * became one 147-file commit that `maxCommitFiles` then dropped, so the whole
+ * campaign contributed nothing at all.
+ *
+ * Deliberately a *diagnosis* and not a recovery. The pre-squash commits are
+ * fetchable from a forge's PR refs, but reconstructing them rebuilds — badly —
+ * a grouping the Octobots board already records exactly, through a task's
+ * merge SHA. Squashing costs the discovered half of the graph; it does not
+ * touch the declared spine and it does not touch provenance.
+ */
+export function squashShape(repoRoot: string, opts: HarvestOptions = {}): SquashShape {
+  const args = ["log", "--no-merges", "--format=%H %s"];
+  if (opts.since) args.push(`--since=${opts.since}`);
+  const raw = execFileSync("git", args, { cwd: repoRoot, maxBuffer: 1 << 28, encoding: "utf8" });
+
+  const squashedShas = new Set<string>();
+  let total = 0;
+  for (const line of raw.split("\n")) {
+    const sp = line.indexOf(" ");
+    if (sp < 0) continue;
+    total += 1;
+    if (SQUASH_SUBJECT.test(line.slice(sp + 1).trim())) squashedShas.add(line.slice(0, sp));
+  }
+
+  // Dropped means "passed the two-file floor but failed the size ceiling" —
+  // not "absent from the graph", which would also count every single-file
+  // commit and overstate the damage.
+  const sized = new Set(
+    harvest(repoRoot, { ...opts, maxCommitFiles: Number.MAX_SAFE_INTEGER }).map((c) => c.sha),
+  );
+  const kept = new Set(harvest(repoRoot, opts).map((c) => c.sha));
+  let droppedSquash = 0;
+  for (const sha of squashedShas) if (sized.has(sha) && !kept.has(sha)) droppedSquash += 1;
+
+  return {
+    total,
+    squashed: squashedShas.size,
+    droppedSquash,
+    dominated: squashedShas.size * 2 > total,
+  };
+}
+
+/**
+ * Whether git ignores `path` — used by `doctor` to notice that the directory
+ * the graph artifact lands in will never be committed.
+ *
+ * `git check-ignore` exits 0 when a path IS ignored and 1 when it is not, so
+ * a non-zero exit is an answer here rather than a failure. Any other failure
+ * (not a repo, git missing) resolves to `false`: this backs an advisory
+ * check, and guessing "ignored" on an unrelated error would produce a
+ * confident recommendation about a file the caller may be committing fine.
+ */
+export function isIgnored(repoRoot: string, path: string): boolean {
+  try {
+    execFileSync("git", ["check-ignore", "-q", "--", path], { cwd: repoRoot, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
