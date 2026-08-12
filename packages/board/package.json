@@ -27,7 +27,6 @@
     "vitest": "^2.0.0"
   },
   "dependencies": {
-    "@types/js-yaml": "^4.0.9",
     "js-yaml": "^5.2.2"
   }
 }

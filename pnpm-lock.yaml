@@ -114,9 +114,6 @@ importers:
 
   packages/board:
     dependencies:
-      '@types/js-yaml':
-        specifier: ^4.0.9
-        version: 4.0.9
       js-yaml:
         specifier: ^5.2.2
         version: 5.2.2
@@ -146,9 +143,6 @@ importers:
         specifier: ^5.2.2
         version: 5.2.2
     devDependencies:
-      '@types/js-yaml':
-        specifier: ^4.0.9
-        version: 4.0.9
       '@vitest/coverage-v8':
         specifier: ^2.0.0
         version: 2.0.5(vitest@2.0.5(@types/node@25.9.1)(happy-dom@15.11.7))

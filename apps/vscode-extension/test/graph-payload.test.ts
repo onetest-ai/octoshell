@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import { describe, expect, it } from "vitest";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { describe, expect, it, onTestFinished } from "vitest";
 import {
   buildFreshPayload,
   isDirectRun,
@@ -170,5 +170,114 @@ describe("isDirectRun — the guard deciding whether the freshness check runs at
 
   it("is false, not a throw, when there is no argv[1] at all (`node -e`)", () => {
     expect(isDirectRun("file:///repo/scripts/graph-payload.mjs", undefined)).toBe(false);
+  });
+});
+
+/**
+ * The freshness check is the only thing standing between a stale bundled CLI
+ * and a user's terminal, and it is the check `pnpm build` runs on every push.
+ * Its SUCCESS path is exercised by every build; its failure branches were
+ * exercised by nothing, so a regression in an exit code or a message would
+ * have reached CI as a confusing green — or worse, a confusing red nobody
+ * could act on.
+ *
+ * These drive the real script as a subprocess, because that is how the build
+ * invokes it: an in-process call would not observe `process.exit` codes, which
+ * are the contract turbo actually reads.
+ *
+ * Two of them must MUTATE the committed payload to create the condition they
+ * test. Each registers its restore with `onTestFinished` before touching
+ * anything, so the file comes back even if the assertion throws — and it is a
+ * tracked file, so a hard crash is still one `git checkout` from clean.
+ */
+describe("graph-payload.mjs — the failure branches the build depends on", () => {
+  // Derived from this test's own location, not from a constant the script
+  // exports: the script is what we are testing, so locating it via its own
+  // export would let a broken export look like a passing suite.
+  const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "graph-payload.mjs");
+
+  /**
+   * Every case here needs the payload in a state the real one must never be
+   * in. Mutating the committed file to get there RACES the rest of the suite —
+   * vitest runs test files in parallel, and doing exactly that made an
+   * unrelated installPack test fail. So each case gets its own payload path
+   * through `OCTOGRAPH_PAYLOAD_PATH`, in a temp dir that cleans itself up.
+   */
+  const runIn = (
+    payloadPath: string,
+    ...args: string[]
+  ): { code: number; stdout: string; stderr: string } => {
+    try {
+      const stdout = execFileSync("node", [SCRIPT, ...args], {
+        encoding: "utf8",
+        stdio: "pipe",
+        env: { ...process.env, OCTOGRAPH_PAYLOAD_PATH: payloadPath },
+      });
+      return { code: 0, stdout, stderr: "" };
+    } catch (err) {
+      const e = err as { status?: number; stdout?: string; stderr?: string };
+      return { code: e.status ?? -1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
+    }
+  };
+
+  /** A temp payload seeded with the real, current bundle. */
+  const seedPayload = (): string => {
+    const path = join(mkdtempClean("graph-payload-"), "octograph.mjs");
+    writeFileSync(path, readFileSync(PAYLOAD_PATH));
+    return path;
+  };
+
+  it("rejects an unknown mode with exit 2 and names what it expected", () => {
+    const r = runIn(seedPayload(), "--rebuild");
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("unknown mode");
+    // Naming the alternatives is the whole value of the message.
+    expect(r.stderr).toContain("--verify");
+    expect(r.stderr).toContain("--write");
+  });
+
+  it("reports a payload that is current, with exit 0", () => {
+    const r = runIn(seedPayload(), "--verify");
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("current");
+  });
+
+  it("fails with exit 1 and an actionable message when the payload is STALE", () => {
+    const path = seedPayload();
+    writeFileSync(path, Buffer.concat([readFileSync(path), Buffer.from("\n// drift\n")]));
+    const r = runIn(path, "--verify");
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("STALE");
+    // An error that does not say what to do next is a complaint.
+    expect(r.stderr).toContain("--write");
+  });
+
+  it("fails with exit 1 when the payload is missing entirely", () => {
+    const path = seedPayload();
+    rmSync(path);
+    const r = runIn(path, "--verify");
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("missing");
+    expect(r.stderr).toContain("--write");
+  });
+
+  it("--write regenerates a payload the very next --verify accepts", () => {
+    const path = seedPayload();
+    writeFileSync(path, Buffer.from("not the bundle at all\n"));
+    expect(runIn(path, "--verify").code).toBe(1);
+
+    const w = runIn(path, "--write");
+    expect(w.code).toBe(0);
+    expect(w.stdout).toContain("written");
+    // The round trip is the point: --write's output is what --verify demands.
+    expect(runIn(path, "--verify").code).toBe(0);
+  });
+
+  it("leaves the real committed payload untouched while doing all of that", () => {
+    // The guard on the guard: if a future edit drops the env override, these
+    // tests would silently go back to mutating the tracked file and racing
+    // the suite. This fails the moment that happens.
+    expect(runIn(seedPayload(), "--verify").code).toBe(0);
+    execFileSync("node", [SCRIPT, "--verify"], { stdio: "pipe" });
   });
 });
