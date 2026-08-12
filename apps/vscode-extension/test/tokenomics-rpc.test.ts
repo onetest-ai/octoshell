@@ -1,15 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { describe, it, expect, beforeEach } from "vitest";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderManagedBlock } from "@octoshell/board";
 import { BoardHost } from "../src/host/board-host.js";
 import { dispatch, type DispatchCtx } from "../src/host/rpc-dispatcher.js";
 import type { Report } from "@octoshell/tokenomics";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 let root: string;
-beforeEach(() => { root = mkdtempSync(join(tmpdir(), "tok-rpc-")); });
-afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+// `mkdtempClean` is called from inside `beforeEach`, which runs within the current test's
+// context (vitest sets the active test before running its `beforeEach` chain), so the
+// `onTestFinished` cleanup it registers still fires for the right test — see fixtures/tmpdir.ts.
+beforeEach(() => { root = mkdtempClean("tok-rpc-"); });
 
 function writeBrief(kind: "campaign" | "mission", dir: string, fields: Record<string, unknown>, tail = "") {
   mkdirSync(dir, { recursive: true });

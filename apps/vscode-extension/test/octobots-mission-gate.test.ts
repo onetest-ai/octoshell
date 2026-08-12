@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const GATE = join(__dirname, "..", "resources", "octobots-pack", "hooks", "mission-gate.mjs");
 
 function repoWithOctobots(): string {
-  const dir = mkdtempSync(join(tmpdir(), "octo-gate-"));
+  const dir = mkdtempClean("octo-gate-");
   mkdirSync(join(dir, ".octobots"), { recursive: true });
   return dir;
 }
@@ -44,7 +44,7 @@ describe("mission-gate.mjs", () => {
   });
 
   it("is inert outside an Octobots repo", () => {
-    const bare = mkdtempSync(join(tmpdir(), "octo-gate-bare-"));
+    const bare = mkdtempClean("octo-gate-bare-");
     expect(run(bare, "M3 - Skills workspace", "done")).toBe("");
   });
 

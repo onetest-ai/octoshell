@@ -1,12 +1,12 @@
 // apps/vscode-extension/test/board-host.test.ts
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BoardHost } from "../src/host/board-host.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 function host(): { board: BoardHost; octo: string } {
-  const repo = mkdtempSync(join(tmpdir(), "boardhost-"));
+  const repo = mkdtempClean("boardhost-");
   return { board: new BoardHost(join(repo, ".octobots")), octo: join(repo, ".octobots") };
 }
 
