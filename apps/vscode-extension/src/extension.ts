@@ -10,10 +10,16 @@ import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
 import { packStatus, installPack } from "./host/octobots-skill.js";
 import { launchSdlcBundleInstall } from "./host/sdlc-bundles-command.js";
+import { launchInstallGraph, launchRebuildGraph } from "./host/octograph-command.js";
+
+/** The bundled pack resources directory — the source side of every pack install. */
+function packSrcRoot(context: vscode.ExtensionContext): string {
+  return vscode.Uri.joinPath(context.extensionUri, "resources", "octobots-pack").fsPath;
+}
 
 // Explicit-only install of the bundled octobots pack (skill + planning agents) into <workspace>/.claude.
 function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: string): void {
-  const src = vscode.Uri.joinPath(context.extensionUri, "resources", "octobots-pack").fsPath;
+  const src = packSrcRoot(context);
   const res = installPack(src, repoRoot);
   void vscode.window.showInformationMessage(`Octobots: workflow pack installed (${res.written} files).`);
 }
@@ -38,6 +44,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("octoshell.updateSdlcBundle", () =>
       launchSdlcBundleInstall(repoRoot, true),
     ),
+    vscode.commands.registerCommand("octoshell.installGraph", () =>
+      launchInstallGraph(packSrcRoot(context), repoRoot),
+    ),
+    vscode.commands.registerCommand("octoshell.rebuildGraph", () => launchRebuildGraph(repoRoot)),
   );
 
   // Explicit-only: on open, if the pack (skill + planning agents) is missing/outdated, PROMPT —

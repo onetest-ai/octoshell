@@ -11,7 +11,12 @@ release/
 *.sqlite-wal
 *.sqlite-shm
 .claude/
-.agents/
+# Agent memory is two layers: per-role notes stay local, the distilled knowledge
+# layer is committed and reviewed. The negation needs `.agents/*` rather than
+# `.agents/` — git will not descend into an excluded directory, so `!.agents/knowledge/`
+# alone would silently do nothing.
+.agents/*
+!.agents/knowledge/
 .remember/
 .env
 .env.*

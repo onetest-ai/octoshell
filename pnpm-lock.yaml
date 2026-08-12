@@ -137,6 +137,34 @@ importers:
         specifier: ^2.0.0
         version: 2.0.5(@types/node@25.9.1)(happy-dom@15.11.7)
 
+  packages/graph:
+    dependencies:
+      '@octoshell/board':
+        specifier: workspace:*
+        version: link:../board
+      js-yaml:
+        specifier: ^5.2.2
+        version: 5.2.2
+    devDependencies:
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
+      '@vitest/coverage-v8':
+        specifier: ^2.0.0
+        version: 2.0.5(vitest@2.0.5(@types/node@25.9.1)(happy-dom@15.11.7))
+      esbuild:
+        specifier: 0.23.0
+        version: 0.23.0
+      eslint:
+        specifier: ^9.0.0
+        version: 9.8.0
+      typescript:
+        specifier: ^5.5.0
+        version: 5.5.4
+      vitest:
+        specifier: ^2.0.0
+        version: 2.0.5(@types/node@25.9.1)(happy-dom@15.11.7)
+
   packages/tokenomics:
     dependencies:
       '@octoshell/board':

@@ -10,7 +10,7 @@ import type { PriceEntry } from "./prices.js";
 
 export const PRICES_SOURCE =
   "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
-export const PRICES_FETCHED_AT = "2026-07-27";
+export const PRICES_FETCHED_AT = "2026-07-31";
 
 export const PRICES: Record<string, PriceEntry> = {
   "claude-3-7-sonnet-20250219": {

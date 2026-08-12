@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { parsePackVersionMarker } from "./pack-version-marker.js";
 
 /**
  * The tokenomics CLI: `run.mjs` (collect → rollup → render) and the stages it drives.
@@ -19,10 +20,12 @@ export const TOKENOMICS_ENTRY = "run.mjs";
  */
 const PRESERVED = new Set(["prices.json"]);
 
-/** Read the `// octobots-pack-version: N` marker from the runner; null if absent. */
+/**
+ * Read the `// octobots-pack-version: N` marker from the runner; null if absent.
+ * Delegates to the shared rule (`pack-version-marker.ts`) — same marker, one spelling.
+ */
 export function parseTokenomicsVersion(text: string): number | null {
-  const m = text.match(/octobots-pack-version:\s*(\d+)/);
-  return m ? Number(m[1]) : null;
+  return parsePackVersionMarker(text);
 }
 
 export interface TokenomicsStatus {
