@@ -38,6 +38,40 @@ function harvest(repoRoot, opts = {}) {
   }
   return out;
 }
+var SQUASH_SUBJECT = /\(#\d+\)$/;
+function squashShape(repoRoot, opts = {}) {
+  const args = ["log", "--no-merges", "--format=%H %s"];
+  if (opts.since) args.push(`--since=${opts.since}`);
+  const raw = execFileSync("git", args, { cwd: repoRoot, maxBuffer: 1 << 28, encoding: "utf8" });
+  const squashedShas = /* @__PURE__ */ new Set();
+  let total = 0;
+  for (const line of raw.split("\n")) {
+    const sp = line.indexOf(" ");
+    if (sp < 0) continue;
+    total += 1;
+    if (SQUASH_SUBJECT.test(line.slice(sp + 1).trim())) squashedShas.add(line.slice(0, sp));
+  }
+  const sized = new Set(
+    harvest(repoRoot, { ...opts, maxCommitFiles: Number.MAX_SAFE_INTEGER }).map((c) => c.sha)
+  );
+  const kept = new Set(harvest(repoRoot, opts).map((c) => c.sha));
+  let droppedSquash = 0;
+  for (const sha of squashedShas) if (sized.has(sha) && !kept.has(sha)) droppedSquash += 1;
+  return {
+    total,
+    squashed: squashedShas.size,
+    droppedSquash,
+    dominated: squashedShas.size * 2 > total
+  };
+}
+function isIgnored(repoRoot, path) {
+  try {
+    execFileSync("git", ["check-ignore", "-q", "--", path], { cwd: repoRoot, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // src/cochange.ts
 var MS_PER_DAY = 864e5;
@@ -4387,14 +4421,48 @@ function doctor(repoRoot, config) {
     return { status: "blocked", checks };
   }
   checks.push({ name: "repository", state: "ok", detail: repoRoot, required: true });
+  const squash = squashShape(repoRoot, { maxCommitFiles: config.maxCommitFiles });
   const thin = historyIsThin(analysable, config);
   checks.push({
     name: "history depth",
     state: thin ? "warn" : "ok",
-    detail: thin ? `${analysable} analysable commits \u2014 co-change needs ~${config.minCommits} to be meaningful (shallow clone, or a squashed migration?)` : `${analysable} analysable commits`,
-    fix: thin ? "unshallow the clone, or accept sparse output" : void 0,
+    detail: thin ? `${analysable} analysable commits \u2014 co-change needs ~${config.minCommits} to be meaningful` : `${analysable} analysable commits`,
+    // The default advice is wrong on a squash-merged repository, and wrong in
+    // the expensive direction: it sends someone to re-clone a repository whose
+    // clone is already complete. Say what actually happened instead.
+    fix: thin ? squash.dominated ? "nothing to unshallow \u2014 this repository squash-merges, so per-branch history was discarded at merge time; expect a sparse discovered graph and rely on the declared spine" : "unshallow the clone, or accept sparse output" : void 0,
     required: true
   });
+  if (squash.squashed > 0) {
+    checks.push({
+      name: "history shape",
+      state: squash.dominated ? "warn" : "ok",
+      detail: `${squash.squashed} of ${squash.total} commits look like squashed pull requests` + (squash.droppedSquash > 0 ? `, and ${squash.droppedSquash} exceeded max-commit-files and were dropped entirely` : ""),
+      // This module's contract is that every non-`ok` check names a fix,
+      // because "a degradation reported without a remedy is a complaint" —
+      // and `test/doctor.test.ts` enforces it. Nothing here RECOVERS the
+      // discarded history, so the honest remedy is what to do given it,
+      // not a repair. Saying "none available" would satisfy the letter of
+      // the invariant and betray its point.
+      fix: squash.dominated ? "read `map` as declared-structure-first: the spine and its dependency edges are unaffected, and `own` still resolves through each task's merge SHA \u2014 it is `drift` and working sets that will be sparse, so treat their absence as missing evidence rather than as evidence of absence" : void 0,
+      // `required: false` on purpose: this is a property of how the project
+      // merges, not a broken input, and grading a repository degraded forever
+      // for its merge strategy is noise rather than honesty. `history depth`
+      // already carries the grade.
+      required: false
+    });
+  }
+  const outDir = resolveOut(repoRoot, config);
+  const outRel = relative2(repoRoot, outDir) || outDir;
+  if (isIgnored(repoRoot, join7(outDir, "clusters.json"))) {
+    checks.push({
+      name: "artifact durability",
+      state: "warn",
+      detail: `${outRel} is gitignored, so clusters.json is never committed and cluster ids reset on every fresh clone and CI run`,
+      fix: `commit ${outRel}/clusters.json if you want stable cluster ids across machines \u2014 or leave it ignored and read clusterIds as meaningless, but do not read "N fresh" as churn`,
+      required: false
+    });
+  }
   const spine = declaredSpine(repoRoot, files);
   const graphPath = graphifyGraphPath(repoRoot);
   const graphRel = relative2(repoRoot, graphPath);

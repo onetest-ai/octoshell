@@ -1,5 +1,5 @@
 {
   "_why": "sha256 of resources/octobots-pack/graph/octograph.mjs, keyed by the OCTOBOTS_PACK_VERSION its banner carries. graphStatus decides an INSTALLED payload is stale by comparing that number and nothing else, but the payload is machine-generated from packages/graph: a source change there regenerates different bytes under the SAME version, so every workspace that already installed graph would report `current` forever and never be prompted to upgrade. test/graph-payload.test.ts turns that silence into a red test: change packages/graph, and you must bump OCTOBOTS_PACK_VERSION (and the pack's other markers) and add the new entry below. Rewriting an existing entry's hash instead is allowed, but it is a visible diff line a reviewer can challenge - which is the point.",
   "42": "0526a734e6f47d8f511e94df16e2c23cb9fc596a20fbb1be43f9765c221a697c",
-  "43": "4b87ee6251a6d069ad2d1121d64674767cce4809f27dbc50b2a41a49d0da391f"
+  "43": "1afd2780b8ee911a2678d0ba3f998ac54b52637bb12f1089b570adcf233232ce"
 }
