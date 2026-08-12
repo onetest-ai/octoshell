@@ -686,6 +686,32 @@ describe("runCli — own", () => {
     expect(result.stdout).toContain("predicted");
     expect(result.stdout).not.toContain("provenance");
   });
+
+  /**
+   * The regression this pins: `own` accepted `--since` and silently used it
+   * to narrow the co-change corpus every PREDICTED answer is scored against,
+   * with nothing on stderr explaining that the same query can answer
+   * differently under a different window. Verified pre-fix: `own <path>
+   * --since <date>` printed nothing to stderr at all.
+   */
+  it("own --since narrows the predicted corpus and says so on stderr; plain own stays silent", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "src/auth/session.ts": "content\n", "src/auth/login.ts": "content\n" });
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    createTask(octobotsDir, mission.id, {
+      name: "T1.1 - JWT",
+      acceptanceCriteria: "- [ ] the session token is validated",
+    });
+
+    const withSince = runCli(["own", "src/auth/session.ts", "--since", "2026-08-10"], root, NOW);
+    expect(withSince.code).toBe(0);
+    expect(withSince.stderr).toContain("--since 2026-08-10");
+    expect(withSince.stderr).toContain("predicted");
+
+    const withoutSince = runCli(["own", "src/auth/session.ts"], root, NOW);
+    expect(withoutSince.stderr).toBe("");
+  });
 });
 
 describe("runCli — conflicts", () => {
@@ -936,6 +962,25 @@ describe("runCli — conflicts", () => {
 
     expect(missionOnly.stdout).toBe(noWorklog.stdout);
     expect(fullyAttributed.stdout).toBe(noWorklog.stdout);
+  });
+
+  /**
+   * The same regression as `own`'s: `conflicts` accepted `--since` and
+   * silently used it to narrow the co-change corpus its ENTIRE answer is
+   * scored against (see conflicts.ts's doc comment — every row is
+   * `predicted`), with nothing on stderr explaining why the same task set
+   * can answer differently under a different window.
+   */
+  it("conflicts --since narrows the predicted corpus and says so on stderr; plain conflicts stays silent", () => {
+    const { repo, missionA } = conflictFixture();
+
+    const withSince = runCli(["conflicts", missionA.id, "--since", "2026-08-10"], repo, NOW);
+    expect(withSince.code).toBe(0);
+    expect(withSince.stderr).toContain("--since 2026-08-10");
+    expect(withSince.stderr).toContain("predicted");
+
+    const withoutSince = runCli(["conflicts", missionA.id], repo, NOW);
+    expect(withoutSince.stderr).toBe("");
   });
 });
 

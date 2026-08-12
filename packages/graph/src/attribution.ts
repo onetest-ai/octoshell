@@ -35,6 +35,23 @@ export type AttributionMode = "provenance" | "predicted";
 export interface Attribution {
   task: string;
   files: string[];
+  /**
+   * Paths the SAME recorded merge (when `mode === "provenance"`) deleted —
+   * present in that commit's diff but gone from the tree afterward, and
+   * therefore EXCLUDED from {@link files}: a mission cannot own a path that
+   * is not there, the same call `own.ts`'s `isRepoFile` guard already makes
+   * for a path that never existed at all — a path a merge just removed is
+   * "not there" by a different route, and this campaign's recurring defect
+   * is treating the two differently. Always `[]` when `mode === "predicted"`
+   * — nothing here is git evidence to begin with.
+   *
+   * Kept as its own field rather than folded into `files` or dropped
+   * outright so a caller asking about ONE such path (`own.ts`'s `path !==
+   * null` query) can tell "this task never touched it" apart from "this
+   * task's own recorded merge touched it, then removed it" — the mislabel
+   * `own src/gone.ts` shipped is silence about exactly that difference.
+   */
+  deletedFiles: string[];
   mode: AttributionMode;
 }
 
@@ -53,8 +70,24 @@ export interface Attribution {
 const OBJECT_NAME = /^[0-9a-f]{7,64}$/;
 
 /**
- * Files changed by `sha` in `repoRoot`, `compare`-sorted, or `null` if `sha`
- * is not an object name or does not resolve to a commit here.
+ * `filesChangedBy`'s answer, split by whether the merge KEPT the path or
+ * REMOVED it. `kept` is what {@link Attribution.files} is built from —
+ * `deleted` exists only so a caller can tell "never touched" apart from
+ * "touched, then removed by the very commit that would otherwise have
+ * claimed it" (see {@link Attribution.deletedFiles}) — never to be re-added
+ * to `kept`, at any call site: a mission cannot own a path that is not
+ * there, the same rule `own.ts`'s `isRepoFile` guard already applies to a
+ * path that never existed at all.
+ */
+interface ChangedFiles {
+  kept: string[];
+  deleted: string[];
+}
+
+/**
+ * Files changed by `sha` in `repoRoot`, split into {@link ChangedFiles.kept}
+ * and {@link ChangedFiles.deleted} and each half `compare`-sorted, or `null`
+ * if `sha` is not an object name or does not resolve to a commit here.
  *
  * `-z`, not a `\n` split. Without it git applies `core.quotePath` and hands
  * back C-quoted paths for anything non-ASCII — `src/résumé.ts` arrives as
@@ -75,8 +108,18 @@ const OBJECT_NAME = /^[0-9a-f]{7,64}$/;
  * `--root` so a SHA that happens to be a repo's very first commit (no parent
  * to diff against) still reports its files instead of the empty diff plain
  * `diff-tree` gives a root commit.
+ *
+ * `--name-status`, not `--name-only`: the campaign's recurring defect shipped
+ * here too, one call away from where it always ships — `own src/gone.ts`
+ * answered `provenance`, citing the very commit that DELETED `src/gone.ts`,
+ * because `--name-only` lists a deletion exactly like an addition and nothing
+ * downstream could tell the two apart. `--name-status -z` interleaves
+ * `<status>\0<path>\0` pairs; rename/copy detection (`-M`/`-C`) is
+ * deliberately never requested — the same choice `harvest.ts`'s own
+ * `--name-only` call makes — so every status here names exactly one path and
+ * no record ever carries a second (destination) path to account for.
  */
-function filesChangedBy(repoRoot: string, sha: string): string[] | null {
+function filesChangedBy(repoRoot: string, sha: string): ChangedFiles | null {
   if (!OBJECT_NAME.test(sha)) return null;
   try {
     const out = execFileSync(
@@ -84,7 +127,7 @@ function filesChangedBy(repoRoot: string, sha: string): string[] | null {
       [
         "diff-tree",
         "--no-commit-id",
-        "--name-only",
+        "--name-status",
         "-r",
         "-z",
         "--diff-merges=first-parent",
@@ -93,7 +136,16 @@ function filesChangedBy(repoRoot: string, sha: string): string[] | null {
       ],
       { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     );
-    return [...new Set(out.split("\0").filter((f) => f !== ""))].sort(compare);
+    const tokens = out.split("\0").filter((t) => t !== "");
+    const kept = new Set<string>();
+    const deleted = new Set<string>();
+    for (let i = 0; i + 1 < tokens.length; i += 2) {
+      const status = tokens[i];
+      const file = tokens[i + 1];
+      if (status === undefined || file === undefined) continue;
+      (status.startsWith("D") ? deleted : kept).add(file);
+    }
+    return { kept: [...kept].sort(compare), deleted: [...deleted].sort(compare) };
   } catch {
     return null; // force-push, rewritten history, or simply not a valid object here
   }
@@ -132,7 +184,19 @@ const SHORT_ID = /^(T\d+\.\d+)\b/;
  */
 export type Warn = (message: string) => void;
 
-const defaultWarn: Warn = (message) => {
+/**
+ * Exported, not module-private: `worklog.ts` (readWorklog's own missing-field
+ * warning) and `own.ts` (its deleted-path warning) reuse this exact default
+ * rather than each writing its own `process.stderr.write` — one seam, one
+ * real sink, never a second spelling of "how does a warning reach the
+ * terminal by default". There is a filed, deliberately-unfixed bug about this
+ * default writing to stderr directly rather than folding into a `CliResult`
+ * (see `.octobots/…/attribute-writes-to-stderr-directly-bypassing-runc`,
+ * closed as "not a defect" — `runCli` is a testability seam, not a contract
+ * an in-process caller depends on); that closure stands, and every consumer
+ * of this default inherits it unchanged rather than working around it here.
+ */
+export const defaultWarn: Warn = (message) => {
   process.stderr.write(message);
 };
 
@@ -233,6 +297,22 @@ function resolveEntryTask(
  * exactly two members — but a reader watching stderr can tell "provenance
  * existed but could not be joined" apart from "no provenance existed at
  * all", which the mode alone cannot say.
+ *
+ * **Latest-wins falls back, and says so.** A task can log more than one
+ * resolved entry (`active`, then `done` — see the fixture below), and only
+ * the newest was ever tried: if ITS sha no longer resolves, or resolves to
+ * an empty first-parent diff, the task fell to `predicted` even when an
+ * OLDER entry's sha would have resolved fine. That discarded real,
+ * still-usable evidence for the same reason the two cases above do — it was
+ * there and the code never looked. Every entry `resolveEntryTask` joined to
+ * this task is kept (not just the newest), newest-first, and each is tried
+ * in turn until one resolves to a non-empty {@link ChangedFiles.kept}. Falling
+ * back rather than giving up matches every other `predicted`-avoidance
+ * choice in this function; falling back SILENTLY would not — a reader
+ * watching stderr can tell "the freshest recorded evidence didn't pan out
+ * (force-push, empty diff, all-deletions) and this answer rests on an OLDER
+ * commit instead" apart from "the freshest evidence is what this answer
+ * rests on", which the mode alone cannot say either.
  */
 export function attribute(
   repoRoot: string,
@@ -250,10 +330,12 @@ export function attribute(
     else byShortId.set(short, [t]);
   }
 
-  // The latest resolved {sha, at} recorded for each task, keyed by
-  // `BoardTask.id` — never blended across an ambiguous short id, since only
-  // an entry `resolveEntryTask` narrowed to exactly one task reaches here.
-  const latest = new Map<string, { sha: string; at: string }>();
+  // EVERY resolved {sha, at} recorded for each task, keyed by `BoardTask.id`
+  // — never blended across an ambiguous short id, since only an entry
+  // `resolveEntryTask` narrowed to exactly one task reaches here. Not just
+  // the newest: see this function's doc comment on why the newest alone is
+  // not enough to answer from.
+  const evidence = new Map<string, { sha: string; at: string }[]>();
 
   for (const entry of log) {
     if (entry.task === null || entry.mergedSha === null) continue;
@@ -293,18 +375,40 @@ export function attribute(
     }
     const task = resolved[0];
     if (task === undefined) continue; // unreachable: guarded by resolved.length !== 1 above
-    const current = latest.get(task.id);
-    if (current === undefined || compare(entry.at, current.at) > 0) {
-      latest.set(task.id, { sha: entry.mergedSha, at: entry.at });
-    }
+    const rec = { sha: entry.mergedSha, at: entry.at };
+    const existing = evidence.get(task.id);
+    if (existing !== undefined) existing.push(rec);
+    else evidence.set(task.id, [rec]);
   }
 
   return board.tasks.map((task): Attribution => {
-    const rec = latest.get(task.id);
-    if (rec !== undefined) {
-      const files = filesChangedBy(repoRoot, rec.sha);
-      if (files !== null && files.length > 0) return { task: task.id, files, mode: "provenance" };
+    const list = evidence.get(task.id);
+    if (list !== undefined) {
+      // Newest first — a stable sort, so two entries logged at the exact
+      // same `at` keep the order they arrived in the log, same as the
+      // single-entry `latest` map this replaced.
+      const sorted = [...list].sort((a, b) => compare(b.at, a.at));
+      for (let i = 0; i < sorted.length; i++) {
+        const rec = sorted[i];
+        if (rec === undefined) continue; // unreachable: i < sorted.length
+        const changed = filesChangedBy(repoRoot, rec.sha);
+        if (changed === null || changed.kept.length === 0) continue;
+        if (i > 0) {
+          // The newest entry(ies) didn't pan out and an OLDER one did — say
+          // so, rather than silently answering as if the newest evidence had
+          // simply never existed. See this function's doc comment.
+          const skipped = sorted
+            .slice(0, i)
+            .map((r) => `${r.sha} (at ${r.at})`)
+            .join(", ");
+          warn(
+            `octograph: task "${task.id}" — newer worklog evidence could not be used ` +
+              `(${skipped}); falling back to older evidence: ${rec.sha} (at ${rec.at})\n`,
+          );
+        }
+        return { task: task.id, files: changed.kept, deletedFiles: changed.deleted, mode: "provenance" };
+      }
     }
-    return { task: task.id, files: [], mode: "predicted" };
+    return { task: task.id, files: [], deletedFiles: [], mode: "predicted" };
   });
 }

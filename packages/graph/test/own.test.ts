@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { createCampaign, createMission, createTask } from "@octoshell/board";
 import { own } from "../src/own.js";
 import { readBoard, type BoardView } from "../src/board.js";
@@ -345,5 +345,77 @@ describe("own", () => {
     ];
     const answers = own(root, board, log, [], "src/shared.ts");
     expect(answers.map((a) => a.mission)).toEqual([missionA.id, missionB.id].sort());
+  });
+
+  /**
+   * The regression this pins: `git diff-tree --name-only` lists a deletion
+   * exactly like an addition, so `own src/gone.ts` used to answer
+   * `provenance`, citing the very commit that REMOVED `src/gone.ts` — true
+   * about the commit, false about the file. A deleted path must answer like
+   * any other path that is not in the repo: no owner, plus a warning that
+   * says WHY (a task's own recorded merge deleted it), so silence here is
+   * never confused with "this path was never anyone's".
+   */
+  it("does not label a path deleted by the very merge it cites as provenance, and warns instead", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    commit(root, git, { "src/gone.ts": "export {}\n" });
+    // The commit under test both ADDS a real, kept file and DELETES the
+    // earlier one, so the task's mode stays `provenance` (a resolved sha with
+    // real kept evidence) rather than falling to `predicted` for the
+    // unrelated "empty diff" reason — see attribution.test.ts's own version
+    // of this fixture.
+    unlinkSync(join(root, "src", "gone.ts"));
+    const sha = commit(root, git, { "src/kept.ts": "export {}\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Cleanup" });
+    const task = createTask(octobotsDir, mission.id, {
+      name: "T1.1 - Remove dead code",
+      acceptanceCriteria: "- [ ] the dead module is removed",
+    });
+    const board = requireBoard(root);
+
+    const log = [entry({ task: task.id, branch: "feat/x-t1", mergedSha: sha })];
+    const warnings: string[] = [];
+    const answers = own(root, board, log, [], "src/gone.ts", {}, (m) => warnings.push(m));
+
+    expect(answers).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("src/gone.ts");
+    expect(warnings[0]).toContain("T1.1 - Remove dead code");
+  });
+
+  it("stays silent about a deleted path when the caller asks for the full inventory, not one path", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    commit(root, git, { "src/gone.ts": "export {}\n" });
+    // The commit under test both ADDS a real, kept file and DELETES the
+    // earlier one, so the task's mode stays `provenance` (a resolved sha with
+    // real kept evidence) rather than falling to `predicted` for the
+    // unrelated "empty diff" reason — see attribution.test.ts's own version
+    // of this fixture.
+    unlinkSync(join(root, "src", "gone.ts"));
+    const sha = commit(root, git, { "src/kept.ts": "export {}\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Cleanup" });
+    const task = createTask(octobotsDir, mission.id, {
+      name: "T1.1 - Remove dead code",
+      acceptanceCriteria: "- [ ] the dead module is removed",
+    });
+    const board = requireBoard(root);
+
+    const log = [entry({ task: task.id, branch: "feat/x-t1", mergedSha: sha })];
+    const warnings: string[] = [];
+    const answers = own(root, board, log, [], null, {}, (m) => warnings.push(m));
+
+    // The task's real, KEPT file still answers — this is about the deletion
+    // warning's scope, not about hiding provenance evidence that IS real.
+    expect(answers.map((a) => a.path)).toEqual(["src/kept.ts"]);
+    // No warning: an inventory query never names one specific path, so there
+    // is nothing here for the deleted-path warning to be ABOUT — see own.ts's
+    // doc comment on why it is scoped to `path !== null`.
+    expect(warnings).toEqual([]);
   });
 });
