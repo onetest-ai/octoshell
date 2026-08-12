@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 47
+// octobots-pack-version: 48
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -7,6 +7,53 @@ import { join as join9, relative as relative3 } from "node:path";
 
 // src/harvest.ts
 import { execFileSync } from "node:child_process";
+
+// src/noise.ts
+function isTestPath(path) {
+  const segments = path.split("/");
+  const filename = segments[segments.length - 1] ?? "";
+  const testSegment = /^(test|tests|__tests__)$/;
+  if (segments.some((s) => testSegment.test(s))) return true;
+  if (/\.(test|spec)\.(ts|tsx|js|jsx)$/.test(filename)) return true;
+  if (/^test_.+\.py$/.test(filename) || /_test\.py$/.test(filename)) return true;
+  if (filename === "conftest.py") return true;
+  if (/_test\.go$/.test(filename)) return true;
+  return false;
+}
+function isExcludedPath(path, excludePaths) {
+  for (const raw of excludePaths) {
+    const prefix = raw.endsWith("/") ? raw.slice(0, -1) : raw;
+    if (prefix.length === 0) continue;
+    if (path === prefix || path.startsWith(`${prefix}/`)) return true;
+  }
+  return false;
+}
+var LOCK_PAIRS = [
+  [/(^|\/)package\.json$/, /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/],
+  [/(^|\/)Cargo\.toml$/, /(^|\/)Cargo\.lock$/],
+  [/(^|\/)pyproject\.toml$/, /(^|\/)(uv\.lock|poetry\.lock)$/],
+  [/(^|\/)go\.mod$/, /(^|\/)go\.sum$/],
+  [/(^|\/)Gemfile$/, /(^|\/)Gemfile\.lock$/]
+];
+function directoryOf(path) {
+  const cut = path.lastIndexOf("/");
+  return cut === -1 ? "" : path.slice(0, cut);
+}
+function governs(lockDir, manifestDir) {
+  return lockDir === "" || lockDir === manifestDir || manifestDir.startsWith(`${lockDir}/`);
+}
+function classifyPair(a, b) {
+  const dirA = directoryOf(a);
+  const dirB = directoryOf(b);
+  for (const [manifest, lock] of LOCK_PAIRS) {
+    if (manifest.test(a) && lock.test(b) && governs(dirB, dirA)) return "mechanical";
+    if (manifest.test(b) && lock.test(a) && governs(dirA, dirB)) return "mechanical";
+  }
+  if (isTestPath(a) || isTestPath(b)) return "test-subject";
+  return "candidate";
+}
+
+// src/harvest.ts
 var RECORD = "\0";
 var HEADER = /^[0-9a-f]{40} \d+$/;
 function headerEnd(block) {
@@ -18,6 +65,7 @@ function headerEnd(block) {
 }
 function harvest(repoRoot, opts = {}) {
   const maxFiles = opts.maxCommitFiles ?? 50;
+  const exclude = opts.excludePaths ?? [];
   const args = ["log", "--no-merges", "--name-only", "-z", "--pretty=format:%x00%x1e%H %at"];
   if (opts.since) args.push(`--since=${opts.since}`);
   const raw = execFileSync("git", args, {
@@ -32,7 +80,8 @@ function harvest(repoRoot, opts = {}) {
     const header = block.slice(0, end);
     const [sha, at] = header.split(" ");
     if (sha === void 0 || at === void 0 || !HEADER.test(header)) continue;
-    const files = [...new Set(block.slice(end + 1).split("\0").filter((p) => p.length > 0))];
+    const all = [...new Set(block.slice(end + 1).split("\0").filter((p) => p.length > 0))];
+    const files = exclude.length === 0 ? all : all.filter((p) => !isExcludedPath(p, exclude));
     if (files.length < 2 || files.length > maxFiles) continue;
     out.push({ sha, files, timestamp: Number(at) * 1e3 });
   }
@@ -2988,51 +3037,6 @@ function layerRanks(modules, imports) {
   return rank2;
 }
 
-// src/noise.ts
-function isTestPath(path) {
-  const segments = path.split("/");
-  const filename = segments[segments.length - 1] ?? "";
-  const testSegment = /^(test|tests|__tests__)$/;
-  if (segments.some((s) => testSegment.test(s))) return true;
-  if (/\.(test|spec)\.(ts|tsx|js|jsx)$/.test(filename)) return true;
-  if (/^test_.+\.py$/.test(filename) || /_test\.py$/.test(filename)) return true;
-  if (filename === "conftest.py") return true;
-  if (/_test\.go$/.test(filename)) return true;
-  return false;
-}
-function isExcludedPath(path, excludePaths) {
-  for (const raw of excludePaths) {
-    const prefix = raw.endsWith("/") ? raw.slice(0, -1) : raw;
-    if (prefix.length === 0) continue;
-    if (path === prefix || path.startsWith(`${prefix}/`)) return true;
-  }
-  return false;
-}
-var LOCK_PAIRS = [
-  [/(^|\/)package\.json$/, /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/],
-  [/(^|\/)Cargo\.toml$/, /(^|\/)Cargo\.lock$/],
-  [/(^|\/)pyproject\.toml$/, /(^|\/)(uv\.lock|poetry\.lock)$/],
-  [/(^|\/)go\.mod$/, /(^|\/)go\.sum$/],
-  [/(^|\/)Gemfile$/, /(^|\/)Gemfile\.lock$/]
-];
-function directoryOf(path) {
-  const cut = path.lastIndexOf("/");
-  return cut === -1 ? "" : path.slice(0, cut);
-}
-function governs(lockDir, manifestDir) {
-  return lockDir === "" || lockDir === manifestDir || manifestDir.startsWith(`${lockDir}/`);
-}
-function classifyPair(a, b) {
-  const dirA = directoryOf(a);
-  const dirB = directoryOf(b);
-  for (const [manifest, lock] of LOCK_PAIRS) {
-    if (manifest.test(a) && lock.test(b) && governs(dirB, dirA)) return "mechanical";
-    if (manifest.test(b) && lock.test(a) && governs(dirA, dirB)) return "mechanical";
-  }
-  if (isTestPath(a) || isTestPath(b)) return "test-subject";
-  return "candidate";
-}
-
 // src/stability.ts
 function jaccard(a, b) {
   if (a.size === 0 && b.size === 0) return 0;
@@ -3207,10 +3211,16 @@ var DEFAULTS = {
     // and would have to discover that by reading confusing output and then
     // enumerating directories by hand. Onboarding should not cost that.
     //
-    // These filter the REPORTING surfaces (`drift`, and doctor's composition
-    // check), not clustering or `impact`, so a wrong entry hides a row from
-    // one ranked list rather than reshaping the module map — a recoverable
-    // mistake, and one line of `octograph.yaml` to undo.
+    // Applied at the graph's INPUT (`harvest`), so modules, clustering, hubs,
+    // working sets, `impact` and `drift` all see one graph with one meaning.
+    // A wrong entry therefore removes a path from the analysis entirely — one
+    // line of `octograph.yaml` to undo, but not a cosmetic mistake.
+    //
+    // This lived in `drift` alone until 2026-08-12, so `impact` could still
+    // surface an agent's notes co-changing with the code they document.
+    // Measurement retired that: on a repo where the board was 43% of files,
+    // including it doubled the file edges, took hub quarantine from 5 files to
+    // 39, and mis-ranked 4 of the top 5 real module edges.
     // This tool's own working state and the board it edits. Measured at 32% of
     // octoweb's graph, burying every real cross-module finding beneath it.
     ".agents/",
@@ -3297,7 +3307,8 @@ function historyIsThin(analysableCommits, config) {
 function analyze(repoRoot, config, opts) {
   const commits = harvest(repoRoot, {
     maxCommitFiles: config.maxCommitFiles,
-    since: opts.since
+    since: opts.since,
+    excludePaths: config.excludePaths
   });
   const table = countPairs(commits, { now: opts.now, halfLifeDays: config.halfLifeDays });
   const edges = weighEdges(table, { minSupport: config.minSupport });
@@ -4608,7 +4619,7 @@ function declaredPairs(imports) {
   }
   return byModule;
 }
-function drift(edges, files, spine, limit = 20, minSupport = 2, excludePaths = []) {
+function drift(edges, files, spine, limit = 20, minSupport = 2) {
   const declared = declaredPairs(spine.imports);
   const keep = limit > 0 ? limit : 0;
   const scored = [];
@@ -4619,7 +4630,6 @@ function drift(edges, files, spine, limit = 20, minSupport = 2, excludePaths = [
     const left = files[e.a];
     const right = files[e.b];
     if (left === void 0 || right === void 0) continue;
-    if (isExcludedPath(left, excludePaths) || isExcludedPath(right, excludePaths)) continue;
     const swapped = compare(left, right) > 0;
     const pa = swapped ? right : left;
     const pb = swapped ? left : right;
@@ -5279,7 +5289,7 @@ function runOwnCommand(repoRoot, config, since, now, rawPath, json) {
 }
 function runDriftCommand(repoRoot, config, since, now, json) {
   const { edges, files, spine } = analyze(repoRoot, config, { now, since });
-  const rows = drift(edges, files, spine, void 0, config.minSupport, config.excludePaths);
+  const rows = drift(edges, files, spine, void 0, config.minSupport);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatDrift(rows);
   return { code: 0, stdout, stderr: "" };
 }

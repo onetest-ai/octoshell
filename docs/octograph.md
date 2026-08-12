@@ -171,6 +171,11 @@ When something is still dominating your graph, `doctor` says so and hands you th
 It flags only what convention makes defensible — a dot-directory carrying real weight — and reports
 the rest for you to judge. It will never decide that your `docs/` is not architecture.
 
+Exclusions apply to the **whole graph** — the module map, clustering, working sets, `impact` and
+`drift` alike — so what you exclude is simply not analysed. That is deliberate: on a repository
+where the board was 43% of tracked files, including it doubled the co-change edges, took hub
+quarantine from 5 files to 39, and mis-ranked 4 of the top 5 real module edges.
+
 ---
 
 ## Honest limits

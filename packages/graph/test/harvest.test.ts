@@ -102,3 +102,62 @@ function commits0Timestamp(repo: string): number {
   if (!c) throw new Error("expected a commit");
   return c.timestamp;
 }
+
+describe("excludePaths — applied at the graph's input", () => {
+  /**
+   * This rule used to live in `drift` alone, so that `impact` could still
+   * surface an agent's notes co-changing with the code they document.
+   * Measuring two real repositories retired that reasoning: on a repo where
+   * the board was 43% of files, including it DOUBLED the file edges, took hub
+   * quarantine from 5 files to 39, and mis-ranked 4 of the top 5 real module
+   * edges. What it bought was `.octobots/campaigns <-> edgeserver` as the
+   * strongest coupling in the repository — which says only that the board is
+   * edited whenever code is edited.
+   *
+   * So it moved here, and these tests moved with it rather than being
+   * deleted: one graph, one meaning, filtered once at the input.
+   */
+  it("drops excluded paths from a commit before it is counted", () => {
+    const repo = buildRepo([
+      { files: [".agents/notes.md", "src/a.ts", "src/b.ts"] },
+      { files: [".agents/more.md", "src/a.ts", "src/b.ts"] },
+    ]);
+    const commits = harvest(repo, { excludePaths: [".agents/"] });
+    const seen = new Set(commits.flatMap((c) => c.files));
+    expect([...seen].some((f) => f.startsWith(".agents/"))).toBe(false);
+    // The real pairing survives — exclusion removes noise, not the signal.
+    expect(seen.has("src/a.ts")).toBe(true);
+    expect(seen.has("src/b.ts")).toBe(true);
+  });
+
+  it("keeps them when no excludePaths are given, so the filter is opt-in at this layer", () => {
+    const repo = buildRepo([
+      { files: [".agents/notes.md", "src/a.ts"] },
+      { files: [".agents/more.md", "src/a.ts"] },
+    ]);
+    const seen = new Set(harvest(repo).flatMap((c) => c.files));
+    expect([...seen].some((f) => f.startsWith(".agents/"))).toBe(true);
+  });
+
+  it("drops a commit left with fewer than two files after exclusion", () => {
+    // The point of filtering BEFORE the two-file floor: a commit that touched
+    // five board files and one source file carries no code co-change at all,
+    // and counting it would assert five phantom pairings.
+    const repo = buildRepo([
+      { files: [".agents/a.md", ".agents/b.md", "src/only.ts"] },
+      { files: ["src/x.ts", "src/y.ts"] },
+    ]);
+    const commits = harvest(repo, { excludePaths: [".agents/"] });
+    expect(commits).toHaveLength(1);
+    expect(new Set(commits[0]?.files)).toEqual(new Set(["src/x.ts", "src/y.ts"]));
+  });
+
+  it("does not exclude a path that merely starts with the same characters", () => {
+    const repo = buildRepo([
+      { files: [".agentsomething/keep.ts", "src/a.ts"] },
+      { files: [".agentsomething/keep.ts", "src/b.ts"] },
+    ]);
+    const seen = new Set(harvest(repo, { excludePaths: [".agents/"] }).flatMap((c) => c.files));
+    expect(seen.has(".agentsomething/keep.ts")).toBe(true);
+  });
+});

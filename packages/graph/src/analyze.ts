@@ -110,6 +110,7 @@ export function analyze(repoRoot: string, config: Config, opts: AnalyzeOptions):
   const commits = harvest(repoRoot, {
     maxCommitFiles: config.maxCommitFiles,
     since: opts.since,
+    excludePaths: config.excludePaths,
   });
   const table = countPairs(commits, { now: opts.now, halfLifeDays: config.halfLifeDays });
   const edges = weighEdges(table, { minSupport: config.minSupport });

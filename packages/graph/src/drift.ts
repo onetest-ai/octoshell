@@ -1,5 +1,5 @@
 import { isSyntheticBridge } from "./components.js";
-import { classifyPair, isExcludedPath } from "./noise.js";
+import { classifyPair } from "./noise.js";
 import { rankScore } from "./rank.js";
 import { compare } from "./rollup.js";
 import { edgeWeight, type Edge } from "./weights.js";
@@ -87,29 +87,30 @@ function declaredPairs(imports: Spine["imports"]): Map<string, Set<string>> {
  * means unlimited" is a common enough CLI convention that the value will
  * arrive eventually.
  *
- * `excludePaths` (default `[]`, `config.ts`'s `Config.excludePaths` in
- * practice) is read through `isExcludedPath` and applied HERE ONLY — not in
- * `harvest`, not in `analyze`, not in `impact`. That placement is deliberate,
- * not an oversight:
+ * `excludePaths` is NOT read here any more. It moved to `harvest`, at the
+ * graph's input, on 2026-08-12 — so modules, clustering, hubs, working sets,
+ * `impact` and `drift` all see one graph with one meaning.
  *
- *  - Filtering in `harvest` would remove the excluded paths from the
- *    co-change graph entirely, which also strips them from clustering,
- *    `Analysis.modules`, and `impact()`. `impact` answers "what else should I
- *    update when I touch this file", and an agent's own notes co-changing
- *    with the code they document is exactly the kind of coupling that answer
- *    exists to surface — excluding it there would remove the one place this
- *    tool's own tooling-state paths are genuinely useful.
- *  - `drift` is the opposite kind of question: "what coupling does the
- *    DECLARED architecture fail to explain". A repo's `.agents/`/`.claude/`/
- *    `.octobots/` directories are this tool's own working state, not the
- *    codebase under analysis, and they co-change with real code for a reason
- *    that has nothing to do with architecture (an agent edits its notes while
- *    it edits code) — see `isExcludedPath` (noise.ts) for the octoweb
- *    measurement (5 of the top 10 rows) that motivated the default.
+ * The earlier placement (drift only) was chosen so `impact` could still
+ * surface an agent's notes co-changing with the code they document. Measuring
+ * two real repositories retired that reasoning. Including board state in the
+ * graph does not merely add bulk:
  *
- * So the same file can appear as an `impact` answer and never appear as a
- * `drift` row — that is the intended behaviour, not an inconsistency between
- * the two commands.
+ *  - on auqanautica (board 43% of files) it DOUBLED the file edges, took hub
+ *    quarantine from 5 files to 39, and mis-ranked 4 of the top 5 real module
+ *    edges — the surviving real edges weighed 1.7, against 92.7 for the
+ *    strongest on a repo where the board is excluded;
+ *  - what it bought was `.octobots/campaigns <-> edgeserver` as the single
+ *    strongest coupling in the repository, which says only that the board is
+ *    edited whenever code is edited. True by construction of the workflow,
+ *    and not a fact about the system's design.
+ *
+ * The cost of the move is real and worth naming: `impact` no longer surfaces
+ * board-to-code pairings at all. `own` is the right answer to that question
+ * and a far better one — it names the mission and the criterion, and says
+ * whether it knows by provenance or by prediction — but it needs a recorded
+ * merge SHA, so on a workspace running a pack older than v44 that answer is
+ * currently missing rather than merely weaker.
  */
 export function drift(
   edges: Edge[],
@@ -117,7 +118,6 @@ export function drift(
   spine: Spine,
   limit = 20,
   minSupport = 2,
-  excludePaths: readonly string[] = [],
 ): DriftRow[] {
   const declared = declaredPairs(spine.imports);
   const keep = limit > 0 ? limit : 0;
@@ -131,7 +131,6 @@ export function drift(
     const left = files[e.a];
     const right = files[e.b];
     if (left === undefined || right === undefined) continue;
-    if (isExcludedPath(left, excludePaths) || isExcludedPath(right, excludePaths)) continue;
     // Canonical endpoint orientation, exactly as `rollUp` orders a module
     // edge's endpoints before keying it. A co-change pair is UNDIRECTED, but
     // `Edge.a`/`Edge.b` are file IDS, and an id is assigned by first appearance
