@@ -327,6 +327,27 @@ describe("end-to-end: Working sets in the RENDERED map.md, driven through the re
     return buildRepo(commits);
   }
 
+  /**
+   * Same shape as `crossModuleRepo`, but with filenames that legitimately
+   * contain the "no recommendation vocabulary" guard's own forbidden words —
+   * `split`, `refactor`, `should`, `consider` — the exact shape that failed
+   * the pre-fix guard (see test (c2) below).
+   */
+  function crossModuleRepoWithRecommendationLikeFilenames(): string {
+    const together = [
+      "a/split-view.ts",
+      "a/should-notify.ts",
+      "a/f2.ts",
+      "b/refactor-helper.ts",
+      "b/consider-this.ts",
+      "b/g2.ts",
+    ];
+    const commits: CommitSpec[] = [];
+    for (let i = 0; i < 12; i++) commits.push({ files: together });
+    commits.push(...backgroundChurn(15));
+    return buildRepo(commits);
+  }
+
   function readMap(repo: string): string {
     return readFileSync(join(repo, ".octograph", "map.md"), "utf8");
   }
@@ -465,6 +486,14 @@ describe("end-to-end: Working sets in the RENDERED map.md, driven through the re
     expect(Math.max(...sets.map((s) => s.claimed))).toBeGreaterThan(2);
   });
 
+  /**
+   * Scoped to the section's own PROSE — the fixed note line — never to the
+   * whole rendered section. See `render.test.ts`'s "states no recommendation"
+   * for why: `WorkingSet.files` are real repo-relative paths, and this
+   * vocabulary shows up in ordinary filenames for reasons that have nothing
+   * to do with a recommendation. Test (c2) below proves that regression
+   * end-to-end, through the real CLI and a real `map.md`.
+   */
   it("(c) the rendered section contains no recommendation vocabulary", () => {
     const repo = crossModuleRepo();
     const mapResult = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
@@ -472,11 +501,46 @@ describe("end-to-end: Working sets in the RENDERED map.md, driven through the re
 
     const rendered = readMap(repo);
     expect(rendered).toContain("## Working sets");
-    const section = rendered.slice(rendered.indexOf("## Working sets")).toLowerCase();
+    const section = rendered.slice(rendered.indexOf("## Working sets"));
+    const note = (section.split("\n").find((l) => l.startsWith("_")) ?? "").toLowerCase();
+    expect(note).not.toBe("");
     // Same vocabulary list `render.test.ts` pins at the unit level — this
     // test proves the same property survives the real CLI and a real file.
     for (const word of ["should", "consider", "recommend", "merge these", "split", "refactor"]) {
-      expect(section).not.toContain(word);
+      expect(note).not.toContain(word);
+    }
+  });
+
+  /**
+   * The regression this test exists for: the guard above used to scan the
+   * WHOLE rendered section — member file paths included — for
+   * `should`/`consider`/`split`/`refactor`. A repo containing a file named
+   * `a/split-view.ts` would fail this guard on nothing but its own filename,
+   * driven through the real CLI and a real `map.md` on disk — the exact gap
+   * `render.test.ts`'s hand-written `Analysis` cannot exercise on its own
+   * (see this describe block's own doc comment on why T7.4 reads the
+   * rendered file rather than in-memory state).
+   */
+  it("(c2) does not fail on a member path that happens to contain recommendation vocabulary", () => {
+    const repo = crossModuleRepoWithRecommendationLikeFilenames();
+    const mapResult = runCli(["map", "--min-commits", "5"], repo, T4_NOW);
+    expect(mapResult.code, `octograph map exited ${mapResult.code}: ${mapResult.stderr}`).toBe(0);
+
+    const rendered = readMap(repo);
+    expect(rendered).toContain("## Working sets");
+    const section = rendered.slice(rendered.indexOf("## Working sets"));
+    // Precondition: the member paths really do carry the forbidden
+    // vocabulary, so a whole-section scan would have flagged this fixture.
+    const wholeSection = section.toLowerCase();
+    expect(wholeSection).toContain("split");
+    expect(wholeSection).toContain("refactor");
+    expect(wholeSection).toContain("should");
+    expect(wholeSection).toContain("consider");
+
+    const note = (section.split("\n").find((l) => l.startsWith("_")) ?? "").toLowerCase();
+    expect(note).not.toBe("");
+    for (const word of ["should", "consider", "recommend", "merge these", "split", "refactor"]) {
+      expect(note).not.toContain(word);
     }
   });
 

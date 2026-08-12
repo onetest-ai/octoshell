@@ -81,3 +81,29 @@ budgetTokens: 2000
 # `.octograph/` — it never creates `.octobots/` itself. Set this only to
 # override that default location.
 out: null
+
+# Repo-relative path prefixes that `octograph drift` never ranks as an
+# architectural finding (packages/graph/src/noise.ts's isExcludedPath). Read
+# ONLY by `drift` — clustering, the module map, and `octograph impact` all
+# still see these paths, because `impact` ("what else should I update when I
+# touch this file") is where an agent's own notes co-changing with the code
+# they document is genuinely useful signal, not noise.
+#
+# Defaults to this tool's own working state — an agent's notes and the board
+# it edits, not the codebase under analysis — because that state co-changes
+# with real code for a reason that has nothing to do with architecture (an
+# agent edits its notes while it edits code). Measured on octoweb: 5 of
+# drift's top 10 rows named a `.agents/` or `.claude/` path, burying every
+# real cross-module finding under it.
+#
+# This does NOT extend to documentation such as CLAUDE.md: those files are
+# part of the repo and their co-change is a real fact about it, so excluding
+# them is a decision for you to make explicitly, not a default this tool
+# imposes. If your own CLAUDE.md files co-change across packages often enough
+# to dominate your `drift` output the way tooling-state paths dominated
+# octoweb's, add them here too — e.g. by listing each doc path, since entries
+# are prefixes, not globs.
+excludePaths:
+  - .agents/
+  - .claude/
+  - .octobots/

@@ -385,14 +385,57 @@ describe("renderMap", () => {
       expect(out).toContain("  - b/y.ts");
     });
 
+    /**
+     * Scoped to the section's own PROSE — the fixed `WORKING_SETS_NOTE` line —
+     * never to the whole rendered section. `WorkingSet.files` is real
+     * repo-relative paths a caller controls, and the vocabulary this guard
+     * polices ("should", "split", "refactor", …) is ordinary English that
+     * shows up in filenames for reasons that have nothing to do with a
+     * recommendation: `src/split-view.ts`, `docs/should-read.md`. Scanning
+     * the whole section (the pre-fix version of this test) failed a repo for
+     * owning such a file, not for this renderer recommending anything — see
+     * "does not fail on a member path…" below for that exact regression.
+     */
     it("states no recommendation", () => {
       const sets: WorkingSet[] = [
         { name: "a/x.ts", modules: ["apps/ext", "packages/board"], files: ["a/x.ts", "b/y.ts"] },
       ];
       const out = renderMap({ ...analysis, workingSets: sets }, 4000);
-      const section = out.slice(out.indexOf("## Working sets")).toLowerCase();
+      const section = out.slice(out.indexOf("## Working sets"));
+      const note = (section.split("\n").find((l) => l.startsWith("_")) ?? "").toLowerCase();
+      expect(note).not.toBe("");
       for (const word of ["should", "consider", "recommend", "merge these", "split", "refactor"]) {
-        expect(section).not.toContain(word);
+        expect(note).not.toContain(word);
+      }
+    });
+
+    /**
+     * The regression this test exists for: the guard above used to scan the
+     * WHOLE rendered section — member file paths included — for
+     * `should`/`consider`/`split`/`refactor`. A repo containing a file named
+     * `src/split-view.ts` (or a working set spanning `docs/should-read.md`)
+     * would fail this guard on nothing but its own filename, never on a
+     * recommendation the renderer actually made. Confirmed against the
+     * pre-fix guard: this exact fixture failed it.
+     */
+    it("does not fail on a member path that happens to contain recommendation vocabulary", () => {
+      const sets: WorkingSet[] = [
+        {
+          name: "a/split-view.ts",
+          modules: ["apps/ext", "packages/board"],
+          files: ["a/split-view.ts", "b/should-refactor.ts"],
+        },
+      ];
+      const out = renderMap({ ...analysis, workingSets: sets }, 4000);
+      const section = out.slice(out.indexOf("## Working sets"));
+      // Precondition: the member paths really do carry the forbidden
+      // vocabulary, so a whole-section scan would have flagged this fixture.
+      expect(section.toLowerCase()).toContain("split");
+      expect(section.toLowerCase()).toContain("refactor");
+      const note = (section.split("\n").find((l) => l.startsWith("_")) ?? "").toLowerCase();
+      expect(note).not.toBe("");
+      for (const word of ["should", "consider", "recommend", "merge these", "split", "refactor"]) {
+        expect(note).not.toContain(word);
       }
     });
 

@@ -208,4 +208,59 @@ describe("drift", () => {
     expect(rows[0]?.a).toBe("modC/repeated-x.ts");
     expect(rows[0]?.b).toBe("modD/repeated-y.ts");
   });
+
+  /**
+   * The regression this test exists for: `drift` ranked a `.agents/`
+   * daily-log path against real source at the same nPMI as any other
+   * candidate pair. Confirmed on octoweb: 5 of the top 10 rows named an
+   * `.agents/` or `.claude/` path — this tool's own working notes, not the
+   * codebase under analysis (see `isExcludedPath`'s doc comment, noise.ts).
+   * `excludePaths` defaults to `[]` here (drift.ts), so this behaviour is
+   * opt-in per call — `cli.ts` is the one caller that feeds it
+   * `config.excludePaths`.
+   */
+  describe("excludePaths", () => {
+    const noiseFiles = [
+      "packages/board/src/write.ts",
+      ".agents/memory/js-dev/daily/2026-06-12.md",
+      "packages/webview/src/panel.ts",
+    ];
+    const noiseSpine: Spine = {
+      source: "manifests",
+      modules: ["packages/board", ".agents", "packages/webview"],
+      moduleOf: (p) => p.split("/").slice(0, p.startsWith(".agents/") ? 1 : 2).join("/"),
+      imports: [],
+    };
+    const noiseEdges = [edge(0, 1, 0.9), edge(0, 2, 0.85)];
+
+    it("ranks an excluded path's pair when no excludePaths are given (the default)", () => {
+      const rows = drift(noiseEdges, noiseFiles, noiseSpine);
+      // Canonical `compare` order (rollup.ts), not insertion order — `.` sorts
+      // ahead of a letter, so the `.agents/` endpoint comes first.
+      expect(rows.map((r) => [r.a, r.b])).toContainEqual([
+        ".agents/memory/js-dev/daily/2026-06-12.md",
+        "packages/board/src/write.ts",
+      ]);
+    });
+
+    it("drops a pair with either endpoint under an excluded prefix", () => {
+      const rows = drift(noiseEdges, noiseFiles, noiseSpine, 20, 2, [".agents/"]);
+      const paths = rows.flatMap((r) => [r.a, r.b]);
+      expect(paths).not.toContain(".agents/memory/js-dev/daily/2026-06-12.md");
+      // The unrelated, non-excluded pair still surfaces.
+      expect(paths).toContain("packages/webview/src/panel.ts");
+    });
+
+    it("does not exclude a path that merely starts with the same characters as the prefix", () => {
+      const files = ["agents-portal/x.ts", "svc/b/api.ts"];
+      const spine2: Spine = {
+        source: "manifests",
+        modules: ["agents-portal", "svc/b"],
+        moduleOf: (p) => p.split("/").slice(0, 2).join("/"),
+        imports: [],
+      };
+      const rows = drift([edge(0, 1, 0.9)], files, spine2, 20, 2, [".agents/", "agents/"]);
+      expect(rows).toHaveLength(1);
+    });
+  });
 });

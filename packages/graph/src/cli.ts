@@ -511,8 +511,10 @@ function runDriftCommand(
 ): CliResult {
   const { edges, files, spine } = analyze(repoRoot, config, { now, since });
   // Same reasoning as `runImpactCommand`: `undefined` keeps `drift`'s own
-  // default `limit` (20), `config.minSupport` is the one override.
-  const rows = computeDrift(edges, files, spine, undefined, config.minSupport);
+  // default `limit` (20), `config.minSupport` and `config.excludePaths` are
+  // the overrides. `excludePaths` is threaded through ONLY here — `impact`
+  // deliberately does not read it; see drift.ts's doc comment for why.
+  const rows = computeDrift(edges, files, spine, undefined, config.minSupport, config.excludePaths);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatDrift(rows);
   return { code: 0, stdout, stderr: "" };
 }
