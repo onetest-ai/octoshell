@@ -20,9 +20,10 @@ export interface Config {
   lexicalRunnerUpMargin: number;
   /**
    * Repo-relative path prefixes {@link isExcludedPath} (noise.ts) matches
-   * against — read ONLY by `drift()`, not by `harvest`/`analyze`/`impact`. See
-   * `drift.ts`'s own doc comment for why the exclusion applies at that one
-   * surface and nowhere else.
+   * against, applied by `harvest` at the graph's input — so an excluded path
+   * is absent from modules, clustering, hubs, working sets, `impact` and
+   * `drift` alike. See `drift.ts`'s doc comment for the measurement that
+   * moved this from one surface to all of them.
    */
   excludePaths: string[];
 }
@@ -57,10 +58,16 @@ export const DEFAULTS: Config = {
     // and would have to discover that by reading confusing output and then
     // enumerating directories by hand. Onboarding should not cost that.
     //
-    // These filter the REPORTING surfaces (`drift`, and doctor's composition
-    // check), not clustering or `impact`, so a wrong entry hides a row from
-    // one ranked list rather than reshaping the module map — a recoverable
-    // mistake, and one line of `octograph.yaml` to undo.
+    // Applied at the graph's INPUT (`harvest`), so modules, clustering, hubs,
+    // working sets, `impact` and `drift` all see one graph with one meaning.
+    // A wrong entry therefore removes a path from the analysis entirely — one
+    // line of `octograph.yaml` to undo, but not a cosmetic mistake.
+    //
+    // This lived in `drift` alone until 2026-08-12, so `impact` could still
+    // surface an agent's notes co-changing with the code they document.
+    // Measurement retired that: on a repo where the board was 43% of files,
+    // including it doubled the file edges, took hub quarantine from 5 files to
+    // 39, and mis-ranked 4 of the top 5 real module edges.
 
     // This tool's own working state and the board it edits. Measured at 32% of
     // octoweb's graph, burying every real cross-module finding beneath it.

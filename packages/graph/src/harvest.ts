@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { isExcludedPath } from "./noise.js";
 import type { Commit } from "./types.js";
 
 export interface HarvestOptions {
@@ -8,6 +9,11 @@ export interface HarvestOptions {
   maxCommitFiles?: number;
   /** Passed through to `git log --since`. */
   since?: string;
+  /** Repo-relative path prefixes dropped from every commit before counting —
+   *  `Config.excludePaths`, matched through `isExcludedPath`. Applied HERE, at
+   *  the input, so every downstream surface sees one graph with one meaning:
+   *  modules, clustering, hubs, working sets, `impact` and `drift` alike. */
+  excludePaths?: readonly string[];
 }
 
 /**
@@ -54,6 +60,7 @@ function headerEnd(block: string): number {
 /** Read a repo's history into commits, newest first. */
 export function harvest(repoRoot: string, opts: HarvestOptions = {}): Commit[] {
   const maxFiles = opts.maxCommitFiles ?? 50;
+  const exclude = opts.excludePaths ?? [];
   // `-z` makes git emit NUL-separated *raw* path bytes. Without it git applies
   // `core.quotePath` and hands back C-quoted paths for anything non-ASCII —
   // `src/résumé.ts` arrives as `"src/r\303\251sum\303\251.ts"`, quotes and all,
@@ -75,7 +82,13 @@ export function harvest(repoRoot: string, opts: HarvestOptions = {}): Commit[] {
     const header = block.slice(0, end);
     const [sha, at] = header.split(" ");
     if (sha === undefined || at === undefined || !HEADER.test(header)) continue;
-    const files = [...new Set(block.slice(end + 1).split("\0").filter((p) => p.length > 0))];
+    const all = [...new Set(block.slice(end + 1).split("\0").filter((p) => p.length > 0))];
+    // Excluded paths are removed from the COMMIT, before the two-file floor
+    // and the mega-commit ceiling are applied — so a commit that touched five
+    // board files and one source file is a single-file commit for our
+    // purposes and is dropped, rather than contributing five phantom pairings
+    // that say only "the board is edited whenever code is edited".
+    const files = exclude.length === 0 ? all : all.filter((p) => !isExcludedPath(p, exclude));
     if (files.length < 2 || files.length > maxFiles) continue;
     out.push({ sha, files, timestamp: Number(at) * 1000 });
   }

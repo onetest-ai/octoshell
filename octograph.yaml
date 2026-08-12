@@ -82,12 +82,16 @@ budgetTokens: 2000
 # override that default location.
 out: null
 
-# Repo-relative path prefixes that `octograph drift` never ranks as an
-# architectural finding (packages/graph/src/noise.ts's isExcludedPath). Read
-# ONLY by `drift` — clustering, the module map, and `octograph impact` all
-# still see these paths, because `impact` ("what else should I update when I
-# touch this file") is where an agent's own notes co-changing with the code
-# they document is genuinely useful signal, not noise.
+# Repo-relative path prefixes dropped from the graph entirely, at its input
+# (packages/graph/src/harvest.ts, matched by noise.ts's isExcludedPath). The
+# module map, clustering, hubs, working sets, `impact` and `drift` all see one
+# graph with one meaning.
+#
+# This filtered `drift` alone until 2026-08-12. Measurement retired that: on a
+# repo where the board was 43% of tracked files, including it doubled the file
+# edges, took hub quarantine from 5 files to 39, and mis-ranked 4 of the top 5
+# real module edges — while contributing an edge that says only "the board is
+# edited whenever code is edited".
 #
 # Defaults to this tool's own working state — an agent's notes and the board
 # it edits, not the codebase under analysis — because that state co-changes
