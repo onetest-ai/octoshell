@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { mkdtempClean } from "./tmpdir.js";
 
@@ -36,7 +36,35 @@ function gitIn(root: string) {
  */
 export function appendCommits(root: string, commits: CommitSpec[], seq = 1000): void {
   const git = gitIn(root);
-  const existing = Number(git(["rev-list", "--count", "--all"]).toString().trim());
+  /** Run a fixture git command, and on failure report the repo's own state. */
+  const step = <T,>(what: string, fn: () => T): T => {
+    try {
+      return fn();
+    } catch (err) {
+      // Four CI-only failures, never once locally, always the heaviest
+      // fixture, always mid-sequence. Adding stderr to the assertion moved the
+      // diagnosis from "expected 0 to be 1" to `fatal: could not parse HEAD`;
+      // this captures the repository's state at the instant it failed, because
+      // every remaining theory is about that state.
+      //
+      // Wraps EVERY git call in the build, not just `commit`: the first
+      // symptom reproduced locally came from `rev-list --count --all` on the
+      // very first line, reporting `not a git repository` — a different
+      // message for the same underlying condition, which a commit-only guard
+      // would have missed entirely.
+      //
+      // Re-throws deliberately. A diagnostic that swallows the error turns a
+      // loud CI failure into a fixture that quietly builds the wrong history.
+      throw new Error(
+        `fixture step failed: ${what}\nin ${root}\n` +
+          `original: ${(err as Error).message}\n` +
+          `state at failure:\n${describeRepoState(root)}`,
+      );
+    }
+  };
+  const existing = Number(
+    step("rev-list --count --all", () => git(["rev-list", "--count", "--all"])).toString().trim(),
+  );
   commits.forEach((spec, i) => {
     const stamp = seq + existing + i;
     for (const rel of spec.files) {
@@ -45,13 +73,48 @@ export function appendCommits(root: string, commits: CommitSpec[], seq = 1000): 
       // Content must change or git records no diff for the file.
       writeFileSync(abs, `content ${stamp}\n`);
     }
-    git(["add", "-A"]);
+    step(`add -A (commit ${i + 1} of ${commits.length})`, () => git(["add", "-A"]));
     const when = new Date(Date.UTC(2026, 0, 1) - (spec.daysAgo ?? 0) * 86400000).toISOString();
-    git(["commit", "-q", "-m", spec.message ?? `commit ${stamp}`], {
-      GIT_AUTHOR_DATE: when,
-      GIT_COMMITTER_DATE: when,
-    });
+    step(`commit ${i + 1} of ${commits.length}`, () =>
+      git(["commit", "-q", "-m", spec.message ?? `commit ${stamp}`], {
+        GIT_AUTHOR_DATE: when,
+        GIT_COMMITTER_DATE: when,
+      }));
   });
+}
+
+/**
+ * Everything about a fixture repo that the four observed CI failures could
+ * plausibly be explained by, gathered without throwing — a diagnostic that
+ * itself dies tells you nothing.
+ */
+function describeRepoState(root: string): string {
+  const lines: string[] = [];
+  const safe = (label: string, fn: () => string): void => {
+    try {
+      lines.push(`  ${label}: ${fn().trim().replace(/\n/g, " | ").slice(0, 300)}`);
+    } catch (e) {
+      lines.push(`  ${label}: <failed: ${(e as Error).message.split("\n")[0]}>`);
+    }
+  };
+  safe("root exists", () => String(existsSync(root)));
+  safe(".git exists", () => String(existsSync(join(root, ".git"))));
+  safe("HEAD file", () => readFileSync(join(root, ".git", "HEAD"), "utf8"));
+  safe("refs/heads", () => readdirSync(join(root, ".git", "refs", "heads")).join(","));
+  safe("index.lock", () => String(existsSync(join(root, ".git", "index.lock"))));
+  // Any of these set in the environment silently redirects EVERY git call away
+  // from the fixture, which is the one hypothesis that would explain a repo
+  // looking simultaneously mid-history and empty.
+  for (const v of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR"]) {
+    if (process.env[v] !== undefined) lines.push(`  env ${v}: ${process.env[v]}`);
+  }
+  safe("git status", () => execFileSync("git", ["status", "--porcelain=v1", "-b"], {
+    cwd: root, encoding: "utf8", stdio: "pipe",
+  }));
+  safe("git rev-list --count --all", () => execFileSync("git", ["rev-list", "--count", "--all"], {
+    cwd: root, encoding: "utf8", stdio: "pipe",
+  }));
+  return lines.join("\n");
 }
 
 /** Build a throwaway git repo with a scripted history. Returns its path. */
