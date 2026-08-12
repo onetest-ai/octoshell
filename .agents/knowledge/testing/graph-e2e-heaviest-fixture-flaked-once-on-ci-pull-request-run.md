@@ -229,3 +229,82 @@ small retry) still stands as the next move — deliberately not applied here, be
 regression test that can prove it addresses a failure this session couldn't reproduce. **If it
 recurs a third time, the assertions now in place will surface the exact git error immediately; that
 message decides which of the two remediations (or a third) is right — don't guess ahead of it.**
+
+## Fourth observation — 2026-08-11 (the predicted "third time" — confirmed, REMEDIATION NOW OVERDUE)
+
+Seen on PR #72 (T6.2, octograph extension bridge; `apps/vscode-extension/src/host/octograph.ts` +
+two test files — nowhere near `packages/graph`'s e2e fixture). `gh pr view 72
+--json statusCheckRollup` showed the identical signature: two `build` checks on the same head SHA,
+the `pull_request` run FAILURE, the `push` run SUCCESS. Same test:
+`(g) keeps every surviving entry whole and every module it names headed when the budget truncates
+the section itself`. **A third distinct concrete error shape**, captured directly in the Vitest
+summary this time — proof the diagnostics improvement from the third investigation pass works as
+designed:
+
+```
+Error: Command failed: git commit -q -m commit 26
+error: invalid object 100644 573dd5863eb26452a6a9b25ec4b0e869f3f85123 for 'a2/f0.ts'
+fatal: unable to read tree (019d1729fc83812de6c658dc036784863aa62080)
+```
+
+Thrown from `test/fixtures/repo.ts`'s `gitIn` → `appendCommits` → `buildRepo`, same call path as
+occurrence 2 — but a **write-time object-store corruption** (`git commit`'s own tree write reports
+its just-staged blob unreadable), not occurrence 2's ref-resolution failure (`could not parse HEAD`)
+or occurrence 1's downstream `git log` parent-traversal failure. Three occurrences, three shapes, all
+inside the same ~62-commit sequential `git commit` loop, all clearing on `gh run rerun --failed`
+(confirmed here too — rerun of job 31520588786 went SUCCESS, `mergeStateStatus` CLEAN).
+
+This is the note's own predicted third-occurrence trigger. Per the existing remediation menu, this
+should now get **real remediation** (lighten the fixture, or wrap `buildRepo`/`appendCommits`'s git
+subprocess calls in a small retry) rather than a fifth log entry next time. This session (a QA merge
+gate, not a dev/js-dev session) reported it explicitly and reran rather than applying a fix — flagging
+here for whichever role picks up `packages/graph`'s test fixtures next.
+
+## Fifth and sixth observations, and the decision — 2026-08-12
+
+Two more, both on unrelated diffs, both the same push-versus-pull_request split on an identical
+SHA. The diagnostics added on the third pass paid off again: the failure now names its own cause
+in the Vitest summary rather than requiring log archaeology.
+
+    (g) keeps every surviving entry whole and every module it names headed ...
+      -> Command failed: git commit -q -m commit 25
+         fatal: could not parse HEAD
+      at test/fixtures/repo.ts:19
+
+**It is the fixture BUILDER failing to create a commit, not harvest failing to read history.**
+Every theory before this was aimed at the wrong half of the test.
+
+### Measured rate
+
+**1.9% per suite execution** — 5 defensible occurrences in 268 executions, 95% CI 0.8-4.3%. Two
+jobs run per push, so ~3.7% per push, about 1 in 27.
+
+68 deliberate reproduction runs on real ubuntu-latest runners produced ZERO failures: 48 of
+test/e2e.test.ts alone, then 20 of the full suite across 4 shards. At 1.9% that is unremarkable
+(p ~ 28%) and it rules out the ~10% the clustering suggested — an overreading that was stated as
+fact and had to be corrected.
+
+### Ruled out with evidence
+
+Disk and inode pressure (~5 MB across 92 fixtures; runners start clean) - concurrency on macOS (24
+parallel builds x 47 commits, clean) - CPU contention (green under 20 busy loops, and pinned to 2
+threads) - inherited GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE / GIT_OBJECT_DIRECTORY /
+GIT_COMMON_DIR (nothing in repo or CI sets any) - setup-e2e-gate's process-wide PATH mutation
+(synchronous, and vitest forks per file) - glob-based temp cleanup (none exists) - the
+vscode-extension tmpdir leak (10 MB, different package) - and the checkout-ref theory: failures
+ALTERNATE between push and pull_request, so the trigger is not the variable. That last one retired
+the theory this note carried from its first entry.
+
+### Decision: mitigate, do not chase
+
+At 1.9%, chasing the cause is a several-hundred-run proposition. The fixture is infrastructure, not
+the system under test, so `appendCommits` retries a failed git call ONCE — bounded, and loud.
+
+Three properties keep that from being "retry until green", which is what hid this for two days:
+exactly one retry and a second consecutive failure throws with BOTH state dumps; it PRINTS the repo
+state that prompted the retry, every line prefixed because CI interleaves parallel files; and the
+state is captured BEFORE the retry, since a successful retry would otherwise destroy the only
+evidence. Both properties are asserted by test/fixture-retry.test.ts rather than trusted.
+
+**Exit condition:** if `[fixture retry]` starts appearing regularly in CI logs, or a `failed TWICE`
+ever lands, escalate — and the paired before/after state dumps will finally say what changed.
