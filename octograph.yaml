@@ -104,6 +104,36 @@ out: null
 # octoweb's, add them here too — e.g. by listing each doc path, since entries
 # are prefixes, not globs.
 excludePaths:
+  # This tool's own working state and the board it edits.
   - .agents/
   - .claude/
   - .octobots/
+  # CI, editor and tool configuration.
+  - .github/
+  - .vscode/
+  - .idea/
+  # Dependencies a project chose to COMMIT. An ordinary node_modules or .venv
+  # is gitignored and never reaches the graph at all — `harvest` reads
+  # `git log`, so untracked files do not exist to it — but a vendored copy is
+  # tracked, and it is someone else's architecture.
+  - node_modules/
+  - vendor/
+  - third_party/
+  # Python environments and caches.
+  - .venv/
+  - venv/
+  - __pycache__/
+  - .tox/
+  - .mypy_cache/
+  - .pytest_cache/
+  # JVM / Rust / general build output kept in tree.
+  - target/
+  - .gradle/
+  - dist/
+  - build/
+  - out/
+  - coverage/
+  # Framework build caches.
+  - .next/
+  - .nuxt/
+  - .cache/

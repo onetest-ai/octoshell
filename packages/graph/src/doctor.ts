@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { harvest, squashShape, isIgnored } from "./harvest.js";
 import { hasBoard, resolveOut } from "./artifact.js";
+import { isExcludedPath } from "./noise.js";
 import { graphifyGraphPath } from "./graphify.js";
 import { declaredSpine } from "./spine.js";
 import { compare } from "./rollup.js";
@@ -186,6 +187,62 @@ export function doctor(repoRoot: string, config: Config): Report {
       required: false,
     });
   }
+
+  // What the graph is actually MADE OF, and a nudge toward excluding whatever
+  // is not architecture.
+  //
+  // The onboarding problem this solves: a user should not have to discover,
+  // by reading rendered output and being puzzled, that a third of their graph
+  // is tooling state. Measured on octoweb before the defaults widened,
+  // `.octobots/` alone was 815 of 2787 files — 29%, more than double the
+  // largest real code directory.
+  //
+  // What this check deliberately does NOT do is decide which directories are
+  // architecture. It cannot: `apps/` is 55% of this repo's own graph and that
+  // is correct. So it flags only what convention makes defensible — a
+  // DOT-directory carrying real weight, which is nearly always tooling or
+  // configuration rather than source — and reports the rest as composition
+  // for a human to judge. A check that guessed would train people to ignore
+  // it, which is worse than saying nothing.
+  // Count only what the configuration does NOT already handle. `harvest`
+  // knows nothing about `excludePaths` — that filter lives at the reporting
+  // surfaces — so counting its raw output would advise excluding a directory
+  // the user has already excluded, which is the fastest way to teach someone
+  // that this check is wrong and can be ignored.
+  const counted = files.filter((f) => !isExcludedPath(f, config.excludePaths));
+  const shares = new Map<string, number>();
+  for (const f of counted) {
+    const top = f.includes("/") ? f.slice(0, f.indexOf("/")) : "(root files)";
+    shares.set(top, (shares.get(top) ?? 0) + 1);
+  }
+  const ranked = [...shares.entries()]
+    .sort((a, b) => b[1] - a[1] || compare(a[0], b[0]))
+    .map(([dir, n]) => ({ dir, n, pct: Math.round((100 * n) / Math.max(1, counted.length)) }));
+  const composition = ranked
+    .slice(0, 3)
+    .map((r) => `${r.dir} ${r.pct}%`)
+    .join(", ");
+  // Already-excluded paths are absent from `files`, so anything a dot-entry
+  // shows here is by definition NOT covered by the current configuration.
+  const unexcludedTooling = ranked.filter((r) => r.dir.startsWith(".") && r.pct >= 5);
+  checks.push({
+    name: "graph composition",
+    state: unexcludedTooling.length > 0 ? "warn" : "ok",
+    detail:
+      `${counted.length} files after exclusions; largest contributors ${composition}`
+      + (unexcludedTooling.length > 0
+        ? ` — ${unexcludedTooling.map((r) => `${r.dir} (${r.pct}%)`).join(", ")} look like tooling rather than architecture`
+        : ""),
+    fix:
+      unexcludedTooling.length > 0
+        ? `if those are not part of your architecture, add them to octograph.yaml:\n    excludePaths:\n`
+          + unexcludedTooling.map((r) => `      - ${r.dir}/`).join("\n")
+          + `\n  octograph does not decide this for you — a directory can legitimately dominate a graph.`
+        : undefined,
+    // Advisory. A repository's layout is not a broken input, and grading it
+    // down for one would be the same overreach as excluding docs by default.
+    required: false,
+  });
 
   // Grade Graphify on what the pipeline will ACTUALLY get out of it, not on
   // whether a file exists at that path. `readGraphify` returns null for a

@@ -303,3 +303,65 @@ describe("doctor — artifact durability", () => {
     expect(check(report, "history depth")?.state).toBe("ok");
   });
 });
+
+describe("doctor — graph composition", () => {
+  /**
+   * The onboarding problem: nobody should have to discover, by reading
+   * confusing output, that a third of their graph is tooling state — and
+   * nobody should have to enumerate directories by hand to fix it. Measured
+   * on octoweb before the defaults widened, `.octobots/` alone was 815 of
+   * 2787 files, 29%, more than double the largest real code directory.
+   *
+   * What this check must NOT do is decide which directories are architecture.
+   * It cannot: `apps/` is 56% of this repo's own graph and that is correct.
+   * A check that guessed would train people to ignore it.
+   */
+  it("stays quiet when the largest contributors are real source directories", () => {
+    const repo = buildRepo([
+      { files: ["apps/web/a.ts", "packages/core/b.ts"] },
+      { files: ["apps/web/c.ts", "packages/core/d.ts"] },
+    ]);
+    const check_ = check(doctor(repo, { ...DEFAULTS, minCommits: 1 }), "graph composition");
+    expect(check_?.state).toBe("ok");
+    expect(check_?.detail).toContain("largest contributors");
+  });
+
+  it("flags an unexcluded dot-directory and hands back pasteable config", () => {
+    const repo = buildRepo([
+      { files: [".mytool/state.json", "src/a.ts"] },
+      { files: [".mytool/other.json", "src/b.ts"] },
+    ]);
+    const c = check(doctor(repo, { ...DEFAULTS, minCommits: 1, excludePaths: [] }), "graph composition");
+    expect(c?.state).toBe("warn");
+    expect(c?.detail).toContain(".mytool");
+    // Pasteable, not a lecture: the fix is the YAML itself.
+    expect(c?.fix).toContain("excludePaths:");
+    expect(c?.fix).toContain("- .mytool/");
+    // And it must not pretend to know: a directory can legitimately dominate.
+    expect(c?.fix).toContain("does not decide this for you");
+  });
+
+  it("never advises excluding something the configuration already excludes", () => {
+    // The fastest way to teach someone a check is wrong is to have it demand
+    // a change they already made. `harvest` knows nothing about
+    // `excludePaths`, so counting its raw output would do exactly that.
+    const repo = buildRepo([
+      { files: [".agents/notes.md", "src/a.ts"] },
+      { files: [".agents/more.md", "src/b.ts"] },
+    ]);
+    const c = check(doctor(repo, { ...DEFAULTS, minCommits: 1 }), "graph composition");
+    expect(c?.state).toBe("ok");
+    expect(c?.detail).not.toContain(".agents");
+  });
+
+  it("is advisory: a repository's layout never grades it down", () => {
+    const repo = buildRepo([
+      { files: [".mytool/state.json", "src/a.ts"] },
+      { files: [".mytool/other.json", "src/b.ts"] },
+    ]);
+    const report = doctor(repo, { ...DEFAULTS, minCommits: 1, excludePaths: [] });
+    expect(check(report, "graph composition")?.state).toBe("warn");
+    expect(report.status).not.toBe("blocked");
+    expect(check(report, "history depth")?.state).toBe("ok");
+  });
+});
