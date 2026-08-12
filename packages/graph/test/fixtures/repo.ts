@@ -3,6 +3,11 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import { mkdtempClean } from "./tmpdir.js";
 
+/** How long to pause before a fixture git call's single retry. Long enough
+ *  for a transient filesystem or process condition to clear, short enough
+ *  that 47 sequential commits do not visibly slow the suite. */
+const RETRY_PAUSE_MS = 100;
+
 export interface CommitSpec {
   /** Repo-relative paths touched by this commit. */
   files: string[];
@@ -40,26 +45,58 @@ export function appendCommits(root: string, commits: CommitSpec[], seq = 1000): 
   const step = <T,>(what: string, fn: () => T): T => {
     try {
       return fn();
-    } catch (err) {
-      // Four CI-only failures, never once locally, always the heaviest
-      // fixture, always mid-sequence. Adding stderr to the assertion moved the
-      // diagnosis from "expected 0 to be 1" to `fatal: could not parse HEAD`;
-      // this captures the repository's state at the instant it failed, because
-      // every remaining theory is about that state.
+    } catch (first) {
+      // MITIGATION FOR AN UNEXPLAINED FAULT — not a fix, and deliberately loud.
       //
-      // Wraps EVERY git call in the build, not just `commit`: the first
-      // symptom reproduced locally came from `rev-list --count --all` on the
-      // very first line, reporting `not a git repository` — a different
-      // message for the same underlying condition, which a commit-only guard
-      // would have missed entirely.
+      // This fixture's git calls fail on CI at a measured ~1.9% per suite
+      // execution (5 occurrences in 268 executions, 95% CI 0.8-4.3%), always
+      // mid-sequence, always `fatal: could not parse HEAD` or a sibling
+      // message. 68 deliberate reproduction runs on real ubuntu runners — 48
+      // of the file alone, 20 of the whole suite — produced ZERO failures,
+      // which at 1.9% is unremarkable (p ≈ 28%) and rules out the ~10% rate
+      // the clustering first suggested. Ruled out with evidence: disk
+      // pressure, macOS concurrency, CPU contention, inherited GIT_* env,
+      // PATH mutation across files, glob-based temp cleanup, and the
+      // checkout-ref difference between triggers.
       //
-      // Re-throws deliberately. A diagnostic that swallows the error turns a
-      // loud CI failure into a fixture that quietly builds the wrong history.
-      throw new Error(
-        `fixture step failed: ${what}\nin ${root}\n` +
-          `original: ${(err as Error).message}\n` +
-          `state at failure:\n${describeRepoState(root)}`,
-      );
+      // At that rate, chasing the cause is a several-hundred-run proposition
+      // and the fixture is INFRASTRUCTURE, not the system under test: a
+      // transient git failure while building scripted history is not a
+      // product signal. So it retries ONCE.
+      //
+      // Three things keep this from being "retry until green", which is what
+      // hid this fault for two days in the first place:
+      //   1. Exactly one retry. A second consecutive failure throws.
+      //   2. It PRINTS when it retries, with the repo state that prompted it,
+      //      so a systematic problem still surfaces in the CI log instead of
+      //      being silently absorbed.
+      //   3. The state dump is captured BEFORE the retry, because a
+      //      successful retry would otherwise destroy the only evidence.
+      const stateBefore = describeRepoState(root);
+      // Every line carries the prefix. CI interleaves output from parallel
+      // test files, and an unprefixed state dump lands in the log with no
+      // way to tell which fixture it belongs to — which is the whole reason
+      // this is being printed.
+      const say = (line: string): void => void process.stderr.write(`[fixture retry] ${line}\n`);
+      say(`${what} failed in ${root}`);
+      say((first as Error).message.split("\n").slice(0, 2).join(" | "));
+      for (const line of stateBefore.split("\n")) say(line);
+      say("retrying once — see the filed bug 'packages/graph e2e heaviest fixture'");
+      // A brief synchronous pause, so a genuinely transient condition has a
+      // moment to clear. Sync because everything around it is: an async sleep
+      // here would reorder the git calls this fixture depends on being serial.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, RETRY_PAUSE_MS);
+      try {
+        return fn();
+      } catch (second) {
+        throw new Error(
+          `fixture step failed TWICE: ${what}\nin ${root}\n` +
+            `first:  ${(first as Error).message}\n` +
+            `second: ${(second as Error).message}\n` +
+            `state before retry:\n${stateBefore}\n` +
+            `state after retry:\n${describeRepoState(root)}`,
+        );
+      }
     }
   };
   const existing = Number(
