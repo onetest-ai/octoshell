@@ -35,6 +35,10 @@ export interface Config {
    *  An OPTIONAL evidence tier: a repo without one still gets every other
    *  answer, just without note citations. */
   vaultPath: string;
+  /** The ref `impact --diff` measures a branch against. `main` here because a
+   *  mission is a feature branch off it; a repo whose trunk is named otherwise
+   *  sets this once in octograph.yaml rather than passing --base every run. */
+  diffBase: string;
 }
 
 export const DEFAULTS: Config = {
@@ -117,6 +121,7 @@ export const DEFAULTS: Config = {
     ".cache/",
   ],
   vaultPath: DEFAULT_VAULT_PATH,
+  diffBase: "main",
 };
 
 const NUMERIC = [
@@ -181,6 +186,14 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
           && parsed.excludePaths.every((v): v is string => typeof v === "string")
         ) {
           cfg.excludePaths = parsed.excludePaths;
+        }
+        // `diffBase` is a git ref name, not a repo-relative path, so it takes
+        // no `insideRepo` containment check — `out`/`vaultPath` above guard
+        // against escaping the repo tree, which a ref like `origin/main` was
+        // never going to do. Same degrade-to-default discipline otherwise: a
+        // non-string value is left at `DEFAULTS.diffBase` rather than thrown.
+        if (typeof parsed.diffBase === "string" && parsed.diffBase !== "") {
+          cfg.diffBase = parsed.diffBase;
         }
       }
     } catch {

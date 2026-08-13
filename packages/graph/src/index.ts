@@ -14,6 +14,11 @@ export { renderMap, estimateTokens } from "./render.js";
 export { impact, type ImpactRow } from "./impact.js";
 export { declaredSpine, filesByModule, type Spine } from "./spine.js";
 export { readGraphify } from "./graphify.js";
+// T4's own surface: `changedPaths` resolves a git range to the set of changed
+// repo-relative paths, for Task 6's `impact --diff` to consume. Added in the
+// same commit, same reason as every entry above — a consumer outside this
+// package must never reach a deep path into `src/`.
+export { changedPaths, type DiffScope } from "./diff-impact.js";
 export {
   readVault,
   citedPaths,
