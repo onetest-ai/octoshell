@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { changedPaths } from "../src/diff-impact.js";
+import { changedPaths, diffImpact } from "../src/diff-impact.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
+import type { Edge } from "../src/weights.js";
+import type { VaultNote } from "../src/vault.js";
 
 function git(root: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" });
@@ -109,5 +111,91 @@ describe("changedPaths", () => {
     const root = repoWithBranch();
     git(root, "mv", "src/one.ts", "src/one-renamed.ts");
     expect(changedPaths(root, { kind: "worktree" }, "main", [])).toEqual(["src/one-renamed.ts"]);
+  });
+});
+
+const FILES = ["a.ts", "b.ts", "c.ts", "d.test.ts", "e.ts"];
+const edge = (a: number, b: number, npmi: number, support: number): Edge => ({
+  a,
+  b,
+  npmi,
+  support,
+  confidence: 0.5,
+});
+
+describe("diffImpact", () => {
+  it("returns nothing for an empty changed set", () => {
+    expect(diffImpact([], [], FILES, [])).toEqual({ changed: [], source: [], tests: [] });
+  });
+
+  it("drops rows that are themselves in the changed set", () => {
+    // a<->b, and BOTH are changed: b is not something you might have missed.
+    const edges = [edge(0, 1, 0.9, 10)];
+    expect(diffImpact(["a.ts", "b.ts"], edges, FILES, []).source).toEqual([]);
+  });
+
+  it("partitions rows into source and tests", () => {
+    const edges = [edge(0, 2, 0.9, 10), edge(0, 3, 0.8, 10)];
+    const answer = diffImpact(["a.ts"], edges, FILES, []);
+    expect(answer.source.map((r) => r.path)).toEqual(["c.ts"]);
+    expect(answer.tests.map((r) => r.path)).toEqual(["d.test.ts"]);
+  });
+
+  it("records every changed path that pulled a row in", () => {
+    // c.ts co-changes with both a.ts and b.ts.
+    const edges = [edge(0, 2, 0.9, 10), edge(1, 2, 0.9, 10)];
+    const answer = diffImpact(["a.ts", "b.ts"], edges, FILES, []);
+    expect(answer.source[0]?.predictedBy).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("ranks a row two changed files predict above an equally scored row only one predicts", () => {
+    // z.ts pulled by a.ts and b.ts; e.ts pulled by a.ts alone, same weight —
+    // and "e.ts" < "z.ts" alphabetically, so the shared `compare` tiebreak
+    // alone would put e.ts FIRST. Only the predictedBy-length tiebreak (which
+    // runs before `compare`) puts the two-changed-file row ahead of it; delete
+    // that term and this assertion flips, which is the point.
+    const files = [...FILES, "z.ts"];
+    const edges = [edge(0, 5, 0.9, 10), edge(1, 5, 0.9, 10), edge(0, 4, 0.9, 10)];
+    const answer = diffImpact(["a.ts", "b.ts"], edges, files, []);
+    expect(answer.source.map((r) => r.path)).toEqual(["z.ts", "e.ts"]);
+  });
+
+  it("attaches cited vault notes to a row", () => {
+    // `citedPaths` deliberately never matches a bare basename (see
+    // vault.test.ts "drops a bare basename — a citation must be unambiguous"),
+    // so the note body and the graph's file paths need a directory segment
+    // for a citation to be possible at all — a flat `a.ts`/`c.ts` graph could
+    // never produce a `cited` match, no matter what `diffImpact` does.
+    const files = ["src/a.ts", "src/b.ts", "src/c.ts"];
+    const notes: VaultNote[] = [
+      {
+        note: "architecture/pair.md",
+        name: "pair",
+        description: "a and c move together",
+        verified: "2026-08-13",
+        body: "the pair is src/a.ts and src/c.ts",
+      },
+    ];
+    const answer = diffImpact(["src/a.ts"], [edge(0, 2, 0.9, 10)], files, notes);
+    expect(answer.source[0]?.notes).toEqual([
+      {
+        path: "src/c.ts",
+        note: "architecture/pair.md",
+        description: "a and c move together",
+        mode: "cited",
+        confidence: 1,
+      },
+    ]);
+  });
+
+  it("caps source and tests independently at the limit", () => {
+    const edges = [edge(0, 1, 0.9, 10), edge(0, 2, 0.8, 10), edge(0, 3, 0.7, 10)];
+    const answer = diffImpact(["a.ts"], edges, FILES, [], 1);
+    expect(answer.source).toHaveLength(1);
+    expect(answer.tests).toHaveLength(1);
+  });
+
+  it("ignores a changed path that is not in the co-change graph", () => {
+    expect(diffImpact(["unknown.ts"], [edge(0, 1, 0.9, 10)], FILES, []).source).toEqual([]);
   });
 });

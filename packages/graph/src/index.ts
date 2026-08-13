@@ -18,7 +18,13 @@ export { readGraphify } from "./graphify.js";
 // repo-relative paths, for Task 6's `impact --diff` to consume. Added in the
 // same commit, same reason as every entry above — a consumer outside this
 // package must never reach a deep path into `src/`.
-export { changedPaths, type DiffScope } from "./diff-impact.js";
+export {
+  changedPaths,
+  diffImpact,
+  type DiffScope,
+  type DiffImpactRow,
+  type DiffImpactAnswer,
+} from "./diff-impact.js";
 export {
   readVault,
   citedPaths,
