@@ -46,14 +46,19 @@ describe("launchSdlcBundleInstall — the mission's end-to-end behaviour", () =>
     );
   });
 
-  it("offline/failed catalog: the QuickPick still lists the three fallback bundles", async () => {
+  it("offline/failed catalog: the QuickPick still lists every fallback bundle", async () => {
     const pick = vi.spyOn(vscode.window, "showQuickPick").mockResolvedValue(undefined as never);
     // Simulate the catalog fetch degrading to the fallback list (what fetchBundleCatalog returns offline).
     await launchSdlcBundleInstall("/repo", false, { fetchCatalog: async () => FALLBACK_BUNDLES });
 
     expect(pick).toHaveBeenCalledOnce();
     const items = pick.mock.calls[0]![0] as Array<{ id: string; label: string }>;
-    expect(items.map((i) => i.id)).toEqual(["feature-development", "manual-qa", "test-automation"]);
+    expect(items.map((i) => i.id)).toEqual([
+      "feature-development",
+      "manual-qa",
+      "product-management",
+      "test-automation",
+    ]);
   });
 
   it("cancelled QuickPick: opens no terminal", async () => {

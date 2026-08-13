@@ -15,6 +15,12 @@ export interface Bundle {
 /**
  * The known bundles, used both as rich QuickPick metadata and as the offline fallback list. When
  * the dynamic catalog fetch fails, this is what the command still offers.
+ *
+ * **This table is a copy, and copies go stale.** The authoritative title/description for each
+ * bundle is `bundles/<id>/bundle.json` in sdlc-skills; nothing signals this repo when one changes,
+ * and a bundle added there with no entry here renders as a bare slug plus the generic sentence
+ * {@link fetchBundleCatalog} falls back to — which is how `product-management` first appeared.
+ * Keep entries in sync by hand until the catalog reads `bundle.json` directly (issue #96).
  */
 export const FALLBACK_BUNDLES: Bundle[] = [
   {
@@ -26,6 +32,12 @@ export const FALLBACK_BUNDLES: Bundle[] = [
     id: "manual-qa",
     label: "Manual QA",
     description: "Six manual-QA specialists for live browser testing.",
+  },
+  {
+    id: "product-management",
+    label: "Product Management",
+    description:
+      "Product Owner discovery pipeline — raw asks to verified, prioritized hypotheses.",
   },
   {
     id: "test-automation",
