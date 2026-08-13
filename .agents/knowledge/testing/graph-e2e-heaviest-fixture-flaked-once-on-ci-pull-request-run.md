@@ -7,7 +7,7 @@ description: >-
   shapes — upgraded from a single data point to a confirmed recurring
   pattern.
 type: testing
-verified: 2026-08-11
+verified: 2026-08-13
 method: >-
   Occurrence 1 — PR #55 (T7.4, packages/graph/test/e2e.test.ts, test-only
   diff). `gh pr view 55 --json statusCheckRollup` showed 2 `build` checks on
@@ -308,3 +308,66 @@ evidence. Both properties are asserted by test/fixture-retry.test.ts rather than
 
 **Exit condition:** if `[fixture retry]` starts appearing regularly in CI logs, or a `failed TWICE`
 ever lands, escalate — and the paired before/after state dumps will finally say what changed.
+
+## Seventh observation — 2026-08-13 — THE EXIT CONDITION FIRED
+
+The previous section's exit condition was: *"if `[fixture retry]` starts appearing regularly in CI
+logs, or a `failed TWICE` ever lands, escalate."* **A `failed TWICE` landed**, on PR #95
+(head `7eafc0e`, a pack/docs-only diff touching no `packages/graph` source). Same push-versus-
+pull_request split on an identical SHA: `push` run 31674649730 SUCCESS, `pull_request` run
+31674652723 FAILURE, started two seconds apart. `gh run rerun --failed` went SUCCESS, as always.
+
+Same test as all six prior occurrences. The mitigation worked exactly as designed — it retried once,
+printed the state, and threw with both dumps — so for the first time there is real evidence.
+
+### The evidence the retry was built to capture
+
+```
+[fixture retry] commit 24 of 62 failed in /tmp/octograph-NP974C
+[fixture retry] Command failed: git commit -q -m commit 23 | error: bad tree object HEAD
+[fixture retry]   root exists: true      .git exists: true
+[fixture retry]   HEAD file: ref: refs/heads/main        refs/heads: main
+[fixture retry]   index.lock: false
+[fixture retry]   git status: <failed: Command failed: git status --porcelain=v1 -b>
+[fixture retry]   git rev-list --count --all: <failed>
+→ fixture step failed TWICE: commit 24 of 62
+  first:  Command failed: git commit -q -m commit 23
+  second: Command failed: git commit -q -m commit 23
+```
+
+Three findings, in order of how much they change the model:
+
+1. **The before and after state dumps are byte-identical.** Nothing changed between the two
+   attempts. This retires the transient-race model the whole mitigation rested on: the repository is
+   left *persistently* broken, not momentarily inconsistent. A bounded retry cannot help, and no
+   larger retry budget would either.
+2. **`error: bad tree object HEAD` is a fourth distinct shape**, alongside `git log` parent
+   traversal, `fatal: could not parse HEAD`, and the write-time object-store corruption. With
+   `git status` and `git rev-list` both unusable while `HEAD`, `refs/heads/main` and `.git` all exist
+   and `index.lock` is absent, the damage is in the **object store**, not the refs. Every shape so
+   far is consistent with that one locus.
+3. **Two different fixtures degraded in the same job** — `/tmp/octograph-NP974C` at commit 24 of 62,
+   and `/tmp/octograph-0ijNv7` at its commit 1 of 1. The note's entire framing, from its title
+   onward, is that this is *the heaviest fixture*. That framing is now wrong: a second, trivial
+   one-commit fixture broke in the same run.
+
+### An unverified lead, stated as unverified
+
+Both `[fixture retry]` blocks carry timestamps within ~10 ms of each other (06:40:33.635 and
+06:40:33.644), which would suggest a single runner-wide event rather than a per-fixture race.
+**Do not treat this as simultaneity.** Vitest buffers console output per test file and flushes at
+the end of the run, so near-identical timestamps are the expected artifact of two files finishing
+together. Establishing whether the two failures were genuinely concurrent needs an in-fixture
+timestamp at the moment of failure, which does not exist today. Finding 3 stands on its own without
+this; the lead does not.
+
+### Where this leaves the decision
+
+The 2026-08-12 decision was *mitigate, do not chase*, justified by a 1.9% rate and a bounded retry
+that would make the next one legible. It did exactly that, and what it produced says the mitigation
+cannot work: an identical before/after state means there is nothing to retry *into*. The next step
+is no longer a fifth log entry, and it is no longer a retry — it is to establish what damages the
+object store, starting from finding 3 (whatever it is, it is not specific to a 62-commit fixture).
+
+Left undone deliberately: the escalation itself is a decision about where to spend several hundred
+CI runs, and belongs to whoever owns `packages/graph`, not to the session that happened to trip it.
