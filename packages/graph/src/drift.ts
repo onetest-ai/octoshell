@@ -183,10 +183,23 @@ export function drift(
   );
   const kept = scored.slice(0, keep).map((s) => s.row);
 
-  // Resolve citations for the SURVIVORS only. `citedPaths` scans a note body
-  // per call, and drift's candidate set is every co-change edge in the repo —
-  // resolving before the slice would scan the whole vault thousands of times
-  // to label twenty rows.
+  // Resolve citations for the SURVIVORS only, and BATCHED: one `citedPaths`
+  // call per note (`notes.map` below), never one per row or per candidate
+  // pair. Batched, the call count is `notes.length` either side of the
+  // slice — 16 calls on this repo, measured, whichever candidate set feeds
+  // it — because `citedPaths`'s cost is one regex scan of the note body,
+  // independent of how many paths are in `candidates`.
+  //
+  // The slice placement is insurance against a DIFFERENT, less careful
+  // shape: a per-row implementation that calls `citedPaths` once per
+  // (row, note) pair instead of hoisting the note scan out of the row loop.
+  // Measured on this repo (16 notes, 492 co-change edges pre-slice): that
+  // shape costs 320 calls resolving the 20 survivors, and 7,872 resolving
+  // every scored candidate before the slice — a cost that grows with repo
+  // size, not with the vault. Restricting to survivors keeps that failure
+  // mode cheap even if a future edit loses the batching; it is not what
+  // makes today's batched code fast. A smaller `candidates` Set is a minor
+  // second benefit — trivially cheaper `Set.has` lookups in the loop below.
   //
   // Sorted by note path (the SAME `compare` every ordering in this package
   // uses) before the `.find()` below picks a winner: `notes` is a caller-
