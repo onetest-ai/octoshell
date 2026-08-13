@@ -1,0 +1,9 @@
+name: squash-merged PRs destroy the co-change signal, and the mega-commit filter then discards what survives
+status: done
+severity: critical
+description: ''
+steps_to_reproduce: ''
+expected: ''
+actual: ''
+rca: ''
+environment: ''

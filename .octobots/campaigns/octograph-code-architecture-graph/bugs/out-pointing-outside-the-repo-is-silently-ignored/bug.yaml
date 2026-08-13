@@ -1,0 +1,9 @@
+name: --out pointing outside the repo is silently ignored, and the run writes somewhere else
+status: draft
+severity: major
+description: ''
+steps_to_reproduce: ''
+expected: ''
+actual: ''
+rca: ''
+environment: ''

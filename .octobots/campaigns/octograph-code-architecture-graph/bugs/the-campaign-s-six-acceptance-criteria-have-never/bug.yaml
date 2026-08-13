@@ -1,0 +1,27 @@
+name: the campaign's six acceptance criteria have never been verified
+status: done
+severity: major
+description: ''
+steps_to_reproduce: ''
+expected: ''
+actual: ''
+rca: ''
+environment: ''
+notes: |-
+  ## Closed 2026-08-12 — all six verified, and one of them was worth the whole exercise
+
+  C1 map under 2s on a cold checkout   PASS  0.07s against a 2.0s budget
+  C2 drift ranks the octoweb pair      PASS  now rank 1 of 20 (was 18) after the ranking fix
+  C3 four commands with no .octobots   PASS  map/impact/drift/doctor all exit 0 with real output
+  C4 doctor --json degraded + fixes    PASS  both causes named, each with a fix, exit 1
+  C5 one bundle, no parallel copy      PASS  payload differs from dist by the 29-byte banner only
+  C6 no runtime dependency             PASS  absent from dependencies AND devDependencies
+
+  C2 failed on first measurement and that failure paid for the campaign's largest defect: drift
+  ranked by nPMI alone, which saturates near 1.0 for any pair that always co-occurs — trivially true
+  of a pair seen exactly twice — so seven of the top eight rows had support 2 while the pair with
+  support 9, the strongest evidence in the result, sat at 18. Seven mission gates and 61 mission
+  criteria could not have caught it, because no mission owns the question 'is the ranking useful on
+  a real repository', and C2 names a different repo.
+
+  Verifying campaign criteria is not ceremony. It is the only check that spans missions.
