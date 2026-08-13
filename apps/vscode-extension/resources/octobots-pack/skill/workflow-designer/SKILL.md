@@ -45,6 +45,10 @@ recording, not merely because a mission exists.
 
 If you decide against one, **say so and why**. Silence reads as an oversight.
 
+If you cannot tell whether the mission's tasks are genuinely independent, use the
+**`knowledge-explorer`** skill first — `conflicts <mission>` answers exactly that, and parallelising
+tasks that co-change is how a workflow produces a merge conflict on every run.
+
 ## The two levels
 
 - A **campaign** workflow orchestrates that campaign's **missions**. A campaign may hold several.

@@ -61,6 +61,18 @@ describe("bundled pack payloads", () => {
     // agent to call `octobots-planner` sends it after something that is not on disk.
     expect(skill).not.toMatch(/agent: ['"`]octobots-(planner|orchestrator)['"`]/);
   });
+
+  // A skill nothing points at is a skill nothing invokes. knowledge-explorer answers a question the
+  // other four each hit at a different moment — before decomposing, before the first edit, at the QA
+  // phase, before parallelising tasks — so each of them names it. A pointer, not a gate: the reader
+  // decides whether the question is worth a query, which is the skill's own first rule.
+  it.each(["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate"])(
+    "%s points at knowledge-explorer",
+    (name) => {
+      const skill = readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
+      expect(skill).toMatch(/knowledge-explorer/);
+    },
+  );
 });
 
 describe("installPack + packStatus (real payload → temp repo)", () => {

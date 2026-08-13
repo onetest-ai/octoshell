@@ -24,6 +24,11 @@ markers on any parent line. There is no `## Missions` / `## Tasks` / `## Bugs` p
 anymore, and no board line to hand-add — always use the `add-*` scripts, which create the child
 folder and its YAML.
 
+Before you decompose anything you did not write yourself, use the **`knowledge-explorer`** skill: it
+reads the repository's knowledge vault and — where octograph is installed — the co-change evidence
+for which files actually move together. Splitting work you have not oriented in is how one piece of
+work becomes three missions.
+
 ## Layout
 
 ```

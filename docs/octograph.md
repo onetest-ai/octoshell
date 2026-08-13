@@ -72,6 +72,12 @@ CLI agent starts with the architecture already in hand. Over the cap, or absent,
 one-line pointer instead — never a truncated map, because a truncated architecture map reads as
 complete.
 
+### How an agent should reach for it
+
+The primer hands an agent the map. The **`knowledge-explorer`** skill — shipped in the Octobots
+pack — is what tells it when to spend a query, how to read an empty result, and what to do with the
+answer. Everything below is the instrument; that skill is the discipline for using it.
+
 ---
 
 ## What each command answers

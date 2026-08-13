@@ -261,6 +261,8 @@ failure by design; pass `--strict` only when running it by hand to debug.
 
 - **`mission-execution`** — the mission loop this gate sits on top of (one Workflow per mission,
   tasks sequenced inside it); same role model (Rio/Py/Jay/Sage/Alex/Max) and review machinery.
+- **`knowledge-explorer`** — Sage uses it in phase 2 to size the risk surface: which paths the
+  change is historically coupled to, and which of those the QA pass has not touched.
 - **`code-review` / `requesting-code-review`** — the review mechanics Rio uses in
   phase 3.
 - Mechanical gate: whatever the project runs pre-commit and in CI (linters,

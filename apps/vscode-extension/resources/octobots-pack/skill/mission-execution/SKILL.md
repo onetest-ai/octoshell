@@ -560,6 +560,8 @@ checkpoint. Stop only on a blocker or a genuine product decision (use AskUserQue
 
 ## Skill companions
 
+- **`knowledge-explorer`** — before your first edit on a task, find out what the repo already knows
+  about the files you are about to touch, and what else moves with them.
 - **`mission-planner`** — plan the mission/tasks + acceptance criteria first; keep statuses current.
 - **`requesting-code-review` / `code-review`** — the in-house review gate used in step 4.
 - **`await-copilot-review`** *(optional)* — an external Copilot review pass before merge, if the project
