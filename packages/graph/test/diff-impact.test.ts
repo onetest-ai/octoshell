@@ -99,9 +99,15 @@ describe("changedPaths", () => {
     ]);
   });
 
+  // `worktree`, not `staged`: only `uncommitted()` (`git status --porcelain -z`)
+  // ever calls `porcelainPaths` — `staged` routes through `git diff --name-only
+  // -z --cached`, which collapses a rename into a single record with no old-
+  // path companion, so it never reaches the skip logic this test exists to
+  // exercise. `git mv` is picked up by `uncommitted()` whether or not it is
+  // staged (git mv stages it), so `worktree` scope is enough on its own.
   it("consumes the OLD-path record of a rename and keeps only the new path", () => {
     const root = repoWithBranch();
     git(root, "mv", "src/one.ts", "src/one-renamed.ts");
-    expect(changedPaths(root, { kind: "staged" }, "main", [])).toEqual(["src/one-renamed.ts"]);
+    expect(changedPaths(root, { kind: "worktree" }, "main", [])).toEqual(["src/one-renamed.ts"]);
   });
 });

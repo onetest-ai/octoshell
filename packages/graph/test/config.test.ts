@@ -153,6 +153,26 @@ describe("loadConfig", () => {
     expect(loadConfig(root).vaultPath).toBe("notes/vault");
   });
 
+  /**
+   * `diffBase` is a git ref name, not a repo-relative path, so it takes no
+   * `insideRepo` containment check the way `out`/`vaultPath` above do — a ref
+   * like `origin/main` was never going to escape the repo tree. It still
+   * needs the same per-key "bad value degrades to the default" discipline
+   * every other key gets, which this pins directly rather than leaving it
+   * covered only by the blanket "no octograph.yaml -> equals DEFAULTS" case.
+   */
+  it("falls back to the default diffBase when octograph.yaml's diffBase is not a string", () => {
+    const root = mkdtempClean("cfg-");
+    writeFileSync(join(root, "octograph.yaml"), "diffBase: 42\n");
+    expect(loadConfig(root).diffBase).toBe(DEFAULTS.diffBase);
+  });
+
+  it("accepts a legitimate diffBase from octograph.yaml", () => {
+    const root = mkdtempClean("cfg-");
+    writeFileSync(join(root, "octograph.yaml"), "diffBase: trunk\n");
+    expect(loadConfig(root).diffBase).toBe("trunk");
+  });
+
   it("reads values correctly with comments present", () => {
     const root = mkdtempClean("cfg-");
     writeFileSync(
