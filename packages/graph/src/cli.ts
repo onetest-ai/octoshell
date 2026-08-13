@@ -13,7 +13,8 @@ import { impact as computeImpact, type ImpactRow } from "./impact.js";
 import { own as computeOwn, type OwnAnswer } from "./own.js";
 import { repoRelative } from "./paths.js";
 import { oneLine, renderMap } from "./render.js";
-import { readVault } from "./vault.js";
+import { compare } from "./rollup.js";
+import { matchCited, readVault, type VaultNote } from "./vault.js";
 import { readWorklog } from "./worklog.js";
 
 export type Command = "map" | "impact" | "drift" | "doctor" | "own" | "conflicts";
@@ -406,6 +407,57 @@ function sincePredictedWarning(since: string | undefined): string {
 }
 
 /**
+ * Module name → a one-line "what this is for".
+ *
+ * Two sources, each carrying its own label into the string, because `render`
+ * escapes and budgets what it is handed but does not decide what counts as
+ * evidence. A module's owner is the mission of the MOST-attributed task among
+ * its files — one line per module is the budget, so a module owned by three
+ * tasks names the one with the most files rather than listing all three.
+ */
+function purposeByModule(
+  answers: readonly OwnAnswer[],
+  notes: readonly VaultNote[],
+  files: readonly string[],
+  moduleOf: (p: string) => string,
+): Map<string, string> {
+  const tally = new Map<string, Map<string, { label: string; n: number }>>();
+  for (const a of answers) {
+    const mod = moduleOf(a.path);
+    const byMission = tally.get(mod) ?? new Map<string, { label: string; n: number }>();
+    const key = a.mission;
+    const seen = byMission.get(key);
+    const label = `${a.missionName} (${a.mode})`;
+    if (seen === undefined) byMission.set(key, { label, n: 1 });
+    else seen.n += 1;
+    tally.set(mod, byMission);
+  }
+
+  const citedByModule = new Map<string, string>();
+  for (const m of matchCited(notes, files)) {
+    const mod = moduleOf(m.path);
+    // First wins: `matchCited` is sorted by path then note, so this is stable
+    // across runs — `map.md` is committed and must not churn between two
+    // identical runs.
+    if (!citedByModule.has(mod)) citedByModule.set(mod, m.note);
+  }
+
+  const out = new Map<string, string>();
+  for (const mod of new Set([...tally.keys(), ...citedByModule.keys()])) {
+    const missions = [...(tally.get(mod)?.values() ?? [])].sort(
+      (x, y) => y.n - x.n || compare(x.label, y.label),
+    );
+    const parts: string[] = [];
+    const top = missions[0];
+    if (top !== undefined) parts.push(top.label);
+    const note = citedByModule.get(mod);
+    if (note !== undefined) parts.push(`see ${note}`);
+    if (parts.length > 0) out.set(mod, parts.join(" — "));
+  }
+  return out;
+}
+
+/**
  * `map`'s whole pipeline — `analyze` -> `renderMap` -> `writeArtifact` — as
  * ONE function, exported so a second caller never reassembles that sequence
  * by hand. `setup.ts`'s build step calls this directly rather than
@@ -436,8 +488,23 @@ export function runMapCommand(
   // against the artifact this run itself produces.
   const sinceWarning = sinceMismatchWarning(previous, since);
 
-  const { analysis } = analyze(repoRoot, config, { now, since, previousClusters });
-  const mapText = renderMap(analysis, config.budgetTokens);
+  const { analysis, files, spine } = analyze(repoRoot, config, { now, since, previousClusters });
+
+  // Purpose lines are OPTIONAL evidence, same posture as the vault itself
+  // (vault.ts's own doc comment): a repo with no board still gets vault-only
+  // purpose lines, a repo with neither gets an unchanged map.md. `own` needs
+  // a `BoardView` to answer at all (see `runOwnCommand`'s early exit), so
+  // this is the one call site in `map` that is conditional on the board
+  // existing — everything else `map` computes works on a boardless repo.
+  const board = readBoard(repoRoot);
+  const answers =
+    board === null
+      ? []
+      : computeOwn(repoRoot, board, readWorklog(repoRoot), files, null, lexicalOptions(config));
+  const notes = readVault(repoRoot, config.vaultPath);
+  const purpose = purposeByModule(answers, notes, files, spine.moduleOf);
+
+  const mapText = renderMap(analysis, config.budgetTokens, purpose);
 
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, "map.md"), mapText);
