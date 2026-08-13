@@ -191,8 +191,7 @@ true" is exactly the failure that charter names.
 export type DiffScope =
   | { kind: "branch" }              // merge-base(<base>, HEAD)..HEAD + uncommitted  (default)
   | { kind: "staged" }
-  | { kind: "worktree" }
-  | { kind: "since"; rev: string };
+  | { kind: "worktree" };
 
 export interface DiffImpactRow extends ImpactRow {
   /** Which of the changed paths pulled this row in, strongest first. */
@@ -295,7 +294,6 @@ octograph impact <path>                    # unchanged
 octograph impact --diff                    # branch scope (default): merge-base(main,HEAD)..HEAD + uncommitted
 octograph impact --diff --staged
 octograph impact --diff --worktree
-octograph impact --diff --since <rev>
 octograph impact --diff --base <ref>       # default: main
 ```
 

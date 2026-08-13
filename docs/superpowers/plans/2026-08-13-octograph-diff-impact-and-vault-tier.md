@@ -772,7 +772,7 @@ git commit -m "feat(graph): predict vault notes for a path, calibrated against t
 
 **Interfaces:**
 - Consumes: `isExcludedPath` from `src/noise.ts`.
-- Produces: `DiffScope` (`{ kind: "branch" } | { kind: "staged" } | { kind: "worktree" } | { kind: "since"; rev: string }`) and `changedPaths(repoRoot: string, scope: DiffScope, base: string, excludePaths: readonly string[]): string[]`. Task 6 consumes both.
+- Produces: `DiffScope` (`{ kind: "branch" } | { kind: "staged" } | { kind: "worktree" }`) and `changedPaths(repoRoot: string, scope: DiffScope, base: string, excludePaths: readonly string[]): string[]`. Task 6 consumes both.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -900,8 +900,7 @@ import { compare } from "./rollup.js";
 export type DiffScope =
   | { kind: "branch" }
   | { kind: "staged" }
-  | { kind: "worktree" }
-  | { kind: "since"; rev: string };
+  | { kind: "worktree" };
 
 /**
  * Run git and return stdout, or null on any failure.
@@ -990,9 +989,6 @@ export function changedPaths(
       break;
     case "worktree":
       paths = uncommitted();
-      break;
-    case "since":
-      paths = nulList(git(repoRoot, ["diff", "--name-only", "-z", `${scope.rev}..HEAD`]));
       break;
     case "branch": {
       const mergeBase = git(repoRoot, ["merge-base", base, "HEAD"])?.trim();
@@ -1146,7 +1142,7 @@ Append to `packages/graph/src/diff-impact.ts` (extend the imports):
 import { impact, type ImpactRow } from "./impact.js";
 import { isTestPath } from "./noise.js";
 import { rankScore } from "./rank.js";
-import { edgeWeight, type Edge } from "./weights.js";
+import type { Edge } from "./weights.js";
 import { matchCited, type VaultMatch, type VaultNote } from "./vault.js";
 
 export interface DiffImpactRow extends ImpactRow {
@@ -1194,7 +1190,12 @@ export function diffImpact(
   for (const path of changed) {
     for (const row of impact(path, edges, files, undefined, minSupport)) {
       if (changedSet.has(row.path)) continue; // you already touched it
-      const score = rankScore(edgeWeight({ ...row, a: 0, b: 0 } as Edge), row.support, minSupport);
+      // `ImpactRow.npmi` is ALREADY an `edgeWeight` result — impact.ts says so
+      // explicitly ("`ImpactRow.npmi` still reports the plain `edgeWeight`
+      // value; only the order changes"). Re-flooring it through `edgeWeight`
+      // would be a second place a negative nPMI could reach a ranking, which is
+      // exactly what `rankScore`'s own doc comment forbids.
+      const score = rankScore(row.npmi, row.support, minSupport);
       const existing = merged.get(row.path);
       if (existing === undefined) {
         merged.set(row.path, { row, score, by: new Set([path]) });
@@ -1243,8 +1244,6 @@ export function diffImpact(
   };
 }
 ```
-
-**Implementation note for Step 3:** the `edgeWeight({ ...row, a: 0, b: 0 } as Edge)` cast above is a smell. `ImpactRow` already carries `npmi` as an `edgeWeight` result (see `impact.ts`: *"`ImpactRow.npmi` still reports the plain `edgeWeight` value"*), so use `rankScore(row.npmi, row.support, minSupport)` directly and delete both the cast and the `edgeWeight` import. Verify against `impact.ts` before writing, and keep whichever is true there.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -1302,11 +1301,7 @@ describe("impact --diff parsing", () => {
     expect(run.stderr).toContain("--sInce");
   });
 
-  it("requires a value for --since and --base", () => {
-    expect(parseArgs(["impact", "--diff", "--since"])).toEqual({
-      ok: false,
-      error: "--since requires a value",
-    });
+  it("requires a value for --base", () => {
     expect(parseArgs(["impact", "--diff", "--base"])).toEqual({
       ok: false,
       error: "--base requires a value",
@@ -1316,7 +1311,7 @@ describe("impact --diff parsing", () => {
   it("rejects two scope flags at once", () => {
     const run = runCli(["impact", "--diff", "--staged", "--worktree"], process.cwd());
     expect(run.exitCode).toBe(2);
-    expect(run.stderr).toContain("only one of --staged, --worktree, --since");
+    expect(run.stderr).toContain("only one of --staged, --worktree");
   });
 
   it("requires --diff before a scope flag", () => {
@@ -1327,7 +1322,7 @@ describe("impact --diff parsing", () => {
 });
 ```
 
-Note: `--since` already exists on `map`/`drift` as a history window (see `ParsedCommand.since`). Under `impact --diff` it names a git revision instead. Reuse the same parsed field only if that is unambiguous in `runCli`; if it is not, add a distinct `diffSince` field and say why in a comment. Check `cli.ts`'s existing `--since` handling before writing.
+Note: `--since` keeps exactly one meaning across this whole CLI — the history window `map`/`drift` already pass to `git log` (`ParsedCommand.since`). It is deliberately NOT part of the diff scope: `--base <ref>` selects what a branch is measured against, and one flag meaning two things depending on whether `--diff` is present is precisely the surprise `cli.ts`'s parser comments say this CLI must not have. Do not add a revision-valued `--since`.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1378,12 +1373,11 @@ Declare `let sawDiff = false; let scopeFlag: string | null = null; let base: str
   if (sawDiff) {
     if (scopeFlag === "--staged") diff = { kind: "staged" };
     else if (scopeFlag === "--worktree") diff = { kind: "worktree" };
-    else if (since !== undefined) diff = { kind: "since", rev: since };
     else diff = { kind: "branch" };
   }
 ```
 
-with `const DUPLICATE_SCOPE = "only one of --staged, --worktree, --since may be given";` at module scope.
+with `const DUPLICATE_SCOPE = "only one of --staged, --worktree may be given";` at module scope.
 
 - [ ] **Step 4: Reject `--diff` with a positional, and route the command**
 
@@ -1487,7 +1481,7 @@ function runDiffImpactCommand(
 Add to the usage text, wherever `impact <path>` is documented:
 
 ```
-  impact --diff [--staged|--worktree|--since <rev>] [--base <ref>]
+  impact --diff [--staged|--worktree] [--base <ref>]
         What else moves, given everything changed against <ref> (default: main)
         plus uncommitted work. Rows are capped per section; each changed file
         contributes at most 20 candidates before the merge.
@@ -1536,7 +1530,7 @@ function writeNote(root: string, rel: string, body: string): void {
 
 describe("knowledge vault check", () => {
   it("reports missing when there is no vault, and never degrades status", () => {
-    const report = doctor(healthyRepo(), DEFAULTS);
+    const report = doctor(healthyRepo(), { ...DEFAULTS, minCommits: 10 });
     expect(check(report, "knowledge vault")?.state).toBe("missing");
     expect(check(report, "knowledge vault")?.required).toBe(false);
     expect(check(report, "knowledge vault")?.fix).toBeTruthy();
@@ -1547,13 +1541,14 @@ describe("knowledge vault check", () => {
     const repo = healthyRepo(); // commits a0.ts..a11.ts and b0.ts..b11.ts
     writeNote(repo, "architecture/pair.md", "---\nname: pair\n---\na0.ts and b0.ts move together\n");
     writeNote(repo, "practices/loose.md", "---\nname: loose\n---\nno paths at all\n");
-    const detail = check(doctor(repo, DEFAULTS), "knowledge vault")?.detail ?? "";
+    const detail =
+      check(doctor(repo, { ...DEFAULTS, minCommits: 10 }), "knowledge vault")?.detail ?? "";
     expect(detail).toContain("2 notes");
     expect(detail).toContain("1 citing");
   });
 
   it("keeps every check name unique with the vault check present", () => {
-    const names = doctor(healthyRepo(), DEFAULTS).checks.map((c) => c.name);
+    const names = doctor(healthyRepo(), { ...DEFAULTS, minCommits: 10 }).checks.map((c) => c.name);
     expect(new Set(names).size).toBe(names.length);
   });
 });
