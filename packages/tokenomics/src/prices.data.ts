@@ -10,7 +10,7 @@ import type { PriceEntry } from "./prices.js";
 
 export const PRICES_SOURCE =
   "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
-export const PRICES_FETCHED_AT = "2026-07-31";
+export const PRICES_FETCHED_AT = "2026-08-13";
 
 export const PRICES: Record<string, PriceEntry> = {
   "claude-3-7-sonnet-20250219": {
@@ -66,6 +66,20 @@ export const PRICES: Record<string, PriceEntry> = {
     "cache_read_input_token_cost": 1e-7,
     "cache_creation_input_token_cost": 0.00000125,
     "cache_creation_input_token_cost_above_1hr": 0.000002
+  },
+  "claude-mythos-5": {
+    "input_cost_per_token": 0.00001,
+    "output_cost_per_token": 0.00005,
+    "cache_read_input_token_cost": 0.000001,
+    "cache_creation_input_token_cost": 0.0000125,
+    "cache_creation_input_token_cost_above_1hr": 0.00002
+  },
+  "claude-mythos-preview": {
+    "input_cost_per_token": 0.00001,
+    "output_cost_per_token": 0.00005,
+    "cache_read_input_token_cost": 0.000001,
+    "cache_creation_input_token_cost": 0.0000125,
+    "cache_creation_input_token_cost_above_1hr": 0.00002
   },
   "claude-opus-4-1": {
     "input_cost_per_token": 0.000015,
