@@ -131,7 +131,20 @@ function describeRepoState(root: string): string {
     try {
       lines.push(`  ${label}: ${fn().trim().replace(/\n/g, " | ").slice(0, 300)}`);
     } catch (e) {
-      lines.push(`  ${label}: <failed: ${(e as Error).message.split("\n")[0]}>`);
+      // Git's OWN complaint, not just Node's "Command failed: <argv>" summary line.
+      //
+      // Seven occurrences produced no root cause, and this is why. `.split("\n")[0]`
+      // kept exactly the line that carries no information — the command we already
+      // know we ran — and discarded the stderr underneath it, which is the only place
+      // git says WHAT it could not read. The one occurrence that did name its cause
+      // (`error: bad tree object HEAD`, 2026-08-13) got there through the separate
+      // two-line slice in `step`, not through this diagnostic.
+      const err = e as Error & { stderr?: Buffer | string };
+      const stderr = err.stderr?.toString().trim() ?? "";
+      lines.push(
+        `  ${label}: <failed: ${err.message.split("\n")[0]}>` +
+          (stderr ? ` stderr: ${stderr.replace(/\n/g, " | ").slice(0, 300)}` : ""),
+      );
     }
   };
   safe("root exists", () => String(existsSync(root)));
@@ -151,6 +164,35 @@ function describeRepoState(root: string): string {
   safe("git rev-list --count --all", () => execFileSync("git", ["rev-list", "--count", "--all"], {
     cwd: root, encoding: "utf8", stdio: "pipe",
   }));
+
+  // THE OBJECT STORE — the half of the repository every observed failure has
+  // actually been about, and the half nothing here used to look at.
+  //
+  // All four observed error shapes (`could not parse HEAD`, a `git log` parent
+  // traversal failure, a write-time object-store complaint, and `bad tree object
+  // HEAD`) say an object is unreadable while HEAD, refs/heads and .git are all
+  // intact — which the checks above confirm and then cannot explain. These name
+  // WHICH object and whether the damage is missing-vs-corrupt:
+  //
+  //   - `fsck` reports the unreachable/broken object directly;
+  //   - `cat-file -t HEAD` separates "ref points nowhere" from "commit reads but
+  //     its tree does not";
+  //   - the loose-object-directory count distinguishes an emptied store from a
+  //     populated one with one bad member;
+  //   - `df` closes out disk exhaustion, which a 2026-08-13 experiment already
+  //     ruled out as a mechanism (a full filesystem fails LOUDLY, with git naming
+  //     "Out of diskspace", and leaves fsck clean) but which is cheap to keep
+  //     evidence for rather than re-argue.
+  safe("git fsck", () => execFileSync("git", ["fsck", "--no-progress", "--connectivity-only"], {
+    cwd: root, encoding: "utf8", stdio: "pipe",
+  }));
+  safe("git cat-file -t HEAD", () => execFileSync("git", ["cat-file", "-t", "HEAD"], {
+    cwd: root, encoding: "utf8", stdio: "pipe",
+  }));
+  safe("loose object dirs", () =>
+    String(readdirSync(join(root, ".git", "objects")).filter((d) => /^[0-9a-f]{2}$/.test(d)).length));
+  safe("objects/pack", () => readdirSync(join(root, ".git", "objects", "pack")).join(",") || "(empty)");
+  safe("df", () => execFileSync("df", ["-k", root], { encoding: "utf8", stdio: "pipe" }));
   return lines.join("\n");
 }
 
