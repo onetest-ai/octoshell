@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// octobots-pack-version: 51
+// octobots-pack-version: 52
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join9, relative as relative3 } from "node:path";
+import { join as join10, relative as relative3 } from "node:path";
 
 // src/harvest.ts
 import { execFileSync } from "node:child_process";
@@ -3120,8 +3120,8 @@ function workingSets(byCommunity, edges, files, moduleOf) {
 }
 
 // src/config.ts
-import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
-import { join as join4 } from "node:path";
+import { existsSync as existsSync3, readFileSync as readFileSync4 } from "node:fs";
+import { join as join5 } from "node:path";
 
 // src/lexical.ts
 var STOPWORDS = new Set(
@@ -3178,6 +3178,91 @@ function predictFiles(criteria, candidates, opts = {}) {
   const runnerUp = scored.find((m) => m.score < top)?.score ?? 0;
   if (top - runnerUp < margin) return [];
   return scored.filter((m) => m.score === top);
+}
+
+// src/vault.ts
+import { readdirSync as readdirSync2, readFileSync as readFileSync3 } from "node:fs";
+import { join as join4 } from "node:path";
+var DEFAULT_VAULT_PATH = ".agents/knowledge";
+var FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+var str2 = (v) => typeof v === "string" && v !== "" ? v : null;
+var oneLine = (v) => v.replace(/\s+/gu, " ").trim();
+function markdownFiles(dir, prefix = "") {
+  let entries;
+  try {
+    entries = readdirSync2(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const entry of entries) {
+    const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) out.push(...markdownFiles(join4(dir, entry.name), rel));
+    else if (entry.name.endsWith(".md")) out.push(rel);
+  }
+  return out;
+}
+function readVault(repoRoot, vaultPath = DEFAULT_VAULT_PATH) {
+  const root = join4(repoRoot, ...vaultPath.split("/"));
+  const notes = [];
+  for (const rel of markdownFiles(root)) {
+    const segment = rel.slice(rel.lastIndexOf("/") + 1);
+    if (segment === "README.md") continue;
+    let raw;
+    try {
+      raw = readFileSync3(join4(root, ...rel.split("/")), "utf8");
+    } catch {
+      continue;
+    }
+    const stem = segment.replace(/\.md$/u, "");
+    const match = FRONTMATTER.exec(raw);
+    const body = match === null ? raw : raw.slice(match[0].length);
+    let front = {};
+    if (match?.[1] !== void 0) {
+      try {
+        const doc = load(match[1]);
+        if (typeof doc === "object" && doc !== null && !Array.isArray(doc)) {
+          front = doc;
+        }
+      } catch {
+      }
+    }
+    const description = str2(front.description);
+    notes.push({
+      note: rel,
+      name: str2(front.name) ?? stem,
+      description: description === null ? "" : oneLine(description),
+      verified: str2(front.verified) ?? str2(front.created),
+      body
+    });
+  }
+  return notes.sort((a, b) => compare(a.note, b.note));
+}
+var PATH_TOKEN = /[A-Za-z0-9_@.-]+(?:\/[A-Za-z0-9_@.-]+)+/gu;
+function citedPaths(note, candidates) {
+  const found = /* @__PURE__ */ new Set();
+  for (const token of note.body.matchAll(PATH_TOKEN)) {
+    const raw = token[0];
+    const cleaned = raw.replace(/[.,;:)\]]+$/u, "");
+    if (candidates.has(cleaned)) found.add(cleaned);
+  }
+  return [...found].sort(compare);
+}
+function matchCited(notes, candidates) {
+  const set = new Set(candidates);
+  const out = [];
+  for (const note of notes) {
+    for (const path of citedPaths(note, set)) {
+      out.push({
+        path,
+        note: note.note,
+        description: note.description,
+        mode: "cited",
+        confidence: 1
+      });
+    }
+  }
+  return out.sort((a, b) => compare(a.path, b.path) || compare(a.note, b.note));
 }
 
 // src/config.ts
@@ -3253,7 +3338,9 @@ var DEFAULTS = {
     ".next/",
     ".nuxt/",
     ".cache/"
-  ]
+  ],
+  vaultPath: DEFAULT_VAULT_PATH,
+  diffBase: "main"
 };
 var NUMERIC = [
   "maxCommitFiles",
@@ -3267,10 +3354,10 @@ var NUMERIC = [
 ];
 function loadConfig(repoRoot, overrides = {}) {
   const cfg = { ...DEFAULTS };
-  const path = join4(repoRoot, "octograph.yaml");
+  const path = join5(repoRoot, "octograph.yaml");
   if (existsSync3(path)) {
     try {
-      const doc = load(readFileSync3(path, "utf8"));
+      const doc = load(readFileSync4(path, "utf8"));
       if (doc !== null && typeof doc === "object" && !Array.isArray(doc)) {
         const parsed = doc;
         for (const key of NUMERIC) {
@@ -3280,8 +3367,14 @@ function loadConfig(repoRoot, overrides = {}) {
         if (typeof parsed.out === "string" && insideRepo(repoRoot, parsed.out) !== null) {
           cfg.out = parsed.out;
         }
+        if (typeof parsed.vaultPath === "string" && insideRepo(repoRoot, parsed.vaultPath) !== null) {
+          cfg.vaultPath = parsed.vaultPath;
+        }
         if (Array.isArray(parsed.excludePaths) && parsed.excludePaths.every((v) => typeof v === "string")) {
           cfg.excludePaths = parsed.excludePaths;
+        }
+        if (typeof parsed.diffBase === "string" && parsed.diffBase !== "") {
+          cfg.diffBase = parsed.diffBase;
         }
       }
     } catch {
@@ -3431,26 +3524,26 @@ function analyze(repoRoot, config, opts) {
 }
 
 // src/artifact.ts
-import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync4, writeFileSync } from "node:fs";
-import { join as join5, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync5, writeFileSync } from "node:fs";
+import { join as join6, resolve as resolve2 } from "node:path";
 function hasBoard(repoRoot) {
-  return existsSync4(join5(repoRoot, ".octobots"));
+  return existsSync4(join6(repoRoot, ".octobots"));
 }
 function boardDir(repoRoot) {
-  return hasBoard(repoRoot) ? join5(repoRoot, ".octobots") : null;
+  return hasBoard(repoRoot) ? join6(repoRoot, ".octobots") : null;
 }
 function resolveOut(repoRoot, config) {
   if (config.out && insideRepo(repoRoot, config.out) !== null) {
     return resolve2(repoRoot, config.out);
   }
-  if (hasBoard(repoRoot)) return join5(repoRoot, ".octobots", "graph");
-  return join5(repoRoot, ".octograph");
+  if (hasBoard(repoRoot)) return join6(repoRoot, ".octobots", "graph");
+  return join6(repoRoot, ".octograph");
 }
 function readArtifact(dir) {
-  const path = join5(dir, "clusters.json");
+  const path = join6(dir, "clusters.json");
   if (!existsSync4(path)) return null;
   try {
-    const parsed = JSON.parse(readFileSync4(path, "utf8"));
+    const parsed = JSON.parse(readFileSync5(path, "utf8"));
     return isStoredGraph(parsed) ? parsed : null;
   } catch {
     return null;
@@ -3481,7 +3574,7 @@ function writeArtifact(dir, graph) {
     clusters: ordered,
     config: withSortedKeys(graph.config)
   });
-  writeFileSync(join5(dir, "clusters.json"), JSON.stringify(payload, null, 2) + "\n");
+  writeFileSync(join6(dir, "clusters.json"), JSON.stringify(payload, null, 2) + "\n");
 }
 function withSortedKeys(record) {
   const source = record;
@@ -3796,8 +3889,8 @@ function parseWorkflowMeta(source) {
 }
 
 // ../board/dist/board-model.js
-import { readdirSync as readdirSync2, readFileSync as readFileSync5, statSync as statSync2 } from "node:fs";
-import { join as join6 } from "node:path";
+import { readdirSync as readdirSync3, readFileSync as readFileSync6, statSync as statSync2 } from "node:fs";
+import { join as join7 } from "node:path";
 var BoardModel = class {
   root;
   // Entity maps keyed by id
@@ -3851,7 +3944,7 @@ var BoardModel = class {
     this.missingIds = [];
     if (!this.root)
       return;
-    const campaignsDir = join6(this.root, "campaigns");
+    const campaignsDir = join7(this.root, "campaigns");
     const cSlugs = safeReaddir(campaignsDir);
     for (const cslug of cSlugs) {
       const cFolder = `campaigns/${cslug}`;
@@ -3886,10 +3979,10 @@ var BoardModel = class {
         this.workflowByFolder.set(wf.folderPath, wf.id);
         this.workflowsByCampaign.get(cId).push(wf.id);
       }
-      const cText = cRead.isYaml ? "" : safeReadFile(join6(this.root, cFolder, "campaign.md")) ?? "";
+      const cText = cRead.isYaml ? "" : safeReadFile(join7(this.root, cFolder, "campaign.md")) ?? "";
       const cBugStatuses = parseSectionBoardStatuses(cText, "## Bugs");
       const cMissionStatuses = parseSectionBoardStatuses(cText, "## Missions");
-      const cBugsDir = join6(this.root, cFolder, "bugs");
+      const cBugsDir = join7(this.root, cFolder, "bugs");
       const bSlugs = safeReaddir(cBugsDir);
       for (const bslug of bSlugs) {
         const bFolder = `${cFolder}/bugs/${bslug}`;
@@ -3923,7 +4016,7 @@ var BoardModel = class {
         this.bugByFolder.set(bFolder, bId);
         this.bugsByCampaign.get(cId).push(bId);
       }
-      const missionsDir = join6(this.root, cFolder, "missions");
+      const missionsDir = join7(this.root, cFolder, "missions");
       const mSlugs = safeReaddir(missionsDir);
       for (const mslug of mSlugs) {
         const mFolder = `${cFolder}/missions/${mslug}`;
@@ -3958,10 +4051,10 @@ var BoardModel = class {
           this.workflowByFolder.set(wf.folderPath, wf.id);
           this.workflowsByMission.get(mId).push(wf.id);
         }
-        const mText = mRead.isYaml ? "" : safeReadFile(join6(this.root, mFolder, "mission.md")) ?? "";
+        const mText = mRead.isYaml ? "" : safeReadFile(join7(this.root, mFolder, "mission.md")) ?? "";
         const mBugStatuses = parseSectionBoardStatuses(mText, "## Bugs");
         const mTaskStatuses = parseSectionBoardStatuses(mText, "## Tasks");
-        const mBugsDir = join6(this.root, mFolder, "bugs");
+        const mBugsDir = join7(this.root, mFolder, "bugs");
         const mbSlugs = safeReaddir(mBugsDir);
         for (const bslug of mbSlugs) {
           const bFolder = `${mFolder}/bugs/${bslug}`;
@@ -3994,7 +4087,7 @@ var BoardModel = class {
           this.bugByFolder.set(bFolder, bId);
           this.bugsByMission.get(mId).push(bId);
         }
-        const tasksDir = join6(this.root, mFolder, "tasks");
+        const tasksDir = join7(this.root, mFolder, "tasks");
         const tSlugs = safeReaddir(tasksDir);
         for (const tslug of tSlugs) {
           const tFolder = `${mFolder}/tasks/${tslug}`;
@@ -4141,10 +4234,10 @@ function parseSectionBoardStatuses(text, sectionHeading) {
 }
 function parseWorkflows(root, parentFolder, parent) {
   const out = [];
-  const dir = join6(root, parentFolder, "workflows");
+  const dir = join7(root, parentFolder, "workflows");
   for (const slug of safeReaddir(dir)) {
     const folderPath = `${parentFolder}/workflows/${slug}`;
-    const jsPath = join6(root, folderPath, "workflow.js");
+    const jsPath = join7(root, folderPath, "workflow.js");
     const jsText = safeReadFile(jsPath);
     if (jsText === null)
       continue;
@@ -4180,10 +4273,10 @@ function parseWorkflows(root, parentFolder, parent) {
   return out;
 }
 function readLastRunStatus(root, folderPath) {
-  const jsonl = safeReadFile(join6(root, folderPath, "runs.jsonl"));
+  const jsonl = safeReadFile(join7(root, folderPath, "runs.jsonl"));
   if (jsonl !== null)
     return newestRunStatusFromJsonl(jsonl);
-  const md = safeReadFile(join6(root, folderPath, "workflow.md"));
+  const md = safeReadFile(join7(root, folderPath, "workflow.md"));
   if (md !== null)
     return newestRunStatus(parseManagedBlock(md).runs ?? "");
   return null;
@@ -4218,14 +4311,14 @@ function newestRunStatus(runsBody) {
 }
 function safeReaddir(dir) {
   try {
-    return readdirSync2(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+    return readdirSync3(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
   } catch {
     return [];
   }
 }
 function safeReadFile(path) {
   try {
-    return readFileSync5(path, "utf8");
+    return readFileSync6(path, "utf8");
   } catch {
     return null;
   }
@@ -4248,8 +4341,8 @@ function resolveStatus(raw) {
   return mapBoardStatus(raw) ?? "draft";
 }
 function readEntity(root, folderPath, kind) {
-  const yamlPath = join6(root, folderPath, `${kind}.yaml`);
-  const mdPath = join6(root, folderPath, `${kind}.md`);
+  const yamlPath = join7(root, folderPath, `${kind}.yaml`);
+  const mdPath = join7(root, folderPath, `${kind}.md`);
   const yText = safeReadFile(yamlPath);
   if (yText !== null) {
     const f = loadEntity(yText);
@@ -4465,12 +4558,139 @@ function conflicts(analysis, edges, files, tasks, lexical = {}) {
   return { pairs, covered: covered.sort(compare), uncovered: uncovered.sort(compare) };
 }
 
+// src/diff-impact.ts
+import { execFileSync as execFileSync2 } from "node:child_process";
+
+// src/rank.ts
+function rankScore(weight, support, minSupport) {
+  return weight * (support / (support + minSupport));
+}
+
+// src/impact.ts
+function impact(path, edges, files, limit = 20, minSupport = 2) {
+  const id = files.indexOf(path);
+  if (id === -1) return [];
+  const scored = [];
+  for (const e of edges) {
+    const other = e.a === id ? e.b : e.b === id ? e.a : -1;
+    if (other === -1) continue;
+    const weight = edgeWeight(e);
+    if (weight <= 0) continue;
+    const p = files[other];
+    if (p === void 0) continue;
+    scored.push({
+      row: { path: p, npmi: weight, support: e.support, confidence: e.confidence },
+      score: rankScore(weight, e.support, minSupport)
+    });
+  }
+  scored.sort((x, y) => y.score - x.score || compare(x.row.path, y.row.path));
+  return scored.slice(0, limit).map((s) => s.row);
+}
+
+// src/diff-impact.ts
+function git(repoRoot, args) {
+  try {
+    return execFileSync2("git", args, {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 64 * 1024 * 1024
+    });
+  } catch {
+    return null;
+  }
+}
+function nulList(out) {
+  if (out === null) return [];
+  return out.split("\0").filter((s) => s !== "");
+}
+function porcelainPaths(out) {
+  const paths = [];
+  const records = nulList(out);
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i];
+    if (record === void 0 || record.length < 4) continue;
+    const status = record.slice(0, 2);
+    const path = record.slice(3);
+    if (status.startsWith("R") || status.startsWith("C")) i += 1;
+    paths.push(path);
+  }
+  return paths;
+}
+function changedPaths(repoRoot, scope, base, excludePaths) {
+  const uncommitted = () => [
+    ...porcelainPaths(git(repoRoot, ["status", "--porcelain", "-z", "--untracked-files=all"]))
+  ];
+  let paths;
+  switch (scope.kind) {
+    case "staged":
+      paths = nulList(git(repoRoot, ["diff", "--name-only", "-z", "--cached"]));
+      break;
+    case "worktree":
+      paths = uncommitted();
+      break;
+    case "branch": {
+      const mergeBase = git(repoRoot, ["merge-base", base, "HEAD"])?.trim();
+      const committed = mergeBase === void 0 || mergeBase === "" ? [] : nulList(git(repoRoot, ["diff", "--name-only", "-z", `${mergeBase}..HEAD`]));
+      paths = [...committed, ...uncommitted()];
+      break;
+    }
+  }
+  const kept = new Set(paths.filter((p) => !isExcludedPath(p, excludePaths)));
+  return [...kept].sort(compare);
+}
+function diffImpact(changed, edges, files, notes, limit = 20, minSupport = 2) {
+  const changedSet = new Set(changed);
+  const merged = /* @__PURE__ */ new Map();
+  for (const path of changed) {
+    for (const row of impact(path, edges, files, void 0, minSupport)) {
+      if (changedSet.has(row.path)) continue;
+      const { npmi, support } = row;
+      const score = rankScore(npmi, support, minSupport);
+      const existing = merged.get(row.path);
+      if (existing === void 0) {
+        merged.set(row.path, { row, score, by: /* @__PURE__ */ new Set([path]) });
+      } else {
+        existing.by.add(path);
+        if (score > existing.score) {
+          existing.score = score;
+          existing.row = row;
+        }
+      }
+    }
+  }
+  const cited = matchCited(notes, [...merged.keys()]);
+  const notesFor = /* @__PURE__ */ new Map();
+  for (const m of cited) {
+    const list = notesFor.get(m.path);
+    if (list === void 0) notesFor.set(m.path, [m]);
+    else list.push(m);
+  }
+  const rows = [...merged.values()].map((e) => ({
+    row: {
+      ...e.row,
+      predictedBy: [...e.by].sort(compare),
+      notes: notesFor.get(e.row.path) ?? []
+    },
+    score: e.score
+  }));
+  rows.sort(
+    (x, y) => y.score - x.score || y.row.predictedBy.length - x.row.predictedBy.length || compare(x.row.path, y.row.path)
+  );
+  const keep = limit > 0 ? limit : 0;
+  return {
+    changed: [...changed],
+    source: rows.filter((r) => !isTestPath(r.row.path)).slice(0, keep).map((r) => r.row),
+    tests: rows.filter((r) => isTestPath(r.row.path)).slice(0, keep).map((r) => r.row)
+  };
+}
+
 // src/doctor.ts
 import { existsSync as existsSync5 } from "node:fs";
-import { join as join7, relative as relative2 } from "node:path";
+import { join as join8, relative as relative2 } from "node:path";
 function doctor(repoRoot, config) {
   const checks = [];
-  if (!existsSync5(join7(repoRoot, ".git"))) {
+  if (!existsSync5(join8(repoRoot, ".git"))) {
     checks.push({
       name: "repository",
       state: "missing",
@@ -4530,7 +4750,7 @@ function doctor(repoRoot, config) {
   }
   const outDir = resolveOut(repoRoot, config);
   const outRel = relative2(repoRoot, outDir) || outDir;
-  if (isIgnored(repoRoot, join7(outDir, "clusters.json"))) {
+  if (isIgnored(repoRoot, join8(outDir, "clusters.json"))) {
     checks.push({
       name: "artifact durability",
       state: "warn",
@@ -4584,6 +4804,25 @@ function doctor(repoRoot, config) {
     fix: graphifyUsable ? void 0 : graphifyPresent ? `re-run graphify, or delete ${graphRel} if it is stale` : `run Graphify in this repo to produce ${graphRel} \u2014 install it with \`uv tool install graphifyy\` if you have not`,
     required: false
   });
+  const notes = readVault(repoRoot, config.vaultPath);
+  if (notes.length === 0) {
+    checks.push({
+      name: "knowledge vault",
+      state: "missing",
+      required: false,
+      detail: `not found at ${config.vaultPath} \u2014 drift can rank a coupling but cannot say whether it is already documented`,
+      fix: `create ${config.vaultPath}/ and record verified, cross-role facts there (see AGENTS.md \xA7 Agent memory)`
+    });
+  } else {
+    const candidates = new Set(files);
+    const citing = notes.filter((n) => citedPaths(n, candidates).length > 0).length;
+    checks.push({
+      name: "knowledge vault",
+      state: "ok",
+      required: false,
+      detail: `${notes.length} notes, ${citing} citing at least one path in the graph`
+    });
+  }
   const board = hasBoard(repoRoot);
   checks.push({
     name: "board",
@@ -4600,11 +4839,6 @@ function exitCode(report) {
   return report.status === "ok" ? 0 : 1;
 }
 
-// src/rank.ts
-function rankScore(weight, support, minSupport) {
-  return weight * (support / (support + minSupport));
-}
-
 // src/drift.ts
 function declaredPairs(imports) {
   const byModule = /* @__PURE__ */ new Map();
@@ -4619,7 +4853,7 @@ function declaredPairs(imports) {
   }
   return byModule;
 }
-function drift(edges, files, spine, limit = 20, minSupport = 2) {
+function drift(edges, files, spine, limit = 20, minSupport = 2, notes = []) {
   const declared = declaredPairs(spine.imports);
   const keep = limit > 0 ? limit : 0;
   const scored = [];
@@ -4646,7 +4880,8 @@ function drift(edges, files, spine, limit = 20, minSupport = 2) {
         moduleB: mb,
         npmi: weight,
         support: e.support,
-        confidence: e.confidence
+        confidence: e.confidence,
+        known: null
       },
       score: rankScore(weight, e.support, minSupport)
     });
@@ -4654,40 +4889,26 @@ function drift(edges, files, spine, limit = 20, minSupport = 2) {
   scored.sort(
     (x, y) => y.score - x.score || compare(x.row.a, y.row.a) || compare(x.row.b, y.row.b)
   );
-  return scored.slice(0, keep).map((s) => s.row);
-}
-
-// src/impact.ts
-function impact(path, edges, files, limit = 20, minSupport = 2) {
-  const id = files.indexOf(path);
-  if (id === -1) return [];
-  const scored = [];
-  for (const e of edges) {
-    const other = e.a === id ? e.b : e.b === id ? e.a : -1;
-    if (other === -1) continue;
-    const weight = edgeWeight(e);
-    if (weight <= 0) continue;
-    const p = files[other];
-    if (p === void 0) continue;
-    scored.push({
-      row: { path: p, npmi: weight, support: e.support, confidence: e.confidence },
-      score: rankScore(weight, e.support, minSupport)
-    });
+  const kept = scored.slice(0, keep).map((s) => s.row);
+  const candidates = new Set(kept.flatMap((r) => [r.a, r.b]));
+  const cites = notes.map((n) => ({ note: n.note, paths: new Set(citedPaths(n, candidates)) })).sort((x, y) => compare(x.note, y.note));
+  for (const row of kept) {
+    const covering = cites.find((c) => c.paths.has(row.a) && c.paths.has(row.b));
+    row.known = covering?.note ?? null;
   }
-  scored.sort((x, y) => y.score - x.score || compare(x.row.path, y.row.path));
-  return scored.slice(0, limit).map((s) => s.row);
+  return kept;
 }
 
 // src/own.ts
 import { statSync as statSync3 } from "node:fs";
 
 // src/attribution.ts
-import { execFileSync as execFileSync2 } from "node:child_process";
+import { execFileSync as execFileSync3 } from "node:child_process";
 var OBJECT_NAME = /^[0-9a-f]{7,64}$/;
 function filesChangedBy(repoRoot, sha) {
   if (!OBJECT_NAME.test(sha)) return null;
   try {
-    const out = execFileSync2(
+    const out = execFileSync3(
       "git",
       [
         "diff-tree",
@@ -4881,11 +5102,11 @@ function own(repoRoot, board, log2, candidates, path, lexical = {}, warn = defau
 function estimateTokens(text) {
   return Math.ceil(text.length / 4);
 }
-var oneLine = (s) => (
+var oneLine2 = (s) => (
   // eslint-disable-next-line no-control-regex
   s.replace(/[\u0000-\u001f\u007f]/gu, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`)
 );
-function renderMap(analysis, budgetTokens) {
+function renderMap(analysis, budgetTokens, purpose) {
   const header = [
     "# Module map",
     "",
@@ -4930,7 +5151,10 @@ function renderMap(analysis, budgetTokens) {
   const lines = [];
   for (const m of ranked) {
     const layer = m.layer === null ? "" : ` [layer ${m.layer}]`;
-    lines.push(`- **${oneLine(m.name)}**${layer} \u2014 ${countLabel(m.members)}`);
+    const head = `- **${oneLine2(m.name)}**${layer} \u2014 ${countLabel(m.members)}`;
+    const why = purpose?.get(m.name);
+    lines.push(why === void 0 ? head : `${head}
+  - ${oneLine2(why)}`);
   }
   const directed = analysis.moduleEdgesDirected;
   const section = directed ? "## Dependencies" : "## Coupling (undirected co-change)";
@@ -4940,7 +5164,7 @@ function renderMap(analysis, budgetTokens) {
   const shownModules = (keptModules2) => new Set(ranked.slice(0, keptModules2).map((m) => m.name));
   const visibleEdges = (keptModules2) => {
     const shown = shownModules(keptModules2);
-    return analysis.moduleEdges.filter((e) => shown.has(e.from) && shown.has(e.to)).map((e) => `- ${oneLine(e.from)} ${link} ${oneLine(e.to)} (${e.weight.toFixed(2)})`);
+    return analysis.moduleEdges.filter((e) => shown.has(e.from) && shown.has(e.to)).map((e) => `- ${oneLine2(e.from)} ${link} ${oneLine2(e.to)} (${e.weight.toFixed(2)})`);
   };
   const note = (dropped, unit) => dropped > 0 ? ["", `_${dropped} ${unit}(s) truncated to fit the token budget._`] : [];
   const WORKING_SETS_NOTE = "_Each entry is one co-change community whose files span two or more declared modules. Observed from commit history; a working set is evidence of coupling, not a proposal to change any boundary. Membership is the community's own: quarantined hubs and test files are held out of clustering, so a file that moves with the set can be absent from its list and its count._";
@@ -4952,8 +5176,8 @@ function renderMap(analysis, budgetTokens) {
     // `w.files.length`, never the rendered lines' length: the count is the
     // claim about the COMMUNITY, and `oneLine` must not be able to change it
     // — which is exactly why it exists (see its own comment).
-    `- **${oneLine(w.name)}** \u2014 ${w.files.length} files across ${w.modules.map(oneLine).join(", ")}`,
-    ...w.files.map((f) => `  - ${oneLine(f)}`)
+    `- **${oneLine2(w.name)}** \u2014 ${w.files.length} files across ${w.modules.map(oneLine2).join(", ")}`,
+    ...w.files.map((f) => `  - ${oneLine2(f)}`)
   ]);
   const shownSetsFor = (keptModules2, keptSets2) => visibleSets(keptModules2).slice(0, Math.max(0, keptSets2));
   const compose = (keptModules2, keptEdges2, keptSets2) => {
@@ -4993,17 +5217,22 @@ function renderMap(analysis, budgetTokens) {
     const shownSets = sets.length;
     const setLineCount = setLines(sets).length;
     if (keptModules + shownEdges + shownSets === 0) break;
-    if (keptModules >= shownEdges && keptModules >= setLineCount) keptModules = shrink(keptModules);
-    else if (shownEdges >= keptModules && shownEdges >= setLineCount) keptEdges = shrink(shownEdges);
-    else keptSets = shrink(shownSets);
+    const moduleLineCount = lines.slice(0, keptModules).join("\n").split("\n").length;
+    if (moduleLineCount >= shownEdges && moduleLineCount >= setLineCount) {
+      keptModules = shrink(keptModules);
+    } else if (shownEdges >= moduleLineCount && shownEdges >= setLineCount) {
+      keptEdges = shrink(shownEdges);
+    } else {
+      keptSets = shrink(shownSets);
+    }
     out = compose(keptModules, keptEdges, keptSets);
   }
   return out;
 }
 
 // src/worklog.ts
-import { readFileSync as readFileSync6 } from "node:fs";
-import { join as join8 } from "node:path";
+import { readFileSync as readFileSync7 } from "node:fs";
+import { join as join9 } from "node:path";
 function optString2(raw, key) {
   const v = raw[key];
   return typeof v === "string" ? v : null;
@@ -5044,7 +5273,7 @@ function readWorklog(repoRoot, warn = defaultWarn) {
   if (root === null) return [];
   let text;
   try {
-    text = readFileSync6(join8(root, "tokenomics", "worklog.jsonl"), "utf8");
+    text = readFileSync7(join9(root, "tokenomics", "worklog.jsonl"), "utf8");
   } catch {
     return [];
   }
@@ -5062,6 +5291,7 @@ var COMMANDS = ["map", "impact", "drift", "doctor", "own", "conflicts"];
 function isCommand(value) {
   return COMMANDS.includes(value);
 }
+var DUPLICATE_SCOPE = "only one of --staged, --worktree may be given";
 function toFiniteNumber(raw) {
   if (raw.trim() === "") return null;
   const value = Number(raw);
@@ -5082,6 +5312,9 @@ function parseArgs(argv2) {
   const overrides = {};
   let since;
   let json = false;
+  let sawDiff = false;
+  let scopeFlag = null;
+  let base;
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg === void 0) break;
@@ -5157,11 +5390,40 @@ function parseArgs(argv2) {
         overrides.budgetTokens = n;
         break;
       }
+      case "--diff":
+        sawDiff = true;
+        break;
+      case "--staged":
+      case "--worktree":
+        if (scopeFlag !== null) return { ok: false, error: DUPLICATE_SCOPE };
+        scopeFlag = arg;
+        break;
+      case "--base": {
+        const value = takeValue();
+        if (value === null) return missingValue();
+        base = value;
+        break;
+      }
       default:
         return { ok: false, error: `unrecognised flag: ${arg}` };
     }
   }
-  return { ok: true, parsed: { command: rawCommand, positionals, overrides, since, json } };
+  if (!sawDiff && scopeFlag !== null) {
+    return { ok: false, error: `${scopeFlag} requires --diff` };
+  }
+  if (!sawDiff && base !== void 0) {
+    return { ok: false, error: "--base requires --diff" };
+  }
+  let diff = null;
+  if (sawDiff) {
+    if (scopeFlag === "--staged") diff = { kind: "staged" };
+    else if (scopeFlag === "--worktree") diff = { kind: "worktree" };
+    else diff = { kind: "branch" };
+  }
+  return {
+    ok: true,
+    parsed: { command: rawCommand, positionals, overrides, since, json, diff, base }
+  };
 }
 function usageError(message) {
   return { code: 2, stdout: "", stderr: `octograph: ${message}
@@ -5189,8 +5451,9 @@ function formatImpact(rows) {
   return rows.map(formatImpactRow).join("\n") + "\n";
 }
 function formatDriftRow(row) {
-  const { a, b, moduleA, moduleB, npmi, support, confidence } = row;
-  return `${a} <-> ${b}  (${moduleA} <-> ${moduleB})	npmi=${npmi.toFixed(3)}	support=${support}	confidence=${confidence.toFixed(3)}`;
+  const { a, b, moduleA, moduleB, npmi, support, confidence, known } = row;
+  const base = `${oneLine2(a)} <-> ${oneLine2(b)}  (${oneLine2(moduleA)} <-> ${oneLine2(moduleB)})	npmi=${npmi.toFixed(3)}	support=${support}	confidence=${confidence.toFixed(3)}`;
+  return known === null ? base : `${base}  [known: ${oneLine2(known)}]`;
 }
 function formatDrift(rows) {
   if (rows.length === 0) return "(no undeclared coupling above the noise floor)\n";
@@ -5227,15 +5490,50 @@ function sincePredictedWarning(since) {
   return `octograph: --since ${since} narrows the co-change corpus predicted answers are scored against \u2014 the same query can answer differently under a different window; provenance answers are unaffected
 `;
 }
+function purposeByModule(answers, notes, files, moduleOf) {
+  const tally = /* @__PURE__ */ new Map();
+  for (const a of answers) {
+    const mod = moduleOf(a.path);
+    const byMission = tally.get(mod) ?? /* @__PURE__ */ new Map();
+    const key = a.mission;
+    const seen = byMission.get(key);
+    const label = `${a.missionName} (${a.mode})`;
+    if (seen === void 0) byMission.set(key, { label, n: 1 });
+    else seen.n += 1;
+    tally.set(mod, byMission);
+  }
+  const citedByModule = /* @__PURE__ */ new Map();
+  for (const m of matchCited(notes, files)) {
+    const mod = moduleOf(m.path);
+    if (!citedByModule.has(mod)) citedByModule.set(mod, m.note);
+  }
+  const out = /* @__PURE__ */ new Map();
+  for (const mod of /* @__PURE__ */ new Set([...tally.keys(), ...citedByModule.keys()])) {
+    const missions = [...tally.get(mod)?.values() ?? []].sort(
+      (x, y) => y.n - x.n || compare(x.label, y.label)
+    );
+    const parts = [];
+    const top = missions[0];
+    if (top !== void 0) parts.push(top.label);
+    const note = citedByModule.get(mod);
+    if (note !== void 0) parts.push(`see ${note}`);
+    if (parts.length > 0) out.set(mod, parts.join(" \u2014 "));
+  }
+  return out;
+}
 function runMapCommand(repoRoot, config, since, now, json) {
   const outDir = resolveOut(repoRoot, config);
   const previous = readArtifact(outDir);
   const previousClusters = previous ? clustersToMap(previous.clusters) : /* @__PURE__ */ new Map();
   const sinceWarning = sinceMismatchWarning(previous, since);
-  const { analysis } = analyze(repoRoot, config, { now, since, previousClusters });
-  const mapText = renderMap(analysis, config.budgetTokens);
+  const { analysis, files, spine } = analyze(repoRoot, config, { now, since, previousClusters });
+  const board = readBoard(repoRoot);
+  const answers = board === null ? [] : own(repoRoot, board, readWorklog(repoRoot), files, null, lexicalOptions(config));
+  const notes = readVault(repoRoot, config.vaultPath);
+  const purpose = purposeByModule(answers, notes, files, spine.moduleOf);
+  const mapText = renderMap(analysis, config.budgetTokens, purpose);
   mkdirSync2(outDir, { recursive: true });
-  writeFileSync2(join9(outDir, "map.md"), mapText);
+  writeFileSync2(join10(outDir, "map.md"), mapText);
   writeArtifact(outDir, {
     version: 1,
     clusters: analysisToClusters(analysis),
@@ -5263,9 +5561,59 @@ function runImpactCommand(repoRoot, config, since, now, rawPath, json) {
   const stdout = json ? JSON.stringify(rows) + "\n" : formatImpact(rows);
   return { code: 0, stdout, stderr: "" };
 }
+function formatDiffImpactRow(row) {
+  const { path, npmi, support, predictedBy, notes } = row;
+  const lines = [
+    `  ${oneLine2(path)}  npmi=${npmi.toFixed(3)}  support=${support}  via ${predictedBy.map(oneLine2).join(", ")}`
+  ];
+  for (const n of notes) lines.push(`      known: ${oneLine2(n.note)} \u2014 ${oneLine2(n.description)}`);
+  return lines.join("\n");
+}
+function formatDiffImpactSection(title, rows) {
+  if (rows.length === 0) return [title, "  (none)"];
+  return [title, ...rows.map(formatDiffImpactRow)];
+}
+function emptyChangedMessage(scope) {
+  switch (scope.kind) {
+    case "staged":
+      return "nothing staged \u2014 no impact to report";
+    case "worktree":
+      return "worktree is clean \u2014 no impact to report";
+    case "branch":
+      return "nothing changed against the base \u2014 no impact to report";
+  }
+}
+function runDiffImpactCommand(repoRoot, config, since, now, scope, base, json) {
+  const changed = changedPaths(repoRoot, scope, base, config.excludePaths);
+  const { edges, files } = analyze(repoRoot, config, { now, since });
+  const notes = readVault(repoRoot, config.vaultPath);
+  const answer = diffImpact(changed, edges, files, notes, void 0, config.minSupport);
+  if (json) return { code: 0, stdout: `${JSON.stringify(answer)}
+`, stderr: "" };
+  const lines = [`changed: ${changed.length} file(s)`];
+  if (changed.length === 0) {
+    lines.push("", emptyChangedMessage(scope));
+    return { code: 0, stdout: `${lines.join("\n")}
+`, stderr: "" };
+  }
+  lines.push("", ...formatDiffImpactSection("you may also need to change:", answer.source));
+  lines.push("", ...formatDiffImpactSection("tests that historically move with this:", answer.tests));
+  if (answer.source.length === 0 && answer.tests.length === 0) {
+    const report = doctor(repoRoot, config);
+    if (report.status !== "ok") {
+      lines.push(
+        "",
+        `history is ${report.status} \u2014 this is missing evidence, not evidence of absence.`,
+        "run `octograph doctor` for what is degraded and how to fix it."
+      );
+    }
+  }
+  return { code: 0, stdout: `${lines.join("\n")}
+`, stderr: "" };
+}
 function formatOwnAnswer(a) {
-  const criterion = a.criterion === null || a.criterionMode === null ? "criterion: none \u2014 no acceptance criterion's own words single out this path" : `criterion (${a.criterionMode}): ${oneLine(a.criterion)}`;
-  return `${oneLine(a.path)}	owned by ${oneLine(a.missionName)} / ${oneLine(a.taskName)} (${a.mode})	${criterion}`;
+  const criterion = a.criterion === null || a.criterionMode === null ? "criterion: none \u2014 no acceptance criterion's own words single out this path" : `criterion (${a.criterionMode}): ${oneLine2(a.criterion)}`;
+  return `${oneLine2(a.path)}	owned by ${oneLine2(a.missionName)} / ${oneLine2(a.taskName)} (${a.mode})	${criterion}`;
 }
 function formatOwn(answers) {
   if (answers.length === 0) return "(no owner found)\n";
@@ -5289,22 +5637,23 @@ function runOwnCommand(repoRoot, config, since, now, rawPath, json) {
 }
 function runDriftCommand(repoRoot, config, since, now, json) {
   const { edges, files, spine } = analyze(repoRoot, config, { now, since });
-  const rows = drift(edges, files, spine, void 0, config.minSupport);
+  const notes = readVault(repoRoot, config.vaultPath);
+  const rows = drift(edges, files, spine, void 0, config.minSupport, notes);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatDrift(rows);
   return { code: 0, stdout, stderr: "" };
 }
 function formatModuleList(modules) {
-  return modules.length === 0 ? "(none)" : modules.map(oneLine).join(", ");
+  return modules.length === 0 ? "(none)" : modules.map(oneLine2).join(", ");
 }
 function formatConflictPair(p) {
-  const shared = p.shared.length === 0 ? "(none)" : p.shared.map(oneLine).join(", ");
-  return `${oneLine(p.a)} <-> ${oneLine(p.b)} (${p.mode})	shared=${shared}	coupled=${p.coupled.toFixed(3)}	modules=${formatModuleList(p.modules)}`;
+  const shared = p.shared.length === 0 ? "(none)" : p.shared.map(oneLine2).join(", ");
+  return `${oneLine2(p.a)} <-> ${oneLine2(p.b)} (${p.mode})	shared=${shared}	coupled=${p.coupled.toFixed(3)}	modules=${formatModuleList(p.modules)}`;
 }
 function formatCoverage(report) {
   const total = report.covered.length + report.uncovered.length;
   const head = `coverage (predicted): ${report.covered.length} of ${total} tasks produced a predicted surface`;
   if (report.uncovered.length === 0) return head;
-  return `${head} \u2014 this answer says nothing about the other ${report.uncovered.length}: ` + report.uncovered.map(oneLine).join(", ");
+  return `${head} \u2014 this answer says nothing about the other ${report.uncovered.length}: ` + report.uncovered.map(oneLine2).join(", ");
 }
 function formatConflicts(report) {
   const rows = report.pairs.length === 0 ? ["(no conflicts found)"] : report.pairs.map(formatConflictPair);
@@ -5348,7 +5697,7 @@ function runConflictsCommand(repoRoot, config, since, now, positionals, json) {
 function runCli(argv2, repoRoot, now) {
   const parsed = parseArgs(argv2);
   if (!parsed.ok) return usageError(parsed.error);
-  const { command, positionals, overrides, since, json } = parsed.parsed;
+  const { command, positionals, overrides, since, json, diff, base } = parsed.parsed;
   const outFlag = typeof overrides.out === "string" ? overrides.out : null;
   if (outFlag !== null && insideRepo(repoRoot, outFlag) === null) {
     return usageError(
@@ -5356,8 +5705,11 @@ function runCli(argv2, repoRoot, now) {
     );
   }
   if (command === "impact") {
-    if (positionals.length !== 1) {
-      return usageError("impact requires exactly one <path> argument");
+    if (diff !== null && positionals.length > 0) {
+      return usageError("--diff and a <path> are mutually exclusive");
+    }
+    if (diff === null && positionals.length !== 1) {
+      return usageError("impact requires exactly one <path> argument, or --diff");
     }
   } else if (command === "own") {
     if (positionals.length > 1) {
@@ -5380,6 +5732,9 @@ function runCli(argv2, repoRoot, now) {
       case "drift":
         return runDriftCommand(repoRoot, config, since, now, json);
       case "impact": {
+        if (diff !== null) {
+          return runDiffImpactCommand(repoRoot, config, since, now, diff, base ?? config.diffBase, json);
+        }
         const path = positionals[0];
         if (path === void 0) return usageError("impact requires exactly one <path> argument");
         return runImpactCommand(repoRoot, config, since, now, path, json);
