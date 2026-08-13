@@ -6,10 +6,10 @@ import { installGraph, graphStatus } from "./octograph-install.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
-export const OCTOBOTS_PACK_VERSION = 49;
+export const OCTOBOTS_PACK_VERSION = 50;
 
 /** The skills the pack ships, by directory name under `skill/` and `.claude/skills/`. */
-export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate"] as const;
+export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate", "knowledge-explorer"] as const;
 
 /**
  * Skill dirs earlier pack versions installed that no longer exist. Removed on install so an

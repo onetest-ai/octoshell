@@ -1,0 +1,12 @@
+name: BUG - impact reports an excluded path as uncoupled
+status: draft
+severity: major
+description: '`impact` and `drift` print `(no coupled files)` for a path that octograph never analysed, which is byte-identical to the output for a path it analysed and found genuinely uncoupled. A caller cannot tell an answer from a blind spot. Three distinct causes collapse into one string: the path matched an `excludePaths` prefix, the path is untracked (harvest reads git log), or its pairs fell below minSupport. Only the first is knowable by the CLI at zero cost - noise.ts''s isExcludedPath already computed it during harvest.'
+steps_to_reproduce: |-
+  1. In octoshell, note that octograph.yaml excludes `.claude/` by default.
+  2. node <octograph> impact .claude/skills/mission-planner/scripts/validate.js
+  3. node <octograph> impact apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/validate.js
+expected: 'Step 2 names the exclusion, e.g. `(path excluded by octograph.yaml: .claude/) - not analysed`, so the caller knows to query an unexcluded twin.'
+actual: Step 2 prints `(no coupled files)`. Step 3, the SAME FILE at its unexcluded path, returns five coupled files led by packages/board/src/validate.ts (npmi=0.857, support=2). The first output reads as a finding of no coupling.
+rca: Not yet traced. runImpactCommand/runDriftCommand (packages/graph/src/cli.ts) format an empty row set with no reference to why it is empty; the exclusion decision is made upstream in harvest.ts and not carried forward to the formatter.
+environment: octoshell @ feat/knowledge-explorer-skill, pack v50 payload (node .../octobots-pack/graph/octograph.mjs), macOS, node 24.15.0. Observed 2026-08-13.

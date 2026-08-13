@@ -1,0 +1,9 @@
+name: graph-payload.mjs error branches have no assertion-backed test
+status: done
+severity: minor
+description: ''
+steps_to_reproduce: ''
+expected: ''
+actual: ''
+rca: ''
+environment: ''

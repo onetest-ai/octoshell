@@ -1,0 +1,9 @@
+name: '@types/js-yaml is pinned a major version behind the installed js-yaml'
+status: done
+severity: minor
+description: ''
+steps_to_reproduce: ''
+expected: ''
+actual: ''
+rca: ''
+environment: ''

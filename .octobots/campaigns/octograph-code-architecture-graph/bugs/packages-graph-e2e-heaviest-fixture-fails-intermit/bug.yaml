@@ -1,0 +1,85 @@
+name: packages/graph e2e heaviest fixture fails intermittently on CI, root cause unknown
+status: draft
+severity: major
+description: ''
+steps_to_reproduce: ''
+expected: ''
+actual: ''
+rca: ''
+environment: ''
+notes: |-
+  ## Observation 3 — 2026-08-12, and the diagnostics paid off
+
+  PR #83, a diff touching only apps/vscode-extension tests and two package.json files — nowhere near
+  this fixture. Same signature: the push-triggered run failed while the pull_request run on the
+  IDENTICAL SHA passed.
+
+  For the first time the failure named its own cause, because the exit-code assertions added on
+  2026-08-11 now print stderr:
+
+      (g) keeps every surviving entry whole and every module it names headed ...
+        -> Command failed: git commit -q -m commit 23
+           fatal: could not parse HEAD
+        at test/fixtures/repo.ts:19  (gitIn)
+
+  **This is not harvest failing to READ history. It is the fixture builder failing to CREATE a
+  commit.** Every earlier theory was aimed at the wrong half of the test.
+
+  A second message appears elsewhere in the same run's log and is probably the same fault seen from
+  another angle:
+
+      fatal: your current branch 'main' does not have any commits yet
+
+  So: one fixture repo is mid-sequence at commit 23 with an unparseable HEAD, while some repo in the
+  same run has no commits at all. That is consistent with a repository directory being emptied or
+  partially written underneath a running git invocation, and not with anything about co-change
+  mining.
+
+  Ruled out this round: disk pressure. One full graph-suite run uses ~5 MB of temp space across 92
+  buildRepo calls, and a CI runner starts clean, so the 2,502-repo exhaustion that mkdtempClean was
+  written to fix cannot be recurring here.
+
+  Noted but unresolved: 19 octograph-* temp directories survive a local suite run, so mkdtempClean's
+  onTestFinished is not firing for every call site. onTestFinished only registers inside a test
+  context, so a call made at module load or from beforeAll silently never cleans up. Whether that
+  overlaps with this failure is unproven — a crude scan could not separate helper DEFINITIONS at
+  module scope from calls that actually run outside a test, and guessing further was not worth it.
+
+  Next occurrence should now be diagnosable without log archaeology.
+
+  ## Mitigated, not fixed — 2026-08-12, owner decision
+
+  Measured rate: **1.9% per suite execution** (5 defensible occurrences in 268 executions; 95% CI
+  0.8-4.3%). Because a push with an open PR triggers two jobs, that is ~3.7% per push — about 1 in 27.
+
+  68 deliberate reproduction runs on real ubuntu-latest runners produced ZERO failures: 48 of
+  test/e2e.test.ts alone, then 20 of the full pnpm test suite across 4 shards. At 1.9% that is
+  unremarkable (p ~ 28%) and it rules out the ~10% rate the two-day clustering suggested — an
+  overreading I stated to the owner and had to correct.
+
+  Ruled out with evidence, not argument: disk and inode pressure (one run uses ~5 MB across 92
+  fixtures; runners start clean); concurrency on macOS (24 parallel builds x 47 commits, all clean);
+  CPU contention (suite green under 20 busy loops, and pinned to 2 threads); inherited GIT_DIR /
+  GIT_WORK_TREE / GIT_INDEX_FILE / GIT_OBJECT_DIRECTORY / GIT_COMMON_DIR (nothing in the repo or CI
+  sets any); setup-e2e-gate's process-wide PATH mutation (synchronous, and vitest forks per file);
+  glob-based temp cleanup (none exists); the vscode-extension tmpdir leak (10 MB, different package);
+  and the checkout-ref difference between triggers (failures alternate between push and pull_request,
+  so the trigger is not the variable).
+
+  What IS known: it is the fixture BUILDER failing to create a commit, not harvest failing to read
+  history. The messages are 'fatal: could not parse HEAD' and, in the same run's log, 'your current
+  branch main does not have any commits yet' — consistent with a repository being emptied or
+  partially written underneath a running git command.
+
+  DECISION (owner, at 1.9%): retry once rather than chase the cause, which is now a several-hundred-
+  run proposition. The fixture is infrastructure, not the system under test, and a transient git
+  failure while building scripted history is not a product signal.
+
+  Three properties keep this from being 'retry until green', which is what hid the fault for two days:
+  exactly ONE retry, a second consecutive failure throws; it PRINTS the repo state that prompted the
+  retry, every line prefixed, so a systematic problem still surfaces; and the state is captured
+  BEFORE the retry, because a successful retry would otherwise destroy the only evidence. Both
+  properties are asserted by test/fixture-retry.test.ts rather than trusted.
+
+  The bug stays OPEN. If the retry line starts appearing often in CI logs, or a 'failed TWICE' ever
+  lands, that is the signal to escalate — and the state dumps will finally say what changed.

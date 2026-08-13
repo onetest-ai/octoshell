@@ -1,0 +1,9 @@
+name: clusters.json is called the committed artifact seven times in the spec and is gitignored
+status: done
+severity: major
+description: ''
+steps_to_reproduce: ''
+expected: octograph cannot dictate another project's gitignore, so it must not require the artifact to be committed — it must NOTICE that the resolved out directory is ignored, say what that costs (cluster ids reset on every fresh clone and CI run, so every cluster reports as fresh), and recommend committing it. Degrade honestly, recommend, never insist.
+actual: ''
+rca: ''
+environment: ''
