@@ -106,8 +106,10 @@ export interface VaultNote {
   description: string;
   /** Frontmatter `verified` or `created`, ISO date, or null. */
   verified: string | null;
-  /** Repo-relative paths the note's body explicitly names. */
-  cites: string[];
+  /** Everything after the frontmatter block. Citations are resolved from this
+   *  lazily, against a caller-supplied candidate corpus — a note does not know
+   *  which of the paths it names still exist. */
+  body: string;
 }
 
 export type VaultMode = "cited" | "predicted";
@@ -120,13 +122,18 @@ export interface VaultMatch {
   confidence: number;    // 1 for cited; the tf-idf score for predicted
 }
 
-export function readVault(repoRoot: string): VaultNote[];
-export function matchVault(
+export function readVault(repoRoot: string, vaultPath?: string): VaultNote[];
+export function citedPaths(note: VaultNote, candidates: ReadonlySet<string>): string[];
+export function matchCited(notes: readonly VaultNote[], candidates: readonly string[]): VaultMatch[];
+export function matchPredicted(
   notes: readonly VaultNote[],
   paths: readonly string[],
-  lexical?: LexicalOptions,
+  opts?: LexicalOptions,
 ): VaultMatch[];
 ```
+
+The two modes are **two functions**, not one function with a mode argument. A caller who wants only
+facts cannot accidentally receive a guess, and `matchCited` has no route to `predicted` at all.
 
 **Two modes, never blended** — the `own` precedent, applied to a new source:
 
