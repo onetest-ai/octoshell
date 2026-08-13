@@ -223,6 +223,11 @@ export function matchPredicted(
   opts: LexicalOptions = {},
 ): VaultMatch[] {
   const floor = opts.confidenceFloor ?? CONFIDENCE_FLOOR;
+  // Deliberately 0, not lexical.ts's calibrated RUNNER_UP_MARGIN (0.05) — this
+  // direction hasn't been calibrated for a margin default of its own yet. Not
+  // live on the sample calibrated so far (T4.6): every genuine match had a
+  // runner-up gap of 0.19-0.45, well clear of either value. Unexamined, not
+  // wrong — revisit once a larger calibration sample exists.
   const margin = opts.runnerUpMargin ?? 0;
 
   // idf over the note corpus: a token in every note (`graph`, `test`)

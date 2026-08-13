@@ -54,13 +54,31 @@ answer with a close second"). Reject both.
 
 ## Why it matters
 
-Any future confidence-gated ranking in this codebase (or a new one modeled on `lexical.ts`'s
-pattern) that writes its margin check as "find a candidate with a different score" will have this
-exact blind spot. It is invisible on a hand-built test fixture with only 2–3 candidates (unlikely
-to tie by chance) and only shows up against a REAL, larger corpus where shared vocabulary — an
-extension, a common word, a directory name — is common enough to produce genuine ties. Same shape
-as [[knowledge-vault-sentence-filenames-confound-lexical-matching]]: a defect invisible on a
-synthetic fixture, real against the actual vault.
+Any future confidence-gated ranking in this codebase that writes its margin check as "find a
+candidate with a different score" will have this exact blind spot. It is invisible on a hand-built
+test fixture with only 2–3 candidates (unlikely to tie by chance) and only shows up against a REAL,
+larger corpus where shared vocabulary — an extension, a common word, a directory name — is common
+enough to produce genuine ties. Same shape as
+[[knowledge-vault-sentence-filenames-confound-lexical-matching]]: a defect invisible on a synthetic
+fixture, real against the actual vault.
+
+## Does `lexical.ts`'s `predictFiles` have this bug too?
+
+**No — checked, not assumed.** `predictFiles` shares the code shape (`scored.find((m) => m.score <
+top)` has the identical blind spot on paper) but NOT the live consequence. **Verified 2026-08-13,
+during code review of this task** (not by the original T4.6 investigation, which only name-checked
+`lexical.ts`'s pattern without confirming it). Two independent reasons:
+
+1. Its final line, `return scored.filter((m) => m.score === top)`, returns EVERY candidate tied at
+   the top rather than one arbitrary pick — deliberate, documented in its own doc comment at
+   `lexical.ts:228-231` as avoiding "an unspecified pick". `own.ts`/`cli.ts` print one row per
+   returned file, so a tie surfaces to the reader as multiple rows rather than collapsing into one
+   falsely-confident answer.
+2. Its `idf()` is plain `ln(N/df)`, giving a token present in 100% of the corpus exactly ZERO
+   weight, whereas `vault.ts`'s Laplace-smoothed `ln((N+1)/(df+1))+1` gives that same token nonzero
+   weight — which is the actual mechanism by which `.md` manufactured a 15-way tie here. Confirmed
+   by constructing a genuine exact tie against `predictFiles` and observing it return both tied
+   files (the designed-for behavior), not one.
 
 ## How this was verified
 

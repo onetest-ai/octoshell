@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { readVault } from "../src/vault.js";
+import { readVault, citedPaths, matchCited, matchPredicted } from "../src/vault.js";
 import type { VaultNote } from "../src/vault.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
@@ -95,8 +95,6 @@ describe("readVault", () => {
   });
 });
 
-import { citedPaths, matchCited } from "../src/vault.js";
-
 const note = (body: string): VaultNote => ({
   note: "architecture/dual.md",
   name: "dual",
@@ -183,8 +181,6 @@ describe("matchCited", () => {
   });
 });
 
-import { matchPredicted } from "../src/vault.js";
-
 describe("matchPredicted", () => {
   const notes: VaultNote[] = [
     {
@@ -204,7 +200,17 @@ describe("matchPredicted", () => {
   ];
 
   it("labels every match `predicted`, never `cited`", () => {
-    for (const m of matchPredicted(notes, ["packages/graph/src/harvest.ts"])) {
+    // Must actually produce a match, or "every element of an empty array
+    // satisfies the assertion" makes this pass against a stub that always
+    // returns []. `packages/graph/src/harvest.ts` ties with the OTHER note
+    // in this fixture at the default floor (both name-drop "graph"/"src");
+    // e2e.test.ts does not, so it is a genuine single-match case.
+    const matches = matchPredicted(notes, ["packages/graph/test/e2e.test.ts"], {
+      confidenceFloor: 0,
+      runnerUpMargin: 0,
+    });
+    expect(matches.length).toBeGreaterThan(0);
+    for (const m of matches) {
       expect(m.mode).toBe("predicted");
     }
   });
@@ -234,11 +240,41 @@ describe("matchPredicted", () => {
   // DIFFERENT score never sees a tie for the top spot — so two notes sharing
   // no real topical link with the query, but scoring identically against it,
   // must be rejected outright rather than one winning an arbitrary tie-break.
-  it("returns nothing when two notes tie exactly for the top score", () => {
-    const tied: VaultNote[] = [
-      { note: "a.md", name: "shared vocabulary", description: "same words repeated", verified: null, body: "" },
-      { note: "b.md", name: "shared vocabulary", description: "same words repeated", verified: null, body: "" },
-    ];
-    expect(matchPredicted(tied, ["shared-vocabulary-path.ts"], { confidenceFloor: 0 })).toEqual([]);
+  it("returns nothing when two notes tie exactly for the top score, but the strict winner once the tie breaks", () => {
+    const a: VaultNote = {
+      note: "a.md",
+      name: "shared vocabulary",
+      description: "same words repeated",
+      verified: null,
+      body: "",
+    };
+    const b: VaultNote = {
+      note: "b.md",
+      name: "shared vocabulary",
+      description: "same words repeated",
+      verified: null,
+      body: "",
+    };
+    expect(matchPredicted([a, b], ["shared-vocabulary-path.ts"], { confidenceFloor: 0 })).toEqual([]);
+
+    // Same two notes, but "b.md" now also names "path" — the one query token
+    // neither note matched before — so it scores STRICTLY higher than "a.md"
+    // instead of tying it. A stub that always returns [] fails this half; so
+    // would a guard that (over-broadly) rejected every path with more than
+    // one candidate above zero, not just an exact top-rank tie.
+    const bBreaksTheTie: VaultNote = { ...b, description: "same words repeated along the path" };
+    const matches = matchPredicted([a, bBreaksTheTie], ["shared-vocabulary-path.ts"], {
+      confidenceFloor: 0,
+      runnerUpMargin: 0,
+    });
+    expect(matches).toEqual([
+      {
+        path: "shared-vocabulary-path.ts",
+        note: "b.md",
+        description: "same words repeated along the path",
+        mode: "predicted",
+        confidence: expect.any(Number),
+      },
+    ]);
   });
 });

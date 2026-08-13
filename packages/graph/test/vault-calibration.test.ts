@@ -40,6 +40,11 @@ describe.skipIf(!HAS_VAULT)("vault matching, calibrated against this repo's real
 
   it("predicts the graph package's own notes for a graph source path", () => {
     const matches = matchPredicted(notes, ["packages/graph/src/analyze.ts"]);
+    // Without this, a regression that makes matchPredicted silently stop
+    // answering for every real path in this vault — the exact failure this
+    // task's calibration gate exists to catch — passes: an empty array
+    // satisfies "every element matches" vacuously.
+    expect(matches.length).toBeGreaterThan(0);
     for (const m of matches) expect(m.note).toMatch(/graph|practices|testing/u);
   });
 });
