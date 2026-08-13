@@ -26,6 +26,10 @@ export interface Config {
    * moved this from one surface to all of them.
    */
   excludePaths: string[];
+  /** Where the committed knowledge vault lives, relative to the repo root.
+   *  An OPTIONAL evidence tier: a repo without one still gets every other
+   *  answer, just without note citations. */
+  vaultPath: string;
 }
 
 export const DEFAULTS: Config = {
@@ -107,6 +111,7 @@ export const DEFAULTS: Config = {
     ".nuxt/",
     ".cache/",
   ],
+  vaultPath: ".agents/knowledge",
 };
 
 const NUMERIC = [
@@ -146,6 +151,16 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
         // every NUMERIC key above: skip the assignment rather than throw.
         if (typeof parsed.out === "string" && insideRepo(repoRoot, parsed.out) !== null) {
           cfg.out = parsed.out;
+        }
+        // `vaultPath` is repo content too, exactly like `out` above: read out
+        // of octograph.yaml, contained with the same `insideRepo` helper so a
+        // `vaultPath: '../../..'` cannot point `readVault` outside the repo,
+        // and left at the default rather than throwing when it escapes.
+        if (
+          typeof parsed.vaultPath === "string"
+          && insideRepo(repoRoot, parsed.vaultPath) !== null
+        ) {
+          cfg.vaultPath = parsed.vaultPath;
         }
         // `excludePaths` is the first LIST-valued key this file validates —
         // same spirit as every scalar key above, extended to an array: the

@@ -14,6 +14,7 @@ export { renderMap, estimateTokens } from "./render.js";
 export { impact, type ImpactRow } from "./impact.js";
 export { declaredSpine, filesByModule, type Spine } from "./spine.js";
 export { readGraphify } from "./graphify.js";
+export { readVault, DEFAULT_VAULT_PATH, type VaultNote } from "./vault.js";
 export { layerRanks } from "./layers.js";
 export { rollUp, compare, type ModuleEdge } from "./rollup.js";
 export { edgeWeight, weighEdges, type Edge, type WeightOptions } from "./weights.js";
