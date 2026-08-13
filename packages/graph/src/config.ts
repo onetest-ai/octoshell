@@ -3,6 +3,11 @@ import { join } from "node:path";
 import { load as loadYaml } from "js-yaml";
 import { CONFIDENCE_FLOOR, RUNNER_UP_MARGIN, type LexicalOptions } from "./lexical.js";
 import { insideRepo } from "./paths.js";
+// One producer of the path, two readers — same rule `graphifyGraphPath`'s
+// doc comment (graphify.ts) states for its own default path. Importing here
+// rather than re-typing ".agents/knowledge" is what keeps `vault.ts`'s
+// default and `Config`'s default from being able to drift apart.
+import { DEFAULT_VAULT_PATH } from "./vault.js";
 
 export interface Config {
   maxCommitFiles: number;
@@ -111,7 +116,7 @@ export const DEFAULTS: Config = {
     ".nuxt/",
     ".cache/",
   ],
-  vaultPath: ".agents/knowledge",
+  vaultPath: DEFAULT_VAULT_PATH,
 };
 
 const NUMERIC = [

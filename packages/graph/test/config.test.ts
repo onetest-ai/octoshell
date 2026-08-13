@@ -134,6 +134,25 @@ describe("loadConfig", () => {
     expect(loadConfig(root).out).toBe("graphify-out");
   });
 
+  /**
+   * `vaultPath` carries the identical risk `out` does above, and is
+   * validated through the same `insideRepo` helper for the same reason: it
+   * is repo content (octograph.yaml), and `readVault` joins it onto
+   * `repoRoot` unchecked, so an escaping value must degrade to the default
+   * rather than pointing the vault reader outside the repo.
+   */
+  it("falls back to the default vault path when octograph.yaml's vaultPath escapes the repo root", () => {
+    const root = mkdtempClean("cfg-");
+    writeFileSync(join(root, "octograph.yaml"), "vaultPath: '../../..'\n");
+    expect(loadConfig(root).vaultPath).toBe(DEFAULTS.vaultPath);
+  });
+
+  it("accepts a legitimate in-repo vaultPath from octograph.yaml", () => {
+    const root = mkdtempClean("cfg-");
+    writeFileSync(join(root, "octograph.yaml"), "vaultPath: notes/vault\n");
+    expect(loadConfig(root).vaultPath).toBe("notes/vault");
+  });
+
   it("reads values correctly with comments present", () => {
     const root = mkdtempClean("cfg-");
     writeFileSync(

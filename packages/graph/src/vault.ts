@@ -74,7 +74,11 @@ export function readVault(repoRoot: string, vaultPath: string = DEFAULT_VAULT_PA
   const notes: VaultNote[] = [];
 
   for (const rel of markdownFiles(root)) {
-    if (rel.endsWith("README.md")) continue;
+    // The final PATH SEGMENT, not a suffix: `rel.endsWith("README.md")` would
+    // also drop a genuine note named e.g. "customREADME.md", which merely
+    // ends in that substring rather than being a README.
+    const segment = rel.slice(rel.lastIndexOf("/") + 1);
+    if (segment === "README.md") continue;
 
     let raw: string;
     try {
@@ -83,7 +87,7 @@ export function readVault(repoRoot: string, vaultPath: string = DEFAULT_VAULT_PA
       continue;
     }
 
-    const stem = rel.slice(rel.lastIndexOf("/") + 1).replace(/\.md$/u, "");
+    const stem = segment.replace(/\.md$/u, "");
     const match = FRONTMATTER.exec(raw);
     const body = match === null ? raw : raw.slice(match[0].length);
 

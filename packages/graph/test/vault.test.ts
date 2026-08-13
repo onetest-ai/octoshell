@@ -43,12 +43,21 @@ describe("readVault", () => {
     ]);
   });
 
-  it("does not throw on an empty frontmatter block (js-yaml 5.2.2 throws on an empty document)", () => {
-    const root = repoWithNotes({ "practices/empty.md": "---\n---\nbody\n" });
+  // Each input below MUST match FRONTMATTER (a real line between the fences)
+  // so `loadYaml` is actually reached and actually throws. `"---\n---\n"` does
+  // NOT match — the fences are adjacent — so it exercises the no-frontmatter
+  // branch instead and would pass with the try/catch deleted.
+  it.each([
+    ["empty", "---\n\n---\nbody\n"],
+    ["whitespace", "---\n   \n---\nbody\n"],
+    ["comment-only", "---\n# just a comment\n---\nbody\n"],
+  ])("does not throw on %s frontmatter (js-yaml 5.2.2 throws on such a document)", (label, raw) => {
+    const root = repoWithNotes({ [`practices/${label}.md`]: raw });
     const notes = readVault(root);
     expect(notes).toHaveLength(1);
-    expect(notes[0]?.name).toBe("empty");
+    expect(notes[0]?.name).toBe(label);
     expect(notes[0]?.description).toBe("");
+    expect(notes[0]?.body).toBe("body\n");
   });
 
   it("falls back to the filename stem when frontmatter is absent or unparseable", () => {
