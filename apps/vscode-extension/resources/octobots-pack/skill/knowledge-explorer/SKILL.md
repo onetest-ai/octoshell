@@ -85,6 +85,17 @@ Run it once per session and reuse the answer.
 
 `own` and `conflicts` need an `.octobots/` board and exit non-zero without one.
 
+**Query the doctrine, not only the code.** A rule usually lives in two kinds of file: the code that
+enforces it, and the prose that asserts it — a `SKILL.md`, a policy doc, a config with reasoning in
+its comments. Run `impact` on both. The prose file routinely returns a *different* cohort: the
+process obligations that come with editing that kind of file at all. That cohort shares no token
+with your change, so no search will ever find it.
+
+Measured on octoshell, 2026-08-13: `impact` on a pack `SKILL.md` returns the nine-file version-bump
+cohort at `support=19–20` — `octobots-skill.ts`, the primer, both tokenomics runners, the graph
+payload and its hash lock. Editing one line of doctrine obliges all of them. Nothing in those files
+contains the word the change was about.
+
 **Budget:** at most one `impact` per file you actually intend to change, plus at most one `drift`
 per question. Use `--json` only when you will parse the output — the default text form is more
 compact.

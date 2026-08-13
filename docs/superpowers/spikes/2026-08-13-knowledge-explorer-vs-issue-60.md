@@ -147,9 +147,16 @@ corrected.
    "pack files change together", true and unhelpful. The skill's budget rule limits the damage; it
    does not eliminate it.
 3. **Two of three `impact` queries were needed to reach item 7, and I only ran the second one
-   because the first came back empty.** Nothing in the skill tells a reader to query a *doctrine*
-   file as well as a *code* file. That is a real gap in the query ladder, left as-is rather than
-   patched from a sample of one.
+   because the first came back empty.** Nothing in the skill told a reader to query a *doctrine*
+   file as well as a *code* file — a real gap in the query ladder. **Closed:** the ladder now says
+   to run `impact` on both, and cites this measurement as the reason. A sample of one, but the
+   mechanism it exposes is not accidental — process obligations attach to a *kind* of file, and are
+   therefore reachable only from that file, never from the change that triggers them.
+
+The version-bump cohort has since been promoted to
+[`.agents/knowledge/architecture/pack-version-is-one-unit.md`](../../../.agents/knowledge/architecture/pack-version-is-one-unit.md),
+which closes the skill's own loop: the next reader gets item 7 from tier 1 without paying for a
+graph query at all.
 
 ## Verdict
 

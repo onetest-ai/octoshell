@@ -13,3 +13,5 @@ implication — those either belong in a code comment or, if genuinely role-spec
   nothing cascade-mutates in memory.
 - [`dual-schema-entity-io.md`](dual-schema-entity-io.md) — the board YAML schema is implemented
   twice with no import edge; both copies must change together.
+- [`pack-version-is-one-unit.md`](pack-version-is-one-unit.md) — a one-line pack edit obliges nine
+  version markers, a regenerated bundle and a recorded hash; `packStatus` accepts no partial state.
