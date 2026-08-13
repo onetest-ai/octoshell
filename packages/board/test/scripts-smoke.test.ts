@@ -405,15 +405,25 @@ describe("workflow scripts", () => {
     expect(wf!.phases).toHaveLength(1);
   });
 
-  it("add-workflow.js refuses a second workflow on a mission", () => {
+  // A mission's three execution loops each get their own workflow — see #60 and
+  // the canonical slugs in workflow-designer's "The three loops" section. The
+  // script used to refuse the second one while `BoardModel` happily stored an
+  // array, so the storage layer and the writing layer disagreed.
+  it("add-workflow.js accepts several workflows on one mission, one per loop", () => {
     const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
     const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
     const cs = slugOf(c.folderPath);
     const ms = slugOf(m.folderPath);
-    runScript("add-workflow.js", ["--campaign", cs, "--mission", ms, "--name", "build-tasks"], projectDir);
-    expect(() =>
-      runScript("add-workflow.js", ["--campaign", cs, "--mission", ms, "--name", "other"], projectDir),
-    ).toThrow();
+    for (const name of ["implementation", "testing", "fixing"]) {
+      runScript("add-workflow.js", ["--campaign", cs, "--mission", ms, "--name", name], projectDir);
+    }
+    const board = new BoardModel(boardRoot);
+    board.rebuild();
+    expect(board.listWorkflows({ missionId: m.id }).map((w) => w.name).sort()).toEqual([
+      "fixing",
+      "implementation",
+      "testing",
+    ]);
   });
 
   it("set-step.js adds a step the BoardModel then reports", () => {
