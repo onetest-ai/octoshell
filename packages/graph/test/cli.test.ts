@@ -1192,6 +1192,28 @@ describe("runCli — impact --diff", () => {
       expect(result.code).toBe(2);
       expect(result.stderr).toContain("unrecognised flag: --sInce");
     });
+
+    it("rejects --base given without --diff, naming the flag, rather than silently ignoring it", () => {
+      // Fix round 1: `--staged`/`--worktree` got the "requires --diff" guard
+      // from day one, but `--base` did not — `impact --base main <path>`
+      // parsed clean, exited 0, and produced ordinary `impact <path>` output
+      // with `--base` doing nothing at all. That is the exact defect class
+      // `--out`/`--half-life-days` were rewritten to make impossible: a flag
+      // the parser recognises and then quietly drops.
+      const result = runCli(["impact", "--base", "main", "a.ts"], tinyRepo(), NOW);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("--base requires --diff");
+    });
+
+    it("rejects --base on a command other than impact too, since it is parsed generically", () => {
+      // `--base` is recognised in the flag loop for every command, not just
+      // `impact` — same as `--staged`/`--worktree` above. `octograph map
+      // --base main` must not silently accept and discard it either.
+      const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
+      const result = runCli(["map", "--base", "main"], repo, NOW);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("--base requires --diff");
+    });
   });
 
   it("changed: 0 when the branch matches its base, and reports no impact rather than erroring", () => {
@@ -1200,6 +1222,25 @@ describe("runCli — impact --diff", () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("changed: 0 file(s)");
     expect(result.stdout).toContain("nothing changed against the base");
+  });
+
+  it("changed: 0 under --staged/--worktree names the actual scope, never 'the base' those scopes never measure against", () => {
+    // Fix round 1, minor 2: --staged and --worktree compare the index/
+    // worktree to HEAD, not to any base ref — the empty message must not
+    // claim otherwise.
+    const repo = repoWithCoupledBranch(); // committed feature branch, nothing staged or loose
+
+    const staged = runCli(["impact", "--diff", "--staged"], repo, NOW);
+    expect(staged.code).toBe(0);
+    expect(staged.stdout).toContain("changed: 0 file(s)");
+    expect(staged.stdout).toContain("nothing staged");
+    expect(staged.stdout).not.toContain("against the base");
+
+    const worktree = runCli(["impact", "--diff", "--worktree"], repo, NOW);
+    expect(worktree.code).toBe(0);
+    expect(worktree.stdout).toContain("changed: 0 file(s)");
+    expect(worktree.stdout).toContain("worktree is clean");
+    expect(worktree.stdout).not.toContain("against the base");
   });
 
   it("reports a historically coupled file as source impact, citing the changed file that pulled it in", () => {

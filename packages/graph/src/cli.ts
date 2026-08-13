@@ -215,6 +215,17 @@ export function parseArgs(argv: string[]): ParseResult {
   if (!sawDiff && scopeFlag !== null) {
     return { ok: false, error: `${scopeFlag} requires --diff` };
   }
+  // Same guard, same reason, for `--base`: it selects what a branch is
+  // measured AGAINST, which means nothing without `--diff` naming a change
+  // set to measure in the first place. Missed in the original pass —
+  // `--staged`/`--worktree` got this check and `--base` did not, so `impact
+  // --base main <path>` parsed clean and ran ordinary `impact <path>` with
+  // `--base` silently doing nothing. Exactly the "recognised flag the parser
+  // then discards" defect this whole file's flag-recognition discipline
+  // exists to rule out (see the `--out`/`--half-life-days` history above).
+  if (!sawDiff && base !== undefined) {
+    return { ok: false, error: "--base requires --diff" };
+  }
   let diff: DiffScope | null = null;
   if (sawDiff) {
     if (scopeFlag === "--staged") diff = { kind: "staged" };
@@ -508,6 +519,26 @@ function formatDiffImpactSection(title: string, rows: DiffImpactRow[]): string[]
 }
 
 /**
+ * `changed.length === 0`'s message, scoped to what was actually asked. Fix
+ * round 1, minor 2: `--staged` and `--worktree` compare the index / the
+ * worktree to HEAD — no `base` ref is ever consulted for either (see
+ * `changedPaths`'s own `switch` in diff-impact.ts) — so a message claiming
+ * "against the base" under those scopes describes a comparison that did not
+ * happen. Only `branch` scope (the default) actually measures against
+ * `base`.
+ */
+function emptyChangedMessage(scope: DiffScope): string {
+  switch (scope.kind) {
+    case "staged":
+      return "nothing staged — no impact to report";
+    case "worktree":
+      return "worktree is clean — no impact to report";
+    case "branch":
+      return "nothing changed against the base — no impact to report";
+  }
+}
+
+/**
  * `impact --diff` — what else moves, given everything this branch (or the
  * index, or the worktree) has changed.
  *
@@ -552,7 +583,7 @@ function runDiffImpactCommand(
 
   const lines: string[] = [`changed: ${changed.length} file(s)`];
   if (changed.length === 0) {
-    lines.push("", "nothing changed against the base — no impact to report");
+    lines.push("", emptyChangedMessage(scope));
     return { code: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
   }
 
