@@ -93,3 +93,91 @@ describe("readVault", () => {
     expect(readVault(root).map((n) => n.note)).toEqual(["a/first.md", "z/last.md"]);
   });
 });
+
+import { citedPaths, matchCited } from "../src/vault.js";
+
+const note = (body: string): VaultNote => ({
+  note: "architecture/dual.md",
+  name: "dual",
+  description: "two schemas",
+  verified: "2026-08-09",
+  body,
+});
+
+describe("citedPaths", () => {
+  const candidates = new Set([
+    "packages/board/src/entity-schema.ts",
+    "apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/entity-io.mjs",
+  ]);
+
+  it("extracts every candidate path the body names", () => {
+    expect(
+      citedPaths(
+        note(
+          "The pair is packages/board/src/entity-schema.ts and\n"
+            + "apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/entity-io.mjs.\n",
+        ),
+        candidates,
+      ),
+    ).toEqual([
+      "apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/entity-io.mjs",
+      "packages/board/src/entity-schema.ts",
+    ]);
+  });
+
+  it("drops path-shaped prose that is not a real file", () => {
+    // Every one of these is produced by a path regex over THIS repo's real
+    // notes: a tag, a line-number list, a slashed phrase, a bare package name.
+    expect(
+      citedPaths(
+        note("tags: area/board\nlines 19/25/53/64\ncampaign/mission/task/bug\n@octoshell/board\n"),
+        candidates,
+      ),
+    ).toEqual([]);
+  });
+
+  it("drops a bare basename — a citation must be unambiguous", () => {
+    expect(citedPaths(note("entity-schema.ts moved"), candidates)).toEqual([]);
+  });
+
+  it("does not count a path named only in the note's own frontmatter", () => {
+    // `body` excludes frontmatter by construction (Task 1), so an `aliases:`
+    // entry that happens to look like a path is not a citation.
+    expect(citedPaths(note(""), candidates)).toEqual([]);
+  });
+
+  it("deduplicates a path named more than once", () => {
+    const body = "packages/board/src/entity-schema.ts ... packages/board/src/entity-schema.ts";
+    expect(citedPaths(note(body), candidates)).toEqual(["packages/board/src/entity-schema.ts"]);
+  });
+});
+
+describe("matchCited", () => {
+  it("emits one match per (path, note) pair, with confidence 1", () => {
+    const notes: VaultNote[] = [
+      { ...note("names packages/board/src/entity-schema.ts"), note: "a.md" },
+      { ...note("also names packages/board/src/entity-schema.ts"), note: "b.md" },
+    ];
+    const matches = matchCited(notes, ["packages/board/src/entity-schema.ts"]);
+    expect(matches).toEqual([
+      {
+        path: "packages/board/src/entity-schema.ts",
+        note: "a.md",
+        description: "two schemas",
+        mode: "cited",
+        confidence: 1,
+      },
+      {
+        path: "packages/board/src/entity-schema.ts",
+        note: "b.md",
+        description: "two schemas",
+        mode: "cited",
+        confidence: 1,
+      },
+    ]);
+  });
+
+  it("returns nothing when no note names any candidate", () => {
+    expect(matchCited([note("no paths here")], ["packages/board/src/entity-schema.ts"])).toEqual([]);
+  });
+});

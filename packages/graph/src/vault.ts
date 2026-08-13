@@ -119,3 +119,80 @@ export function readVault(repoRoot: string, vaultPath: string = DEFAULT_VAULT_PA
   // committed artifact through `render.ts`.
   return notes.sort((a, b) => compare(a.note, b.note));
 }
+
+/** How a note was tied to a path. Never blended — the `own` precedent. */
+export type VaultMode = "cited" | "predicted";
+
+export interface VaultMatch {
+  /** The source path the note is about. */
+  path: string;
+  /** `VaultNote.note`. */
+  note: string;
+  description: string;
+  mode: VaultMode;
+  /** 1 for `cited` (it is a fact); the normalized tf-idf score for `predicted`. */
+  confidence: number;
+}
+
+/**
+ * Path-shaped tokens: anything containing a `/` and made of characters a
+ * repo-relative path in this codebase actually uses.
+ *
+ * DELIBERATELY over-inclusive. It matches `area/board`, `19/25/53/64`,
+ * `campaign/mission/task/bug` and `@octoshell/board` too — every one of those
+ * comes out of this repo's real notes. They are removed by resolving against
+ * the candidate corpus below, NOT by making this pattern cleverer: a regex
+ * tuned to reject prose would eventually reject a real path (a directory
+ * legitimately named `mission`), and a citation matcher that silently drops a
+ * real citation is worse than one that proposes a candidate and has it
+ * rejected by a set lookup.
+ */
+const PATH_TOKEN = /[A-Za-z0-9_@.-]+(?:\/[A-Za-z0-9_@.-]+)+/gu;
+
+/**
+ * The repo-relative paths a note's body explicitly names.
+ *
+ * "Explicitly" means an EXACT match against a path the repository actually
+ * has. A bare basename (`entity-schema.ts`) is not a citation: two files can
+ * share one, and attaching a note to the wrong one is precisely the
+ * plausible-but-wrong answer the `cited` tier exists to avoid. A caller who
+ * wants fuzzier reach has `matchPredicted`, which says so in its label.
+ */
+export function citedPaths(note: VaultNote, candidates: ReadonlySet<string>): string[] {
+  const found = new Set<string>();
+  for (const token of note.body.matchAll(PATH_TOKEN)) {
+    const raw = token[0];
+    // Trailing punctuation: prose ends a sentence naming a path with ".",
+    // "," or ")" and the token grabs it.
+    const cleaned = raw.replace(/[.,;:)\]]+$/u, "");
+    if (candidates.has(cleaned)) found.add(cleaned);
+  }
+  return [...found].sort(compare);
+}
+
+/**
+ * Every (path, note) pair where the note's body names the path outright.
+ *
+ * Ordered by path then note, through the same comparator the rest of this
+ * package uses — these rows reach `map.md`, a committed artifact, so a
+ * filesystem-dependent order would churn the diff between two identical runs.
+ */
+export function matchCited(
+  notes: readonly VaultNote[],
+  candidates: readonly string[],
+): VaultMatch[] {
+  const set = new Set(candidates);
+  const out: VaultMatch[] = [];
+  for (const note of notes) {
+    for (const path of citedPaths(note, set)) {
+      out.push({
+        path,
+        note: note.note,
+        description: note.description,
+        mode: "cited",
+        confidence: 1,
+      });
+    }
+  }
+  return out.sort((a, b) => compare(a.path, b.path) || compare(a.note, b.note));
+}
