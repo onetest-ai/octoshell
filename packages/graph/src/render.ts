@@ -317,6 +317,22 @@ export function renderMap(
     // Measured against the actually-rendered `lines` slice, never against
     // `keptModules * (1 or 2)`, because a purpose line is only present on
     // SOME modules — the count cannot be inferred from `keptModules` alone.
+    //
+    // `join("\n").split("\n").length` reads 1, not 0, when `keptModules` is
+    // 0 (`[].join("\n") === ""`, and `"".split("\n")` is `[""]`, length 1) —
+    // an off-by-one that would undercost an empty module section against the
+    // other two. It never actually executes at that value, though: the
+    // `break` above already fires the SAME iteration `keptModules` reaches 0,
+    // because `shownEdges` and `shownSets` are also 0 by then —
+    // `shownModules(0)` is the empty set, and `visibleEdges`/`visibleSets`
+    // (both filtered by that set) admit nothing once no module has a
+    // heading. That second half is not a fact this file can verify on its
+    // own: it holds only because `working-sets.ts`'s `WorkingSet.modules` is
+    // documented "Always >= 2" — a working set can never keep only its
+    // module-less self visible, so it goes to 0 in step with the edges. If
+    // that invariant is ever relaxed to allow a single-module working set,
+    // this line's off-by-one becomes reachable and this comment is the
+    // signal to revisit it.
     const moduleLineCount = lines.slice(0, keptModules).join("\n").split("\n").length;
     // Whichever of the three currently occupies the most LINES gives up the
     // next slice, so no section is starved to pay for the other two. Each

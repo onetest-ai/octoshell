@@ -414,6 +414,21 @@ function sincePredictedWarning(since: string | undefined): string {
  * evidence. A module's owner is the mission of the MOST-attributed task among
  * its files — one line per module is the budget, so a module owned by three
  * tasks names the one with the most files rather than listing all three.
+ *
+ * The `(mode)` on that one line is the AGGREGATE of every answer folded into
+ * it, never the first one seen. `OwnAnswer.mode` is per-TASK, and one mission
+ * routinely mixes a task with a recorded merge SHA (`provenance`) and a task
+ * with none (`predicted`) — this repo's own M4 does. Labelling from whichever
+ * task happened to sort first made a mixed-mode mission read as a pure
+ * `(provenance)` line whenever the provenance task's id happened to sort
+ * first, which is exactly the guess-dressed-as-a-fact failure this whole
+ * evidence tier exists to rule out (see `formatOwnAnswer`'s doc comment
+ * above, restating the same rule for `own`'s per-row output). The safe
+ * direction only runs one way: a group is `provenance` only when EVERY
+ * contributing answer is — one `predicted` answer taints the whole group. A
+ * fact demoted to a guess costs a reader nothing (they double-check something
+ * that didn't need it); a guess promoted to a fact costs them the campaign's
+ * entire promise.
  */
 function purposeByModule(
   answers: readonly OwnAnswer[],
@@ -421,15 +436,24 @@ function purposeByModule(
   files: readonly string[],
   moduleOf: (p: string) => string,
 ): Map<string, string> {
-  const tally = new Map<string, Map<string, { label: string; n: number }>>();
+  const tally = new Map<
+    string,
+    Map<string, { missionName: string; n: number; allProvenance: boolean }>
+  >();
   for (const a of answers) {
     const mod = moduleOf(a.path);
-    const byMission = tally.get(mod) ?? new Map<string, { label: string; n: number }>();
+    const byMission =
+      tally.get(mod) ?? new Map<string, { missionName: string; n: number; allProvenance: boolean }>();
     const key = a.mission;
     const seen = byMission.get(key);
-    const label = `${a.missionName} (${a.mode})`;
-    if (seen === undefined) byMission.set(key, { label, n: 1 });
-    else seen.n += 1;
+    if (seen === undefined) {
+      byMission.set(key, { missionName: a.missionName, n: 1, allProvenance: a.mode === "provenance" });
+    } else {
+      seen.n += 1;
+      // See this function's doc comment: ANY predicted answer taints the
+      // whole group, so this can only ever turn `false`, never back to `true`.
+      if (a.mode !== "provenance") seen.allProvenance = false;
+    }
     tally.set(mod, byMission);
   }
 
@@ -445,11 +469,11 @@ function purposeByModule(
   const out = new Map<string, string>();
   for (const mod of new Set([...tally.keys(), ...citedByModule.keys()])) {
     const missions = [...(tally.get(mod)?.values() ?? [])].sort(
-      (x, y) => y.n - x.n || compare(x.label, y.label),
+      (x, y) => y.n - x.n || compare(x.missionName, y.missionName),
     );
     const parts: string[] = [];
     const top = missions[0];
-    if (top !== undefined) parts.push(top.label);
+    if (top !== undefined) parts.push(`${top.missionName} (${top.allProvenance ? "provenance" : "predicted"})`);
     const note = citedByModule.get(mod);
     if (note !== undefined) parts.push(`see ${note}`);
     if (parts.length > 0) out.set(mod, parts.join(" — "));
@@ -565,17 +589,31 @@ function runImpactCommand(
   return { code: 0, stdout, stderr: "" };
 }
 
-/** One `impact --diff` row: the changed files it did NOT come from, the
- *  evidence, and any `cited` vault notes — all through `oneLine`, same
- *  reason as `formatOwnAnswer`/`formatConflictPair`: a repo-relative path or
- *  a vault description is free-form text that may legally carry a newline,
- *  and this formatter joins rows with `\n`. */
+/**
+ * One `impact --diff` row: the strongest changed file it came from, the
+ * evidence, and any `cited` vault notes — all through `oneLine`, same reason
+ * as `formatOwnAnswer`/`formatConflictPair`: a repo-relative path or a vault
+ * description is free-form text that may legally carry a newline, and this
+ * formatter joins rows with `\n`.
+ *
+ * Names ONLY {@link DiffImpactRow.strongestVia}, never the whole of
+ * `predictedBy`. `npmi`/`support` on this row describe that ONE edge — the
+ * max-scoring changed file that pulled this row in — while `predictedBy`
+ * accumulates EVERY changed file that did, which can run to a dozen-plus
+ * paths on a real branch. Printing the full list beside a single edge's
+ * strength read as though that strength described all of them; it never did.
+ * The remaining count is still said, so a reader knows more evidence exists
+ * without every path being inlined — `--json` serialises `predictedBy`
+ * whole for a caller that wants it.
+ */
 function formatDiffImpactRow(row: DiffImpactRow): string {
-  const { path, npmi, support, predictedBy, notes } = row;
-  const lines = [
-    `  ${oneLine(path)}  npmi=${npmi.toFixed(3)}  support=${support}`
-      + `  via ${predictedBy.map(oneLine).join(", ")}`,
-  ];
+  const { path, npmi, support, predictedBy, strongestVia, notes } = row;
+  const extra = predictedBy.length - 1;
+  const via =
+    extra > 0
+      ? `strongest via ${oneLine(strongestVia)} (+${extra} more changed file${extra === 1 ? "" : "s"})`
+      : `via ${oneLine(strongestVia)}`;
+  const lines = [`  ${oneLine(path)}  npmi=${npmi.toFixed(3)}  support=${support}  ${via}`];
   for (const n of notes) lines.push(`      known: ${oneLine(n.note)} — ${oneLine(n.description)}`);
   return lines.join("\n");
 }

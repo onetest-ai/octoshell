@@ -166,8 +166,20 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
         // of octograph.yaml, contained with the same `insideRepo` helper so a
         // `vaultPath: '../../..'` cannot point `readVault` outside the repo,
         // and left at the default rather than throwing when it escapes.
+        //
+        // `!== ""` for the same reason `diffBase` below carries it: `paths.ts`'s
+        // own threat model is that octograph is pointed at checkouts nobody on
+        // this team wrote, so `octograph.yaml` IS the hostile input this must
+        // survive, not a config file a trusted author hand-wrote. `insideRepo`
+        // alone does not reject `""` — `join(root, "")` resolves to the repo
+        // root itself, which is a legitimate `insideRepo` answer for a caller
+        // that means it — so an empty string silently became "read every `.md`
+        // body under the repo root", `node_modules` included: verified, a
+        // vendored dependency's readme became a `cited` (confidence 1, a FACT)
+        // vault note purely because `vaultPath: ""` slipped past this guard.
         if (
           typeof parsed.vaultPath === "string"
+          && parsed.vaultPath !== ""
           && insideRepo(repoRoot, parsed.vaultPath) !== null
         ) {
           cfg.vaultPath = parsed.vaultPath;

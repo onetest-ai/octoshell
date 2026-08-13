@@ -726,6 +726,199 @@ describe("runCli — own", () => {
   });
 });
 
+/**
+ * `map`'s purpose-line PRODUCER (`cli.ts`'s `purposeByModule`), not its
+ * consumer. `render.test.ts` covers `renderMap`'s handling of an already-built
+ * purpose map exhaustively; nothing anywhere ran `map` end to end against a
+ * board and a vault and checked a purpose line actually reached `map.md` —
+ * `purposeByModule` could be stubbed to return an empty `Map` and the whole
+ * graph suite still passed, which is exactly how the mixed-mode mislabel
+ * below (Important 1) reached final review unnoticed.
+ */
+describe("runCli — map's purpose lines", () => {
+  function repoWithBoardAndGit(): { root: string; octobotsDir: string; git: (args: string[]) => string } {
+    const root = mkdtempClean("octograph-cli-map-purpose-");
+    const git = (args: string[]): string =>
+      execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" });
+    git(["init", "-q", "-b", "main"]);
+    git(["config", "user.email", "test@example.com"]);
+    git(["config", "user.name", "Test"]);
+    const octobotsDir = join(root, ".octobots");
+    mkdirSync(octobotsDir, { recursive: true });
+    return { root, octobotsDir, git };
+  }
+
+  function commit(root: string, git: (args: string[]) => string, files: Record<string, string>): string {
+    for (const [rel, content] of Object.entries(files)) {
+      const abs = join(root, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, content);
+    }
+    git(["add", "-A"]);
+    git(["commit", "-q", "-m", "test commit"]);
+    return git(["rev-parse", "HEAD"]).trim();
+  }
+
+  function writeWorklog(root: string, lines: Array<Record<string, unknown>>): void {
+    const dir = join(root, ".octobots", "tokenomics");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "worklog.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  }
+
+  /** A vault note under the default `.agents/knowledge` vault path, with a
+   *  body that CITES `body`'s paths outright — `citedPaths` (vault.ts) only
+   *  ever matches a full repo-relative path, never a bare basename. */
+  function writeVaultNote(
+    root: string,
+    rel: string,
+    frontmatter: Record<string, string>,
+    body: string,
+  ): void {
+    const abs = join(root, ".agents", "knowledge", rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    const fm = Object.entries(frontmatter)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("\n");
+    writeFileSync(abs, `---\n${fm}\n---\n\n${body}\n`);
+  }
+
+  function readMap(root: string): string {
+    return readFileSync(join(root, ".octobots", "graph", "map.md"), "utf8");
+  }
+
+  /** The purpose line rendered directly under a module's heading line
+   *  (`- **<module>** — ...`) — `renderMap` puts it on the NEXT line, indented
+   *  two spaces (render.ts's `lines.push` for `why`), never on the heading
+   *  line itself. */
+  function purposeLineFor(mapText: string, moduleName: string): string | undefined {
+    const lines = mapText.split("\n");
+    const idx = lines.findIndex((l) => l.includes(`**${moduleName}**`));
+    return idx === -1 ? undefined : lines[idx + 1];
+  }
+
+  it("names the owning mission and a cited vault note under the module they belong to", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, {
+      "src/auth/session.ts": "export {}\n",
+      "src/auth/login.ts": "export {}\n",
+    });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    const task = createTask(octobotsDir, mission.id, {
+      name: "T1.1 - Session",
+      acceptanceCriteria: "- [ ] the session token is validated",
+    });
+    writeWorklog(root, [
+      { session_id: "s1", task: task.id, branch: "feat/x-t1", merged_sha: sha, at: "2026-08-10T00:00:00.000Z" },
+    ]);
+    writeVaultNote(
+      root,
+      "architecture/auth-session.md",
+      { name: "Auth session notes", description: "how the session module works" },
+      "See src/auth/session.ts for the implementation.",
+    );
+
+    const result = runCli(["map"], root, NOW);
+    expect(result.code).toBe(0);
+
+    const purposeLine = purposeLineFor(readMap(root), "src/auth");
+    expect(purposeLine).toBeDefined();
+    expect(purposeLine).toContain("M1 - Auth (provenance)");
+    expect(purposeLine).toContain("see architecture/auth-session.md");
+  });
+
+  it("names the mission with the MOST attributed files when two missions both own the same module", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const shaAlpha = commit(root, git, {
+      "src/util/format.ts": "export {}\n",
+      "src/util/parse.ts": "export {}\n",
+    });
+    const shaBeta = commit(root, git, { "src/util/helpers.ts": "export {}\n" });
+
+    const campaignA = createCampaign(octobotsDir, { name: "Q3" });
+    const missionA = createMission(octobotsDir, campaignA.id, { title: "M1 - Alpha" });
+    const taskA = createTask(octobotsDir, missionA.id, {
+      name: "T1.1 - Format",
+      acceptanceCriteria: "- [ ] formatting is stable",
+    });
+
+    const campaignB = createCampaign(octobotsDir, { name: "Q4" });
+    const missionB = createMission(octobotsDir, campaignB.id, { title: "M2 - Beta" });
+    const taskB = createTask(octobotsDir, missionB.id, {
+      name: "T2.1 - Helpers",
+      acceptanceCriteria: "- [ ] helpers are documented",
+    });
+
+    writeWorklog(root, [
+      { session_id: "s1", task: taskA.id, branch: "feat/a", merged_sha: shaAlpha, at: "2026-08-10T00:00:00.000Z" },
+      { session_id: "s2", task: taskB.id, branch: "feat/b", merged_sha: shaBeta, at: "2026-08-10T00:00:00.000Z" },
+    ]);
+
+    const result = runCli(["map"], root, NOW);
+    expect(result.code).toBe(0);
+
+    // Mission A owns 2 files in src/util (format.ts + parse.ts), mission B
+    // owns 1 (helpers.ts) — A has the most attribution, so A wins the line,
+    // never B, however the two missions sort by id or insertion order.
+    const purposeLine = purposeLineFor(readMap(root), "src/util");
+    expect(purposeLine).toContain("M1 - Alpha (provenance)");
+    expect(purposeLine).not.toContain("M2 - Beta");
+  });
+
+  /**
+   * Important 1's regression, pinned directly: a mission whose tasks split
+   * between `provenance` (a recorded merge SHA) and `predicted` (the lexical
+   * fallback) must render `(predicted)` for the whole group, never
+   * `(provenance)` — labelling from whichever task's answer happened to sort
+   * first (here, the provenance task, since `t1-1-...` sorts before
+   * `t1-2-...`) is the exact defect this pins against. `formatOwnAnswer`'s
+   * doc comment states the same rule for `own`'s per-row output; this is the
+   * identical rule at `map`'s per-module rollup.
+   */
+  it("labels a module (predicted), never (provenance), when its owning mission mixes provenance and predicted tasks", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, {
+      "src/auth/session.ts": "export {}\n",
+      "src/auth/login.ts": "export {}\n",
+    });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M4 - Mixed" });
+    const provTask = createTask(octobotsDir, mission.id, {
+      name: "T1.1 - Login",
+      acceptanceCriteria: "- [ ] the login page renders",
+    });
+    // No worklog entry at all for this task — `attribute()` defaults it to
+    // `predicted`, exactly the day-one state of every adopting repo (see
+    // own.ts's own doc comment).
+    createTask(octobotsDir, mission.id, {
+      name: "T1.2 - Session",
+      acceptanceCriteria: "- [ ] the session token is validated on every login attempt",
+    });
+    writeWorklog(root, [
+      {
+        session_id: "s1",
+        task: provTask.id,
+        branch: "feat/x-t1",
+        merged_sha: sha,
+        at: "2026-08-10T00:00:00.000Z",
+      },
+    ]);
+
+    const result = runCli(["map"], root, NOW);
+    expect(result.code).toBe(0);
+
+    const purposeLine = purposeLineFor(readMap(root), "src/auth");
+    expect(purposeLine).toBeDefined();
+    expect(purposeLine).toContain("M4 - Mixed (predicted)");
+    expect(purposeLine).not.toContain("(provenance)");
+  });
+});
+
 describe("runCli — conflicts", () => {
   /** A campaign spanning two missions, each with its own task(s), on a repo
    *  whose git history co-changes the two files those tasks' criteria

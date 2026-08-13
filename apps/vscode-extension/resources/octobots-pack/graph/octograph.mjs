@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 52
+// octobots-pack-version: 53
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -3367,7 +3367,7 @@ function loadConfig(repoRoot, overrides = {}) {
         if (typeof parsed.out === "string" && insideRepo(repoRoot, parsed.out) !== null) {
           cfg.out = parsed.out;
         }
-        if (typeof parsed.vaultPath === "string" && insideRepo(repoRoot, parsed.vaultPath) !== null) {
+        if (typeof parsed.vaultPath === "string" && parsed.vaultPath !== "" && insideRepo(repoRoot, parsed.vaultPath) !== null) {
           cfg.vaultPath = parsed.vaultPath;
         }
         if (Array.isArray(parsed.excludePaths) && parsed.excludePaths.every((v) => typeof v === "string")) {
@@ -4649,12 +4649,13 @@ function diffImpact(changed, edges, files, notes, limit = 20, minSupport = 2) {
       const score = rankScore(npmi, support, minSupport);
       const existing = merged.get(row.path);
       if (existing === void 0) {
-        merged.set(row.path, { row, score, by: /* @__PURE__ */ new Set([path]) });
+        merged.set(row.path, { row, score, by: /* @__PURE__ */ new Set([path]), strongestVia: path });
       } else {
         existing.by.add(path);
         if (score > existing.score) {
           existing.score = score;
           existing.row = row;
+          existing.strongestVia = path;
         }
       }
     }
@@ -4670,6 +4671,7 @@ function diffImpact(changed, edges, files, notes, limit = 20, minSupport = 2) {
     row: {
       ...e.row,
       predictedBy: [...e.by].sort(compare),
+      strongestVia: e.strongestVia,
       notes: notesFor.get(e.row.path) ?? []
     },
     score: e.score
@@ -5497,9 +5499,12 @@ function purposeByModule(answers, notes, files, moduleOf) {
     const byMission = tally.get(mod) ?? /* @__PURE__ */ new Map();
     const key = a.mission;
     const seen = byMission.get(key);
-    const label = `${a.missionName} (${a.mode})`;
-    if (seen === void 0) byMission.set(key, { label, n: 1 });
-    else seen.n += 1;
+    if (seen === void 0) {
+      byMission.set(key, { missionName: a.missionName, n: 1, allProvenance: a.mode === "provenance" });
+    } else {
+      seen.n += 1;
+      if (a.mode !== "provenance") seen.allProvenance = false;
+    }
     tally.set(mod, byMission);
   }
   const citedByModule = /* @__PURE__ */ new Map();
@@ -5510,11 +5515,11 @@ function purposeByModule(answers, notes, files, moduleOf) {
   const out = /* @__PURE__ */ new Map();
   for (const mod of /* @__PURE__ */ new Set([...tally.keys(), ...citedByModule.keys()])) {
     const missions = [...tally.get(mod)?.values() ?? []].sort(
-      (x, y) => y.n - x.n || compare(x.label, y.label)
+      (x, y) => y.n - x.n || compare(x.missionName, y.missionName)
     );
     const parts = [];
     const top = missions[0];
-    if (top !== void 0) parts.push(top.label);
+    if (top !== void 0) parts.push(`${top.missionName} (${top.allProvenance ? "provenance" : "predicted"})`);
     const note = citedByModule.get(mod);
     if (note !== void 0) parts.push(`see ${note}`);
     if (parts.length > 0) out.set(mod, parts.join(" \u2014 "));
@@ -5562,10 +5567,10 @@ function runImpactCommand(repoRoot, config, since, now, rawPath, json) {
   return { code: 0, stdout, stderr: "" };
 }
 function formatDiffImpactRow(row) {
-  const { path, npmi, support, predictedBy, notes } = row;
-  const lines = [
-    `  ${oneLine2(path)}  npmi=${npmi.toFixed(3)}  support=${support}  via ${predictedBy.map(oneLine2).join(", ")}`
-  ];
+  const { path, npmi, support, predictedBy, strongestVia, notes } = row;
+  const extra = predictedBy.length - 1;
+  const via = extra > 0 ? `strongest via ${oneLine2(strongestVia)} (+${extra} more changed file${extra === 1 ? "" : "s"})` : `via ${oneLine2(strongestVia)}`;
+  const lines = [`  ${oneLine2(path)}  npmi=${npmi.toFixed(3)}  support=${support}  ${via}`];
   for (const n of notes) lines.push(`      known: ${oneLine2(n.note)} \u2014 ${oneLine2(n.description)}`);
   return lines.join("\n");
 }

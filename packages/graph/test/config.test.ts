@@ -154,6 +154,21 @@ describe("loadConfig", () => {
   });
 
   /**
+   * The regression this test exists for: `vaultPath: ""` passed both the old
+   * guards (`typeof === "string"` and `insideRepo`) — `insideRepo(root, "")`
+   * resolves to the repo root itself, a legitimate answer for a caller that
+   * means it — so an empty string silently became "walk the whole repository
+   * tree", `node_modules` included, and `readVault` read every `.md` body it
+   * found as a knowledge note. `diffBase` already carried the sibling
+   * `!== ""` clause in this same file; `vaultPath` did not.
+   */
+  it("falls back to the default vault path when octograph.yaml's vaultPath is the empty string", () => {
+    const root = mkdtempClean("cfg-");
+    writeFileSync(join(root, "octograph.yaml"), "vaultPath: ''\n");
+    expect(loadConfig(root).vaultPath).toBe(DEFAULTS.vaultPath);
+  });
+
+  /**
    * `diffBase` is a git ref name, not a repo-relative path, so it takes no
    * `insideRepo` containment check the way `out`/`vaultPath` above do — a ref
    * like `origin/main` was never going to escape the repo tree. It still

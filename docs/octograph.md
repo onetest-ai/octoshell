@@ -119,6 +119,20 @@ picks what the branch is measured against — `main` by default, or `Config.diff
 default) that explicitly *cite* the row's path — never a lexical guess, the same `cited`/`predicted`
 distinction `own` makes.
 
+`limit` means two different things on purpose: the inner `impact()` keeps its own per-path default
+(20) so no single changed file can flood the union, and the same number caps each of the two
+sections (`you may also need to change:` / `tests that historically move with this:`) again after
+the merge. There is no `--limit` flag exposed for either — `octograph.yaml` and the CLI accept no
+such key, so both stay at their defaults for every run.
+
+`npmi`/`support` on a row describe only its STRONGEST source — the one changed file whose edge to
+that row scored highest. Several changed files often pull the same row in (a shared test file, a
+type both touch); rather than inline all of them beside a single edge's strength, the row names
+that one explicitly (`strongest via <path>`) and counts the rest (`(+N more changed files)`). A row
+pulled in by exactly one changed file has nothing to count, so it reads `via <path>` — the same
+wording either way, this section's example above included. `impact --diff --json` serialises the
+full `predictedBy` list for a caller that wants every source, not only the strongest.
+
 An empty answer here is never printed bare: on thin or squash-merged history, the fine-grained
 co-change `impact --diff` reads is exactly what a squash discards at merge time (see "Honest
 limits" below), so "no rows" is rendered alongside `doctor`'s verdict — missing evidence, not

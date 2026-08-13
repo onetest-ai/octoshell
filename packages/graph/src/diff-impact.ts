@@ -116,8 +116,18 @@ export function changedPaths(
 }
 
 export interface DiffImpactRow extends ImpactRow {
-  /** Which changed paths pulled this row in, sorted. */
+  /** Which changed paths pulled this row in, sorted. The `npmi`/`support`
+   *  above describe only the STRONGEST of these (see {@link strongestVia}) —
+   *  full list, for `--json` and any consumer that wants every path this row
+   *  rests on, not only the one this row's own numbers are about. */
   predictedBy: string[];
+  /** The one changed path whose edge to this row actually produced the
+   *  `npmi`/`support` above — the MAX-scoring source, out of every path in
+   *  {@link predictedBy}. `cli.ts`'s text render names this one explicitly
+   *  (`strongest via <path>`) rather than the whole list, because printing
+   *  every path beside a single edge's strength reads as though that
+   *  strength described all of them — it describes only this one. */
+  strongestVia: string;
   /** Vault notes about this row. `cited` only — see `diffImpact`. */
   notes: VaultMatch[];
 }
@@ -134,11 +144,14 @@ export interface DiffImpactAnswer {
 /**
  * What else history says moves with everything you changed.
  *
- * `limit` means two different things on purpose, and `--help` says so: the
- * inner `impact()` keeps its own per-path default so no single changed file
- * can flood the union, and `limit` caps each of `source` and `tests` after the
- * merge. An unqualified "limit" on a command that fans out over N paths is a
- * number a reader would otherwise have to infer.
+ * `limit` means two different things on purpose, and `docs/octograph.md`'s
+ * `impact --diff` section says so — this CLI has no `--help` (`parseArgs`
+ * rejects it as an unrecognised flag; see cli.ts), so the doc file is the
+ * only place a user actually reaches this explanation. The inner `impact()`
+ * keeps its own per-path default so no single changed file can flood the
+ * union, and `limit` caps each of `source` and `tests` after the merge. An
+ * unqualified "limit" on a command that fans out over N paths is a number a
+ * reader would otherwise have to infer.
  *
  * Only `cited` notes are attached. A `predicted` note is a guess about
  * relevance layered on top of a co-change row that is already probabilistic,
@@ -155,7 +168,10 @@ export function diffImpact(
   minSupport = 2,
 ): DiffImpactAnswer {
   const changedSet = new Set(changed);
-  const merged = new Map<string, { row: ImpactRow; score: number; by: Set<string> }>();
+  const merged = new Map<
+    string,
+    { row: ImpactRow; score: number; by: Set<string>; strongestVia: string }
+  >();
 
   for (const path of changed) {
     for (const row of impact(path, edges, files, undefined, minSupport)) {
@@ -175,12 +191,17 @@ export function diffImpact(
       const score = rankScore(npmi, support, minSupport);
       const existing = merged.get(row.path);
       if (existing === undefined) {
-        merged.set(row.path, { row, score, by: new Set([path]) });
+        merged.set(row.path, { row, score, by: new Set([path]), strongestVia: path });
       } else {
         existing.by.add(path);
         if (score > existing.score) {
           existing.score = score;
           existing.row = row;
+          // The kept `row` above (`existing.row = row`) is THIS `path`'s edge —
+          // `strongestVia` must move with it, or a later caller could report an
+          // `npmi`/`support` pair alongside a changed path that never produced
+          // them.
+          existing.strongestVia = path;
         }
       }
     }
@@ -198,6 +219,7 @@ export function diffImpact(
     row: {
       ...e.row,
       predictedBy: [...e.by].sort(compare),
+      strongestVia: e.strongestVia,
       notes: notesFor.get(e.row.path) ?? [],
     },
     score: e.score,
