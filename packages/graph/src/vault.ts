@@ -162,8 +162,10 @@ export function citedPaths(note: VaultNote, candidates: ReadonlySet<string>): st
   const found = new Set<string>();
   for (const token of note.body.matchAll(PATH_TOKEN)) {
     const raw = token[0];
-    // Trailing punctuation: prose ends a sentence naming a path with ".",
-    // "," or ")" and the token grabs it.
+    // Trailing punctuation: the PATH_TOKEN regex stops naturally at `,`, `;`,
+    // `:`, `)`, `]` since they are outside its character class. Only `.` is
+    // included in the class (via `.-` for the dot), so this strip is a defensive
+    // measure against future widening of PATH_TOKEN, not a requirement today.
     const cleaned = raw.replace(/[.,;:)\]]+$/u, "");
     if (candidates.has(cleaned)) found.add(cleaned);
   }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readVault } from "../src/vault.js";
+import type { VaultNote } from "../src/vault.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 function repoWithNotes(notes: Record<string, string>): string {
