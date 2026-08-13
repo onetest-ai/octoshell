@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { load as loadYaml } from "js-yaml";
 import { compare } from "./rollup.js";
+import { tokenize, CONFIDENCE_FLOOR, type LexicalOptions } from "./lexical.js";
 
 /** One committed knowledge note, reduced to what path-matching needs. */
 export interface VaultNote {
@@ -195,6 +196,88 @@ export function matchCited(
         confidence: 1,
       });
     }
+  }
+  return out.sort((a, b) => compare(a.path, b.path) || compare(a.note, b.note));
+}
+
+/**
+ * Notes that are probably about a path, by token overlap.
+ *
+ * The DIRECTION is the opposite of `lexical.ts`'s: there, English prose
+ * (acceptance criteria) is the query and file paths are the corpus. Here a
+ * path is the query and notes are the corpus. That matters, because
+ * `.agents/knowledge/`'s filenames are compressed English sentences, and
+ * scoring English against English is what produced the confound recorded in
+ * `practices/knowledge-vault-sentence-filenames-confound-lexical-matching.md`.
+ * Running it the other way makes the query a short, dense, identifier-shaped
+ * token list, which is why this direction is worth trying at all — and why it
+ * still had to be calibrated against the real vault before shipping (see
+ * `test/vault-calibration.test.ts`).
+ *
+ * Always `predicted`. This function has no route to `cited`, so no caller can
+ * accidentally present a guess as a fact.
+ */
+export function matchPredicted(
+  notes: readonly VaultNote[],
+  paths: readonly string[],
+  opts: LexicalOptions = {},
+): VaultMatch[] {
+  const floor = opts.confidenceFloor ?? CONFIDENCE_FLOOR;
+  const margin = opts.runnerUpMargin ?? 0;
+
+  // idf over the note corpus: a token in every note (`graph`, `test`)
+  // distinguishes nothing, exactly as in lexical.ts.
+  const df = new Map<string, number>();
+  const noteTokens = notes.map((n) => {
+    const tokens = new Set(tokenize(`${n.name} ${n.description} ${n.note}`));
+    for (const t of tokens) df.set(t, (df.get(t) ?? 0) + 1);
+    return tokens;
+  });
+  const idf = (t: string): number =>
+    Math.log((notes.length + 1) / ((df.get(t) ?? 0) + 1)) + 1;
+
+  const out: VaultMatch[] = [];
+  for (const path of paths) {
+    const query = [...new Set(tokenize(path))];
+    const mass = query.reduce((sum, t) => sum + idf(t), 0);
+    if (mass === 0) continue;
+
+    const scored = notes
+      .map((n, i) => {
+        const tokens = noteTokens[i];
+        if (tokens === undefined) return { note: n, score: 0 };
+        const hit = query.reduce((sum, t) => (tokens.has(t) ? sum + idf(t) : sum), 0);
+        return { note: n, score: hit / mass };
+      })
+      .filter((s) => s.score >= floor)
+      .sort((x, y) => y.score - x.score || compare(x.note.note, y.note.note));
+
+    const top = scored[0];
+    if (top === undefined) continue;
+    // A tie AT THE TOP is the worst case of ambiguity there is — not the
+    // absence of a runner-up to compare against. Found during calibration
+    // (see test/vault-calibration.test.ts): a generic path basename like
+    // "README.md" ties every note in this vault at the same score (each
+    // note's own filename ends in ".md", so the token "md" is present in
+    // literally every note here), and a two-note top-tie can arise from a
+    // single shared generic word ("file", "src") in an otherwise-unrelated
+    // note's prose. `scored.find` below only ever finds a DISTINCT score to
+    // diff against `top`, so it cannot see a tie at rank 1 by itself.
+    const tiedAtTop = scored.filter((s) => s.score === top.score).length;
+    if (tiedAtTop > 1) continue;
+    // A top match a near-tied runner-up is crowding says "could be either",
+    // which is a coin flip, not a prediction — the same rule and the same
+    // reasoning as `lexical.ts`'s RUNNER_UP_MARGIN.
+    const next = scored.find((s) => s.score !== top.score);
+    if (next !== undefined && top.score - next.score < margin) continue;
+
+    out.push({
+      path,
+      note: top.note.note,
+      description: top.note.description,
+      mode: "predicted",
+      confidence: top.score,
+    });
   }
   return out.sort((a, b) => compare(a.path, b.path) || compare(a.note, b.note));
 }

@@ -18,6 +18,7 @@ export {
   readVault,
   citedPaths,
   matchCited,
+  matchPredicted,
   DEFAULT_VAULT_PATH,
   type VaultNote,
   type VaultMatch,

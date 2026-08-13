@@ -182,3 +182,63 @@ describe("matchCited", () => {
     expect(matchCited([note("no paths here")], ["packages/board/src/entity-schema.ts"])).toEqual([]);
   });
 });
+
+import { matchPredicted } from "../src/vault.js";
+
+describe("matchPredicted", () => {
+  const notes: VaultNote[] = [
+    {
+      note: "practices/dist-before-typecheck.md",
+      name: "dependents read built dist, not src",
+      description: "rebuild a package before typechecking its dependents",
+      verified: "2026-08-09",
+      body: "",
+    },
+    {
+      note: "testing/graph-ci-checkout-is-shallow.md",
+      name: "CI checkout is shallow so live history tests return empty",
+      description: "actions/checkout fetches depth 1",
+      verified: "2026-08-11",
+      body: "",
+    },
+  ];
+
+  it("labels every match `predicted`, never `cited`", () => {
+    for (const m of matchPredicted(notes, ["packages/graph/src/harvest.ts"])) {
+      expect(m.mode).toBe("predicted");
+    }
+  });
+
+  it("scores a topically matching note above an unrelated one", () => {
+    const matches = matchPredicted(notes, ["packages/graph/test/e2e.test.ts"], {
+      confidenceFloor: 0,
+      runnerUpMargin: 0,
+    });
+    expect(matches[0]?.note).toBe("testing/graph-ci-checkout-is-shallow.md");
+  });
+
+  it("answers nothing when no note clears the confidence floor", () => {
+    expect(matchPredicted(notes, ["src/unrelated-domain-thing.ts"], { confidenceFloor: 0.99 }))
+      .toEqual([]);
+  });
+
+  it("never emits a match for a path no note relates to, at the default floor", () => {
+    expect(matchPredicted(notes, ["LICENSE"])).toEqual([]);
+  });
+
+  // Regression for a real false positive found calibrating against this
+  // repo's OWN vault (test/vault-calibration.test.ts): a generic path like
+  // "README.md" tied every note here at the same score, because every note's
+  // own filename ends in ".md" and that token alone cleared the floor for
+  // every single candidate. A margin check that only compares against a
+  // DIFFERENT score never sees a tie for the top spot — so two notes sharing
+  // no real topical link with the query, but scoring identically against it,
+  // must be rejected outright rather than one winning an arbitrary tie-break.
+  it("returns nothing when two notes tie exactly for the top score", () => {
+    const tied: VaultNote[] = [
+      { note: "a.md", name: "shared vocabulary", description: "same words repeated", verified: null, body: "" },
+      { note: "b.md", name: "shared vocabulary", description: "same words repeated", verified: null, body: "" },
+    ];
+    expect(matchPredicted(tied, ["shared-vocabulary-path.ts"], { confidenceFloor: 0 })).toEqual([]);
+  });
+});
