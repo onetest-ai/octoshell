@@ -26,12 +26,26 @@ describe("bundleInstallCommand", () => {
 });
 
 describe("FALLBACK_BUNDLES", () => {
-  it("ships the three known bundles with rich metadata", () => {
+  it("ships every known bundle with rich metadata", () => {
     const ids = FALLBACK_BUNDLES.map((b) => b.id);
-    expect(ids).toEqual(["feature-development", "manual-qa", "test-automation"]);
+    expect(ids).toEqual([
+      "feature-development",
+      "manual-qa",
+      "product-management",
+      "test-automation",
+    ]);
     for (const b of FALLBACK_BUNDLES) {
       expect(b.label.length).toBeGreaterThan(0);
       expect(b.description.length).toBeGreaterThan(0);
+    }
+  });
+
+  // The symptom that sent us here: a bundle present in sdlc-skills but absent from this table
+  // renders as its own slug plus a generic sentence, which reads as an unfinished product rather
+  // than as missing metadata. A label equal to the id is the tell.
+  it("gives every bundle a human label, never a bare slug", () => {
+    for (const b of FALLBACK_BUNDLES) {
+      expect(b.label).not.toBe(b.id);
     }
   });
 });
