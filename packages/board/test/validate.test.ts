@@ -207,17 +207,30 @@ describe("workflow validation", () => {
     expect(messages).toMatch(/parallel group "g" spans more than one phase/);
   });
 
-  it("reports a mission with more than one workflow", () => {
+  // A mission has THREE distinct execution loops, not one — implementation
+  // iterates its tasks while building, testing iterates test cases and re-runs
+  // after every later mission, fixing iterates open bugs. They take different
+  // inputs, apply different gates, and run at different times. `BoardModel` has
+  // always stored `workflowsByMission` as a `string[]`, keyed identically to the
+  // campaign case; only this validator and the pack scripts ever claimed one.
+  // See onetest-ai/octoshell#60.
+  it("accepts a mission with several workflows — one per execution loop", () => {
     const good = "export const meta = { name: 'NAME', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l' }] }] }\n";
     const root = wfBoard({
       "campaigns/alpha/campaign.md": CAMPAIGN,
       "campaigns/alpha/missions/m1/mission.md": MISSION,
-      "campaigns/alpha/missions/m1/workflows/a/workflow.md": WF_MD,
-      "campaigns/alpha/missions/m1/workflows/a/workflow.js": good.replace("NAME", "a"),
-      "campaigns/alpha/missions/m1/workflows/b/workflow.md": WF_MD,
-      "campaigns/alpha/missions/m1/workflows/b/workflow.js": good.replace("NAME", "b"),
+      "campaigns/alpha/missions/m1/workflows/implementation/workflow.md": WF_MD,
+      "campaigns/alpha/missions/m1/workflows/implementation/workflow.js": good.replace("NAME", "implementation"),
+      "campaigns/alpha/missions/m1/workflows/testing/workflow.md": WF_MD,
+      "campaigns/alpha/missions/m1/workflows/testing/workflow.js": good.replace("NAME", "testing"),
+      "campaigns/alpha/missions/m1/workflows/fixing/workflow.md": WF_MD,
+      "campaigns/alpha/missions/m1/workflows/fixing/workflow.js": good.replace("NAME", "fixing"),
     });
-    expect(validateBoard(root).some((f) => /more than one workflow/.test(f.message))).toBe(true);
+    const messages = validateBoard(root).map((f) => f.message).join("\n");
+    expect(messages).not.toMatch(/more than one workflow/);
+    // …and each of the three still gets validated on its own merits, so dropping
+    // the cardinality rule did not stop the validator looking inside them.
+    expect(messages).not.toMatch(/workflow/);
   });
 
   it("passes a well-formed workflow", () => {

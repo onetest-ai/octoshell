@@ -88,7 +88,8 @@ if (kind === "campaign" || kind === "mission" || kind === "task") {
   }
 }
 
-// A campaign or mission owns workflow folders; a mission may have at most one.
+// A campaign or mission owns workflow folders. EITHER may hold several — a mission normally has one
+// per execution loop (implementation / testing / fixing), which is why there is no count check here.
 if (kind === "campaign" || kind === "mission") {
   const dir = dirname(path);
   const workflowsDir = join(dir, "workflows");
@@ -98,9 +99,6 @@ if (kind === "campaign" || kind === "mission") {
         .map((e) => e.name)
         .filter((slug) => existsSync(join(workflowsDir, slug, "workflow.js")))
     : [];
-  if (kind === "mission" && slugs.length > 1) {
-    problems.push(`mission has more than one workflow (${slugs.length}); a mission may have at most one`);
-  }
   for (const slug of slugs) {
     for (const p of validateWorkflowDir(join(workflowsDir, slug))) {
       problems.push(`workflow "${slug}": ${p}`);

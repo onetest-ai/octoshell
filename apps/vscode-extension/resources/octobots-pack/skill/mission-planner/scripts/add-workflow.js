@@ -3,9 +3,11 @@
 //
 //   add-workflow.js --campaign <slug> [--mission <slug>] --name <name> [--description "<text>"]
 //
-// A campaign may hold several workflows (it orchestrates its missions); a mission has at most one
-// (it orchestrates its tasks). Writes `workflows/<slug>/workflow.js` — name/description/phases live
-// in its `meta`; run history is appended to a sibling `runs.jsonl` by add-run.js.
+// Either parent may hold several: a campaign's workflows orchestrate its missions, a mission's
+// orchestrate its tasks — and a mission normally has one per execution loop, `implementation`,
+// `testing` and `fixing` (see the workflow-designer skill). Writes
+// `workflows/<slug>/workflow.js` — name/description/phases live in its `meta`; run history is
+// appended to a sibling `runs.jsonl` by add-run.js.
 
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -53,13 +55,6 @@ const workflowsDir = join(parentDir, "workflows");
 const existing = existsSync(workflowsDir)
   ? readdirSync(workflowsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
   : [];
-
-if (mission && existing.length > 0) {
-  console.error(
-    `add-workflow: mission already has a workflow ("${existing[0]}"); a mission may have at most one`,
-  );
-  process.exit(2);
-}
 
 // De-duplicate the slug against siblings, matching the app's uniqueSlug.
 const base = slugify(name);

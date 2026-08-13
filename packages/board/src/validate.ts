@@ -312,15 +312,14 @@ export function validateBoard(root: string): BoardFinding[] {
 
       // mission.md
       findings.push(...validateFile(join(missionDir, "mission.md"), "mission"));
-      const missionWorkflows = validateWorkflowsUnder(missionDir, findings);
-      if (missionWorkflows > 1) {
-        findings.push({
-          mdPath: join(missionDir, "mission.md"),
-          kind: "mission",
-          severity: "error",
-          message: `mission has more than one workflow (${missionWorkflows}); a mission may have at most one`,
-        });
-      }
+      // A mission may hold SEVERAL workflows, one per execution loop
+      // (implementation / testing / fixing) — they take different inputs, apply
+      // different gates, and run at different times, and the acceptance loop
+      // re-runs long after implementation is done. `workflowsByMission` in
+      // `board-model.ts` has always been a `string[]`, keyed identically to the
+      // campaign case; the cardinality rule that used to live here contradicted
+      // the model it was validating. See onetest-ai/octoshell#60.
+      validateWorkflowsUnder(missionDir, findings);
 
       // mission tasks
       const tasksDir = join(missionDir, "tasks");
