@@ -306,11 +306,11 @@ function formatImpact(rows: ImpactRow[]): string {
 }
 
 function formatDriftRow(row: DriftRow): string {
-  const { a, b, moduleA, moduleB, npmi, support, confidence } = row;
-  return (
-    `${a} <-> ${b}  (${moduleA} <-> ${moduleB})` +
-    `\tnpmi=${npmi.toFixed(3)}\tsupport=${support}\tconfidence=${confidence.toFixed(3)}`
-  );
+  const { a, b, moduleA, moduleB, npmi, support, confidence, known } = row;
+  const base =
+    `${oneLine(a)} <-> ${oneLine(b)}  (${oneLine(moduleA)} <-> ${oneLine(moduleB)})` +
+    `\tnpmi=${npmi.toFixed(3)}\tsupport=${support}\tconfidence=${confidence.toFixed(3)}`;
+  return known === null ? base : `${base}  [known: ${oneLine(known)}]`;
 }
 
 function formatDrift(rows: DriftRow[]): string {
@@ -751,10 +751,11 @@ function runDriftCommand(
   json: boolean,
 ): CliResult {
   const { edges, files, spine } = analyze(repoRoot, config, { now, since });
+  const notes = readVault(repoRoot, config.vaultPath);
   // `undefined` keeps `drift`'s own default `limit` (20). `excludePaths` is
   // no longer threaded here: it applies at `harvest`, so the edges this
   // receives are already filtered — see drift.ts's doc comment.
-  const rows = computeDrift(edges, files, spine, undefined, config.minSupport);
+  const rows = computeDrift(edges, files, spine, undefined, config.minSupport, notes);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatDrift(rows);
   return { code: 0, stdout, stderr: "" };
 }

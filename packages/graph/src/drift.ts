@@ -2,6 +2,7 @@ import { isSyntheticBridge } from "./components.js";
 import { classifyPair } from "./noise.js";
 import { rankScore } from "./rank.js";
 import { compare } from "./rollup.js";
+import { citedPaths, type VaultNote } from "./vault.js";
 import { edgeWeight, type Edge } from "./weights.js";
 import type { Spine } from "./spine.js";
 
@@ -13,6 +14,16 @@ export interface DriftRow {
   npmi: number;
   support: number;
   confidence: number;
+  /**
+   * The vault note that cites BOTH files, or null.
+   *
+   * One note naming both, never two notes naming one each: the finding is that
+   * the two files are coupled, and two notes that each describe one file are
+   * not a record of that. `null` on a strongly-supported row is the promotion
+   * candidate the knowledge-explorer skill asks for — coupling the history
+   * proves and the vault has not recorded.
+   */
+  known: string | null;
 }
 
 /**
@@ -118,6 +129,7 @@ export function drift(
   spine: Spine,
   limit = 20,
   minSupport = 2,
+  notes: readonly VaultNote[] = [],
 ): DriftRow[] {
   const declared = declaredPairs(spine.imports);
   const keep = limit > 0 ? limit : 0;
@@ -160,6 +172,7 @@ export function drift(
         npmi: weight,
         support: e.support,
         confidence: e.confidence,
+        known: null,
       },
       score: rankScore(weight, e.support, minSupport),
     });
@@ -168,5 +181,29 @@ export function drift(
   scored.sort(
     (x, y) => y.score - x.score || compare(x.row.a, y.row.a) || compare(x.row.b, y.row.b),
   );
-  return scored.slice(0, keep).map((s) => s.row);
+  const kept = scored.slice(0, keep).map((s) => s.row);
+
+  // Resolve citations for the SURVIVORS only. `citedPaths` scans a note body
+  // per call, and drift's candidate set is every co-change edge in the repo —
+  // resolving before the slice would scan the whole vault thousands of times
+  // to label twenty rows.
+  //
+  // Sorted by note path (the SAME `compare` every ordering in this package
+  // uses) before the `.find()` below picks a winner: `notes` is a caller-
+  // supplied array with no ordering guarantee of its own (`readVault` happens
+  // to sort it today, but `drift` is a public export a caller can feed
+  // directly — see index.ts). Two notes that both cite the same pair must
+  // resolve to the same `known` value however the caller ordered its list,
+  // or this joins `Edge.a`/`Edge.b` file-id order on the list of "things this
+  // package had to stop depending on" (see the file-id doc comments above).
+  const candidates = new Set(kept.flatMap((r) => [r.a, r.b]));
+  const cites = notes
+    .map((n) => ({ note: n.note, paths: new Set(citedPaths(n, candidates)) }))
+    .sort((x, y) => compare(x.note, y.note));
+  for (const row of kept) {
+    const covering = cites.find((c) => c.paths.has(row.a) && c.paths.has(row.b));
+    row.known = covering?.note ?? null;
+  }
+
+  return kept;
 }
