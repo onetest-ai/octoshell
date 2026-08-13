@@ -6,12 +6,14 @@ import { insideRepo } from "./paths.js";
 import { readBoard, type BoardTask, type BoardView } from "./board.js";
 import { lexicalOptions, loadConfig, type Config } from "./config.js";
 import { conflicts as computeConflicts, type ConflictPair, type ConflictReport } from "./conflicts.js";
+import { changedPaths, diffImpact, type DiffImpactRow, type DiffScope } from "./diff-impact.js";
 import { doctor, exitCode, type Report } from "./doctor.js";
 import { drift as computeDrift, type DriftRow } from "./drift.js";
 import { impact as computeImpact, type ImpactRow } from "./impact.js";
 import { own as computeOwn, type OwnAnswer } from "./own.js";
 import { repoRelative } from "./paths.js";
 import { oneLine, renderMap } from "./render.js";
+import { readVault } from "./vault.js";
 import { readWorklog } from "./worklog.js";
 
 export type Command = "map" | "impact" | "drift" | "doctor" | "own" | "conflicts";
@@ -28,7 +30,25 @@ interface ParsedCommand {
   overrides: Partial<Config>;
   since: string | undefined;
   json: boolean;
+  /**
+   * Non-null when `--diff` was given: which change set `impact --diff`
+   * measures. Deliberately NOT `since` reinterpreted: `since` already has one
+   * meaning across this whole CLI — the history window `map`/`drift` pass to
+   * `git log` — and giving it a second, scope-shaped meaning only when
+   * `--diff` is present is exactly the "same flag, surprise second behaviour"
+   * class `parseArgs`'s flag-recognition discipline exists to rule out.
+   * `DiffScope` has no "since" variant for the same reason (diff-impact.ts).
+   */
+  diff: DiffScope | null;
+  /** `--base <ref>`; `undefined` means "use `Config.diffBase`". */
+  base: string | undefined;
 }
+
+/** {@link ParsedCommand.diff}'s error when two scope flags are given at once
+ *  — `--staged --worktree` names two different change sets, and picking one
+ *  silently would be the same unresolved ambiguity `--out --json` was fixed
+ *  to reject (see the `takeValue` doc comment below). */
+const DUPLICATE_SCOPE = "only one of --staged, --worktree may be given";
 
 type ParseResult = { ok: true; parsed: ParsedCommand } | { ok: false; error: string };
 
@@ -67,6 +87,9 @@ export function parseArgs(argv: string[]): ParseResult {
   const overrides: Partial<Config> = {};
   let since: string | undefined;
   let json = false;
+  let sawDiff = false;
+  let scopeFlag: string | null = null;
+  let base: string | undefined;
 
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
@@ -162,13 +185,47 @@ export function parseArgs(argv: string[]): ParseResult {
         overrides.budgetTokens = n;
         break;
       }
+      case "--diff":
+        sawDiff = true;
+        break;
+      case "--staged":
+      case "--worktree":
+        if (scopeFlag !== null) return { ok: false, error: DUPLICATE_SCOPE };
+        scopeFlag = arg;
+        break;
+      case "--base": {
+        const value = takeValue();
+        if (value === null) return missingValue();
+        base = value;
+        break;
+      }
       default:
         // Unrecognised flag — exits 2 rather than being silently ignored.
         return { ok: false, error: `unrecognised flag: ${arg}` };
     }
   }
 
-  return { ok: true, parsed: { command: rawCommand, positionals, overrides, since, json } };
+  // `--diff` names the QUESTION ("what does everything I changed touch?");
+  // the scope flags narrow WHICH change set answers it. A scope flag given
+  // alone is rejected rather than silently implying `--diff`, for the same
+  // reason an unrecognised flag is rejected rather than ignored: a caller who
+  // typed `impact --staged` and got a whole-repo `impact <path>` error (or,
+  // worse, a quietly different answer) would have no way to notice the flag
+  // did nothing.
+  if (!sawDiff && scopeFlag !== null) {
+    return { ok: false, error: `${scopeFlag} requires --diff` };
+  }
+  let diff: DiffScope | null = null;
+  if (sawDiff) {
+    if (scopeFlag === "--staged") diff = { kind: "staged" };
+    else if (scopeFlag === "--worktree") diff = { kind: "worktree" };
+    else diff = { kind: "branch" };
+  }
+
+  return {
+    ok: true,
+    parsed: { command: rawCommand, positionals, overrides, since, json, diff, base },
+  };
 }
 
 export interface CliResult {
@@ -430,6 +487,91 @@ function runImpactCommand(
   return { code: 0, stdout, stderr: "" };
 }
 
+/** One `impact --diff` row: the changed files it did NOT come from, the
+ *  evidence, and any `cited` vault notes — all through `oneLine`, same
+ *  reason as `formatOwnAnswer`/`formatConflictPair`: a repo-relative path or
+ *  a vault description is free-form text that may legally carry a newline,
+ *  and this formatter joins rows with `\n`. */
+function formatDiffImpactRow(row: DiffImpactRow): string {
+  const { path, npmi, support, predictedBy, notes } = row;
+  const lines = [
+    `  ${oneLine(path)}  npmi=${npmi.toFixed(3)}  support=${support}`
+      + `  via ${predictedBy.map(oneLine).join(", ")}`,
+  ];
+  for (const n of notes) lines.push(`      known: ${oneLine(n.note)} — ${oneLine(n.description)}`);
+  return lines.join("\n");
+}
+
+function formatDiffImpactSection(title: string, rows: DiffImpactRow[]): string[] {
+  if (rows.length === 0) return [title, "  (none)"];
+  return [title, ...rows.map(formatDiffImpactRow)];
+}
+
+/**
+ * `impact --diff` — what else moves, given everything this branch (or the
+ * index, or the worktree) has changed.
+ *
+ * `changedPaths` and `analyze` are two INDEPENDENT reads of this repository,
+ * not a two-step pipeline — `changedPaths` never consults `since` (it walks
+ * `merge-base(base, HEAD)..HEAD` plus uncommitted work, see diff-impact.ts),
+ * and `analyze` never consults `scope`/`base`. `since` keeps its one meaning
+ * (the history window feeding the co-change graph) exactly as it does for
+ * `impact <path>` — see the doc comment on `ParsedCommand.diff` for why a
+ * second, diff-scoped meaning is deliberately not on offer here.
+ *
+ * An empty `source`/`tests` is rendered WITH `doctor`'s verdict when history
+ * is thin or this repository squash-merges: the fine-grained co-change this
+ * reads is exactly what a squash merge discards at merge time (doctor.ts,
+ * "history shape"), so "no rows" there means "we cannot see", never "nothing
+ * else moves" — the same honesty `docs/octograph.md`'s "Honest limits"
+ * section states for `drift` and the working sets, applied here to the one
+ * other surface built on the same discovered co-change edges. A genuinely
+ * healthy history that simply found nothing prints no caveat: `doctor`'s
+ * `status` is the single spelling of "is this evidence trustworthy", so this
+ * reads it rather than re-deriving a second opinion from the same inputs.
+ */
+function runDiffImpactCommand(
+  repoRoot: string,
+  config: Config,
+  since: string | undefined,
+  now: number,
+  scope: DiffScope,
+  base: string,
+  json: boolean,
+): CliResult {
+  const changed = changedPaths(repoRoot, scope, base, config.excludePaths);
+  const { edges, files } = analyze(repoRoot, config, { now, since });
+  const notes = readVault(repoRoot, config.vaultPath);
+  // `undefined` for `limit` keeps `diffImpact`'s own default (20 per
+  // section) — only `minSupport` is overridden, from the SAME
+  // `config.minSupport` the edges were already admitted against, exactly as
+  // `runImpactCommand` does above.
+  const answer = diffImpact(changed, edges, files, notes, undefined, config.minSupport);
+
+  if (json) return { code: 0, stdout: `${JSON.stringify(answer)}\n`, stderr: "" };
+
+  const lines: string[] = [`changed: ${changed.length} file(s)`];
+  if (changed.length === 0) {
+    lines.push("", "nothing changed against the base — no impact to report");
+    return { code: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
+  }
+
+  lines.push("", ...formatDiffImpactSection("you may also need to change:", answer.source));
+  lines.push("", ...formatDiffImpactSection("tests that historically move with this:", answer.tests));
+
+  if (answer.source.length === 0 && answer.tests.length === 0) {
+    const report = doctor(repoRoot, config);
+    if (report.status !== "ok") {
+      lines.push(
+        "",
+        `history is ${report.status} — this is missing evidence, not evidence of absence.`,
+        "run `octograph doctor` for what is degraded and how to fix it.",
+      );
+    }
+  }
+  return { code: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
+}
+
 /**
  * One `own` row, with the mode of EACH half of it spelled out where that half
  * is printed — `(provenance)` on the ownership clause, `(predicted)` on the
@@ -667,7 +809,7 @@ function runConflictsCommand(
 export function runCli(argv: string[], repoRoot: string, now: number): CliResult {
   const parsed = parseArgs(argv);
   if (!parsed.ok) return usageError(parsed.error);
-  const { command, positionals, overrides, since, json } = parsed.parsed;
+  const { command, positionals, overrides, since, json, diff, base } = parsed.parsed;
 
   // `--out` is REJECTED here rather than quietly dropped later.
   //
@@ -695,8 +837,16 @@ export function runCli(argv: string[], repoRoot: string, now: number): CliResult
   }
 
   if (command === "impact") {
-    if (positionals.length !== 1) {
-      return usageError("impact requires exactly one <path> argument");
+    // `--diff` and a positional `<path>` ask two different questions — "what
+    // does everything I changed touch" vs. "what touches this one file" — so
+    // picking one silently would answer a question the caller did not ask,
+    // the same reasoning `--diff` alone-without-a-scope-flag rejection above
+    // (parseArgs) already applies one level up.
+    if (diff !== null && positionals.length > 0) {
+      return usageError("--diff and a <path> are mutually exclusive");
+    }
+    if (diff === null && positionals.length !== 1) {
+      return usageError("impact requires exactly one <path> argument, or --diff");
     }
   } else if (command === "own") {
     // `own [<path>]` — the optional positional every other non-`impact`
@@ -731,6 +881,9 @@ export function runCli(argv: string[], repoRoot: string, now: number): CliResult
       case "drift":
         return runDriftCommand(repoRoot, config, since, now, json);
       case "impact": {
+        if (diff !== null) {
+          return runDiffImpactCommand(repoRoot, config, since, now, diff, base ?? config.diffBase, json);
+        }
         const path = positionals[0];
         if (path === undefined) return usageError("impact requires exactly one <path> argument");
         return runImpactCommand(repoRoot, config, since, now, path, json);
