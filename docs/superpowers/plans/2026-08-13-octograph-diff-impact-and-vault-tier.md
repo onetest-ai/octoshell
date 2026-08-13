@@ -107,12 +107,21 @@ describe("readVault", () => {
     ]);
   });
 
-  it("does not throw on an empty frontmatter block (js-yaml 5.2.2 throws on an empty document)", () => {
-    const root = repoWithNotes({ "practices/empty.md": "---\n---\nbody\n" });
+  // Each input below MUST match FRONTMATTER (a real line between the fences)
+  // so `loadYaml` is actually reached and actually throws. `"---\n---\n"` does
+  // NOT match — the fences are adjacent — so it exercises the no-frontmatter
+  // branch instead and would pass with the try/catch deleted.
+  it.each([
+    ["empty", "---\n\n---\nbody\n"],
+    ["whitespace", "---\n   \n---\nbody\n"],
+    ["comment-only", "---\n# just a comment\n---\nbody\n"],
+  ])("does not throw on %s frontmatter (js-yaml 5.2.2 throws on such a document)", (label, raw) => {
+    const root = repoWithNotes({ [`practices/${label}.md`]: raw });
     const notes = readVault(root);
     expect(notes).toHaveLength(1);
-    expect(notes[0]?.name).toBe("empty");
+    expect(notes[0]?.name).toBe(label);
     expect(notes[0]?.description).toBe("");
+    expect(notes[0]?.body).toBe("body\n");
   });
 
   it("falls back to the filename stem when frontmatter is absent or unparseable", () => {
@@ -2032,13 +2041,15 @@ Add `"52": "<that hash>"` to `apps/vscode-extension/scripts/graph-payload-versio
 
 - [ ] **Step 5: Document the new commands**
 
-In `docs/octograph.md`, add to the command table:
+**Mostly done already — do not redo it.** Task 6 (commit `086ea61`) added the `impact --diff` command-table row and a worked-example section to `docs/octograph.md`, outside its stated file scope. Ruled 2026-08-13: the content is good, so it stands and this step yields rather than duplicating it. Writing a second table row for the same command here would be the collision, not the fix.
 
-```
-| `impact --diff` | I changed these files — what else moves, and what covers it? |
-```
+Read `docs/octograph.md` first. Then add ONLY what is still missing:
 
-and a short section showing real output from this repo, plus a sentence on the vault tier under *What it needs, and what it will tell you*.
+- a sentence on the **vault tier** under *What it needs, and what it will tell you*, matching how the graphify tier is described there;
+- the `knowledge vault` line in that section's `doctor` sample output;
+- `vaultPath` and `diffBase` in the *Configuration* section.
+
+If any of those already exist, leave them alone and say so in your report.
 
 - [ ] **Step 6: Run the full verification**
 
