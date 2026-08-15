@@ -11,12 +11,63 @@ phase('Build')
     expect(extractPhases(src).phases.map((p) => p.title)).toEqual(["Build", "Review"]);
   });
 
-  it("takes phases from a { phase } option too, ordered by first appearance", () => {
+  // CHANGED from "ordered by first appearance": phase order now comes from the sequence of
+  // phase() CALLS, never from an option's lexical position. This fixture is the minimal case of
+  // the bug that motivated the fix — a wrap-up helper's `{ phase: 'X' }` option, written above the
+  // first real phase() call, used to drag its phase to the front of the diagram. Verify's agent
+  // call sits first in the source, but Gate is the only phase() call, so Gate now leads and Verify
+  // — never named in a phase() call — is appended after it.
+  it("orders phase() calls first; a title that appears only in a { phase } option is appended after", () => {
     const src = `export const meta = { name: "w", description: "", phases: [] }
 await agent('x', { phase: 'Verify', label: 'v', agentType: 'qa' })
 phase('Gate')
 `;
-    expect(extractPhases(src).phases.map((p) => p.title)).toEqual(["Verify", "Gate"]);
+    expect(extractPhases(src).phases.map((p) => p.title)).toEqual(["Gate", "Verify"]);
+  });
+
+  it("orders declared phases by their phase() call sequence even when an option-only title's call sits earlier in the file", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+const finish = () => agent('x', { phase: 'Complete', label: 'wrap up', agentType: 'run-reporter' })
+phase('Build')
+phase('Verify')
+`;
+    expect(extractPhases(src).phases.map((p) => p.title)).toEqual(["Build", "Verify", "Complete"]);
+  });
+
+  it("appends every option-only title after all declared phases, in its own first-appearance order", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+phase('Verify')
+await agent('x', { phase: 'Handoff', label: 'h', agentType: 'run-reporter' })
+await agent('y', { phase: 'Complete', label: 'c', agentType: 'run-reporter' })
+`;
+    expect(extractPhases(src).phases.map((p) => p.title)).toEqual(["Build", "Verify", "Handoff", "Complete"]);
+  });
+
+  it("reports a non-literal phase option with no ambient phase() call as unclassified, not a fabricated phase", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+const ph = 'Build'
+await agent('x', { phase: ph, label: 'unresolvable', agentType: 'project-manager' })
+phase('Build')
+await agent('y', { phase: 'Build', label: 'resolvable', agentType: 'qa' })
+`;
+    const { phases, unclassified } = extractPhases(src);
+    expect(unclassified).toHaveLength(1);
+    expect(unclassified[0]?.callee).toBe("agent");
+    const steps = phases.flatMap((p) => p.steps);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.label).toBe("resolvable");
+  });
+
+  it("still resolves a non-literal phase option through an ambient phase() call rather than reporting it unclassified", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+const ph = 'Build'
+await agent('x', { phase: ph, label: 'still fine', agentType: 'project-manager' })
+`;
+    const { phases, unclassified } = extractPhases(src);
+    expect(unclassified).toHaveLength(0);
+    expect(phases[0]?.steps[0]?.label).toBe("still fine");
   });
 
   it("falls back to a single Run phase when the body declares none", () => {

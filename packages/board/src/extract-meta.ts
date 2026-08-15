@@ -122,21 +122,40 @@ export function extractPhases(source: string): Extraction {
   const repeats = (at: number): boolean =>
     loops.some((l) => contains(l, at)) || pipelines.some((p) => contains(p, at));
 
+  // Phase order comes from the sequence of `phase()` CALLS, not from wherever the first call that
+  // happens to resolve to each title sits lexically — a wrap-up/report helper defined near the top
+  // of the file and invoked from many places (often last, on the success path) used to drag its
+  // phase to the front of the diagram just by being declared early.
+  const declaredTitles: string[] = [];
+  for (const call of calls) {
+    if (call.name !== "phase") continue;
+    const title = literalString(call.args[0]);
+    if (title && !declaredTitles.includes(title)) declaredTitles.push(title);
+  }
+
   const titles: string[] = [];
   const addTitle = (t: string): void => {
     if (!titles.includes(t)) titles.push(t);
   };
 
-  for (const call of calls) {
-    if (call.name === "phase") {
-      const title = literalString(call.args[0]);
-      if (title) addTitle(title);
-      continue;
+  if (declaredTitles.length > 0) {
+    for (const title of declaredTitles) addTitle(title);
+    // A title that appears ONLY in a `{ phase: 'X' }` option — never in a phase() call — is
+    // appended after every declared phase, in its own first-appearance order.
+    for (const call of calls) {
+      if (call.name !== "agent" && call.name !== "workflow") continue;
+      const declared = optionPhase(call);
+      if (declared) addTitle(declared);
     }
-    if (call.name !== "agent" && call.name !== "workflow") continue;
-    const declared = optionPhase(call);
-    if (declared) addTitle(declared);
-    else if (titles.length === 0) addTitle(ambientPhase(calls, call) ?? "Run");
+  } else {
+    // No phase() calls anywhere: fall back to option/ambient order, ending on "Run" for a
+    // genuinely phase-less script.
+    for (const call of calls) {
+      if (call.name !== "agent" && call.name !== "workflow") continue;
+      const declared = optionPhase(call);
+      if (declared) addTitle(declared);
+      else if (titles.length === 0) addTitle(ambientPhase(calls, call) ?? "Run");
+    }
   }
   if (titles.length === 0) titles.push("Run");
 
@@ -152,7 +171,23 @@ export function extractPhases(source: string): Extraction {
   for (const call of calls) {
     if (call.name !== "agent" && call.name !== "workflow") continue;
 
-    const title = optionPhase(call) ?? ambientPhase(calls, call) ?? titles[0] ?? "Run";
+    const declaredTitle = optionPhase(call);
+    const ambientTitle = ambientPhase(calls, call);
+    let title: string;
+    if (declaredTitle) {
+      title = declaredTitle;
+    } else if (ambientTitle) {
+      title = ambientTitle;
+    } else if (declaresNonLiteralPhase(call)) {
+      // A `{ phase: someVariable }` this extractor cannot resolve, with no ambient phase() call to
+      // fall back on: rather than inventing a phase from wherever this call happens to sit
+      // lexically, report it so a later validate step can tell the author to pass a literal.
+      unclassified.push({ line: call.line, callee: call.name });
+      continue;
+    } else {
+      title = titles[0] ?? "Run";
+    }
+
     const phase = byTitle.get(title);
     if (!phase) continue;
 
@@ -211,6 +246,25 @@ function optionPhase(call: Call): string | undefined {
     return isNode(value) ? literalString(value) : undefined;
   }
   return undefined;
+}
+
+/** True when a call's options object names a `phase` whose value is not a resolvable literal. */
+function declaresNonLiteralPhase(call: Call): boolean {
+  if (call.name !== "agent") return false;
+  const options = call.args[1];
+  if (!options || options.type !== "ObjectExpression") return false;
+  const properties = options["properties"];
+  if (!Array.isArray(properties)) return false;
+  for (const property of properties) {
+    if (!isNode(property) || property.type !== "Property") continue;
+    const key = property["key"];
+    if (!isNode(key)) continue;
+    const name = key.type === "Identifier" ? key["name"] : literalString(key);
+    if (name !== "phase") continue;
+    const value = property["value"];
+    return !(isNode(value) && literalString(value) !== undefined);
+  }
+  return false;
 }
 
 /** Title of the most recent `phase()` call before this one. */

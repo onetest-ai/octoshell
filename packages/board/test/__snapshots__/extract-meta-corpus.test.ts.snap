@@ -5,24 +5,6 @@ exports[`extraction over real workflow scripts > benchmark-fixing.js > matches i
   {
     "steps": [
       {
-        "agent": "run-reporter",
-        "id": "close-1",
-        "label": "write the run report",
-      },
-      {
-        "agent": "project-manager",
-        "dependsOn": [
-          "close-1",
-        ],
-        "id": "close-2",
-        "label": "close the bugs",
-      },
-    ],
-    "title": "Close",
-  },
-  {
-    "steps": [
-      {
         "agent": "tech-lead",
         "id": "triage-1",
         "label": "triage open bugs",
@@ -67,39 +49,29 @@ exports[`extraction over real workflow scripts > benchmark-fixing.js > matches i
     ],
     "title": "Reverify",
   },
+  {
+    "steps": [
+      {
+        "agent": "run-reporter",
+        "id": "close-1",
+        "label": "write the run report",
+      },
+      {
+        "agent": "project-manager",
+        "dependsOn": [
+          "close-1",
+        ],
+        "id": "close-2",
+        "label": "close the bugs",
+      },
+    ],
+    "title": "Close",
+  },
 ]
 `;
 
 exports[`extraction over real workflow scripts > benchmark-implementation.js > matches its recorded snapshot 1`] = `
 [
-  {
-    "steps": [
-      {
-        "agent": "project-manager",
-        "id": "run-1",
-        "label": "… …",
-      },
-      {
-        "agent": "project-manager",
-        "dependsOn": [
-          "run-1",
-        ],
-        "id": "run-2",
-        "label": "tick … criteria",
-      },
-    ],
-    "title": "Run",
-  },
-  {
-    "steps": [
-      {
-        "agent": "run-reporter",
-        "id": "handoff-1",
-        "label": "write the run report",
-      },
-    ],
-    "title": "Handoff",
-  },
   {
     "steps": [
       {
@@ -193,21 +165,21 @@ exports[`extraction over real workflow scripts > benchmark-implementation.js > m
     ],
     "title": "Verify",
   },
+  {
+    "steps": [
+      {
+        "agent": "run-reporter",
+        "id": "handoff-1",
+        "label": "write the run report",
+      },
+    ],
+    "title": "Handoff",
+  },
 ]
 `;
 
 exports[`extraction over real workflow scripts > benchmark-mission-completion-gate.js > matches its recorded snapshot 1`] = `
 [
-  {
-    "steps": [
-      {
-        "agent": "run-reporter",
-        "id": "complete-1",
-        "label": "write the gate report",
-      },
-    ],
-    "title": "Complete",
-  },
   {
     "steps": [
       {
@@ -274,29 +246,21 @@ exports[`extraction over real workflow scripts > benchmark-mission-completion-ga
     ],
     "title": "Tokenomics",
   },
+  {
+    "steps": [
+      {
+        "agent": "run-reporter",
+        "id": "complete-1",
+        "label": "write the gate report",
+      },
+    ],
+    "title": "Complete",
+  },
 ]
 `;
 
 exports[`extraction over real workflow scripts > benchmark-testing.js > matches its recorded snapshot 1`] = `
 [
-  {
-    "steps": [
-      {
-        "agent": "run-reporter",
-        "id": "analyse-1",
-        "label": "write the run report",
-      },
-      {
-        "agent": "tech-lead",
-        "dependsOn": [
-          "analyse-1",
-        ],
-        "id": "analyse-2",
-        "label": "analyse the results",
-      },
-    ],
-    "title": "Analyse",
-  },
   {
     "steps": [
       {
@@ -344,6 +308,24 @@ exports[`extraction over real workflow scripts > benchmark-testing.js > matches 
       },
     ],
     "title": "Report",
+  },
+  {
+    "steps": [
+      {
+        "agent": "run-reporter",
+        "id": "analyse-1",
+        "label": "write the run report",
+      },
+      {
+        "agent": "tech-lead",
+        "dependsOn": [
+          "analyse-1",
+        ],
+        "id": "analyse-2",
+        "label": "analyse the results",
+      },
+    ],
+    "title": "Analyse",
   },
 ]
 `;
