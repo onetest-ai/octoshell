@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { layoutWorkflow, WorkflowDiagram, fitLabel } from "../src/webview/workflow-diagram.js";
+import { layoutWorkflow, WorkflowDiagram, fitLabel, subtitleFor } from "../src/webview/workflow-diagram.js";
 
 // Step labels deliberately differ from phase titles so `getByText` stays unambiguous.
 const PHASES = [
@@ -57,6 +57,15 @@ describe("layoutWorkflow", () => {
     expect(l.nodes).toEqual([]);
     expect(l.height).toBe(0);
   });
+
+  it("carries kind and repeat onto the node", () => {
+    const l = layoutWorkflow([
+      { title: "Build", steps: [{ id: "b1", label: "build", agent: "js-dev", repeat: true }] },
+      { title: "Ship", steps: [{ id: "s1", label: "testing", kind: "workflow" }] },
+    ]);
+    expect(l.nodes[0]).toMatchObject({ kind: "agent", repeat: true, agent: "js-dev" });
+    expect(l.nodes[1]).toMatchObject({ kind: "workflow", repeat: false, agent: null });
+  });
 });
 
 describe("WorkflowDiagram", () => {
@@ -91,6 +100,20 @@ describe("WorkflowDiagram", () => {
     // …but the full label survives in the node <title> tooltip.
     expect(screen.getByText(`${long} — python-dev`)).toBeTruthy();
   });
+
+  it("says default subagent when the step names no agent", () => {
+    render(<WorkflowDiagram phases={[{ title: "Build", steps: [{ id: "b1", label: "build" }] }]} />);
+    expect(screen.getByText("default subagent")).toBeTruthy();
+  });
+
+  it("badges a repeating step", () => {
+    render(
+      <WorkflowDiagram
+        phases={[{ title: "Build", steps: [{ id: "b1", label: "build", agent: "js-dev", repeat: true }] }]}
+      />,
+    );
+    expect(screen.getByText("×N")).toBeTruthy();
+  });
 });
 
 describe("fitLabel", () => {
@@ -102,5 +125,13 @@ describe("fitLabel", () => {
     const out = fitLabel("Build read-only Role column on the assignment page");
     expect(out.endsWith("…")).toBe(true);
     expect(out.length).toBeLessThanOrEqual(Math.floor((168 - 20) / 6.6));
+  });
+});
+
+describe("subtitleFor", () => {
+  it("names the kind on the subtitle line", () => {
+    expect(subtitleFor({ kind: "workflow", agent: null })).toBe("workflow");
+    expect(subtitleFor({ kind: "command", agent: "project-manager" })).toBe("project-manager · command");
+    expect(subtitleFor({ kind: "agent", agent: null })).toBe("default subagent");
   });
 });

@@ -9,7 +9,18 @@
 
 import type { WorkflowPhase } from "@octoshell/board";
 
-export interface DiagramNode { id: string; label: string; agent: string; x: number; y: number; w: number; h: number }
+export interface DiagramNode {
+  id: string;
+  label: string;
+  /** null when the step named no agentType — it runs as the default subagent. */
+  agent: string | null;
+  kind: "agent" | "workflow" | "command";
+  repeat: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 export interface DiagramEdge { from: string; to: string }
 export interface DiagramBand { title: string; y: number; h: number }
 export interface DiagramLayout {
@@ -66,7 +77,9 @@ export function layoutWorkflow(phases: WorkflowPhase[]): DiagramLayout {
       nodes.push({
         id: step.id,
         label: step.label,
-        agent: step.agent,
+        agent: step.agent ?? null,
+        kind: step.kind ?? "agent",
+        repeat: step.repeat === true,
         x: PAD + BAND_LABEL_W + si * (NODE_W + GAP_X),
         y,
         w: NODE_W,
@@ -89,6 +102,16 @@ export function layoutWorkflow(phases: WorkflowPhase[]): DiagramLayout {
   }
 
   return { nodes, edges, bands, width, height: y - GAP_Y + PAD };
+}
+
+/**
+ * The second line of a node. An agent node names the agent that will run it — or says plainly that
+ * it named none, which is the failure mode this whole change exists to make visible.
+ */
+export function subtitleFor(node: Pick<DiagramNode, "kind" | "agent">): string {
+  if (node.kind === "workflow") return "workflow";
+  const agent = node.agent ?? "default subagent";
+  return node.kind === "command" ? `${agent} · command` : agent;
 }
 
 export function WorkflowDiagram({ phases }: { phases: WorkflowPhase[] }): JSX.Element {
@@ -145,7 +168,7 @@ export function WorkflowDiagram({ phases }: { phases: WorkflowPhase[] }): JSX.El
 
         {layout.nodes.map((n) => (
           <g key={n.id}>
-            <title>{`${n.label} — ${n.agent}`}</title>
+            <title>{`${n.label} — ${n.agent ?? "default subagent"}${n.repeat ? " (repeats per item)" : ""}`}</title>
             <rect
               x={n.x}
               y={n.y}
@@ -154,13 +177,25 @@ export function WorkflowDiagram({ phases }: { phases: WorkflowPhase[] }): JSX.El
               rx={4}
               fill="var(--vscode-editorWidget-background)"
               stroke="var(--vscode-widget-border, var(--vscode-editorWidget-border))"
+              strokeDasharray={n.kind === "workflow" ? "4 3" : undefined}
             />
             <text x={n.x + TEXT_PAD} y={n.y + 21} fontSize={12} fill="var(--vscode-foreground)">
               {fitLabel(n.label)}
             </text>
             <text x={n.x + TEXT_PAD} y={n.y + 39} fontSize={11} fill="var(--vscode-descriptionForeground)">
-              {fitLabel(n.agent, NODE_W, 6)}
+              {fitLabel(subtitleFor(n), NODE_W, 6)}
             </text>
+            {n.repeat && (
+              <text
+                x={n.x + n.w - TEXT_PAD}
+                y={n.y + 39}
+                fontSize={10}
+                textAnchor="end"
+                fill="var(--vscode-descriptionForeground)"
+              >
+                ×N
+              </text>
+            )}
           </g>
         ))}
       </svg>
