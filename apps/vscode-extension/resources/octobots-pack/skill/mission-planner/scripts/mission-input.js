@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Resolve everything a shared pipeline needs for one mission, as JSON on stdout.
 //
-//   node .claude/skills/mission-planner/scripts/mission-input.js M2 [--pretty]
+//   node .claude/skills/mission-planner/scripts/mission-input.js M2 [--campaign <slug>] [--pretty]
 //
 // Why this is a separate process: a workflow script has no filesystem access — require, process,
 // fs and fetch are all undefined and import() is blocked at parse — so a pipeline cannot discover
@@ -12,10 +12,16 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { readEntity, resolveEntityFile } from "./entity-io.mjs";
 
-const id = (process.argv[2] ?? "").toUpperCase();
-const pretty = process.argv.includes("--pretty");
+const argv = process.argv.slice(2);
+const pretty = argv.includes("--pretty");
+const campaignFlagIdx = argv.indexOf("--campaign");
+// Mission ids are numbered sequentially WITHIN their campaign (mission-planner § board shape), not
+// board-wide — the same id can legitimately exist under two campaigns. `--campaign <slug>` picks
+// one when that happens; without it, an ambiguous id is refused rather than guessed at.
+const campaignSlug = campaignFlagIdx >= 0 ? argv[campaignFlagIdx + 1] : undefined;
+const id = (argv[0] ?? "").toUpperCase();
 if (!/^M\d+$/.test(id)) {
-  console.error("usage: mission-input.js M<n> [--pretty]");
+  console.error("usage: mission-input.js M<n> [--campaign <slug>] [--pretty]");
   process.exit(2);
 }
 
@@ -23,22 +29,26 @@ const ROOT = join(".octobots", "campaigns");
 const dirs = (p) =>
   existsSync(p) ? readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name) : [];
 
-/** The mission folder whose name starts with this id's slug prefix, e.g. `m2-`. */
-let missionDir = null;
-let campaignDir = null;
+/** Every campaign (optionally narrowed to `--campaign <slug>`) whose missions/ has this id's slug prefix. */
+const matches = [];
 for (const campaign of dirs(ROOT)) {
+  if (campaignSlug && campaign !== campaignSlug) continue;
   const missions = join(ROOT, campaign, "missions");
   const hit = dirs(missions).find((slug) => slug.startsWith(`${id.toLowerCase()}-`));
-  if (hit) {
-    missionDir = join(missions, hit);
-    campaignDir = join(ROOT, campaign);
-    break;
-  }
+  if (hit) matches.push({ campaign, missionDir: join(missions, hit), campaignDir: join(ROOT, campaign) });
 }
-if (!missionDir || !campaignDir) {
-  console.error(`mission-input: ${id} is not on the board`);
+
+if (matches.length === 0) {
+  const scope = campaignSlug ? ` under campaign "${campaignSlug}"` : "";
+  console.error(`mission-input: ${id} is not on the board${scope}`);
   process.exit(1);
 }
+if (matches.length > 1) {
+  const candidates = matches.map((m) => m.campaign).join(", ");
+  console.error(`mission-input: ${id} is ambiguous — it exists under ${matches.length} campaigns: ${candidates}. Pass --campaign <slug> to disambiguate.`);
+  process.exit(1);
+}
+const { missionDir, campaignDir } = matches[0];
 
 const criteriaOf = (entity) => (entity.acceptanceCriteria ?? []).map((c) => c.text).filter(Boolean);
 
@@ -54,8 +64,11 @@ function read(dir, kind) {
 
 const mission = read(missionDir, "mission");
 
-/** `T1.2 - Name` → id and label; tasks sort by their numeric id, not their folder name. */
-const taskNumber = (taskId) => Number(String(taskId).replace(/^T/i, "").split(".")[1] ?? 0);
+/**
+ * `T1.2 - Name` → id and label; tasks sort by their FULL numeric id — major, then minor — via
+ * numeric-aware string collation, so `T3.10` sorts after `T3.9` (not string order) and `T10.1`
+ * sorts after `T2.1` (a naive "read the part after the dot" compare gets both of these wrong).
+ */
 const tasks = dirs(join(missionDir, "tasks"))
   .map((slug) => {
     const dir = join(missionDir, "tasks", slug);
@@ -64,10 +77,12 @@ const tasks = dirs(join(missionDir, "tasks"))
     return { id: (taskId ?? "").trim(), label: rest.join(" - ").trim(), dir, criteria: criteriaOf(task) };
   })
   .filter((t) => /^T\d+\.\d+$/i.test(t.id))
-  .sort((a, b) => taskNumber(a.id) - taskNumber(b.id));
+  .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
-// The QA verification task is the mission's last one by convention (mission-planner § task shape).
-const qaTask = tasks.find((t) => /\bqa\b|verification/i.test(t.label)) ?? null;
+// The QA/verification task is the mission's LAST matching one, by convention (mission-planner §
+// task shape puts QA at the end). If more than one task label matches, the later task wins — that
+// tie-break is deliberate, not an oversight.
+const qaTask = [...tasks].reverse().find((t) => /\bqa\b|verification/i.test(t.label)) ?? null;
 
 const payload = {
   mission: id,

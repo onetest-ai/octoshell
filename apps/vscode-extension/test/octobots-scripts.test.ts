@@ -353,6 +353,62 @@ describe("mission-input.js", () => {
     boardWithMission();
     expect(() => runScript("mission-input.js", ["M9"])).toThrow();
   });
+
+  it("mission-input exits non-zero and names every candidate when a mission id is ambiguous across campaigns", () => {
+    const c1 = createCampaign(boardRoot, { name: "Alpha" });
+    createMission(boardRoot, c1.id, { title: "M1 - First" });
+    const c2 = createCampaign(boardRoot, { name: "Beta" });
+    createMission(boardRoot, c2.id, { title: "M1 - Second" });
+
+    const { out, code } = run("mission-input.js", ["M1"], projectDir);
+    expect(code).not.toBe(0);
+    expect(out.toLowerCase()).toContain("ambiguous");
+    expect(out).toContain("alpha");
+    expect(out).toContain("beta");
+  });
+
+  it("mission-input --campaign <slug> resolves an id that would otherwise be ambiguous", () => {
+    const c1 = createCampaign(boardRoot, { name: "Alpha" });
+    createMission(boardRoot, c1.id, { title: "M1 - First" });
+    const c2 = createCampaign(boardRoot, { name: "Beta" });
+    createMission(boardRoot, c2.id, { title: "M1 - Second" });
+
+    const out = JSON.parse(runScript("mission-input.js", ["M1", "--campaign", "beta"]));
+    expect(out.missionName).toBe("M1 - Second");
+    expect(out.campaignDir).toMatch(/campaigns\/beta$/);
+  });
+
+  it("mission-input sorts tasks by the full numeric id, not the minor digit alone or string order", () => {
+    const c = createCampaign(boardRoot, { name: "C" });
+    const m = createMission(boardRoot, c.id, { title: "M4 - Mission" });
+    createTask(boardRoot, m.id, { name: "T4.10 - Tenth" });
+    createTask(boardRoot, m.id, { name: "T4.9 - Ninth" });
+    createTask(boardRoot, m.id, { name: "T4.2 - Second" });
+
+    const out = JSON.parse(runScript("mission-input.js", ["M4"]));
+    expect(out.tasks.map((t: { id: string }) => t.id)).toEqual(["T4.2", "T4.9", "T4.10"]);
+  });
+
+  it("mission-input sorts by major id before minor when the majors differ", () => {
+    const c = createCampaign(boardRoot, { name: "C" });
+    const m = createMission(boardRoot, c.id, { title: "M5 - Mission" });
+    createTask(boardRoot, m.id, { name: "T10.1 - Later major" });
+    createTask(boardRoot, m.id, { name: "T2.1 - Earlier major" });
+
+    const out = JSON.parse(runScript("mission-input.js", ["M5"]));
+    expect(out.tasks.map((t: { id: string }) => t.id)).toEqual(["T2.1", "T10.1"]);
+  });
+
+  it("mission-input picks the LAST task whose label matches qa/verification when more than one does", () => {
+    const c = createCampaign(boardRoot, { name: "C" });
+    const m = createMission(boardRoot, c.id, { title: "M6 - Mission" });
+    createTask(boardRoot, m.id, { name: "T6.1 - Verification of preconditions" });
+    createTask(boardRoot, m.id, { name: "T6.2 - Build the thing" });
+    createTask(boardRoot, m.id, { name: "T6.3 - QA verification" });
+
+    const out = JSON.parse(runScript("mission-input.js", ["M6"]));
+    expect(out.qaTask?.id).toBe("T6.3");
+  });
 });
 
 describe("sync-meta.js", () => {
