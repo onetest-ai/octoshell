@@ -82,9 +82,9 @@ writeFileSync(
   [
     `export const meta = ${serializeMeta(meta)}`,
     "",
-    "// Body: use phase() / agent() / parallel() / pipeline().",
-    "// Keep `meta.phases` above in step with the phases this body enters —",
-    "// the Octobots board draws its diagram from meta, not from this code.",
+    "// Body: use phase() / agent() / parallel() / pipeline() / workflow().",
+    "// The board's diagram is GENERATED from this code — after editing, run:",
+    "//   node .claude/skills/mission-planner/scripts/sync-meta.js <this folder>",
     "phase('Run')",
     "",
   ].join("\n"),

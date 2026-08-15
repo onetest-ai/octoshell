@@ -439,40 +439,4 @@ describe("workflow script guards", () => {
     expect(line.at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("set-step.js replaces a step with the same id rather than duplicating it", () => {
-    const dir = workflowDir();
-    const common = ["--workflow", dir, "--phase", "Build", "--id", "s2"];
-    runScript("set-step.js", [...common, "--agent", "impl", "--label", "First"], projectDir);
-    runScript("set-step.js", [...common, "--agent", "impl2", "--label", "Second", "--depends-on", "s1,s2"], projectDir);
-
-    const b = board();
-    const wf = b.listWorkflows({ campaignId: b.listCampaigns()[0]!.id })[0]!;
-    const steps = wf.phases.flatMap((p) => p.steps).filter((s) => s.id === "s2");
-    expect(steps).toHaveLength(1);
-    expect(steps[0]!.agent).toBe("impl2");
-    expect(steps[0]!.dependsOn).toEqual(["s1", "s2"]);
-  });
-
-  it("set-step.js refuses to rewrite a script whose meta it cannot read", () => {
-    const dir = workflowDir();
-    writeFileSync(join(dir, "workflow.js"), "// no meta here\nexport default 1;\n", "utf8");
-    const { status, stderr } = runFailing(
-      "set-step.js",
-      ["--workflow", dir, "--phase", "Build", "--id", "s2", "--agent", "a", "--label", "L"],
-      projectDir,
-    );
-    expect(status).toBe(2);
-    expect(stderr).toContain("refusing to rewrite the script");
-  });
-
-  it("set-step.js refuses a missing workflow folder and missing args", () => {
-    expect(
-      runFailing(
-        "set-step.js",
-        ["--workflow", join(boardRoot, "nope"), "--phase", "P", "--id", "s", "--agent", "a", "--label", "L"],
-        projectDir,
-      ).stderr,
-    ).toContain("not a directory");
-    expect(runFailing("set-step.js", [], projectDir).status).toBe(2);
-  });
 });

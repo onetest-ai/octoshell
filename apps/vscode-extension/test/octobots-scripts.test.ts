@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BoardModel, createCampaign, createMission, createTask, createBug } from "@octoshell/board";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
@@ -17,6 +17,21 @@ function run(script: string, args: string[], cwd: string): { out: string; code: 
   const out = `${result.stdout ?? ""}${result.stderr ?? ""}`;
   const code = result.status ?? 1;
   return { out, code };
+}
+
+/** Run a pack script against the current temp project, throwing on a nonzero exit. */
+function runScript(script: string, args: string[]): string {
+  const { out, code } = run(script, args, projectDir);
+  if (code !== 0) throw new Error(`${script} ${args.join(" ")} exited ${code}:\n${out}`);
+  return out;
+}
+
+/** Write a bare workflow.js (no BoardModel campaign needed — sync-meta.js only reads the file). */
+function writeWorkflow(name: string, script: string): string {
+  const dir = join(boardRoot, "campaigns", "c", "workflows", name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "workflow.js"), script, "utf8");
+  return dir;
 }
 
 // projectDir is the project root (parent of .octobots); boardRoot = projectDir/.octobots
@@ -311,5 +326,24 @@ describe("delete-task.js", () => {
     expect(r.code).toBe(0);
     expect(existsSync(taskFolder)).toBe(false);
     expect(board().getTask(t.id)).toBeNull();
+  });
+});
+
+describe("sync-meta.js", () => {
+  it("sync-meta rewrites meta from the body and leaves the body alone", () => {
+    const dir = writeWorkflow("w", `export const meta = {
+  name: "w",
+  description: "keep me",
+  phases: [{ title: "Old", steps: [] }],
+}
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build it', agentType: 'js-dev' })
+`);
+    runScript("sync-meta.js", [dir]);
+    const after = readFileSync(join(dir, "workflow.js"), "utf8");
+    expect(after).toContain('description: "keep me"');
+    expect(after).toContain('{"id":"build-1","label":"build it","agent":"js-dev"}');
+    expect(after).toContain("phase('Build')");
+    expect(after).not.toContain('"Old"');
   });
 });

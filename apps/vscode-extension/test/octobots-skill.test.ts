@@ -105,6 +105,15 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
     expect(existsSync(join(repo, ".claude", "skills", "mission-planner", "SKILL.md"))).toBe(true);
   });
 
+  it("removes set-step.js from a workspace upgraded from an older pack", () => {
+    const repo = mkdtempClean("octobots-pack-");
+    const stale = join(repo, ".claude", "skills", "mission-planner", "scripts", "set-step.js");
+    mkdirSync(join(repo, ".claude", "skills", "mission-planner", "scripts"), { recursive: true });
+    writeFileSync(stale, "// old", "utf8");
+    installPack(PACK_SRC, repo);
+    expect(existsSync(stale)).toBe(false);
+  });
+
   it.each(OCTOBOTS_SKILLS)("reports not-installed when %s has no version field", (name) => {
     const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo);

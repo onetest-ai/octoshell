@@ -426,26 +426,6 @@ describe("workflow scripts", () => {
     ]);
   });
 
-  it("set-step.js adds a step the BoardModel then reports", () => {
-    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    const cs = slugOf(c.folderPath);
-    runScript("add-workflow.js", ["--campaign", cs, "--name", "ship"], projectDir);
-    const wfDir = join(".octobots", "campaigns", cs, "workflows", "ship");
-    runScript(
-      "set-step.js",
-      ["--workflow", wfDir, "--phase", "Build", "--id", "s2", "--agent", "impl", "--label", "Build it", "--parallel", "b"],
-      projectDir,
-    );
-
-    const board = new BoardModel(boardRoot);
-    board.rebuild();
-    const [wf] = board.listWorkflows({ campaignId: c.id });
-    expect(wf!.parseError).toBeNull();
-    const build = wf!.phases.find((p) => p.title === "Build");
-    expect(build!.steps[0]!.agent).toBe("impl");
-    expect(build!.steps[0]!.parallel).toBe("b");
-  });
-
   it("add-run.js drives lastRunStatus", () => {
     const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
     const cs = slugOf(c.folderPath);

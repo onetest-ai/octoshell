@@ -17,6 +17,12 @@ export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission
  */
 const RETIRED_SKILLS = ["octobots"] as const;
 
+/**
+ * Files earlier pack versions installed that no longer exist. Removed on install, so an upgraded
+ * workspace never keeps a script the skills no longer mention. Paths are relative to `.claude`.
+ */
+const RETIRED_FILES = ["skills/mission-planner/scripts/set-step.js"] as const;
+
 /** Skill ids an agent needs to drive Octobots. Today every agent needs the whole pack. */
 export function requiredSkillsForAgent(_agent: string): string[] {
   return [...OCTOBOTS_SKILLS];
@@ -101,6 +107,9 @@ export function installPack(srcRoot: string, repoRoot: string): { written: numbe
   let written = 0;
   for (const name of RETIRED_SKILLS) {
     rmSync(join(repoRoot, ".claude", "skills", name), { recursive: true, force: true });
+  }
+  for (const rel of RETIRED_FILES) {
+    rmSync(join(repoRoot, ".claude", rel), { force: true });
   }
   for (const name of OCTOBOTS_SKILLS) {
     written += copyTree(
