@@ -96,12 +96,37 @@ await agent(p, { phase: 'Build', label: 'build T1.1', agentType: 'ios-dev' })
     expect(phases[0]?.steps).toEqual([{ id: "build-1", label: "build T1.1", agent: "ios-dev" }]);
   });
 
-  it("omits agent when the call names no agentType", () => {
+  it("omits agent when the call names no agentType, and does not record it as computed", () => {
     const src = `export const meta = { name: "w", description: "", phases: [] }
 phase('Build')
 await agent(p, { phase: 'Build', label: 'build' })
 `;
-    expect(extractPhases(src).phases[0]?.steps[0]).toEqual({ id: "build-1", label: "build" });
+    const { phases, computedAgentType } = extractPhases(src);
+    expect(phases[0]?.steps[0]).toEqual({ id: "build-1", label: "build" });
+    expect(computedAgentType).toEqual([]);
+  });
+
+  // `agentType: task.role` — present, but not a string literal. Dispatch is real at runtime; the
+  // extractor just cannot name it. This is NOT the same as the call above naming no agentType at
+  // all: the step still comes out with no `agent` field (nothing to draw), but `computedAgentType`
+  // records the call site so `validate` can tell "computed" apart from "genuinely absent" and not
+  // report a false defect. See the 2026-08-15 workflow-generated-meta plan, task 14, fix round 1.
+  it("omits agent when agentType is computed, and records the call site in computedAgentType", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build', agentType: task.role })
+`;
+    const { phases, computedAgentType } = extractPhases(src);
+    expect(phases[0]?.steps[0]).toEqual({ id: "build-1", label: "build" });
+    expect(computedAgentType).toEqual([{ line: 3, stepId: "build-1" }]);
+  });
+
+  it("does not record computedAgentType when agentType is a literal", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build', agentType: 'ios-dev' })
+`;
+    expect(extractPhases(src).computedAgentType).toEqual([]);
   });
 
   it("renders a concatenated or interpolated label with an ellipsis", () => {

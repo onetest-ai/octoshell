@@ -16,6 +16,13 @@
  * sorts ahead of steps that in reality run before it every iteration, so `dependsOn` comes out
  * backwards. Fixing this would need control flow through function calls, which this extractor,
  * being purely lexical, does not do.
+ *
+ * A related, narrower gap: `agentType` is only readable when it is a string literal. A computed
+ * value — `agentType: task.role` — dispatches for real at runtime but cannot be drawn, so the step
+ * comes out with no `agent` field, same as a step that never named an `agentType` at all. The two
+ * are NOT the same finding: one runs as the default subagent (a defect), the other dispatches
+ * correctly and simply cannot be shown (not a defect). `computedAgentType` on `Extraction` is how
+ * the two are told apart downstream, in `validate`.
  */
 
 import { parse } from "acorn";
@@ -25,6 +32,13 @@ export interface Extraction {
   phases: WorkflowPhase[];
   /** Call sites the extractor could not classify. Reported, never silently dropped. */
   unclassified: { line: number; callee: string }[];
+  /**
+   * `agent()` calls that DID name an `agentType` — dispatch is real — but as something other than
+   * a string literal, so the diagram cannot show which agent runs. Distinct from a step with no
+   * `agentType` at all (the step's `agent` field is absent either way, so `validate` needs this
+   * list to tell "computed, dispatches fine" apart from "never named one, runs as the default").
+   */
+  computedAgentType: { line: number; stepId: string }[];
 }
 
 interface Node {
@@ -162,6 +176,7 @@ export function extractPhases(source: string): Extraction {
   const phases: WorkflowPhase[] = titles.map((title) => ({ title, steps: [] as WorkflowStep[] }));
   const byTitle = new Map(phases.map((p) => [p.title, p]));
   const unclassified: { line: number; callee: string }[] = [];
+  const computedAgentType: { line: number; stepId: string }[] = [];
 
   // Ordering state, keyed by phase title (dependsOn chains) or by group id (parallel members).
   const anchorsByPhase = new Map<string, string[]>();
@@ -194,7 +209,8 @@ export function extractPhases(source: string): Extraction {
     const option = options(call);
     const id = `${slugifyTitle(title)}-${phase.steps.length + 1}`;
     const label = call.name === "workflow" ? workflowLabel(call) : renderLabel(option.get("label"));
-    const agent = literalString(option.get("agentType"));
+    const agentTypeNode = option.get("agentType");
+    const agent = literalString(agentTypeNode);
     const kind = call.name === "workflow" ? "workflow" : literalString(option.get("kind"));
     const group = groupOf(call.start);
     const repeat = repeats(call.start);
@@ -205,6 +221,11 @@ export function extractPhases(source: string): Extraction {
     // JSON.stringify writes a stable field order.
     const step: WorkflowStep = { id, label };
     if (agent) step.agent = agent;
+    else if (agentTypeNode !== undefined) {
+      // Named, but not a string literal — dispatch is real at runtime, the extractor just cannot
+      // read it. Not the "no agentType" defect; `validate` consults this list to say so.
+      computedAgentType.push({ line: call.line, stepId: id });
+    }
     if (kind === "workflow" || kind === "command") step.kind = kind;
     if (repeat) step.repeat = true;
     if (group) step.parallel = group;
@@ -227,7 +248,7 @@ export function extractPhases(source: string): Extraction {
     phase.steps.push(step);
   }
 
-  return { phases, unclassified };
+  return { phases, unclassified, computedAgentType };
 }
 
 /** The `phase` property of a call's options object, when it is a plain string. */

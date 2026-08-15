@@ -274,9 +274,14 @@ export function validateWorkflow(jsPath: string, folderSlug: string): BoardFindi
   for (const call of extracted.unclassified) {
     err(`line ${call.line}: ${call.callee}() has no readable label`);
   }
+  // A step with a computed `agentType` (e.g. `agentType: task.role`) dispatches for real at
+  // runtime — it is NOT the "no agentType" defect below, just unreadable by the extractor — so it
+  // is excluded by id rather than folded into the same check.
+  const computedAgentTypeIds = new Set(extracted.computedAgentType.map((c) => c.stepId));
   for (const step of extracted.phases.flatMap((p) => p.steps)) {
     if (step.kind === "workflow") continue;
-    if (!step.agent) err(`step "${step.id}" (${step.label}) has no agentType — it runs as the default subagent`);
+    if (step.agent || computedAgentTypeIds.has(step.id)) continue;
+    err(`step "${step.id}" (${step.label}) has no agentType — it runs as the default subagent`);
   }
 
   return out;

@@ -120,6 +120,11 @@ export function extractPhases(source) {
   const phases = titles.map((title) => ({ title, steps: [] }));
   const byTitle = new Map(phases.map((p) => [p.title, p]));
   const unclassified = [];
+  // `agent()` calls that DID name an agentType, but as something other than a string literal —
+  // dispatch is real, the extractor just cannot read it. Distinct from a step with no agentType at
+  // all: the step's `agent` field is absent either way, so `validate` consults this list to tell
+  // "computed, dispatches fine" apart from "never named one, runs as the default subagent".
+  const computedAgentType = [];
 
   // Ordering state, keyed by phase title (dependsOn chains) or by group id (parallel members).
   const anchorsByPhase = new Map();
@@ -152,7 +157,8 @@ export function extractPhases(source) {
     const option = options(call);
     const id = `${slugifyTitle(title)}-${phase.steps.length + 1}`;
     const label = call.name === "workflow" ? workflowLabel(call) : renderLabel(option.get("label"));
-    const agent = literalString(option.get("agentType"));
+    const agentTypeNode = option.get("agentType");
+    const agent = literalString(agentTypeNode);
     const kind = call.name === "workflow" ? "workflow" : literalString(option.get("kind"));
     const group = groupOf(call.start);
     const repeat = repeats(call.start);
@@ -163,6 +169,11 @@ export function extractPhases(source) {
     // JSON.stringify writes a stable field order.
     const step = { id, label };
     if (agent) step.agent = agent;
+    else if (agentTypeNode !== undefined) {
+      // Named, but not a string literal — dispatch is real at runtime, the extractor just cannot
+      // read it. Not the "no agentType" defect; `validate` consults this list to say so.
+      computedAgentType.push({ line: call.line, stepId: id });
+    }
     if (kind === "workflow" || kind === "command") step.kind = kind;
     if (repeat) step.repeat = true;
     if (group) step.parallel = group;
@@ -185,7 +196,7 @@ export function extractPhases(source) {
     phase.steps.push(step);
   }
 
-  return { phases, unclassified };
+  return { phases, unclassified, computedAgentType };
 }
 
 /** The `phase` property of a call's options object, when it is a plain string. */

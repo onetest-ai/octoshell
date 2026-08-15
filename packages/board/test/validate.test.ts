@@ -284,6 +284,26 @@ await agent(p, { phase: 'Build', label: 'build' })
     );
   });
 
+  // A computed `agentType` (a variable, not a string literal) dispatches for real at runtime — the
+  // extractor just cannot read it, so the generated step has no `agent` field either. That is NOT
+  // the same finding as a call that never named an agentType at all: the diagram cannot show the
+  // agent, but the step is not "the default subagent". Reported once as a false positive (M3-M7's
+  // shared `agentType: task.role`) — see the 2026-08-15 workflow-generated-meta plan, task 14.
+  it("does not fail when an agent() call names a computed agentType", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Build", steps: [{ id: "build-1", label: "build" }] }],
+}
+const role = 'js-dev'
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build', agentType: role })
+`;
+    expect(findingsFor(src)).not.toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("no agentType") }),
+    );
+  });
+
   it("no longer objects to a phase with no steps", () => {
     const src = `export const meta = {
   name: "w",
