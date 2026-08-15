@@ -117,7 +117,37 @@ export function extractPhases(source: string): Extraction {
   if (titles.length === 0) titles.push("Run");
 
   const phases: WorkflowPhase[] = titles.map((title) => ({ title, steps: [] as WorkflowStep[] }));
-  return { phases, unclassified: [] };
+  const byTitle = new Map(phases.map((p) => [p.title, p]));
+  const unclassified: { line: number; callee: string }[] = [];
+
+  for (const call of calls) {
+    if (call.name !== "agent" && call.name !== "workflow") continue;
+
+    const title = optionPhase(call) ?? ambientPhase(calls, call) ?? titles[0] ?? "Run";
+    const phase = byTitle.get(title);
+    if (!phase) continue;
+
+    const option = options(call);
+    const id = `${slugifyTitle(title)}-${phase.steps.length + 1}`;
+    const label = call.name === "workflow" ? workflowLabel(call) : renderLabel(option.get("label"));
+    const agent = literalString(option.get("agentType"));
+    const kind = call.name === "workflow" ? "workflow" : literalString(option.get("kind"));
+    const backend = literalString(option.get("backend"));
+
+    // Assigned in WorkflowStep's canonical key order — id, label, agent, kind, repeat, parallel,
+    // backend, dependsOn (see coerceStep in workflow-meta.ts) — so serializeMeta's
+    // JSON.stringify writes a stable field order. `repeat` and `parallel` are not derived yet;
+    // a later task slots them in between `kind` and `backend` below.
+    const step: WorkflowStep = { id, label };
+    if (agent) step.agent = agent;
+    if (kind === "workflow" || kind === "command") step.kind = kind;
+    if (backend) step.backend = backend;
+
+    if (step.label === "…") unclassified.push({ line: call.line, callee: call.name });
+    phase.steps.push(step);
+  }
+
+  return { phases, unclassified };
 }
 
 /** The `phase` property of a call's options object, when it is a plain string. */
@@ -146,4 +176,82 @@ function ambientPhase(calls: Call[], call: Call): string | undefined {
     if (c.name === "phase") title = literalString(c.args[0]) ?? title;
   }
   return title;
+}
+
+/** All string-valued options of a call, plus a marker for options that are computed. */
+function options(call: Call): Map<string, Node> {
+  const out = new Map<string, Node>();
+  const object = call.name === "agent" ? call.args[1] : undefined;
+  if (!object || object.type !== "ObjectExpression") return out;
+  const properties = object["properties"];
+  if (!Array.isArray(properties)) return out;
+  for (const property of properties) {
+    if (!isNode(property) || property.type !== "Property") continue;
+    const key = property["key"];
+    if (!isNode(key)) continue;
+    const name = key.type === "Identifier" ? (key["name"] as string) : literalString(key);
+    const value = property["value"];
+    if (typeof name === "string" && isNode(value)) out.set(name, value);
+  }
+  return out;
+}
+
+/**
+ * A human-readable label for a node that may be computed. Anything the extractor cannot resolve
+ * becomes "…", so `'build ' + t.id` reads as `build …` rather than vanishing.
+ */
+export function renderLabel(node: Node | undefined): string {
+  if (!node) return "…";
+  const direct = literalString(node);
+  if (direct !== undefined) return direct;
+
+  if (node.type === "TemplateLiteral") {
+    const quasis = (node["quasis"] as unknown[]).filter(isNode);
+    return collapse(quasis.map((q) => (q["value"] as { cooked?: string }).cooked ?? "").join("…"));
+  }
+  if (node.type === "BinaryExpression" && node["operator"] === "+") {
+    const left = node["left"];
+    const right = node["right"];
+    return collapse((isNode(left) ? renderLabel(left) : "…") + (isNode(right) ? renderLabel(right) : "…"));
+  }
+  return "…";
+}
+
+/** Two adjacent unresolved fragments read as one. */
+function collapse(text: string): string {
+  return text.replace(/…{2,}/g, "…");
+}
+
+/** The string value of one property of an ObjectExpression, when it is a plain literal. */
+function property(object: Node | undefined, name: string): string | undefined {
+  if (!object || object.type !== "ObjectExpression") return undefined;
+  const properties = object["properties"];
+  if (!Array.isArray(properties)) return undefined;
+  for (const p of properties) {
+    if (!isNode(p) || p.type !== "Property") continue;
+    const key = p["key"];
+    if (!isNode(key)) continue;
+    const keyName = key.type === "Identifier" ? key["name"] : literalString(key);
+    if (keyName !== name) continue;
+    const value = p["value"];
+    return isNode(value) ? literalString(value) : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * `workflow()` takes a name or a `{ scriptPath }`, and its second argument is `args` — not an
+ * options object — so a workflow node is labelled by what it runs.
+ * `.../workflows/testing/workflow.js` → `testing`.
+ */
+function workflowLabel(call: Call): string {
+  const first = call.args[0];
+  const path = literalString(first) ?? property(first, "scriptPath");
+  if (!path) return "…";
+  const parts = path.replace(/\/workflow\.js$/, "").split("/");
+  return parts[parts.length - 1] ?? path;
+}
+
+function slugifyTitle(title: string): string {
+  return title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "phase";
 }

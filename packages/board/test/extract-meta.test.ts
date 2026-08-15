@@ -35,4 +35,57 @@ return r
 `;
     expect(() => extractPhases(src)).not.toThrow();
   });
+
+  it("makes one step per call site, with agent taken from agentType", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build T1.1', agentType: 'ios-dev' })
+`;
+    const { phases } = extractPhases(src);
+    expect(phases[0]?.steps).toEqual([{ id: "build-1", label: "build T1.1", agent: "ios-dev" }]);
+  });
+
+  it("omits agent when the call names no agentType", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build' })
+`;
+    expect(extractPhases(src).phases[0]?.steps[0]).toEqual({ id: "build-1", label: "build" });
+  });
+
+  it("renders a concatenated or interpolated label with an ellipsis", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build ' + t.id, agentType: 'ios-dev' })
+await agent(p, { phase: 'Build', label: \`review \${t.id}:security\`, agentType: 'tech-lead' })
+`;
+    const steps = extractPhases(src).phases[0]?.steps ?? [];
+    expect(steps[0]?.label).toBe("build …");
+    expect(steps[1]?.label).toBe("review …:security");
+  });
+
+  it("marks a workflow() call as a workflow node, labelled by its script path", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Ship')
+await workflow({ scriptPath: '.octobots/campaigns/c/workflows/testing/workflow.js' })
+`;
+    expect(extractPhases(src).phases[0]?.steps[0]).toEqual({
+      id: "ship-1",
+      label: "testing",
+      kind: "workflow",
+    });
+  });
+
+  it("honours an explicit kind on an agent call", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+await agent(p, { phase: 'Build', label: 'set status active', agentType: 'project-manager', kind: 'command' })
+`;
+    expect(extractPhases(src).phases[0]?.steps[0]).toEqual({
+      id: "build-1",
+      label: "set status active",
+      agent: "project-manager",
+      kind: "command",
+    });
+  });
 });
