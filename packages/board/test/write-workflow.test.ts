@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { BoardModel } from "../src/board-model.js";
 import {
-  createWorkflow, deleteWorkflow, setWorkflowMeta, appendWorkflowRun, migrateLegacyWorkflows,
+  createWorkflow, deleteWorkflow, appendWorkflowRun, migrateLegacyWorkflows,
 } from "../src/write.js";
 
 function fixture(): { root: string; campaignId: string; missionId: string } {
@@ -49,32 +49,6 @@ describe("createWorkflow", () => {
     const board = new BoardModel(root);
     board.rebuild();
     expect(board.listWorkflows({ missionId })).toHaveLength(2);
-  });
-});
-
-describe("setWorkflowMeta", () => {
-  it("replaces only the meta span and preserves the body byte-for-byte", () => {
-    const { root, campaignId } = fixture();
-    const { id, folderPath } = createWorkflow(root, { campaignId }, { name: "w" });
-    const body = "\n\n// a hand-written body\nphase('Go')\nawait agent('do it')\n";
-    const original = readFileSync(join(root, folderPath, "workflow.js"), "utf8");
-    writeFileSync(join(root, folderPath, "workflow.js"), original.trimEnd() + body, "utf8");
-
-    expect(setWorkflowMeta(root, id, {
-      name: "w",
-      description: "d",
-      phases: [{ title: "Go", steps: [{ id: "s1", agent: "impl", label: "Build" }] }],
-    })).toBe(true);
-
-    const after = read(root, id, "workflow.js");
-    expect(after).toContain("// a hand-written body");
-    expect(after).toContain("await agent('do it')");
-
-    const board = new BoardModel(root);
-    board.rebuild();
-    const wf = board.getWorkflow(id)!;
-    expect(wf.parseError).toBeNull();
-    expect(wf.phases[0]!.steps[0]!.label).toBe("Build");
   });
 });
 
