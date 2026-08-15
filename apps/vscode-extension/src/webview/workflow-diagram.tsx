@@ -127,6 +127,19 @@ export function subtitleFor(node: Pick<DiagramNode, "kind" | "agent">): string |
   return node.kind === "command" ? `${node.agent} · command` : node.agent;
 }
 
+/**
+ * Full hover-tooltip text for a node: the label, then whatever `subtitleFor` names — an agent, a
+ * command, or "workflow" — then the repeat note, in that order. Routes through `subtitleFor`
+ * rather than re-deriving the same "no agent" fallback a second time: that duplication is exactly
+ * why the tooltip still said "default subagent" one round after the card face stopped. A step with
+ * no `agent` hovers as just its label plus the repeat note — no dash, no invented agent name.
+ */
+export function titleFor(node: Pick<DiagramNode, "label" | "kind" | "agent" | "repeat">): string {
+  const subtitle = subtitleFor(node);
+  const repeatNote = node.repeat ? " (repeats per item)" : "";
+  return (subtitle !== undefined ? `${node.label} — ${subtitle}` : node.label) + repeatNote;
+}
+
 export function WorkflowDiagram({ phases }: { phases: WorkflowPhase[] }): JSX.Element {
   const layout = layoutWorkflow(phases);
   if (layout.nodes.length === 0) {
@@ -183,7 +196,7 @@ export function WorkflowDiagram({ phases }: { phases: WorkflowPhase[] }): JSX.El
           const subtitle = subtitleFor(n);
           return (
             <g key={n.id}>
-              <title>{`${n.label} — ${n.agent ?? "default subagent"}${n.repeat ? " (repeats per item)" : ""}`}</title>
+              <title>{titleFor(n)}</title>
               <rect
                 x={n.x}
                 y={n.y}

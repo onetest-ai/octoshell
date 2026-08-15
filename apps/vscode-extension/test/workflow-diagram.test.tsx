@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { layoutWorkflow, WorkflowDiagram, fitLabel, subtitleFor } from "../src/webview/workflow-diagram.js";
+import { layoutWorkflow, WorkflowDiagram, fitLabel, subtitleFor, titleFor } from "../src/webview/workflow-diagram.js";
 
 // Step labels deliberately differ from phase titles so `getByText` stays unambiguous.
 const PHASES = [
@@ -106,9 +106,14 @@ describe("WorkflowDiagram", () => {
   // reaching a shipped board with no `agent` can only mean a COMPUTED agentType (dispatches for
   // real; the extractor just cannot read it) — "default subagent" was a false statement on the
   // diagram itself. The node still renders (label intact); it simply carries no subtitle line.
+  // CHANGED again in fix round 3: once the <title> tooltip also stopped asserting "default
+  // subagent" (routed through the same titleFor as the card), an agent-less, non-repeating step's
+  // tooltip text became identical to its visible label — "build" and "build", not "build" and
+  // "build — default subagent" — so a single getByText("build") now matches both and throws.
+  // getAllByText pins that there are exactly the two elements expected, not zero and not three.
   it("renders no subtitle line when the step names no agent, rather than the old false 'default subagent' claim", () => {
     render(<WorkflowDiagram phases={[{ title: "Build", steps: [{ id: "b1", label: "build" }] }]} />);
-    expect(screen.getByText("build")).toBeTruthy();
+    expect(screen.getAllByText("build")).toHaveLength(2); // the card's label, and the tooltip — both honest
     expect(screen.queryByText("default subagent")).toBeNull();
   });
 
@@ -147,5 +152,35 @@ describe("subtitleFor", () => {
   it("omits the subtitle for an agent-less node, but still names a workflow-kind node", () => {
     expect(subtitleFor({ kind: "agent", agent: null })).toBeUndefined();
     expect(subtitleFor({ kind: "workflow", agent: null })).toBe("workflow");
+  });
+});
+
+// Fix round 3 (2026-08-15 workflow-generated-meta plan, task 14): the SVG <title> hover tooltip
+// used to build its own "… — ${agent ?? "default subagent"} …" string, duplicating — and
+// outliving — the fallback subtitleFor stopped using in round 2. titleFor is the single place that
+// fallback now lives.
+describe("titleFor", () => {
+  it("names the label and the agent for a step with a literal agent", () => {
+    expect(titleFor({ label: "build", kind: "agent", agent: "js-dev", repeat: false })).toBe("build — js-dev");
+  });
+
+  it("hovers as just the label, asserting no agent, when the step names none", () => {
+    expect(titleFor({ label: "build", kind: "agent", agent: null, repeat: false })).toBe("build");
+  });
+
+  it("keeps the repeat note for a repeating step, with or without a named agent", () => {
+    expect(titleFor({ label: "build", kind: "agent", agent: "js-dev", repeat: true })).toBe(
+      "build — js-dev (repeats per item)",
+    );
+    expect(titleFor({ label: "build", kind: "agent", agent: null, repeat: true })).toBe(
+      "build (repeats per item)",
+    );
+  });
+
+  it("reads naturally for workflow and command kinds", () => {
+    expect(titleFor({ label: "ship", kind: "workflow", agent: null, repeat: false })).toBe("ship — workflow");
+    expect(titleFor({ label: "set status", kind: "command", agent: "project-manager", repeat: false })).toBe(
+      "set status — project-manager · command",
+    );
   });
 });
