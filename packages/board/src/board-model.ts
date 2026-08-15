@@ -447,8 +447,23 @@ function parseWorkflows(
   for (const slug of safeReaddir(dir)) {
     const folderPath = `${parentFolder}/workflows/${slug}`;
     const jsPath = join(root, folderPath, "workflow.js");
-    const jsText = safeReadFile(jsPath);
-    if (jsText === null) continue; // no workflow.js → not a workflow folder
+
+    // A folder may hold a pointer instead of a script: shared pipelines live at campaign level and
+    // several missions run the same one. Without this a mission's workflow folder holds only its
+    // run log, and the board draws nothing for it.
+    let usesPath: string | null = null;
+    let sourceFolder = folderPath;
+    let jsText = safeReadFile(jsPath);
+    if (jsText === null) {
+      const pointer = readPointer(join(root, folderPath, "workflow.json"));
+      if (pointer === null) continue; // no workflow.js and no usable pointer → not a workflow folder
+      const resolved = resolveWithin(folderPath, pointer);
+      if (resolved === null) continue; // escapes the board — validate reports it
+      usesPath = resolved;
+      sourceFolder = resolved;
+      jsText = safeReadFile(join(root, resolved, "workflow.js"));
+      if (jsText === null) continue;
+    }
 
     let name = deSlug(slug);
     let description = "";
@@ -472,8 +487,9 @@ function parseWorkflows(
       name,
       description,
       phases,
-      scriptPath: `${folderPath}/workflow.js`,
+      scriptPath: `${sourceFolder}/workflow.js`,
       folderPath,
+      usesPath,
       parseError,
       lastRunStatus: readLastRunStatus(root, folderPath),
       createdAt: mtime,
@@ -666,4 +682,37 @@ function sortEntities<T extends { createdAt: number; folderPath: string }>(entit
     if (dtMs !== 0) return dtMs;
     return a.folderPath < b.folderPath ? -1 : a.folderPath > b.folderPath ? 1 : 0;
   });
+}
+
+/** The `uses` string of a pointer file, or null when absent or malformed. */
+export function readPointer(path: string): string | null {
+  const text = safeReadFile(path);
+  if (text === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    const uses = (parsed as { uses?: unknown })?.uses;
+    return typeof uses === "string" && uses.trim() ? uses : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve `rel` against `from`, both relative to the board root, refusing anything that climbs out
+ * of it. A pointer is a link the board follows on every rebuild; it must not be able to leave the
+ * tree, so this is a containment check and not merely a tidy-up.
+ */
+export function resolveWithin(from: string, rel: string): string | null {
+  const stack: string[] = [];
+  for (const part of `${from}/${rel}`.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (stack.length === 0) return null;
+      stack.pop();
+      continue;
+    }
+    stack.push(part);
+  }
+  const resolved = stack.join("/");
+  return resolved.startsWith("campaigns/") ? resolved : null;
 }

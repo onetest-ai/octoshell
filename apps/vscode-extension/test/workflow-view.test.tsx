@@ -10,6 +10,7 @@ const WF = {
   phases: [{ title: "Build", steps: [{ id: "s1", agent: "impl", label: "Build it" }] }],
   scriptPath: "campaigns/a/workflows/w/workflow.js",
   folderPath: "campaigns/a/workflows/w",
+  usesPath: null,
   parseError: null, lastRunStatus: "done", createdAt: 1, updatedAt: 1,
 };
 

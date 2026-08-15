@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateBriefText, isPlaceholderName, validateBoard } from "../src/validate.js";
+import { validateBriefText, isPlaceholderName, validateBoard, type BoardFinding } from "../src/validate.js";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -293,5 +293,72 @@ await agent(p, { phase: 'Build', label: 'build' })
 phase('Run')
 `;
     expect(findingsFor(src)).toEqual([]);
+  });
+});
+
+describe("workflow pointer validation", () => {
+  const CAMPAIGN = "# Alpha\n\n## Description\nA real description here.\n\n## Acceptance Criteria\n- [ ] ships\n";
+  const MISSION = "# M1 - Auth\n\n## Description\nA real description here.\n\n## Acceptance Criteria\n- [ ] ships\n";
+  const WF_MD = "# w\n\n## Description\nA workflow.\n";
+  const SHARED_JS =
+    "export const meta = { name: 'implementation', phases: [{ title: 'P', steps: [{ id: 'p-1', label: 'l', agent: 'a' }] }] }\n" +
+    "phase('P')\nawait agent(p, { phase: 'P', label: 'l', agentType: 'a' })\n";
+
+  /**
+   * Findings for a mission whose `workflows/implementation` folder holds only a pointer file
+   * (`workflow.json`) — the shared-pipeline case — instead of its own `workflow.js`. `extra` is
+   * merged onto the campaign-level board tree so a case can supply (or omit) the pointer's target.
+   */
+  function findingsForPointer(pointer: unknown, extra: Record<string, string> = {}): BoardFinding[] {
+    const root = mkdtempSync(join(tmpdir(), "wf-val-"));
+    const files: Record<string, string> = {
+      "campaigns/alpha/campaign.md": CAMPAIGN,
+      "campaigns/alpha/missions/m1/mission.md": MISSION,
+      "campaigns/alpha/missions/m1/workflows/implementation/workflow.json": JSON.stringify(pointer),
+      ...extra,
+    };
+    for (const [rel, body] of Object.entries(files)) {
+      const abs = join(root, ".octobots", rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, body, "utf8");
+    }
+    return validateBoard(root).filter((f) => f.kind === "workflow");
+  }
+
+  it("refuses a pointer that escapes the board", () => {
+    expect(findingsForPointer({ uses: "../../../../../../etc" })).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("outside the board") }),
+    );
+  });
+
+  it("refuses an absolute-looking pointer that still climbs out of the board", () => {
+    expect(findingsForPointer({ uses: "/../../../../../../etc" })).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("outside the board") }),
+    );
+  });
+
+  it("flags a pointer file with no `uses` string", () => {
+    expect(findingsForPointer({})).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("no `uses` string") }),
+    );
+  });
+
+  it("flags a pointer naming a folder with no workflow.js", () => {
+    expect(findingsForPointer({ uses: "../../../../workflows/does-not-exist" })).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("no workflow.js") }),
+    );
+  });
+
+  it("accepts a pointer that resolves to a real shared workflow, with no findings of its own", () => {
+    const findings = findingsForPointer(
+      { uses: "../../../../workflows/implementation" },
+      {
+        "campaigns/alpha/workflows/implementation/workflow.md": WF_MD,
+        "campaigns/alpha/workflows/implementation/workflow.js": SHARED_JS,
+      },
+    );
+    // The pointer folder itself produces nothing — the shared workflow it names is a well-formed,
+    // separately-validated workflow (found once, under the campaign).
+    expect(findings).toEqual([]);
   });
 });

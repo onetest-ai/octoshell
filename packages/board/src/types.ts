@@ -113,6 +113,8 @@ export interface Workflow {
   /** Repo-relative path of the script, e.g. `campaigns/a/workflows/w/workflow.js`. */
   scriptPath: string;
   folderPath: string;
+  /** Repo-relative folder this workflow points at, or null when it owns its own script. */
+  usesPath: string | null;
   /** Non-null when `meta` could not be located, evaluated or coerced. `phases` is then empty. */
   parseError: string | null;
   /** Status of the newest `## Runs` board line, or null when there are no runs. */

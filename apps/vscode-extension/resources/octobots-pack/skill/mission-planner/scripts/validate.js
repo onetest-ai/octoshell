@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { parseWorkflowMeta, serializeMeta } from "./workflow-meta.mjs";
 import { extractPhases } from "./extract-meta.mjs";
 import { readEntity, resolveEntityFile, KIND_KEYS, KNOWN_KEYS } from "./entity-io.mjs";
@@ -98,7 +98,7 @@ if (kind === "campaign" || kind === "mission") {
     ? readdirSync(workflowsDir, { withFileTypes: true })
         .filter((e) => e.isDirectory())
         .map((e) => e.name)
-        .filter((slug) => existsSync(join(workflowsDir, slug, "workflow.js")))
+        .filter((slug) => existsSync(join(workflowsDir, slug, "workflow.js")) || existsSync(join(workflowsDir, slug, "workflow.json")))
     : [];
   for (const slug of slugs) {
     for (const p of validateWorkflowDir(join(workflowsDir, slug))) {
@@ -127,7 +127,22 @@ function validateWorkflowDir(dir) {
   const out = [];
   const slug = basename(dir);
   const jsPath = join(dir, "workflow.js");
-  if (!existsSync(jsPath)) return ["workflow.js is missing"];
+  if (!existsSync(jsPath)) {
+    // A folder may point at a shared pipeline instead of owning a script — shared pipelines live at
+    // campaign level and several missions run the same one.
+    const pointerPath = join(dir, "workflow.json");
+    if (!existsSync(pointerPath)) return ["workflow.js is missing"];
+    const uses = readPointer(pointerPath);
+    if (uses === null) return ["workflow.json has no `uses` string"];
+    const from = boardRelative(dir);
+    const target = from === null ? null : resolveWithin(from, uses);
+    if (target === null) return [`pointer "${uses}" resolves outside the board`];
+    const root = boardRootOf(dir);
+    if (root === null || !existsSync(join(root, target, "workflow.js"))) {
+      return [`pointer "${uses}" names a folder with no workflow.js`];
+    }
+    return out; // valid pointer — the target it names is validated on its own, as its own workflow folder
+  }
 
   const source = readFileSync(jsPath, "utf8");
   let meta;
@@ -177,6 +192,60 @@ function validateWorkflowDir(dir) {
   }
 
   return out;
+}
+
+/**
+ * The `uses` string of a pointer file, or null when absent or malformed.
+ * Mirrors packages/board/src/board-model.ts `readPointer` — keep the two in step.
+ */
+function readPointer(path) {
+  let text;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+  try {
+    const uses = JSON.parse(text)?.uses;
+    return typeof uses === "string" && uses.trim() ? uses : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve `rel` against `from`, both relative to the board root, refusing anything that climbs out
+ * of it. A pointer is a link the board follows on every read; it must not be able to leave the
+ * tree, so this is a containment check and not merely a tidy-up.
+ * Mirrors packages/board/src/board-model.ts `resolveWithin` — keep the two in step.
+ */
+function resolveWithin(from, rel) {
+  const stack = [];
+  for (const part of `${from}/${rel}`.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (stack.length === 0) return null;
+      stack.pop();
+      continue;
+    }
+    stack.push(part);
+  }
+  const resolved = stack.join("/");
+  return resolved.startsWith("campaigns/") ? resolved : null;
+}
+
+/** The `.octobots` ancestor of `absDir`, or null when `absDir` is not under one. */
+function boardRootOf(absDir) {
+  const parts = absDir.split(sep);
+  const idx = parts.lastIndexOf(".octobots");
+  return idx === -1 ? null : parts.slice(0, idx + 1).join(sep);
+}
+
+/** `absDir`'s path relative to its `.octobots` ancestor, forward-slashed, or null when it has none. */
+function boardRelative(absDir) {
+  const parts = absDir.split(sep);
+  const idx = parts.lastIndexOf(".octobots");
+  return idx === -1 ? null : parts.slice(idx + 1).join("/");
 }
 
 /**

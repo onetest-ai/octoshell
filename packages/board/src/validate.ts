@@ -1,9 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import type { EntityKind } from "./managed-block.js";
 import { parseWorkflowMeta, serializeMeta } from "./workflow-meta.js";
 import { extractPhases } from "./extract-meta.js";
 import { loadEntity, KIND_KEYS, KNOWN_KEYS, type EntityFields } from "./entity-schema.js";
+import { readPointer, resolveWithin } from "./board-model.js";
 
 export interface BoardFinding {
   mdPath: string;
@@ -281,13 +282,34 @@ export function validateWorkflow(jsPath: string, folderSlug: string): BoardFindi
   return out;
 }
 
+/** Build the `BoardFinding` shape this file pushes for a workflow-folder problem. */
+function workflowFinding(mdPath: string, message: string): BoardFinding {
+  return { mdPath, kind: "workflow", severity: "error", message };
+}
+
 /** Validate every workflow folder under an entity, returning the count found. */
-function validateWorkflowsUnder(entityDir: string, findings: BoardFinding[]): number {
+function validateWorkflowsUnder(entityDir: string, findings: BoardFinding[], root: string): number {
   const dir = join(entityDir, "workflows");
   let count = 0;
   for (const slug of safeReaddir(dir)) {
     const jsPath = join(dir, slug, "workflow.js");
-    if (!existsSync(jsPath)) continue; // no workflow.js → not a workflow (e.g. a legacy .md-only folder)
+    if (!existsSync(jsPath)) {
+      // A folder may point at a shared pipeline instead of owning a script.
+      const pointerPath = join(dir, slug, "workflow.json");
+      if (!existsSync(pointerPath)) continue; // neither workflow.js nor a pointer → not a workflow folder
+      count++;
+      const uses = readPointer(pointerPath);
+      const from = relative(root, join(dir, slug)).split(sep).join("/");
+      const target = uses === null ? null : resolveWithin(from, uses);
+      if (uses === null) {
+        findings.push(workflowFinding(pointerPath, "workflow.json has no `uses` string"));
+      } else if (target === null) {
+        findings.push(workflowFinding(pointerPath, `pointer "${uses}" resolves outside the board`));
+      } else if (!existsSync(join(root, target, "workflow.js"))) {
+        findings.push(workflowFinding(pointerPath, `pointer "${uses}" names a folder with no workflow.js`));
+      }
+      continue;
+    }
     count++;
     findings.push(...validateWorkflow(jsPath, slug));
   }
@@ -304,7 +326,7 @@ export function validateBoard(root: string): BoardFinding[] {
 
     // campaign.md
     findings.push(...validateFile(join(campaignDir, "campaign.md"), "campaign"));
-    validateWorkflowsUnder(campaignDir, findings);
+    validateWorkflowsUnder(campaignDir, findings, octobots);
 
     // campaign-level bugs
     const campaignBugs = join(campaignDir, "bugs");
@@ -326,7 +348,7 @@ export function validateBoard(root: string): BoardFinding[] {
       // `board-model.ts` has always been a `string[]`, keyed identically to the
       // campaign case; the cardinality rule that used to live here contradicted
       // the model it was validating. See onetest-ai/octoshell#60.
-      validateWorkflowsUnder(missionDir, findings);
+      validateWorkflowsUnder(missionDir, findings, octobots);
 
       // mission tasks
       const tasksDir = join(missionDir, "tasks");

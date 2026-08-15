@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BoardModel } from "../src/board-model.js";
+import { BoardModel, readPointer, resolveWithin } from "../src/board-model.js";
 import { renderManagedBlock } from "../src/managed-block.js";
 
 let root: string;
@@ -173,5 +173,98 @@ describe("workflows", () => {
     board.rebuild();
     const campaignId = board.listCampaigns()[0]!.id;
     expect(board.listWorkflows({ campaignId })[0]!.lastRunStatus).toBe("done");
+  });
+
+  it("draws a shared pipeline under the mission that points at it", () => {
+    const c = join(root, "campaigns", "c");
+    mkdirSync(join(c, "workflows", "implementation"), { recursive: true });
+    writeFileSync(join(c, "campaign.md"), "# C\n\n## Description\nx\n");
+    writeFileSync(
+      join(c, "workflows", "implementation", "workflow.js"),
+      "export const meta = {\n" +
+        "  name: \"implementation\",\n" +
+        "  description: \"shared\",\n" +
+        "  phases: [{ title: \"Build\", steps: [{ id: \"build-1\", label: \"build\", agent: \"js-dev\" }] }],\n" +
+        "}\n" +
+        "phase('Build')\n",
+    );
+
+    const m = join(c, "missions", "m1");
+    mkdirSync(join(m, "workflows", "implementation"), { recursive: true });
+    writeFileSync(join(m, "mission.md"), "# M1\n\n## Description\nx\n");
+    writeFileSync(
+      join(m, "workflows", "implementation", "workflow.json"),
+      JSON.stringify({ uses: "../../../../workflows/implementation" }),
+    );
+
+    const board = new BoardModel(root);
+    board.rebuild();
+    const missionId = board.listMissions(board.listCampaigns()[0]!.id)[0]!.id;
+    const wf = board.listWorkflows({ missionId })[0];
+    expect(wf?.name).toBe("implementation");
+    expect(wf?.phases[0]?.steps[0]?.label).toBe("build");
+    expect(wf?.usesPath).toBe("campaigns/c/workflows/implementation");
+    // scriptPath follows the pointer to where the script actually lives, not the mission's own folder.
+    expect(wf?.scriptPath).toBe("campaigns/c/workflows/implementation/workflow.js");
+  });
+
+  it("drops a pointer that escapes the board instead of following it", () => {
+    const c = join(root, "campaigns", "c");
+    mkdirSync(c, { recursive: true });
+    writeFileSync(join(c, "campaign.md"), "# C\n\n## Description\nx\n");
+
+    const m = join(c, "missions", "m1");
+    mkdirSync(join(m, "workflows", "implementation"), { recursive: true });
+    writeFileSync(join(m, "mission.md"), "# M1\n\n## Description\nx\n");
+    writeFileSync(
+      join(m, "workflows", "implementation", "workflow.json"),
+      JSON.stringify({ uses: "../../../../../../etc" }),
+    );
+
+    const board = new BoardModel(root);
+    board.rebuild();
+    const missionId = board.listMissions(board.listCampaigns()[0]!.id)[0]!.id;
+    expect(board.listWorkflows({ missionId })).toEqual([]);
+  });
+});
+
+describe("resolveWithin", () => {
+  it("resolves a normal pointer to its target folder", () => {
+    expect(
+      resolveWithin("campaigns/c/missions/m1/workflows/implementation", "../../../../workflows/implementation"),
+    ).toBe("campaigns/c/workflows/implementation");
+  });
+
+  it("refuses a pointer that climbs above the board root", () => {
+    expect(resolveWithin("campaigns/c/missions/m1/workflows/implementation", "../../../../../../etc")).toBeNull();
+  });
+
+  it("refuses an absolute-looking pointer that still climbs above the board root", () => {
+    // A leading "/" contributes no extra ".." climbs in this algorithm, so an absolute-looking
+    // pointer is exactly as dangerous — or as safe — as its relative equivalent. Cover it
+    // explicitly so a future rewrite (e.g. switching to node:path.resolve) can't silently regress.
+    expect(resolveWithin("campaigns/c/missions/m1/workflows/implementation", "/../../../../../../etc")).toBeNull();
+  });
+
+  it("keeps an absolute-looking pointer with no climb contained under its own folder", () => {
+    expect(resolveWithin("campaigns/c/workflows/w", "/sibling")).toBe("campaigns/c/workflows/w/sibling");
+  });
+});
+
+describe("readPointer", () => {
+  it("reads the uses string from a well-formed pointer file", () => {
+    const p = join(root, "workflow.json");
+    writeFileSync(p, JSON.stringify({ uses: "../../x" }));
+    expect(readPointer(p)).toBe("../../x");
+  });
+
+  it("returns null for a missing file, malformed JSON, or a missing/blank uses key", () => {
+    expect(readPointer(join(root, "missing.json"))).toBeNull();
+    const bad = join(root, "bad.json");
+    writeFileSync(bad, "{not json");
+    expect(readPointer(bad)).toBeNull();
+    const blank = join(root, "blank.json");
+    writeFileSync(blank, JSON.stringify({ uses: "  " }));
+    expect(readPointer(blank)).toBeNull();
   });
 });

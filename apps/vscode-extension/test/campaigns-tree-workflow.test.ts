@@ -13,7 +13,7 @@ const { CampaignsTree } = await import("../src/host/campaigns-tree.js");
 const workflow = {
   id: "folder:campaigns/a/workflows/w", campaignId: "c1", missionId: null,
   name: "ship", description: "", phases: [], scriptPath: "campaigns/a/workflows/w/workflow.js",
-  folderPath: "campaigns/a/workflows/w", parseError: null, lastRunStatus: "done",
+  folderPath: "campaigns/a/workflows/w", usesPath: null, parseError: null, lastRunStatus: "done",
   createdAt: 1, updatedAt: 1,
 };
 
