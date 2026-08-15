@@ -329,6 +329,32 @@ describe("delete-task.js", () => {
   });
 });
 
+describe("mission-input.js", () => {
+  /** M1 with two tasks: T1.1 (a regular task) and T1.2 (the QA/verification task). */
+  function boardWithMission(): void {
+    const c = createCampaign(boardRoot, { name: "C" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Mission", acceptanceCriteria: "- [ ] ship it" });
+    createTask(boardRoot, m.id, { name: "T1.1 - Wire the auth flow", acceptanceCriteria: "- [ ] logs in" });
+    createTask(boardRoot, m.id, { name: "T1.2 - QA verification", acceptanceCriteria: "- [ ] all criteria verified" });
+  }
+
+  it("mission-input emits a mission's tasks and criteria as args JSON", () => {
+    boardWithMission();
+    const out = JSON.parse(runScript("mission-input.js", ["M1"]));
+    expect(out.mission).toBe("M1");
+    expect(out.missionDir).toMatch(/campaigns\/.+\/missions\/m1-/);
+    expect(out.criteria.length).toBeGreaterThan(0);
+    expect(out.tasks.map((t: { id: string }) => t.id)).toEqual(["T1.1", "T1.2"]);
+    expect(out.tasks[0].dir).toMatch(/tasks\/t1-1-/);
+    expect(out.qaTask?.id).toBe("T1.2");
+  });
+
+  it("mission-input exits non-zero for a mission that is not on the board", () => {
+    boardWithMission();
+    expect(() => runScript("mission-input.js", ["M9"])).toThrow();
+  });
+});
+
 describe("sync-meta.js", () => {
   it("sync-meta rewrites meta from the body and leaves the body alone", () => {
     const dir = writeWorkflow("w", `export const meta = {
