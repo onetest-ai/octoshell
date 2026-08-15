@@ -701,8 +701,14 @@ export function readPointer(path: string): string | null {
  * Resolve `rel` against `from`, both relative to the board root, refusing anything that climbs out
  * of it. A pointer is a link the board follows on every rebuild; it must not be able to leave the
  * tree, so this is a containment check and not merely a tidy-up.
+ *
+ * A leading `/` is refused outright rather than folded under `from`: an author who writes an
+ * absolute-looking `uses` almost certainly means "from some root", and silently reinterpreting it
+ * as same-folder-relative would resolve to a path they never asked for. A security boundary should
+ * not quietly reinterpret its input.
  */
 export function resolveWithin(from: string, rel: string): string | null {
+  if (rel.startsWith("/")) return null;
   const stack: string[] = [];
   for (const part of `${from}/${rel}`.split("/")) {
     if (part === "" || part === ".") continue;

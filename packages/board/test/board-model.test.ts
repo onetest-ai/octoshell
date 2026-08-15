@@ -240,14 +240,33 @@ describe("resolveWithin", () => {
   });
 
   it("refuses an absolute-looking pointer that still climbs above the board root", () => {
-    // A leading "/" contributes no extra ".." climbs in this algorithm, so an absolute-looking
-    // pointer is exactly as dangerous — or as safe — as its relative equivalent. Cover it
-    // explicitly so a future rewrite (e.g. switching to node:path.resolve) can't silently regress.
     expect(resolveWithin("campaigns/c/missions/m1/workflows/implementation", "/../../../../../../etc")).toBeNull();
   });
 
-  it("keeps an absolute-looking pointer with no climb contained under its own folder", () => {
-    expect(resolveWithin("campaigns/c/workflows/w", "/sibling")).toBe("campaigns/c/workflows/w/sibling");
+  // A `uses` beginning with "/" is refused outright, even with no ".." in it at all. Earlier this
+  // degraded to a same-folder-relative append (the leading "/" contributed one skipped empty split
+  // segment) and stayed contained; that was safe but surprising — an author writing a leading slash
+  // almost certainly means "from some root", so silently reinterpreting it resolves to a path they
+  // never asked for. A security boundary should not quietly reinterpret its input, so this now
+  // refuses instead of resolving. (Superseded assertion: this pointer used to resolve to
+  // "campaigns/c/workflows/w/sibling" — that contract is deliberately no longer true.)
+  it("refuses an absolute-looking pointer even with no climb in it", () => {
+    expect(resolveWithin("campaigns/c/workflows/w", "/sibling")).toBeNull();
+  });
+
+  // A climb that lands EXACTLY on "campaigns" (no subpath under it) must still be refused — the
+  // containment check requires the "campaigns/" PREFIX, and the bare string "campaigns" does not
+  // have one.
+  it("refuses a climb that lands exactly on the campaigns root with no subpath", () => {
+    expect(resolveWithin("campaigns/c", "..")).toBeNull();
+  });
+
+  // A sibling directory that merely starts with "campaigns" — e.g. "campaigns-evil" — must not
+  // satisfy the "campaigns/" prefix check. `String.startsWith` on "campaigns-evil/x" against
+  // "campaigns/" is false only because the check includes the trailing slash; pin that here so it
+  // can never be "simplified" into a bare startsWith("campaigns") again.
+  it("refuses a sibling of campaigns/ whose name merely starts with campaigns", () => {
+    expect(resolveWithin("campaigns/c", "../../campaigns-evil/x")).toBeNull();
   });
 });
 

@@ -337,6 +337,16 @@ describe("workflow pointer validation", () => {
     );
   });
 
+  // An absolute `uses` is refused outright, even with no ".." in it — see the note on
+  // resolveWithin in board-model.ts. Superseded contract: this used to resolve (harmlessly, folded
+  // under the pointer's own folder) rather than refuse; that silent reinterpretation is exactly what
+  // this hardening removes.
+  it("refuses an absolute pointer with no climb in it at all", () => {
+    expect(findingsForPointer({ uses: "/workflows/implementation" })).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("outside the board") }),
+    );
+  });
+
   it("flags a pointer file with no `uses` string", () => {
     expect(findingsForPointer({})).toContainEqual(
       expect.objectContaining({ message: expect.stringContaining("no `uses` string") }),

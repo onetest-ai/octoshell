@@ -217,9 +217,12 @@ function readPointer(path) {
  * Resolve `rel` against `from`, both relative to the board root, refusing anything that climbs out
  * of it. A pointer is a link the board follows on every read; it must not be able to leave the
  * tree, so this is a containment check and not merely a tidy-up.
- * Mirrors packages/board/src/board-model.ts `resolveWithin` — keep the two in step.
+ *
+ * A leading `/` is refused outright rather than folded under `from` — see the identical note on
+ * packages/board/src/board-model.ts `resolveWithin`, which this mirrors — keep the two in step.
  */
 function resolveWithin(from, rel) {
+  if (rel.startsWith("/")) return null;
   const stack = [];
   for (const part of `${from}/${rel}`.split("/")) {
     if (part === "" || part === ".") continue;
