@@ -88,4 +88,60 @@ await agent(p, { phase: 'Build', label: 'set status active', agentType: 'project
       kind: "command",
     });
   });
+
+  it("chains sequential calls within a phase", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+await agent(p, { phase: 'Build', label: 'a', agentType: 'x' })
+await agent(p, { phase: 'Build', label: 'b', agentType: 'x' })
+`;
+    const steps = extractPhases(src).phases[0]?.steps ?? [];
+    expect(steps[0]?.dependsOn).toBeUndefined();
+    expect(steps[1]?.dependsOn).toEqual(["build-1"]);
+  });
+
+  it("gives parallel() members one group, all hanging off what preceded the block", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Review')
+await agent(p, { phase: 'Review', label: 'build', agentType: 'dev' })
+const r = await parallel([
+  () => agent(p, { phase: 'Review', label: 'correctness', agentType: 'tech-lead' }),
+  () => agent(p, { phase: 'Review', label: 'security', agentType: 'tech-lead' }),
+])
+await agent(p, { phase: 'Review', label: 'verify', agentType: 'qa' })
+`;
+    const steps = extractPhases(src).phases[0]?.steps ?? [];
+    expect(steps[1]?.parallel).toBe("g1");
+    expect(steps[2]?.parallel).toBe("g1");
+    expect(steps[1]?.dependsOn).toEqual(["review-1"]);
+    expect(steps[2]?.dependsOn).toEqual(["review-1"]);
+    expect(steps[3]?.dependsOn).toEqual(["review-2", "review-3"]);
+  });
+
+  it("marks a call inside a loop as repeating, and does not multiply it", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+for (const t of tasks) {
+  await agent(p, { phase: 'Build', label: 'build ' + t.id, agentType: 'ios-dev' })
+}
+`;
+    const steps = extractPhases(src).phases[0]?.steps ?? [];
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.repeat).toBe(true);
+  });
+
+  it("chains pipeline() stages rather than fanning them out", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Verify')
+await pipeline(items,
+  (i) => agent(p, { phase: 'Verify', label: 'review', agentType: 'tech-lead' }),
+  (r) => agent(p, { phase: 'Verify', label: 'confirm', agentType: 'qa' }),
+)
+`;
+    const steps = extractPhases(src).phases[0]?.steps ?? [];
+    expect(steps[0]?.parallel).toBeUndefined();
+    expect(steps[0]?.repeat).toBe(true);
+    expect(steps[1]?.dependsOn).toEqual(["verify-1"]);
+    expect(steps[1]?.repeat).toBe(true);
+  });
 });

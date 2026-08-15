@@ -98,6 +98,21 @@ export function extractPhases(source: string): Extraction {
   });
   calls.sort((a, b) => a.start - b.start);
 
+  // Ranges that change how a call is drawn. `parallel` is a real fan-out; `pipeline` is not —
+  // its stages run in order per item, so they chain and repeat instead.
+  const groups: { start: number; end: number; id: string }[] = [];
+  const pipelines: { start: number; end: number }[] = [];
+  let groupN = 0;
+  for (const call of calls) {
+    if (call.name === "parallel") groups.push({ start: call.start, end: call.end, id: `g${++groupN}` });
+    if (call.name === "pipeline") pipelines.push({ start: call.start, end: call.end });
+  }
+  const contains = (r: { start: number; end: number }, at: number): boolean => r.start <= at && at < r.end;
+  const groupOf = (at: number): string | undefined =>
+    groups.filter((g) => contains(g, at)).sort((a, b) => b.start - a.start)[0]?.id;
+  const repeats = (at: number): boolean =>
+    loops.some((l) => contains(l, at)) || pipelines.some((p) => contains(p, at));
+
   const titles: string[] = [];
   const addTitle = (t: string): void => {
     if (!titles.includes(t)) titles.push(t);
@@ -120,6 +135,11 @@ export function extractPhases(source: string): Extraction {
   const byTitle = new Map(phases.map((p) => [p.title, p]));
   const unclassified: { line: number; callee: string }[] = [];
 
+  // Ordering state, keyed by phase title (dependsOn chains) or by group id (parallel members).
+  const anchorsByPhase = new Map<string, string[]>();
+  const groupAnchors = new Map<string, string[]>();
+  const openGroups = new Map<string, string[]>();
+
   for (const call of calls) {
     if (call.name !== "agent" && call.name !== "workflow") continue;
 
@@ -132,16 +152,32 @@ export function extractPhases(source: string): Extraction {
     const label = call.name === "workflow" ? workflowLabel(call) : renderLabel(option.get("label"));
     const agent = literalString(option.get("agentType"));
     const kind = call.name === "workflow" ? "workflow" : literalString(option.get("kind"));
+    const group = groupOf(call.start);
+    const repeat = repeats(call.start);
     const backend = literalString(option.get("backend"));
 
     // Assigned in WorkflowStep's canonical key order — id, label, agent, kind, repeat, parallel,
     // backend, dependsOn (see coerceStep in workflow-meta.ts) — so serializeMeta's
-    // JSON.stringify writes a stable field order. `repeat` and `parallel` are not derived yet;
-    // a later task slots them in between `kind` and `backend` below.
+    // JSON.stringify writes a stable field order.
     const step: WorkflowStep = { id, label };
     if (agent) step.agent = agent;
     if (kind === "workflow" || kind === "command") step.kind = kind;
+    if (repeat) step.repeat = true;
+    if (group) step.parallel = group;
     if (backend) step.backend = backend;
+
+    const anchors = anchorsByPhase.get(title) ?? [];
+    if (group) {
+      // Every member of a group hangs off whatever preceded the block, not off each other.
+      const snapshot = groupAnchors.get(group) ?? anchors;
+      groupAnchors.set(group, snapshot);
+      if (snapshot.length) step.dependsOn = [...snapshot];
+      openGroups.set(group, [...(openGroups.get(group) ?? []), step.id]);
+      anchorsByPhase.set(title, openGroups.get(group) ?? []);
+    } else {
+      if (anchors.length) step.dependsOn = [...anchors];
+      anchorsByPhase.set(title, [step.id]);
+    }
 
     if (step.label === "…") unclassified.push({ line: call.line, callee: call.name });
     phase.steps.push(step);
