@@ -43,8 +43,21 @@ for (const scriptPath of scripts) {
     process.exit(2);
   }
 
-  const existing = parseWorkflowMeta(source);
-  const { phases, unclassified } = extractPhases(source);
+  let existing;
+  try {
+    existing = parseWorkflowMeta(source);
+  } catch (err) {
+    console.error(`sync-meta: ${scriptPath}: ${err.message} — refusing to rewrite the script`);
+    process.exit(2);
+  }
+
+  let phases, unclassified;
+  try {
+    ({ phases, unclassified } = extractPhases(source));
+  } catch (err) {
+    console.error(`sync-meta: ${scriptPath}: body does not parse — ${err.message}`);
+    process.exit(2);
+  }
   const next = serializeMeta({ name: existing.name, description: existing.description, phases });
   const updated = source.slice(0, span.start) + next + source.slice(span.end);
 

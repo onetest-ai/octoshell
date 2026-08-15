@@ -439,4 +439,76 @@ describe("workflow script guards", () => {
     expect(line.at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
+  // sync-meta.js rewrites source files in bulk (--all can touch every workflow under a board), so
+  // its refusals matter as much as add-run.js's — a silent write on a file it could not fully read
+  // is how a bad rewrite reaches disk.
+  it("sync-meta.js refuses when invoked with no arguments", () => {
+    const { status, stderr } = runFailing("sync-meta.js", [], projectDir);
+    expect(status).toBe(2);
+    expect(stderr).toContain("usage: sync-meta.js");
+  });
+
+  it("sync-meta.js refuses a workflow directory that does not exist, and writes nothing", () => {
+    const missing = join(boardRoot, "campaigns", "nope");
+    const { status, stderr } = runFailing("sync-meta.js", [missing], projectDir);
+    expect(status).toBe(2);
+    expect(stderr).toContain("no workflow.js at");
+    expect(existsSync(missing)).toBe(false);
+  });
+
+  it("sync-meta.js refuses a workflow.js with no `export const meta` literal, leaving it untouched", () => {
+    const dir = workflowDir();
+    const jsPath = join(dir, "workflow.js");
+    writeFileSync(jsPath, "// no meta here\nexport default 1;\n", "utf8");
+    const before = readFileSync(jsPath, "utf8");
+
+    const { status, stderr } = runFailing("sync-meta.js", [dir], projectDir);
+    expect(status).toBe(2);
+    expect(stderr).toContain("no `export const meta` literal");
+    expect(readFileSync(jsPath, "utf8")).toBe(before);
+  });
+
+  it("sync-meta.js refuses a meta that is not a pure object literal, leaving the file untouched", () => {
+    const dir = workflowDir();
+    const jsPath = join(dir, "workflow.js");
+    writeFileSync(jsPath, "export const meta = { name: someVar }\nphase('Run')\n", "utf8");
+    const before = readFileSync(jsPath, "utf8");
+
+    const { status, stderr } = runFailing("sync-meta.js", [dir], projectDir);
+    expect(status).toBe(2);
+    expect(stderr).toContain("refusing to rewrite the script");
+    expect(readFileSync(jsPath, "utf8")).toBe(before);
+  });
+
+  it("sync-meta.js refuses a body that fails to parse, leaving the file untouched", () => {
+    const dir = workflowDir();
+    const jsPath = join(dir, "workflow.js");
+    writeFileSync(jsPath, 'export const meta = { name: "ship", description: "", phases: [] }\nphase(\'Run\'\n', "utf8");
+    const before = readFileSync(jsPath, "utf8");
+
+    const { status, stderr } = runFailing("sync-meta.js", [dir], projectDir);
+    expect(status).toBe(2);
+    expect(stderr).toContain("body does not parse");
+    expect(readFileSync(jsPath, "utf8")).toBe(before);
+  });
+
+  it("sync-meta.js --all updates every workflow it finds under .octobots/campaigns", () => {
+    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+    const slug = c.folderPath.split("/").pop()!;
+    runScript("add-workflow.js", ["--campaign", slug, "--name", "ship"], projectDir);
+    runScript("add-workflow.js", ["--campaign", slug, "--name", "gate"], projectDir);
+    const shipPath = join(boardRoot, c.folderPath, "workflows", "ship", "workflow.js");
+    const gatePath = join(boardRoot, c.folderPath, "workflows", "gate", "workflow.js");
+    // Drift both from what their (unchanged) bodies actually produce, so --all has real work to do.
+    writeFileSync(shipPath, readFileSync(shipPath, "utf8").replace('title: "Run"', 'title: "Old"'), "utf8");
+    writeFileSync(gatePath, readFileSync(gatePath, "utf8").replace('title: "Run"', 'title: "Old"'), "utf8");
+
+    const out = runScript("sync-meta.js", ["--all"], projectDir);
+
+    expect(out).toContain("2 of 2 workflow(s) updated");
+    expect(readFileSync(shipPath, "utf8")).not.toContain('"Old"');
+    expect(readFileSync(gatePath, "utf8")).not.toContain('"Old"');
+    expect(readFileSync(shipPath, "utf8")).toContain('title: "Run"');
+    expect(readFileSync(gatePath, "utf8")).toContain('title: "Run"');
+  });
 });

@@ -426,6 +426,46 @@ describe("workflow scripts", () => {
     ]);
   });
 
+  // What sync-meta.js writes must be exactly what BoardModel can read back — the whole feature is
+  // that meta is generated from the body, so a step with agent/parallel/dependsOn fields set by the
+  // extractor has to round-trip through the real parser, not just look right as a string.
+  it("sync-meta.js writes a body-driven meta the BoardModel parses cleanly (agent/parallel/dependsOn)", () => {
+    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+    const cs = slugOf(c.folderPath);
+    runScript("add-workflow.js", ["--campaign", cs, "--name", "ship"], projectDir);
+    const wfDir = join(boardRoot, "campaigns", cs, "workflows", "ship");
+    const jsPath = join(wfDir, "workflow.js");
+    writeFileSync(
+      jsPath,
+      [
+        'export const meta = { name: "ship", description: "", phases: [{ title: "Build", steps: [] }] }',
+        "",
+        "phase('Build')",
+        "await agent(p, { phase: 'Build', label: 'first', agentType: 'js-dev' })",
+        "await agent(p, { phase: 'Build', label: 'second', agentType: 'js-dev' })",
+        "await parallel([",
+        "  () => agent(p, { phase: 'Build', label: 'third', agentType: 'qa-engineer' }),",
+        "])",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    runScript("sync-meta.js", [wfDir], projectDir);
+
+    const board = new BoardModel(boardRoot);
+    board.rebuild();
+    const [wf] = board.listWorkflows({ campaignId: c.id });
+    expect(wf!.parseError).toBeNull();
+    const build = wf!.phases.find((p) => p.title === "Build")!;
+    expect(build.steps.map((s) => s.id)).toEqual(["build-1", "build-2", "build-3"]);
+    expect(build.steps[0]!.agent).toBe("js-dev");
+    expect(build.steps[1]!.dependsOn).toEqual(["build-1"]);
+    expect(build.steps[2]!.agent).toBe("qa-engineer");
+    expect(build.steps[2]!.parallel).toBeTruthy();
+    expect(build.steps[2]!.dependsOn).toEqual(["build-2"]);
+  });
+
   it("add-run.js drives lastRunStatus", () => {
     const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
     const cs = slugOf(c.folderPath);
