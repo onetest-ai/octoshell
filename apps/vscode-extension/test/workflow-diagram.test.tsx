@@ -101,9 +101,15 @@ describe("WorkflowDiagram", () => {
     expect(screen.getByText(`${long} — python-dev`)).toBeTruthy();
   });
 
-  it("says default subagent when the step names no agent", () => {
+  // CHANGED (fix round 2, 2026-08-15 workflow-generated-meta plan, task 14): this used to assert
+  // "default subagent" rendered. Since validate now blocks a genuinely absent agentType, a step
+  // reaching a shipped board with no `agent` can only mean a COMPUTED agentType (dispatches for
+  // real; the extractor just cannot read it) — "default subagent" was a false statement on the
+  // diagram itself. The node still renders (label intact); it simply carries no subtitle line.
+  it("renders no subtitle line when the step names no agent, rather than the old false 'default subagent' claim", () => {
     render(<WorkflowDiagram phases={[{ title: "Build", steps: [{ id: "b1", label: "build" }] }]} />);
-    expect(screen.getByText("default subagent")).toBeTruthy();
+    expect(screen.getByText("build")).toBeTruthy();
+    expect(screen.queryByText("default subagent")).toBeNull();
   });
 
   it("badges a repeating step", () => {
@@ -129,9 +135,17 @@ describe("fitLabel", () => {
 });
 
 describe("subtitleFor", () => {
-  it("names the kind on the subtitle line", () => {
+  // CHANGED (fix round 2, 2026-08-15 workflow-generated-meta plan, task 14): the third assertion
+  // used to expect the literal string "default subagent" for an agent-less node. That was a false
+  // claim once a step with no `agent` in a validated board can only mean a computed `agentType`
+  // (real dispatch, unreadable by the extractor) — so `subtitleFor` now omits the line instead.
+  it("names the kind on the subtitle line when there is one to name", () => {
     expect(subtitleFor({ kind: "workflow", agent: null })).toBe("workflow");
     expect(subtitleFor({ kind: "command", agent: "project-manager" })).toBe("project-manager · command");
-    expect(subtitleFor({ kind: "agent", agent: null })).toBe("default subagent");
+  });
+
+  it("omits the subtitle for an agent-less node, but still names a workflow-kind node", () => {
+    expect(subtitleFor({ kind: "agent", agent: null })).toBeUndefined();
+    expect(subtitleFor({ kind: "workflow", agent: null })).toBe("workflow");
   });
 });

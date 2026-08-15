@@ -12,7 +12,11 @@ import type { WorkflowPhase } from "@octoshell/board";
 export interface DiagramNode {
   id: string;
   label: string;
-  /** null when the step named no agentType — it runs as the default subagent. */
+  /**
+   * null when the step's `agentType` is either absent or a computed expression the extractor
+   * could not read as a literal — see `subtitleFor`'s doc comment for why those two cases cannot
+   * be told apart here, and why that is fine.
+   */
   agent: string | null;
   kind: "agent" | "workflow" | "command";
   repeat: boolean;
@@ -105,13 +109,22 @@ export function layoutWorkflow(phases: WorkflowPhase[]): DiagramLayout {
 }
 
 /**
- * The second line of a node. An agent node names the agent that will run it — or says plainly that
- * it named none, which is the failure mode this whole change exists to make visible.
+ * The second line of a node: the agent that will run it, "workflow" for a composed sub-workflow,
+ * or nothing at all when the step names no `agent`.
+ *
+ * That last case used to render "default subagent" — but since `validate` (packages/board) blocks
+ * a board whose `agentType` is genuinely absent, a null `agent` reaching a shipped, validated board
+ * can only mean the call named an `agentType` the extractor could not read (a computed expression
+ * like `agentType: task.role`), which dispatches for real at run time. "Default subagent" was a
+ * false statement about that step on the one surface a reviewer actually reads before a run is
+ * kicked off — the same false-positive class fixed in `validate` one round earlier, just visible
+ * here instead of in a CLI message. Silence is the honest reading: undefined, not a placeholder
+ * string, so the caller renders no subtitle line rather than an empty one.
  */
-export function subtitleFor(node: Pick<DiagramNode, "kind" | "agent">): string {
+export function subtitleFor(node: Pick<DiagramNode, "kind" | "agent">): string | undefined {
   if (node.kind === "workflow") return "workflow";
-  const agent = node.agent ?? "default subagent";
-  return node.kind === "command" ? `${agent} · command` : agent;
+  if (!node.agent) return undefined;
+  return node.kind === "command" ? `${node.agent} · command` : node.agent;
 }
 
 export function WorkflowDiagram({ phases }: { phases: WorkflowPhase[] }): JSX.Element {
@@ -166,38 +179,43 @@ export function WorkflowDiagram({ phases }: { phases: WorkflowPhase[] }): JSX.El
           </text>
         ))}
 
-        {layout.nodes.map((n) => (
-          <g key={n.id}>
-            <title>{`${n.label} — ${n.agent ?? "default subagent"}${n.repeat ? " (repeats per item)" : ""}`}</title>
-            <rect
-              x={n.x}
-              y={n.y}
-              width={n.w}
-              height={n.h}
-              rx={4}
-              fill="var(--vscode-editorWidget-background)"
-              stroke="var(--vscode-widget-border, var(--vscode-editorWidget-border))"
-              strokeDasharray={n.kind === "workflow" ? "4 3" : undefined}
-            />
-            <text x={n.x + TEXT_PAD} y={n.y + 21} fontSize={12} fill="var(--vscode-foreground)">
-              {fitLabel(n.label)}
-            </text>
-            <text x={n.x + TEXT_PAD} y={n.y + 39} fontSize={11} fill="var(--vscode-descriptionForeground)">
-              {fitLabel(subtitleFor(n), NODE_W, 6)}
-            </text>
-            {n.repeat && (
-              <text
-                x={n.x + n.w - TEXT_PAD}
-                y={n.y + 39}
-                fontSize={10}
-                textAnchor="end"
-                fill="var(--vscode-descriptionForeground)"
-              >
-                ×N
+        {layout.nodes.map((n) => {
+          const subtitle = subtitleFor(n);
+          return (
+            <g key={n.id}>
+              <title>{`${n.label} — ${n.agent ?? "default subagent"}${n.repeat ? " (repeats per item)" : ""}`}</title>
+              <rect
+                x={n.x}
+                y={n.y}
+                width={n.w}
+                height={n.h}
+                rx={4}
+                fill="var(--vscode-editorWidget-background)"
+                stroke="var(--vscode-widget-border, var(--vscode-editorWidget-border))"
+                strokeDasharray={n.kind === "workflow" ? "4 3" : undefined}
+              />
+              <text x={n.x + TEXT_PAD} y={n.y + 21} fontSize={12} fill="var(--vscode-foreground)">
+                {fitLabel(n.label)}
               </text>
-            )}
-          </g>
-        ))}
+              {subtitle !== undefined && (
+                <text x={n.x + TEXT_PAD} y={n.y + 39} fontSize={11} fill="var(--vscode-descriptionForeground)">
+                  {fitLabel(subtitle, NODE_W, 6)}
+                </text>
+              )}
+              {n.repeat && (
+                <text
+                  x={n.x + n.w - TEXT_PAD}
+                  y={n.y + 39}
+                  fontSize={10}
+                  textAnchor="end"
+                  fill="var(--vscode-descriptionForeground)"
+                >
+                  ×N
+                </text>
+              )}
+            </g>
+          );
+        })}
       </svg>
     </div>
   );
