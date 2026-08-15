@@ -268,6 +268,32 @@ describe("resolveWithin", () => {
   it("refuses a sibling of campaigns/ whose name merely starts with campaigns", () => {
     expect(resolveWithin("campaigns/c", "../../campaigns-evil/x")).toBeNull();
   });
+
+  // This function only ever splits on "/", so a backslash is just an odd literal character to it —
+  // on POSIX, "..\..\etc" looks like one harmless, contained segment. But the fs/path calls
+  // downstream (board-model.ts's own join(root, resolved, ...), and every existsSync in validate)
+  // go through Node, which on Windows treats "\" as a real separator: a value blessed as
+  // "contained" here would be re-interpreted by the OS as a genuine climb out of the board. A
+  // pointer is a repo-relative, POSIX-style path, so any backslash is refused outright.
+  describe("backslash refusal (Windows path separators)", () => {
+    it("refuses a leading-backslash pointer", () => {
+      expect(resolveWithin("campaigns/c/workflows/w", "\\..\\..\\etc")).toBeNull();
+    });
+
+    it("refuses a pointer mixing forward and backward slashes", () => {
+      expect(resolveWithin("campaigns/c/workflows/w", "../..\\..\\etc")).toBeNull();
+    });
+
+    it("refuses a plain backslash-separated relative pointer with no climb at all", () => {
+      expect(resolveWithin("campaigns/c/workflows/w", "foo\\bar")).toBeNull();
+    });
+  });
+
+  it("runs both the leading-/ and the backslash guard before any other processing — neither can be reached around by a value combining both", () => {
+    // "/\..\..\..\..\..\..\etc" starts with "/" AND contains "\": either guard alone refuses it,
+    // and nothing between the two guards and the return could let one bypass the other.
+    expect(resolveWithin("campaigns/c/missions/m1/workflows/implementation", "/\\..\\..\\..\\..\\..\\..\\etc")).toBeNull();
+  });
 });
 
 describe("readPointer", () => {

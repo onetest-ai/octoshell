@@ -347,6 +347,14 @@ describe("workflow pointer validation", () => {
     );
   });
 
+  // A backslash gets a dedicated, actionable message naming the mistake — the author wrote a
+  // Windows-style separator, not a climb, so "resolves outside the board" would be misleading.
+  it("refuses a pointer containing a backslash, with a message naming it", () => {
+    expect(findingsForPointer({ uses: "..\\..\\..\\..\\workflows\\implementation" })).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("backslash") }),
+    );
+  });
+
   it("flags a pointer file with no `uses` string", () => {
     expect(findingsForPointer({})).toContainEqual(
       expect.objectContaining({ message: expect.stringContaining("no `uses` string") }),

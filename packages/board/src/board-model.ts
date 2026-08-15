@@ -706,9 +706,18 @@ export function readPointer(path: string): string | null {
  * absolute-looking `uses` almost certainly means "from some root", and silently reinterpreting it
  * as same-folder-relative would resolve to a path they never asked for. A security boundary should
  * not quietly reinterpret its input.
+ *
+ * A `\` anywhere in `rel` is refused outright too, and checked before anything else runs: this
+ * function only ever splits on `/`, so on POSIX a backslash is just an odd literal character and
+ * `..\..\..\etc` looks like one harmless, contained segment. But `board-model.ts`'s own later
+ * `join(root, resolved, ...)` and every `existsSync` downstream go through Node's `fs`/`path`,
+ * which on Windows treats `\` as a real separator — so a value this function blessed as "contained"
+ * would be re-interpreted by the OS as a genuine climb out of the board. A pointer is a
+ * repo-relative, POSIX-style path; a backslash has no legitimate meaning in one, so rejecting it
+ * outright is simpler and safer than trying to normalise separators and re-analyse.
  */
 export function resolveWithin(from: string, rel: string): string | null {
-  if (rel.startsWith("/")) return null;
+  if (rel.startsWith("/") || rel.includes("\\")) return null;
   const stack: string[] = [];
   for (const part of `${from}/${rel}`.split("/")) {
     if (part === "" || part === ".") continue;

@@ -299,14 +299,22 @@ function validateWorkflowsUnder(entityDir: string, findings: BoardFinding[], roo
       if (!existsSync(pointerPath)) continue; // neither workflow.js nor a pointer → not a workflow folder
       count++;
       const uses = readPointer(pointerPath);
-      const from = relative(root, join(dir, slug)).split(sep).join("/");
-      const target = uses === null ? null : resolveWithin(from, uses);
       if (uses === null) {
         findings.push(workflowFinding(pointerPath, "workflow.json has no `uses` string"));
-      } else if (target === null) {
-        findings.push(workflowFinding(pointerPath, `pointer "${uses}" resolves outside the board`));
-      } else if (!existsSync(join(root, target, "workflow.js"))) {
-        findings.push(workflowFinding(pointerPath, `pointer "${uses}" names a folder with no workflow.js`));
+      } else if (uses.includes("\\")) {
+        // Named ahead of the generic "resolves outside the board" finding: the author's mistake
+        // here is a stray backslash, not a climb, and Windows would treat it as a real separator.
+        findings.push(
+          workflowFinding(pointerPath, `pointer "${uses}" contains a backslash — pointers are POSIX-style paths (forward slashes only)`),
+        );
+      } else {
+        const from = relative(root, join(dir, slug)).split(sep).join("/");
+        const target = resolveWithin(from, uses);
+        if (target === null) {
+          findings.push(workflowFinding(pointerPath, `pointer "${uses}" resolves outside the board`));
+        } else if (!existsSync(join(root, target, "workflow.js"))) {
+          findings.push(workflowFinding(pointerPath, `pointer "${uses}" names a folder with no workflow.js`));
+        }
       }
       continue;
     }

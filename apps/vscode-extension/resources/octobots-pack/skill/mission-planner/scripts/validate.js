@@ -134,6 +134,11 @@ function validateWorkflowDir(dir) {
     if (!existsSync(pointerPath)) return ["workflow.js is missing"];
     const uses = readPointer(pointerPath);
     if (uses === null) return ["workflow.json has no `uses` string"];
+    if (uses.includes("\\")) {
+      // Named ahead of the generic "resolves outside the board" finding: the author's mistake here
+      // is a stray backslash, not a climb, and Windows would treat it as a real separator.
+      return [`pointer "${uses}" contains a backslash — pointers are POSIX-style paths (forward slashes only)`];
+    }
     const from = boardRelative(dir);
     const target = from === null ? null : resolveWithin(from, uses);
     if (target === null) return [`pointer "${uses}" resolves outside the board`];
@@ -218,11 +223,14 @@ function readPointer(path) {
  * of it. A pointer is a link the board follows on every read; it must not be able to leave the
  * tree, so this is a containment check and not merely a tidy-up.
  *
- * A leading `/` is refused outright rather than folded under `from` — see the identical note on
- * packages/board/src/board-model.ts `resolveWithin`, which this mirrors — keep the two in step.
+ * A leading `/` is refused outright rather than folded under `from`, and a `\` anywhere in `rel`
+ * is refused outright too (this function only splits on `/`, so on Windows the fs/path layer
+ * downstream would treat a blessed-as-contained `\` value as a real separator and a genuine climb)
+ * — see the identical notes on packages/board/src/board-model.ts `resolveWithin`, which this
+ * mirrors — keep the two in step.
  */
 function resolveWithin(from, rel) {
-  if (rel.startsWith("/")) return null;
+  if (rel.startsWith("/") || rel.includes("\\")) return null;
   const stack = [];
   for (const part of `${from}/${rel}`.split("/")) {
     if (part === "" || part === ".") continue;
