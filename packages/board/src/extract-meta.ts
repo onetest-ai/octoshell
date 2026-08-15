@@ -7,6 +7,15 @@
  *
  * The script is parsed, never executed. Top-level `return`/`await` are legal in the Workflow
  * dialect because the runtime wraps the body in an async function, so acorn is told to allow them.
+ *
+ * Known limitation: a call is attributed to its LEXICAL position, not to where it is actually
+ * invoked at runtime. `parallel([...])` written directly inside a loop body is drawn correctly —
+ * its range sits inside the loop's range. But a helper defined ABOVE a loop and only called from
+ * inside it — `const round = () => parallel([...]); for (...) { await agent(...); await round() }`
+ * — is attributed to its definition site, ahead of the loop: it is not marked `repeat`, and it
+ * sorts ahead of steps that in reality run before it every iteration, so `dependsOn` comes out
+ * backwards. Fixing this would need control flow through function calls, which this extractor,
+ * being purely lexical, does not do.
  */
 
 import { parse } from "acorn";

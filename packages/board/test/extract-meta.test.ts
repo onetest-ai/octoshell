@@ -144,4 +144,73 @@ await pipeline(items,
     expect(steps[1]?.dependsOn).toEqual(["verify-1"]);
     expect(steps[1]?.repeat).toBe(true);
   });
+
+  // `serializeMeta` writes each step with `JSON.stringify(step)`, so the order fields are
+  // ASSIGNED onto the step object becomes the order they land in the file — and `coerceStep` in
+  // workflow-meta.ts reads a step back assuming exactly that order: id, label, agent, kind,
+  // repeat, parallel, backend, dependsOn. `toEqual` above ignores key order, so nothing catches a
+  // future edit that reorders the assignments; this test exists purely to pin that order.
+  it("writes a step's keys in the canonical order id, label, agent, kind, repeat, parallel, backend, dependsOn", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+await agent(p, { phase: 'Build', label: 'first', agentType: 'x' })
+for (const t of tasks) {
+  await parallel([
+    () => agent(p, { phase: 'Build', label: 'a', agentType: 'y', kind: 'command', backend: 'codex' }),
+  ])
+}
+`;
+    const steps = extractPhases(src).phases[0]?.steps ?? [];
+    const step = steps[1];
+    expect(step).toEqual({
+      id: "build-2",
+      label: "a",
+      agent: "y",
+      kind: "command",
+      repeat: true,
+      parallel: "g1",
+      backend: "codex",
+      dependsOn: ["build-1"],
+    });
+    expect(Object.keys(step ?? {})).toEqual([
+      "id",
+      "label",
+      "agent",
+      "kind",
+      "repeat",
+      "parallel",
+      "backend",
+      "dependsOn",
+    ]);
+  });
+
+  // KNOWN LIMITATION, pinned rather than endorsed: the extractor attributes a call to its lexical
+  // position, not to where it actually runs. A `parallel([...])` helper defined ABOVE a loop and
+  // only invoked from inside it (`round()` below — an untracked call name) is attributed to its
+  // definition site, ahead of the loop. So "review" — which in reality runs once per iteration,
+  // after "build" — is not marked `repeat`, is numbered ahead of "build", and "build" ends up with
+  // a `dependsOn` on it: backwards from the real per-iteration order (build, then round()). A
+  // future fix for this must turn this test red before it can turn it green differently.
+  it("[known limitation] attributes a parallel() helper hoisted above a loop to its definition site, backwards from runtime order", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build')
+const round = () => parallel([
+  () => agent(p, { phase: 'Build', label: 'review', agentType: 'tech-lead' }),
+])
+for (const t of tasks) {
+  await agent(p, { phase: 'Build', label: 'build ' + t.id, agentType: 'ios-dev' })
+  await round()
+}
+`;
+    const steps = extractPhases(src).phases[0]?.steps ?? [];
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toEqual({ id: "build-1", label: "review", agent: "tech-lead", parallel: "g1" });
+    expect(steps[1]).toEqual({
+      id: "build-2",
+      label: "build …",
+      agent: "ios-dev",
+      repeat: true,
+      dependsOn: ["build-1"],
+    });
+  });
 });
