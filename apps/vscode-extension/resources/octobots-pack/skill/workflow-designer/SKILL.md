@@ -144,7 +144,8 @@ const built = await agent(buildPrompt(t), { phase: 'Build', label: 'build ' + t.
 The extractor reads control flow, so the picture matches the run: calls inside `parallel([…])` draw
 as one fan-out, calls inside a loop or a `pipeline()` draw once with a `×N` badge, and everything
 else chains in the order you wrote it. A call with no `agentType` draws as *default subagent* —
-which is what it is.
+which is what it is. Give every member of one `parallel([…])` the **same `{ phase }`**: each call's
+phase is resolved on its own, so mixed values split one fan-out across two bands.
 
 A step is not necessarily an agent: `kind` is `agent` by default, `workflow` for a `workflow()` call,
 and `command` when you mark one. Everything else on a step — `id`, `repeat`, `parallel`, `dependsOn`
@@ -363,7 +364,11 @@ writes the board). Run them from the repo root.
    It checks that `workflow.js` is present, that `meta` is locatable and a pure literal, that the
    **body parses**, that `meta` is **up to date with the body**, and that every `agent()` call names
    an **`agentType`** — the one that silently runs your whole workflow on the default subagent when
-   it is missing. Validating a `campaign.yaml` or `mission.yaml` also checks every workflow beneath it.
+   it is missing. It also checks that **`meta.name` equals the folder slug**, which is the one part
+   of `meta` that can still drift: `name` is authored once by `add-workflow.js` and `sync-meta.js`
+   deliberately *preserves* it rather than regenerating it, so renaming the folder leaves the two
+   disagreeing and no amount of re-running `sync-meta.js` will fix it — edit the `name` to match.
+   Validating a `campaign.yaml` or `mission.yaml` also checks every workflow beneath it.
 
 Do **not** write `runs.jsonl` by hand — `mission-execution` appends entries with `add-run.js` after a
 run. It is a log, not a plan.
