@@ -130,7 +130,10 @@ State which agents you found and which you used. That sentence is what makes the
 
 `workflow.js` is a **Claude Code dynamic-workflow script**. Its `export const meta` block is what the
 board draws — and it is **generated from the body below it**, never hand-written. You write the
-program; `sync-meta.js` writes the picture.
+program; `sync-meta.js` writes the picture. Three fields are yours and survive every regenerate:
+`name`, `description`, and a phase's optional `detail` — the caption Claude Code's own Workflow
+runtime reads. Everything else in `meta` is derived, so editing it by hand only lasts until the next
+`sync-meta.js`.
 
 That means the annotations on your calls are load-bearing. `{ phase }` places a step in a band,
 `{ label }` captions it, and **`{ agentType }` is what both dispatches the agent and names it on the
@@ -143,8 +146,13 @@ const built = await agent(buildPrompt(t), { phase: 'Build', label: 'build ' + t.
 
 The extractor reads control flow, so the picture matches the run: calls inside `parallel([…])` draw
 as one fan-out, calls inside a loop or a `pipeline()` draw once with a `×N` badge, and everything
-else chains in the order you wrote it. A call with no `agentType` draws as *default subagent* —
-which is what it is. Give every member of one `parallel([…])` the **same `{ phase }`**: each call's
+else chains in the order you wrote it. `parallel(tasks.map(…))` gets the badge too — its members are
+computed, so one call site stands for N concurrent runs; only a literal array of thunks draws its
+members as separate nodes. **An `agent()` call with no `agentType` is a validate failure**, not a
+node the diagram labels — it would run as the default subagent with no persona, tools or
+instructions, so it never reaches the picture. A **computed** one (`agentType: task.role`) is fine
+and dispatches for real; the extractor simply cannot read the name, so that node draws with no agent
+shown. Give every member of one `parallel([…])` the **same `{ phase }`**: each call's
 phase is resolved on its own, so mixed values split one fan-out across two bands.
 
 A step is not necessarily an agent: `kind` is `agent` by default, `workflow` for a `workflow()` call,
@@ -261,8 +269,10 @@ node .claude/skills/mission-planner/scripts/mission-input.js M2 [--campaign <slu
 
 That is what lets **one shared pipeline** at campaign level serve every mission, instead of a
 generated copy per mission that drifts. A mission points at it with a
-`workflows/<slug>/workflow.json` holding `{ "uses": "../../../workflows/implementation" }`, and keeps
-its own `runs.jsonl`.
+`workflows/<slug>/workflow.json` holding `{ "uses": "../../../../workflows/implementation" }`, and keeps
+its own `runs.jsonl`. `uses` is relative to the pointer's OWN folder, which sits four levels under
+the campaign (`missions/<mission>/workflows/<slug>`) — hence four `..`. A pointer that resolves
+outside the board, or onto a folder with no `workflow.js`, is a validate failure.
 
 ## The body is a dynamic program
 
