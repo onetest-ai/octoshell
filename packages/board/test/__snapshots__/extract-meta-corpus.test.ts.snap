@@ -1,0 +1,554 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`extraction over real workflow scripts > benchmark-fixing.js > matches its recorded snapshot 1`] = `
+[
+  {
+    "steps": [
+      {
+        "agent": "run-reporter",
+        "id": "close-1",
+        "label": "write the run report",
+      },
+      {
+        "agent": "project-manager",
+        "dependsOn": [
+          "close-1",
+        ],
+        "id": "close-2",
+        "label": "close the bugs",
+      },
+    ],
+    "title": "Close",
+  },
+  {
+    "steps": [
+      {
+        "agent": "tech-lead",
+        "id": "triage-1",
+        "label": "triage open bugs",
+      },
+    ],
+    "title": "Triage",
+  },
+  {
+    "steps": [
+      {
+        "agent": "ios-dev",
+        "id": "fix-1",
+        "label": "fix …",
+        "repeat": true,
+      },
+    ],
+    "title": "Fix",
+  },
+  {
+    "steps": [
+      {
+        "id": "reverify-1",
+        "label": "re-run the failing cases",
+      },
+      {
+        "agent": "ios-dev",
+        "dependsOn": [
+          "reverify-1",
+        ],
+        "id": "reverify-2",
+        "label": "re-fix …",
+        "repeat": true,
+      },
+      {
+        "dependsOn": [
+          "reverify-2",
+        ],
+        "id": "reverify-3",
+        "label": "re-verify",
+        "repeat": true,
+      },
+    ],
+    "title": "Reverify",
+  },
+]
+`;
+
+exports[`extraction over real workflow scripts > benchmark-implementation.js > matches its recorded snapshot 1`] = `
+[
+  {
+    "steps": [
+      {
+        "agent": "project-manager",
+        "id": "run-1",
+        "label": "… …",
+      },
+      {
+        "agent": "project-manager",
+        "dependsOn": [
+          "run-1",
+        ],
+        "id": "run-2",
+        "label": "tick … criteria",
+      },
+    ],
+    "title": "Run",
+  },
+  {
+    "steps": [
+      {
+        "agent": "run-reporter",
+        "id": "handoff-1",
+        "label": "write the run report",
+      },
+    ],
+    "title": "Handoff",
+  },
+  {
+    "steps": [
+      {
+        "agent": "ios-dev",
+        "id": "build-1",
+        "label": "build …",
+        "repeat": true,
+      },
+      {
+        "agent": "project-manager",
+        "dependsOn": [
+          "build-1",
+        ],
+        "id": "build-2",
+        "label": "tick … criteria",
+        "repeat": true,
+      },
+    ],
+    "title": "Build",
+  },
+  {
+    "steps": [
+      {
+        "agent": "tech-lead",
+        "id": "review-1",
+        "label": "review …:correctness",
+        "parallel": "g1",
+        "repeat": true,
+      },
+      {
+        "agent": "tech-lead",
+        "id": "review-2",
+        "label": "review …:concurrency",
+        "parallel": "g1",
+        "repeat": true,
+      },
+      {
+        "agent": "test-author",
+        "id": "review-3",
+        "label": "review …:cases",
+        "parallel": "g1",
+        "repeat": true,
+      },
+      {
+        "agent": "ios-dev",
+        "dependsOn": [
+          "review-1",
+          "review-2",
+          "review-3",
+        ],
+        "id": "review-4",
+        "label": "fix …",
+        "repeat": true,
+      },
+    ],
+    "title": "Review",
+  },
+  {
+    "steps": [
+      {
+        "agent": "qa-engineer",
+        "id": "verify-1",
+        "label": "verify …",
+      },
+      {
+        "agent": "ios-dev",
+        "dependsOn": [
+          "verify-1",
+        ],
+        "id": "verify-2",
+        "label": "fix …",
+        "repeat": true,
+      },
+      {
+        "agent": "qa-engineer",
+        "dependsOn": [
+          "verify-2",
+        ],
+        "id": "verify-3",
+        "label": "re-verify …",
+        "repeat": true,
+      },
+      {
+        "agent": "project-manager",
+        "dependsOn": [
+          "verify-3",
+        ],
+        "id": "verify-4",
+        "label": "tick … criteria",
+      },
+    ],
+    "title": "Verify",
+  },
+]
+`;
+
+exports[`extraction over real workflow scripts > benchmark-mission-completion-gate.js > matches its recorded snapshot 1`] = `
+[
+  {
+    "steps": [
+      {
+        "agent": "run-reporter",
+        "id": "complete-1",
+        "label": "write the gate report",
+      },
+    ],
+    "title": "Complete",
+  },
+  {
+    "steps": [
+      {
+        "agent": "ios-dev",
+        "id": "tests-coverage-1",
+        "label": "suites + coverage",
+      },
+    ],
+    "title": "Tests+Coverage",
+  },
+  {
+    "steps": [
+      {
+        "agent": "qa-engineer",
+        "id": "qa-1",
+        "label": "black-box vs criteria",
+      },
+    ],
+    "title": "QA",
+  },
+  {
+    "steps": [
+      {
+        "agent": "qa-engineer",
+        "id": "design-1",
+        "label": "look and feel",
+      },
+    ],
+    "title": "Design",
+  },
+  {
+    "steps": [
+      {
+        "agent": "tech-lead",
+        "id": "review-1",
+        "label": "whole-branch review",
+      },
+      {
+        "agent": "qa-engineer",
+        "dependsOn": [
+          "review-1",
+        ],
+        "id": "review-2",
+        "label": "re-verify fixed criteria",
+      },
+    ],
+    "title": "Review",
+  },
+  {
+    "steps": [
+      {
+        "agent": "project-manager",
+        "id": "tokenomics-1",
+        "label": "tick … criteria",
+      },
+      {
+        "agent": "project-manager",
+        "dependsOn": [
+          "tokenomics-1",
+        ],
+        "id": "tokenomics-2",
+        "label": "capture mission cost",
+      },
+    ],
+    "title": "Tokenomics",
+  },
+]
+`;
+
+exports[`extraction over real workflow scripts > benchmark-testing.js > matches its recorded snapshot 1`] = `
+[
+  {
+    "steps": [
+      {
+        "agent": "run-reporter",
+        "id": "analyse-1",
+        "label": "write the run report",
+      },
+      {
+        "agent": "tech-lead",
+        "dependsOn": [
+          "analyse-1",
+        ],
+        "id": "analyse-2",
+        "label": "analyse the results",
+      },
+    ],
+    "title": "Analyse",
+  },
+  {
+    "steps": [
+      {
+        "agent": "test-author",
+        "id": "plan-1",
+        "label": "author … missing case(s)",
+      },
+      {
+        "agent": "test-run-lead",
+        "dependsOn": [
+          "plan-1",
+        ],
+        "id": "plan-2",
+        "label": "plan the run",
+      },
+    ],
+    "title": "Plan",
+  },
+  {
+    "steps": [
+      {
+        "id": "execute-1",
+        "label": "execute the run",
+      },
+    ],
+    "title": "Execute",
+  },
+  {
+    "steps": [
+      {
+        "agent": "qa-engineer",
+        "id": "design-1",
+        "label": "design …",
+        "repeat": true,
+      },
+    ],
+    "title": "Design",
+  },
+  {
+    "steps": [
+      {
+        "agent": "test-reporter",
+        "id": "report-1",
+        "label": "write the run report",
+      },
+    ],
+    "title": "Report",
+  },
+]
+`;
+
+exports[`extraction over real workflow scripts > octoshell-m3-build-and-gate.js > matches its recorded snapshot 1`] = `
+[
+  {
+    "steps": [
+      {
+        "id": "build-1",
+        "label": "… build",
+        "repeat": true,
+      },
+    ],
+    "title": "Build",
+  },
+  {
+    "steps": [
+      {
+        "agent": "tech-lead",
+        "id": "review-1",
+        "label": "… review",
+        "repeat": true,
+      },
+    ],
+    "title": "Review",
+  },
+  {
+    "steps": [
+      {
+        "agent": "qa-engineer",
+        "id": "verify-1",
+        "label": "… verify+land",
+        "repeat": true,
+      },
+    ],
+    "title": "Verify",
+  },
+  {
+    "steps": [],
+    "title": "Gate",
+  },
+]
+`;
+
+exports[`extraction over real workflow scripts > octoshell-m4-build-and-gate.js > matches its recorded snapshot 1`] = `
+[
+  {
+    "steps": [
+      {
+        "id": "build-1",
+        "label": "… build",
+        "repeat": true,
+      },
+    ],
+    "title": "Build",
+  },
+  {
+    "steps": [
+      {
+        "agent": "tech-lead",
+        "id": "review-1",
+        "label": "… review",
+        "repeat": true,
+      },
+    ],
+    "title": "Review",
+  },
+  {
+    "steps": [
+      {
+        "agent": "qa-engineer",
+        "id": "verify-1",
+        "label": "… verify+land",
+        "repeat": true,
+      },
+    ],
+    "title": "Verify",
+  },
+  {
+    "steps": [],
+    "title": "Gate",
+  },
+]
+`;
+
+exports[`extraction over real workflow scripts > octoshell-m5-build-and-gate.js > matches its recorded snapshot 1`] = `
+[
+  {
+    "steps": [
+      {
+        "id": "build-1",
+        "label": "… build",
+        "repeat": true,
+      },
+    ],
+    "title": "Build",
+  },
+  {
+    "steps": [
+      {
+        "agent": "tech-lead",
+        "id": "review-1",
+        "label": "… review",
+        "repeat": true,
+      },
+    ],
+    "title": "Review",
+  },
+  {
+    "steps": [
+      {
+        "agent": "qa-engineer",
+        "id": "verify-1",
+        "label": "… verify+land",
+        "repeat": true,
+      },
+    ],
+    "title": "Verify",
+  },
+  {
+    "steps": [],
+    "title": "Gate",
+  },
+]
+`;
+
+exports[`extraction over real workflow scripts > octoshell-m6-build-and-gate.js > matches its recorded snapshot 1`] = `
+[
+  {
+    "steps": [
+      {
+        "id": "build-1",
+        "label": "… build",
+        "repeat": true,
+      },
+    ],
+    "title": "Build",
+  },
+  {
+    "steps": [
+      {
+        "agent": "tech-lead",
+        "id": "review-1",
+        "label": "… review",
+        "repeat": true,
+      },
+    ],
+    "title": "Review",
+  },
+  {
+    "steps": [
+      {
+        "agent": "qa-engineer",
+        "id": "verify-1",
+        "label": "… verify+land",
+        "repeat": true,
+      },
+    ],
+    "title": "Verify",
+  },
+  {
+    "steps": [],
+    "title": "Gate",
+  },
+]
+`;
+
+exports[`extraction over real workflow scripts > octoshell-m7-build-and-gate.js > matches its recorded snapshot 1`] = `
+[
+  {
+    "steps": [
+      {
+        "id": "build-1",
+        "label": "… build",
+        "repeat": true,
+      },
+    ],
+    "title": "Build",
+  },
+  {
+    "steps": [
+      {
+        "agent": "tech-lead",
+        "id": "review-1",
+        "label": "… review",
+        "repeat": true,
+      },
+    ],
+    "title": "Review",
+  },
+  {
+    "steps": [
+      {
+        "agent": "qa-engineer",
+        "id": "verify-1",
+        "label": "… verify+land",
+        "repeat": true,
+      },
+    ],
+    "title": "Verify",
+  },
+  {
+    "steps": [],
+    "title": "Gate",
+  },
+]
+`;
