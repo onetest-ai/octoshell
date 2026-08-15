@@ -85,7 +85,9 @@ writeFileSync(
     "// Body: use phase() / agent() / parallel() / pipeline() / workflow().",
     "// The board's diagram is GENERATED from this code — after editing, run:",
     "//   node .claude/skills/mission-planner/scripts/sync-meta.js <this folder>",
-    "phase('Run')",
+    // Quoted the same way packages/board's `scaffoldScript` quotes it, so the two scaffolds are
+    // byte-identical — a workflow created in the app and one created here are the same file.
+    `phase(${JSON.stringify(meta.phases[0].title)})`,
     "",
   ].join("\n"),
   "utf8",

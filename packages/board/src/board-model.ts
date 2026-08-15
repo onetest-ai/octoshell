@@ -456,8 +456,8 @@ function parseWorkflows(
     let jsText = safeReadFile(jsPath);
     if (jsText === null) {
       const pointer = readPointer(join(root, folderPath, "workflow.json"));
-      if (pointer === null) continue; // no workflow.js and no usable pointer → not a workflow folder
-      const resolved = resolveWithin(folderPath, pointer);
+      if (!pointer.ok) continue; // no workflow.js and no usable pointer → not a workflow folder
+      const resolved = resolveWithin(folderPath, pointer.uses);
       if (resolved === null) continue; // escapes the board — validate reports it
       usesPath = resolved;
       sourceFolder = resolved;
@@ -684,17 +684,28 @@ function sortEntities<T extends { createdAt: number; folderPath: string }>(entit
   });
 }
 
-/** The `uses` string of a pointer file, or null when absent or malformed. */
-export function readPointer(path: string): string | null {
+/**
+ * A pointer file read: either its `uses` path, or why there isn't one.
+ *
+ * The failures are kept apart because they are different author mistakes: a file that is not JSON
+ * at all was reported as "has no `uses` string", which sends the author looking for a missing key
+ * in a file whose real problem is a syntax error. `error` is the ready-to-report sentence.
+ */
+export type PointerRead = { ok: true; uses: string } | { ok: false; error: string };
+
+/** The `uses` string of a pointer file, or the reason it yielded none. */
+export function readPointer(path: string): PointerRead {
   const text = safeReadFile(path);
-  if (text === null) return null;
+  if (text === null) return { ok: false, error: "workflow.json could not be read" };
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(text);
-    const uses = (parsed as { uses?: unknown })?.uses;
-    return typeof uses === "string" && uses.trim() ? uses : null;
-  } catch {
-    return null;
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return { ok: false, error: `workflow.json is not valid JSON: ${(err as Error).message}` };
   }
+  const uses = (parsed as { uses?: unknown } | null)?.uses;
+  if (typeof uses !== "string" || !uses.trim()) return { ok: false, error: "workflow.json has no `uses` string" };
+  return { ok: true, uses };
 }
 
 /**

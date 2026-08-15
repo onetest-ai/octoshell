@@ -563,14 +563,23 @@ export function setStatus(root: string, kind: EntityKind, id: string, state: str
 
 // ── Workflows ────────────────────────────────────────────────────────────────
 
-/** The scaffold body written beside a new workflow's meta — a valid, runnable single-phase script. */
+/**
+ * The scaffold body written beside a new workflow's meta — a valid, runnable single-phase script.
+ *
+ * Byte-identical to what the pack's `add-workflow.js` scaffolds: the two are the same command from
+ * an author's point of view (the VS Code *new workflow* action and the CLI script), so they must
+ * not hand out different advice. `meta` is GENERATED from this body now, so the comment points at
+ * sync-meta.js rather than asking the author to keep the two in step by hand.
+ * Kept honest by `scripts-cli-scenarios.test.ts`, which scaffolds one of each and diffs the bytes —
+ * keep the two in step.
+ */
 function scaffoldScript(meta: WorkflowMeta): string {
   return [
     `export const meta = ${serializeMeta(meta)}`,
     "",
-    "// Body: use phase() / agent() / parallel() / pipeline().",
-    "// Keep `meta.phases` above in step with the phases this body enters —",
-    "// the Octobots board draws its diagram from meta, not from this code.",
+    "// Body: use phase() / agent() / parallel() / pipeline() / workflow().",
+    "// The board's diagram is GENERATED from this code — after editing, run:",
+    "//   node .claude/skills/mission-planner/scripts/sync-meta.js <this folder>",
     `phase(${JSON.stringify(meta.phases[0]?.title ?? "Run")})`,
     "",
   ].join("\n");

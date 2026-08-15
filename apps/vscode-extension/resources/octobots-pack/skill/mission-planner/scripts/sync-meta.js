@@ -10,8 +10,8 @@
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { extractPhases } from "./extract-meta.mjs";
-import { findMetaSpan, parseWorkflowMeta, serializeMeta } from "./workflow-meta.mjs";
+import { extractPhases, unclassifiedMessage } from "./extract-meta.mjs";
+import { findMetaSpan, mergeAuthoredPhases, parseWorkflowMeta, serializeMeta } from "./workflow-meta.mjs";
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
@@ -58,11 +58,17 @@ for (const scriptPath of scripts) {
     console.error(`sync-meta: ${scriptPath}: body does not parse — ${err.message}`);
     process.exit(2);
   }
-  const next = serializeMeta({ name: existing.name, description: existing.description, phases });
+  // `name`, `description` and each phase's `detail` are authored, not derived — only the graph is
+  // generated. Regenerating must never cost a workflow its captions.
+  const next = serializeMeta({
+    name: existing.name,
+    description: existing.description,
+    phases: mergeAuthoredPhases(existing.phases, phases),
+  });
   const updated = source.slice(0, span.start) + next + source.slice(span.end);
 
   for (const call of unclassified) {
-    console.error(`  ${basename(scriptPath)}:${call.line}: ${call.callee}() has no readable label`);
+    console.error(`  ${basename(scriptPath)}:${call.line}: ${unclassifiedMessage(call)}`);
   }
   if (updated === source) {
     console.log(`unchanged ${scriptPath}`);

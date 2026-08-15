@@ -296,20 +296,34 @@ describe("resolveWithin", () => {
   });
 });
 
+// CHANGED CONTRACT: readPointer used to return `string | null`, collapsing every failure into one
+// null. It now returns `{ ok: true, uses } | { ok: false, error }` — because "this file is not
+// JSON" was being reported to the author as "has no `uses` string", which names the wrong problem.
 describe("readPointer", () => {
   it("reads the uses string from a well-formed pointer file", () => {
     const p = join(root, "workflow.json");
     writeFileSync(p, JSON.stringify({ uses: "../../x" }));
-    expect(readPointer(p)).toBe("../../x");
+    expect(readPointer(p)).toEqual({ ok: true, uses: "../../x" });
   });
 
-  it("returns null for a missing file, malformed JSON, or a missing/blank uses key", () => {
-    expect(readPointer(join(root, "missing.json"))).toBeNull();
+  it("fails for a missing file, naming the read", () => {
+    const result = readPointer(join(root, "missing.json"));
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toMatch(/could not be read/);
+  });
+
+  it("tells malformed JSON apart from a missing `uses` key, rather than reporting both as the latter", () => {
     const bad = join(root, "bad.json");
     writeFileSync(bad, "{not json");
-    expect(readPointer(bad)).toBeNull();
+    const malformed = readPointer(bad);
+    expect(malformed.ok).toBe(false);
+    expect(malformed.ok === false && malformed.error).toMatch(/not valid JSON/);
+    expect(malformed.ok === false && malformed.error).not.toMatch(/`uses`/);
+
     const blank = join(root, "blank.json");
     writeFileSync(blank, JSON.stringify({ uses: "  " }));
-    expect(readPointer(blank)).toBeNull();
+    const missing = readPointer(blank);
+    expect(missing.ok).toBe(false);
+    expect(missing.ok === false && missing.error).toMatch(/no `uses` string/);
   });
 });

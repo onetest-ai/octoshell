@@ -155,6 +155,31 @@ export function parseWorkflowMeta(source: string): WorkflowMeta {
   return { name, description: asString(o["description"]) ?? "", phases };
 }
 
+/**
+ * Carry the AUTHORED fields of a workflow's existing phases onto the phases just extracted from its
+ * body, matching on title.
+ *
+ * Everything about a phase except `detail` is derived from the code — title, steps, ids, edges — so
+ * regeneration simply overwrites it. `detail` is not: it is a caption a human writes, and it is the
+ * one `meta.phases` field Claude Code's own Workflow runtime consumes. Nothing in the body carries
+ * it, so an extraction that dropped it would make every `detail`-bearing workflow report
+ * "meta is out of date" forever, and sync-meta.js would "fix" that by deleting the caption.
+ *
+ * Every regenerate — sync-meta.js writing the file, and validate.ts checking whether it would — must
+ * go through here, so the two agree on what a current `meta` looks like.
+ * Mirrors the pack's `workflow-meta.mjs` `mergeAuthoredPhases` — keep the two in step.
+ */
+export function mergeAuthoredPhases(existing: WorkflowPhase[], generated: WorkflowPhase[]): WorkflowPhase[] {
+  const detailByTitle = new Map<string, string>();
+  for (const phase of existing) {
+    if (phase.detail && !detailByTitle.has(phase.title)) detailByTitle.set(phase.title, phase.detail);
+  }
+  return generated.map((phase) => {
+    const detail = detailByTitle.get(phase.title);
+    return detail === undefined ? phase : { ...phase, detail };
+  });
+}
+
 /** Render a meta object back into a formatted literal, ready to splice over a `MetaSpan`. */
 export function serializeMeta(meta: WorkflowMeta): string {
   const phaseLines = meta.phases.map((p) => {

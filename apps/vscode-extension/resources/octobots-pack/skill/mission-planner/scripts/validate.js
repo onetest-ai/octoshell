@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
-import { parseWorkflowMeta, serializeMeta } from "./workflow-meta.mjs";
-import { extractPhases } from "./extract-meta.mjs";
+import { mergeAuthoredPhases, parseWorkflowMeta, serializeMeta } from "./workflow-meta.mjs";
+import { extractPhases, unclassifiedMessage } from "./extract-meta.mjs";
 import { readEntity, resolveEntityFile, KIND_KEYS, KNOWN_KEYS } from "./entity-io.mjs";
 
 const arg = process.argv[2];
@@ -132,8 +132,10 @@ function validateWorkflowDir(dir) {
     // campaign level and several missions run the same one.
     const pointerPath = join(dir, "workflow.json");
     if (!existsSync(pointerPath)) return ["workflow.js is missing"];
-    const uses = readPointer(pointerPath);
-    if (uses === null) return ["workflow.json has no `uses` string"];
+    const pointer = readPointer(pointerPath);
+    // Unreadable, not JSON, and no `uses` key are three different mistakes; readPointer names each.
+    if (!pointer.ok) return [pointer.error];
+    const uses = pointer.uses;
     if (uses.includes("\\")) {
       // Named ahead of the generic "resolves outside the board" finding: the author's mistake here
       // is a stray backslash, not a climb, and Windows would treat it as a real separator.
@@ -181,15 +183,20 @@ function validateWorkflowDir(dir) {
   // parseWorkflowMeta rebuilds steps through coerceStep in its own canonical order. Comparing
   // extracted.phases against meta.phases directly would flag a perfectly current file as stale
   // over key order alone; round-tripping through the same writer+reader a real regenerate would
-  // use makes this immune to that.
+  // use makes this immune to that. `mergeAuthoredPhases` is part of that same regenerate: a phase's
+  // `detail` is authored, not derived, so a workflow carrying one is current, not stale.
   const roundTripped = parseWorkflowMeta(
-    `export const meta = ${serializeMeta({ name: meta.name, description: meta.description, phases: extracted.phases })}`,
+    `export const meta = ${serializeMeta({
+      name: meta.name,
+      description: meta.description,
+      phases: mergeAuthoredPhases(meta.phases, extracted.phases),
+    })}`,
   ).phases;
   if (JSON.stringify(roundTripped) !== JSON.stringify(meta.phases)) {
     out.push("meta is out of date — regenerate it with sync-meta.js");
   }
   for (const call of extracted.unclassified) {
-    out.push(`line ${call.line}: ${call.callee}() has no readable label`);
+    out.push(`line ${call.line}: ${unclassifiedMessage(call)}`);
   }
   // A step with a computed agentType (e.g. `agentType: task.role`) dispatches for real at
   // runtime — it is NOT the "no agentType" defect below, just unreadable by the extractor — so it
@@ -205,7 +212,10 @@ function validateWorkflowDir(dir) {
 }
 
 /**
- * The `uses` string of a pointer file, or null when absent or malformed.
+ * The `uses` string of a pointer file, or why there isn't one: `{ ok: true, uses }` /
+ * `{ ok: false, error }`. The failures are kept apart because they are different author mistakes —
+ * a file that is not JSON at all used to be reported as "has no `uses` string", which sends the
+ * author looking for a missing key in a file whose real problem is a syntax error.
  * Mirrors packages/board/src/board-model.ts `readPointer` — keep the two in step.
  */
 function readPointer(path) {
@@ -213,14 +223,17 @@ function readPointer(path) {
   try {
     text = readFileSync(path, "utf8");
   } catch {
-    return null;
+    return { ok: false, error: "workflow.json could not be read" };
   }
+  let parsed;
   try {
-    const uses = JSON.parse(text)?.uses;
-    return typeof uses === "string" && uses.trim() ? uses : null;
-  } catch {
-    return null;
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return { ok: false, error: `workflow.json is not valid JSON: ${err.message}` };
   }
+  const uses = parsed?.uses;
+  if (typeof uses !== "string" || !uses.trim()) return { ok: false, error: "workflow.json has no `uses` string" };
+  return { ok: true, uses };
 }
 
 /**

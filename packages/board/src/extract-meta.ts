@@ -17,6 +17,11 @@
  * backwards. Fixing this would need control flow through function calls, which this extractor,
  * being purely lexical, does not do.
  *
+ * A call site is one node even when it runs N times, so anything that multiplies it is drawn as a
+ * `repeat` badge instead: a loop, a `pipeline()`, and a `parallel()` whose members are computed
+ * (`parallel(tasks.map(…))`). Only a literal array of thunks enumerates its members as real,
+ * separate nodes.
+ *
  * A related, narrower gap: `agentType` is only readable when it is a string literal. A computed
  * value — `agentType: task.role` — dispatches for real at runtime but cannot be drawn, so the step
  * comes out with no `agent` field, same as a step that never named an `agentType` at all. The two
@@ -30,8 +35,15 @@ import type { WorkflowPhase, WorkflowStep } from "./types.js";
 
 export interface Extraction {
   phases: WorkflowPhase[];
-  /** Call sites the extractor could not classify. Reported, never silently dropped. */
-  unclassified: { line: number; callee: string }[];
+  /**
+   * Call sites the extractor could not classify. Reported, never silently dropped.
+   *
+   * `reason` says WHICH half was unreadable, because the two are different author mistakes with
+   * different fixes: `"phase"` is a `{ phase: someVar }` the extractor cannot place in a band (the
+   * call is dropped from the diagram entirely), `"label"` is a call that IS placed but whose
+   * caption rendered as nothing but an ellipsis.
+   */
+  unclassified: { line: number; callee: string; reason: "phase" | "label" }[];
   /**
    * `agent()` calls that DID name an `agentType` — dispatch is real — but as something other than
    * a string literal, so the diagram cannot show which agent runs. Distinct from a step with no
@@ -122,19 +134,33 @@ export function extractPhases(source: string): Extraction {
   calls.sort((a, b) => a.start - b.start);
 
   // Ranges that change how a call is drawn. `parallel` is a real fan-out; `pipeline` is not —
-  // its stages run in order per item, so they chain and repeat instead.
+  // its stages run in order per item, so they chain and repeat instead (and therefore every call
+  // site inside a `pipeline(...)`, whose items are computed by definition, is already `repeat`).
   const groups: { start: number; end: number; id: string }[] = [];
   const pipelines: { start: number; end: number }[] = [];
+  // `parallel(...)` whose members are COMPUTED — the idiomatic `parallel(tasks.map(t => () =>
+  // agent(…)))`, or a literal array with a spread in it. One lexical call site stands for N
+  // concurrent runs, and it is not inside a loop, so nothing else would badge it. Drawing an N-wide
+  // fan-out as a single unbadged node understates concurrency, which is the dangerous direction of
+  // error here: the diagram exists to make concurrency visible, and file-writing steps share one
+  // working tree. A literal array of thunks keeps the old behaviour — those really are a known,
+  // enumerable set, and each member has its own call site to draw.
+  const fannedOut: { start: number; end: number }[] = [];
   let groupN = 0;
   for (const call of calls) {
-    if (call.name === "parallel") groups.push({ start: call.start, end: call.end, id: `g${++groupN}` });
+    if (call.name === "parallel") {
+      groups.push({ start: call.start, end: call.end, id: `g${++groupN}` });
+      if (!isEnumerableThunkList(call.args[0])) fannedOut.push({ start: call.start, end: call.end });
+    }
     if (call.name === "pipeline") pipelines.push({ start: call.start, end: call.end });
   }
   const contains = (r: { start: number; end: number }, at: number): boolean => r.start <= at && at < r.end;
   const groupOf = (at: number): string | undefined =>
     groups.filter((g) => contains(g, at)).sort((a, b) => b.start - a.start)[0]?.id;
   const repeats = (at: number): boolean =>
-    loops.some((l) => contains(l, at)) || pipelines.some((p) => contains(p, at));
+    loops.some((l) => contains(l, at)) ||
+    pipelines.some((p) => contains(p, at)) ||
+    fannedOut.some((f) => contains(f, at));
 
   // Phase order comes from the sequence of `phase()` CALLS, not from wherever the first call that
   // happens to resolve to each title sits lexically — a wrap-up/report helper defined near the top
@@ -175,7 +201,20 @@ export function extractPhases(source: string): Extraction {
 
   const phases: WorkflowPhase[] = titles.map((title) => ({ title, steps: [] as WorkflowStep[] }));
   const byTitle = new Map(phases.map((p) => [p.title, p]));
-  const unclassified: { line: number; callee: string }[] = [];
+  // Step ids are `<phase-slug>-<n>`, so two phases whose titles slugify the same — `phase('Build')`
+  // and `phase('build')` are two real bands, not one — would mint two `build-1` steps. The diagram
+  // keys its nodes by id and would collapse every implicit edge between them into a self-loop, so
+  // the slug is disambiguated per phase instead of the phases being folded together.
+  const slugByTitle = new Map<string, string>();
+  const usedSlugs = new Set<string>();
+  for (const title of titles) {
+    const base = slugifyTitle(title);
+    let slug = base;
+    for (let n = 2; usedSlugs.has(slug); n++) slug = `${base}-${n}`;
+    usedSlugs.add(slug);
+    slugByTitle.set(title, slug);
+  }
+  const unclassified: { line: number; callee: string; reason: "phase" | "label" }[] = [];
   const computedAgentType: { line: number; stepId: string }[] = [];
 
   // Ordering state, keyed by phase title (dependsOn chains) or by group id (parallel members).
@@ -197,7 +236,7 @@ export function extractPhases(source: string): Extraction {
       // A `{ phase: someVariable }` this extractor cannot resolve, with no ambient phase() call to
       // fall back on: rather than inventing a phase from wherever this call happens to sit
       // lexically, report it so a later validate step can tell the author to pass a literal.
-      unclassified.push({ line: call.line, callee: call.name });
+      unclassified.push({ line: call.line, callee: call.name, reason: "phase" });
       continue;
     } else {
       title = titles[0] ?? "Run";
@@ -207,7 +246,7 @@ export function extractPhases(source: string): Extraction {
     if (!phase) continue;
 
     const option = options(call);
-    const id = `${slugifyTitle(title)}-${phase.steps.length + 1}`;
+    const id = `${slugByTitle.get(title) ?? slugifyTitle(title)}-${phase.steps.length + 1}`;
     const label = call.name === "workflow" ? workflowLabel(call) : renderLabel(option.get("label"));
     const agentTypeNode = option.get("agentType");
     const agent = literalString(agentTypeNode);
@@ -244,11 +283,38 @@ export function extractPhases(source: string): Extraction {
       anchorsByPhase.set(title, [step.id]);
     }
 
-    if (step.label === "…") unclassified.push({ line: call.line, callee: call.name });
+    if (step.label === "…") unclassified.push({ line: call.line, callee: call.name, reason: "label" });
     phase.steps.push(step);
   }
 
   return { phases, unclassified, computedAgentType };
+}
+
+/**
+ * The one wording for an unclassified call site, shared by everything that reports one (validate,
+ * and the pack's sync-meta.js through the mirror). The caller supplies the location prefix.
+ *
+ * The two reasons are different mistakes with different fixes and must not share a sentence: an
+ * unreadable `{ phase }` means the call is absent from the diagram altogether, while an unreadable
+ * label means the node is drawn but captioned with an ellipsis.
+ */
+export function unclassifiedMessage(call: { callee: string; reason: "phase" | "label" }): string {
+  return call.reason === "phase"
+    ? `${call.callee}() names a { phase } that is not a string literal — it is left out of the diagram entirely; pass a literal phase title`
+    : `${call.callee}() has no readable label`;
+}
+
+/**
+ * True when a `parallel()` argument is a literal array of thunks: a known, enumerable set, each
+ * member of which has its own call site for the diagram to draw. `parallel(tasks.map(…))` — the
+ * idiomatic fan-out — is not one, and neither is `parallel([...tasks.map(…)])`: in both, a single
+ * call site stands for however many items exist at run time.
+ */
+function isEnumerableThunkList(node: Node | undefined): boolean {
+  if (!node || node.type !== "ArrayExpression") return false;
+  const elements = node["elements"];
+  if (!Array.isArray(elements)) return false;
+  return !elements.some((e) => isNode(e) && e.type === "SpreadElement");
 }
 
 /** The `phase` property of a call's options object, when it is a plain string. */

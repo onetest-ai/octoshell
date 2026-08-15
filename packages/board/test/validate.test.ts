@@ -304,6 +304,57 @@ await agent(p, { phase: 'Build', label: 'build', agentType: role })
     );
   });
 
+  // An unreadable `{ phase }` and an unreadable `{ label }` are different mistakes with different
+  // fixes — the first leaves the call OUT of the diagram entirely, the second draws it with an
+  // ellipsis for a caption — and used to share the message "has no readable label", which names the
+  // wrong problem for the first.
+  it("names an unreadable { phase } as such, not as a missing label", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Build", steps: [{ id: "build-1", label: "resolvable", agent: "qa" }] }],
+}
+const ph = 'Build'
+await agent(p, { phase: ph, label: 'unresolvable', agentType: 'project-manager' })
+phase('Build')
+await agent(p, { phase: 'Build', label: 'resolvable', agentType: 'qa' })
+`;
+    const messages = findingsFor(src).map((f) => f.message);
+    expect(messages).toContainEqual(expect.stringContaining("not a string literal"));
+    expect(messages).not.toContainEqual(expect.stringContaining("no readable label"));
+  });
+
+  it("still says 'no readable label' for a call whose caption is the unreadable half", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Build", steps: [{ id: "build-1", label: "…", agent: "qa" }] }],
+}
+phase('Build')
+await agent(p, { phase: 'Build', label: t.title, agentType: 'qa' })
+`;
+    expect(findingsFor(src).map((f) => f.message)).toContainEqual(
+      expect.stringContaining("has no readable label"),
+    );
+  });
+
+  // A phase's `detail` is authored, not derived: extraction cannot produce it, so comparing raw
+  // extraction against meta reported every detail-bearing workflow as stale forever — and
+  // sync-meta.js "fixed" that by deleting the caption. The regenerate both sides run must carry it.
+  it("does not call a workflow stale merely because a phase carries an authored detail", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [
+    { title: "Build", detail: "build every task, then gate", steps: [{ id: "build-1", label: "build", agent: "js-dev" }] },
+  ],
+}
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build', agentType: 'js-dev' })
+`;
+    expect(findingsFor(src)).toEqual([]);
+  });
+
   it("no longer objects to a phase with no steps", () => {
     const src = `export const meta = {
   name: "w",
@@ -330,11 +381,16 @@ describe("workflow pointer validation", () => {
    * merged onto the campaign-level board tree so a case can supply (or omit) the pointer's target.
    */
   function findingsForPointer(pointer: unknown, extra: Record<string, string> = {}): BoardFinding[] {
+    return findingsForPointerText(JSON.stringify(pointer), extra);
+  }
+
+  /** The same, for a pointer file whose TEXT is the thing under test (e.g. not JSON at all). */
+  function findingsForPointerText(text: string, extra: Record<string, string> = {}): BoardFinding[] {
     const root = mkdtempSync(join(tmpdir(), "wf-val-"));
     const files: Record<string, string> = {
       "campaigns/alpha/campaign.md": CAMPAIGN,
       "campaigns/alpha/missions/m1/mission.md": MISSION,
-      "campaigns/alpha/missions/m1/workflows/implementation/workflow.json": JSON.stringify(pointer),
+      "campaigns/alpha/missions/m1/workflows/implementation/workflow.json": text,
       ...extra,
     };
     for (const [rel, body] of Object.entries(files)) {
@@ -377,6 +433,18 @@ describe("workflow pointer validation", () => {
 
   it("flags a pointer file with no `uses` string", () => {
     expect(findingsForPointer({})).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("no `uses` string") }),
+    );
+  });
+
+  // A file that is not JSON at all used to be reported as "has no `uses` string", sending the
+  // author hunting for a missing key in a file whose real problem is a syntax error.
+  it("tells a malformed pointer file apart from one missing its `uses` key", () => {
+    const findings = findingsForPointerText('{ "uses": "../../../../workflows/implementation" ');
+    expect(findings).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("not valid JSON") }),
+    );
+    expect(findings).not.toContainEqual(
       expect.objectContaining({ message: expect.stringContaining("no `uses` string") }),
     );
   });

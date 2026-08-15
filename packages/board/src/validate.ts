@@ -1,8 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import type { EntityKind } from "./managed-block.js";
-import { parseWorkflowMeta, serializeMeta } from "./workflow-meta.js";
-import { extractPhases } from "./extract-meta.js";
+import { mergeAuthoredPhases, parseWorkflowMeta, serializeMeta } from "./workflow-meta.js";
+import { extractPhases, unclassifiedMessage } from "./extract-meta.js";
 import { loadEntity, KIND_KEYS, KNOWN_KEYS, type EntityFields } from "./entity-schema.js";
 import { readPointer, resolveWithin } from "./board-model.js";
 
@@ -264,15 +264,20 @@ export function validateWorkflow(jsPath: string, folderSlug: string): BoardFindi
   // parseWorkflowMeta rebuilds steps through coerceStep in its own canonical order. Comparing
   // extracted.phases against meta.phases directly would flag a perfectly current file as stale
   // over key order alone; round-tripping through the same writer+reader a real regenerate would
-  // use makes this immune to that.
+  // use makes this immune to that. `mergeAuthoredPhases` is part of that same regenerate: a phase's
+  // `detail` is authored, not derived, so a workflow carrying one is current, not stale.
   const roundTripped = parseWorkflowMeta(
-    `export const meta = ${serializeMeta({ name: meta.name, description: meta.description, phases: extracted.phases })}`,
+    `export const meta = ${serializeMeta({
+      name: meta.name,
+      description: meta.description,
+      phases: mergeAuthoredPhases(meta.phases, extracted.phases),
+    })}`,
   ).phases;
   if (JSON.stringify(roundTripped) !== JSON.stringify(meta.phases)) {
     err("meta is out of date — regenerate it with sync-meta.js");
   }
   for (const call of extracted.unclassified) {
-    err(`line ${call.line}: ${call.callee}() has no readable label`);
+    err(`line ${call.line}: ${unclassifiedMessage(call)}`);
   }
   // A step with a computed `agentType` (e.g. `agentType: task.role`) dispatches for real at
   // runtime — it is NOT the "no agentType" defect below, just unreadable by the extractor — so it
@@ -303,10 +308,15 @@ function validateWorkflowsUnder(entityDir: string, findings: BoardFinding[], roo
       const pointerPath = join(dir, slug, "workflow.json");
       if (!existsSync(pointerPath)) continue; // neither workflow.js nor a pointer → not a workflow folder
       count++;
-      const uses = readPointer(pointerPath);
-      if (uses === null) {
-        findings.push(workflowFinding(pointerPath, "workflow.json has no `uses` string"));
-      } else if (uses.includes("\\")) {
+      const pointer = readPointer(pointerPath);
+      if (!pointer.ok) {
+        // The reason is carried out of readPointer verbatim: unreadable, not JSON, and no `uses`
+        // key are three different mistakes and each names its own.
+        findings.push(workflowFinding(pointerPath, pointer.error));
+        continue;
+      }
+      const uses = pointer.uses;
+      if (uses.includes("\\")) {
         // Named ahead of the generic "resolves outside the board" finding: the author's mistake
         // here is a stray backslash, not a climb, and Windows would treat it as a real separator.
         findings.push(

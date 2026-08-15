@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, cpSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { BoardModel } from "../src/board-model.js";
+import { validateBoard } from "../src/validate.js";
 import {
   createWorkflow, deleteWorkflow, appendWorkflowRun, migrateLegacyWorkflows,
 } from "../src/write.js";
@@ -39,6 +40,28 @@ describe("createWorkflow", () => {
     expect(wf!.parseError).toBeNull();
     expect(wf!.name).toBe("ship-missions");
     expect(wf!.phases).toHaveLength(1);
+  });
+
+  // The scaffold is advice as much as code: it is the first thing an author reads in a new
+  // workflow. It carried the retired "keep `meta.phases` in step with the phases this body enters"
+  // doctrine for a whole branch after `meta` became generated, because nothing validated a
+  // freshly-scaffolded workflow or read its comment. Both are checked here.
+  it("scaffolds a workflow that validates clean and points the author at sync-meta.js", () => {
+    const { root, campaignId } = fixture();
+    // validateBoard walks `<root>/.octobots`, while this fixture's root IS the board dir — so
+    // validate from the parent, the same relationship a real workspace has.
+    const { folderPath } = createWorkflow(root, { campaignId }, { name: "Ship Missions" });
+    const project = mkdtempSync(join(tmpdir(), "wf-val-root-"));
+    cpSync(root, join(project, ".octobots"), { recursive: true });
+
+    expect(validateBoard(project).filter((f) => f.kind === "workflow")).toEqual([]);
+
+    const script = readFileSync(join(root, folderPath, "workflow.js"), "utf8");
+    expect(script).toContain("sync-meta.js");
+    expect(script).toContain("GENERATED from this code");
+    // The retired doctrine: meta is no longer a thing the author keeps in step by hand.
+    expect(script).not.toContain("Keep `meta.phases`");
+    expect(script).not.toContain("draws its diagram from meta, not from this code");
   });
 
   it("scaffolds under a mission and de-duplicates slugs", () => {
