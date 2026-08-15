@@ -599,7 +599,10 @@ export function createWorkflow(
     scaffoldScript({
       name: slug,
       description,
-      phases: [{ title: "Run", steps: [{ id: "s1", agent: "claude", label: input.name }] }],
+      // No steps: the body below only calls phase('Run') — validate now checks that meta agrees
+      // with the body it was generated from, so a placeholder step here (with nothing in the body
+      // to back it) would fail that check the moment the file is created.
+      phases: [{ title: "Run", steps: [] }],
     }),
     "utf8",
   );

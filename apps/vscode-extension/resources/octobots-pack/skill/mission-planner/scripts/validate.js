@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { parseWorkflowMeta } from "./workflow-meta.mjs";
+import { parseWorkflowMeta, serializeMeta } from "./workflow-meta.mjs";
+import { extractPhases } from "./extract-meta.mjs";
 import { readEntity, resolveEntityFile, KIND_KEYS, KNOWN_KEYS } from "./entity-io.mjs";
 
 const arg = process.argv[2];
@@ -128,43 +129,53 @@ function validateWorkflowDir(dir) {
   const jsPath = join(dir, "workflow.js");
   if (!existsSync(jsPath)) return ["workflow.js is missing"];
 
+  const source = readFileSync(jsPath, "utf8");
   let meta;
   try {
-    meta = parseWorkflowMeta(readFileSync(jsPath, "utf8"));
+    meta = parseWorkflowMeta(source);
   } catch (err) {
     return [err.message];
   }
 
   if (meta.name !== slug) out.push(`meta.name "${meta.name}" does not match its folder "${slug}"`);
+
+  // The declared graph is GENERATED from the body, so its internal consistency is not a thing to
+  // check — it is a thing that cannot be wrong. What can be wrong is the body: whether it parses,
+  // whether meta was regenerated after the last edit, and whether every agent() call actually
+  // dispatches to the agent the diagram names. Checked ahead of `meta.phases.length` so a body
+  // that fails to parse is reported even when meta happens to declare zero phases.
+  let extracted;
+  try {
+    extracted = extractPhases(source);
+  } catch (err) {
+    return [...out, `body does not parse: ${err.message}`];
+  }
+
   if (meta.phases.length === 0) {
     out.push("workflow has no phases");
     return out;
   }
 
-  const stepPhase = new Map();
-  const parallelPhase = new Map();
-  meta.phases.forEach((phase, pi) => {
-    if (phase.steps.length === 0) out.push(`phase "${phase.title}" has no steps`);
-    for (const step of phase.steps) {
-      if (stepPhase.has(step.id)) out.push(`duplicate step id "${step.id}"`);
-      else stepPhase.set(step.id, pi);
-      if (step.parallel !== undefined) {
-        const seen = parallelPhase.get(step.parallel);
-        if (seen !== undefined && seen !== pi) {
-          out.push(`parallel group "${step.parallel}" spans more than one phase`);
-        } else if (seen === undefined) {
-          parallelPhase.set(step.parallel, pi);
-        }
-      }
-    }
-  });
-  for (const phase of meta.phases) {
-    for (const step of phase.steps) {
-      for (const dep of step.dependsOn ?? []) {
-        if (!stepPhase.has(dep)) out.push(`step "${step.id}" dependsOn "${dep}", which is not a step`);
-      }
-    }
+  // Compare through the real writer/reader, not the raw extraction — serializeMeta writes each
+  // step with JSON.stringify(step), so key INSERTION order becomes file order, while
+  // parseWorkflowMeta rebuilds steps through coerceStep in its own canonical order. Comparing
+  // extracted.phases against meta.phases directly would flag a perfectly current file as stale
+  // over key order alone; round-tripping through the same writer+reader a real regenerate would
+  // use makes this immune to that.
+  const roundTripped = parseWorkflowMeta(
+    `export const meta = ${serializeMeta({ name: meta.name, description: meta.description, phases: extracted.phases })}`,
+  ).phases;
+  if (JSON.stringify(roundTripped) !== JSON.stringify(meta.phases)) {
+    out.push("meta is out of date — regenerate it with sync-meta.js");
   }
+  for (const call of extracted.unclassified) {
+    out.push(`line ${call.line}: ${call.callee}() has no readable label`);
+  }
+  for (const step of extracted.phases.flatMap((p) => p.steps)) {
+    if (step.kind === "workflow") continue;
+    if (!step.agent) out.push(`step "${step.id}" (${step.label}) has no agentType — it runs as the default subagent`);
+  }
+
   return out;
 }
 

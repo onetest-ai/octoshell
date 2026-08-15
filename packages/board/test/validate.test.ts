@@ -153,6 +153,21 @@ describe("workflow validation", () => {
   const MISSION = "# M1 - Auth\n\n## Description\nA real description here.\n\n## Acceptance Criteria\n- [ ] ships\n";
   const WF_MD = "# w\n\n## Description\nA workflow.\n";
 
+  /**
+   * Findings for a single workflow.js body, isolated from the campaign/mission scaffolding
+   * `wfBoard` needs to exercise `validateBoard`. `validateBoard` is the only exported entry point
+   * that reaches `validateWorkflow`, so every case still goes through a real board tree — this
+   * just fixes the folder slug at "w" and hides the boilerplate every case here would repeat.
+   */
+  function findingsFor(src: string) {
+    const root = wfBoard({
+      "campaigns/alpha/campaign.md": CAMPAIGN,
+      "campaigns/alpha/workflows/w/workflow.md": WF_MD,
+      "campaigns/alpha/workflows/w/workflow.js": src,
+    });
+    return validateBoard(root).filter((f) => f.kind === "workflow");
+  }
+
   it("reports a missing meta export", () => {
     const root = wfBoard({
       "campaigns/alpha/campaign.md": CAMPAIGN,
@@ -181,30 +196,18 @@ describe("workflow validation", () => {
     expect(validateBoard(root).some((f) => /does not match its folder/.test(f.message))).toBe(true);
   });
 
-  it("reports no phases, empty phases, duplicate ids, unknown dependsOn and split parallel groups", () => {
+  // The declared graph (duplicate step ids, dangling dependsOn, a parallel group split across
+  // phases) can no longer be wrong on its own terms — it is GENERATED from the body, not
+  // hand-authored — so validate no longer checks it. `meta.phases.length === 0` survives: a
+  // workflow with no phases at all is still a real problem no extraction can paper over.
+  it("reports no phases", () => {
     const root = wfBoard({
       "campaigns/alpha/campaign.md": CAMPAIGN,
       "campaigns/alpha/workflows/none/workflow.md": WF_MD,
       "campaigns/alpha/workflows/none/workflow.js": "export const meta = { name: 'none', phases: [] }\n",
-      "campaigns/alpha/workflows/empty/workflow.md": WF_MD,
-      "campaigns/alpha/workflows/empty/workflow.js":
-        "export const meta = { name: 'empty', phases: [{ title: 'P', steps: [] }] }\n",
-      "campaigns/alpha/workflows/dup/workflow.md": WF_MD,
-      "campaigns/alpha/workflows/dup/workflow.js":
-        "export const meta = { name: 'dup', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l' }, { id: 's1', agent: 'b', label: 'm' }] }] }\n",
-      "campaigns/alpha/workflows/dep/workflow.md": WF_MD,
-      "campaigns/alpha/workflows/dep/workflow.js":
-        "export const meta = { name: 'dep', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l', dependsOn: ['nope'] }] }] }\n",
-      "campaigns/alpha/workflows/par/workflow.md": WF_MD,
-      "campaigns/alpha/workflows/par/workflow.js":
-        "export const meta = { name: 'par', phases: [{ title: 'A', steps: [{ id: 's1', agent: 'a', label: 'l', parallel: 'g' }] }, { title: 'B', steps: [{ id: 's2', agent: 'b', label: 'm', parallel: 'g' }] }] }\n",
     });
     const messages = validateBoard(root).map((f) => f.message).join("\n");
     expect(messages).toMatch(/has no phases/);
-    expect(messages).toMatch(/phase "P" has no steps/);
-    expect(messages).toMatch(/duplicate step id "s1"/);
-    expect(messages).toMatch(/dependsOn "nope"/);
-    expect(messages).toMatch(/parallel group "g" spans more than one phase/);
   });
 
   // A mission has THREE distinct execution loops, not one — implementation
@@ -238,8 +241,57 @@ describe("workflow validation", () => {
       "campaigns/alpha/campaign.md": CAMPAIGN,
       "campaigns/alpha/workflows/ok/workflow.md": WF_MD,
       "campaigns/alpha/workflows/ok/workflow.js":
-        "export const meta = { name: 'ok', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l' }] }] }\nphase('P')\n",
+        "export const meta = { name: 'ok', phases: [{ title: 'P', steps: [{ id: 'p-1', label: 'l', agent: 'a' }] }] }\n" +
+        "phase('P')\nawait agent(p, { phase: 'P', label: 'l', agentType: 'a' })\n",
     });
     expect(validateBoard(root).filter((f) => f.kind === "workflow")).toEqual([]);
+  });
+
+  it("fails when meta disagrees with the body", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Build", steps: [{ id: "build-1", label: "stale", agent: "ios-dev" }] }],
+}
+phase('Build')
+await agent(p, { phase: 'Build', label: 'fresh', agentType: 'ios-dev' })
+`;
+    expect(findingsFor(src)).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("meta is out of date") }),
+    );
+  });
+
+  it("fails when the body does not parse", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build'
+`;
+    expect(findingsFor(src)).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("body does not parse") }),
+    );
+  });
+
+  it("fails when an agent() call names no agentType", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Build", steps: [{ id: "build-1", label: "build" }] }],
+}
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build' })
+`;
+    expect(findingsFor(src)).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("no agentType") }),
+    );
+  });
+
+  it("no longer objects to a phase with no steps", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Run", steps: [] }],
+}
+phase('Run')
+`;
+    expect(findingsFor(src)).toEqual([]);
   });
 });
