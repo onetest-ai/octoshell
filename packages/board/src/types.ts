@@ -72,12 +72,16 @@ export type BugParent = { campaignId: string } | { missionId: string };
 
 /** One node in a workflow: an agent to call, and how it is ordered against its siblings. */
 export interface WorkflowStep {
-  /** Unique within the workflow. */
+  /** Unique within the workflow. Positional — regenerated wholesale by the extractor. */
   id: string;
-  /** Agent / subagent type to call. */
-  agent: string;
+  /** Agent / subagent type to call. Absent when the call named none: the default subagent. */
+  agent?: string;
   /** Caption shown on the diagram node. */
   label: string;
+  /** Node kind. Absent means "agent". */
+  kind?: "agent" | "workflow" | "command";
+  /** True when the call site sits inside a loop — drawn as ×N. */
+  repeat?: boolean;
   /** Steps sharing a group id run concurrently. */
   parallel?: string;
   /** Step ids this step waits for. */

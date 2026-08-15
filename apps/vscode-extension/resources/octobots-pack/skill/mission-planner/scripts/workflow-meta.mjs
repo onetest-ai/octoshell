@@ -56,17 +56,20 @@ export function findMetaSpan(source) {
 
 const str = (v) => (typeof v === "string" ? v : undefined);
 
+const STEP_KINDS = new Set(["agent", "workflow", "command"]);
+
 function coerceStep(raw, pi, si) {
   const where = `meta.phases[${pi}].steps[${si}]`;
   if (typeof raw !== "object" || raw === null) throw new Error(`${where} is not an object`);
   const id = str(raw.id);
   if (!id) throw new Error(`${where}.id is missing`);
-  const agent = str(raw.agent);
-  if (!agent) throw new Error(`${where}.agent is missing`);
   const label = str(raw.label);
   if (!label) throw new Error(`${where}.label is missing`);
 
-  const step = { id, agent, label };
+  const step = { id, label };
+  if (str(raw.agent)) step.agent = raw.agent;
+  if (str(raw.kind) && STEP_KINDS.has(raw.kind)) step.kind = raw.kind;
+  if (raw.repeat === true) step.repeat = true;
   if (str(raw.parallel)) step.parallel = raw.parallel;
   if (str(raw.backend)) step.backend = raw.backend;
   if (Array.isArray(raw.dependsOn)) {

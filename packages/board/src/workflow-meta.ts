@@ -82,6 +82,8 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+const STEP_KINDS = new Set(["agent", "workflow", "command"]);
+
 function coerceStep(raw: unknown, phaseIndex: number, stepIndex: number): WorkflowStep {
   const where = `meta.phases[${phaseIndex}].steps[${stepIndex}]`;
   if (typeof raw !== "object" || raw === null) throw new Error(`${where} is not an object`);
@@ -89,12 +91,15 @@ function coerceStep(raw: unknown, phaseIndex: number, stepIndex: number): Workfl
 
   const id = asString(o["id"]);
   if (!id) throw new Error(`${where}.id is missing`);
-  const agent = asString(o["agent"]);
-  if (!agent) throw new Error(`${where}.agent is missing`);
   const label = asString(o["label"]);
   if (!label) throw new Error(`${where}.label is missing`);
 
-  const step: WorkflowStep = { id, agent, label };
+  const step: WorkflowStep = { id, label };
+  const agent = asString(o["agent"]);
+  if (agent) step.agent = agent;
+  const kind = asString(o["kind"]);
+  if (kind && STEP_KINDS.has(kind)) step.kind = kind as WorkflowStep["kind"];
+  if (o["repeat"] === true) step.repeat = true;
   const parallel = asString(o["parallel"]);
   if (parallel) step.parallel = parallel;
   const backend = asString(o["backend"]);
