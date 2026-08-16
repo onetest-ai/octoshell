@@ -62,6 +62,28 @@ describe("status line install + registration", () => {
     expect(settingsOf(repo).statusLine.command).toBe("theirs.sh");
   });
 
+  it("depends on node, not jq — node is already required by every pack hook", () => {
+    const src = readFileSync(join(PACK_SRC, "statusline", "statusline.sh"), "utf8");
+    // jq was a SECOND system dependency bought for this one script, and when it was missing the
+    // line rendered empty — indistinguishable from a broken status line. It also cost six
+    // subprocesses per render, on something that re-renders constantly.
+    // Forbid INVOKING jq, not mentioning it — the header comment explains why the dependency was
+    // dropped, and that history is worth keeping.
+    const code = src.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
+    expect(code).not.toMatch(/\bjq\b/);
+    expect(code).toContain("node -e");
+  });
+
+  it("degrades without crashing on malformed, empty, or partial payloads", () => {
+    const run = (input: string) =>
+      execFileSync("bash", [join(PACK_SRC, "statusline", "statusline.sh")], {
+        input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+      });
+    expect(run("{ bad json ,,")).toContain("Claude");        // fallback name, no throw
+    expect(run("")).toContain("Claude");
+    expect(run('{"model":{"display_name":"Claude Haiku"}}')).toContain("Haiku"); // no context_window
+  });
+
   it("the shipped script runs, needs no TTY, and emits no stderr", () => {
     const payload = JSON.stringify({
       model: { display_name: "Claude Opus 5" },

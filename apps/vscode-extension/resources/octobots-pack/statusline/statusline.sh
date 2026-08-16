@@ -6,12 +6,33 @@
 
 input=$(cat 2>/dev/null) || exit 0
 
-# Every field below is parsed with jq. Without it the original produced an empty line, which looks
-# like a broken status line rather than a missing tool — so say so once, plainly, and stop.
-if ! command -v jq >/dev/null 2>&1; then
-  printf '\033[2;37m(octobots status line needs `jq` — install it, or clear statusLine in .claude/settings.json)\033[0m\n'
-  exit 0
-fi
+# Parsed with node, not jq. node is already a hard requirement of this pack (every hook is a .mjs),
+# so depending on jq as well bought a second system dependency for this one script — and when it was
+# missing the line rendered empty, which reads as "the status line is broken". This also collapses
+# what used to be SIX jq subprocesses per render into one node call; the status line re-renders
+# constantly, so that cost was paid over and over.
+fields=$(printf '%s' "$input" | node -e '
+let raw = "";
+process.stdin.on("data", (d) => (raw += d));
+process.stdin.on("end", () => {
+  let j = {};
+  try { j = JSON.parse(raw || "{}"); } catch { /* a malformed payload yields empty fields, not a crash */ }
+  const cw = j.context_window || {};
+  const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0);
+  const out = {
+    model: (j.model && j.model.display_name) || "Claude",
+    cwd: (j.workspace && j.workspace.current_dir) || "",
+    tokens: num(cw.total_input_tokens) + num(cw.total_output_tokens),
+    remaining_pct: cw.remaining_percentage === undefined ? "" : cw.remaining_percentage,
+    ctx_size: num(cw.context_window_size),
+    total_input: num(cw.total_input_tokens),
+  };
+  // One key=value per line. Values are newline-free by construction, so a plain read loop is safe.
+  for (const [k, v] of Object.entries(out)) process.stdout.write(k + "=" + String(v) + "\n");
+});
+' 2>/dev/null)
+
+field() { printf '%s\n' "$fields" | sed -n "s/^$1=//p"; }
 
 # ---------- ANSI 256-color helpers ----------
 # Bold bright cyan  (model)
@@ -32,13 +53,14 @@ RS='\033[0m'
 SEP_CHAR=" · "
 
 # ---------- 1. Model name ----------
-model_raw=$(echo "$input" | jq -r '.model.display_name // "Claude"')
+model_raw=$(field model)
+[ -n "$model_raw" ] || model_raw="Claude"
 # Strip leading "Claude " prefix to keep it compact (e.g. "Claude Opus 4" → "Opus 4")
 model_short="${model_raw#Claude }"
 
 # ---------- 2. Git branch + dirty indicator ----------
 git_part=""
-cwd_dir=$(echo "$input" | jq -r '.workspace.current_dir // empty')
+cwd_dir=$(field cwd)
 [ -z "$cwd_dir" ] && cwd_dir="$(pwd)"
 
 if git -C "$cwd_dir" rev-parse --git-dir --no-optional-locks &>/dev/null 2>&1; then
@@ -57,10 +79,7 @@ fi
 # ---------- 3. Session token count (human-readable absolute number) ----------
 token_part=""
 # Sum total_input_tokens + total_output_tokens from context_window
-total_tokens=$(echo "$input" | jq -r '
-  (.context_window.total_input_tokens  // 0) +
-  (.context_window.total_output_tokens // 0)
-')
+total_tokens=$(field tokens)
 
 if [ -n "$total_tokens" ] && [ "$total_tokens" -gt 0 ] 2>/dev/null; then
     token_part=$(echo "$total_tokens" | awk '{
@@ -74,9 +93,9 @@ fi
 ctx_part=""
 ctx_color="$GN"
 
-remaining_pct=$(echo "$input" | jq -r '.context_window.remaining_percentage // empty')
-ctx_size=$(echo "$input" | jq -r '.context_window.context_window_size // empty')
-total_input=$(echo "$input" | jq -r '.context_window.total_input_tokens // empty')
+remaining_pct=$(field remaining_pct)
+ctx_size=$(field ctx_size)
+total_input=$(field total_input)
 
 if [ -n "$remaining_pct" ] && [ -n "$ctx_size" ] && [ "$ctx_size" -gt 0 ] 2>/dev/null; then
     # Remaining token count

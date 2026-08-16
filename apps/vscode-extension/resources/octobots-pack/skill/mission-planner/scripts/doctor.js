@@ -140,8 +140,12 @@ if (!sl?.command) {
     fail("statusline", `the registration uses an ABSOLUTE path — it breaks on another machine or a fresh clone`,
       'reinstall so it is registered through ${CLAUDE_PROJECT_DIR}');
   }
-  try { execFileSync("jq", ["--version"], { stdio: "ignore" }); }
-  catch { warn("statusline", "`jq` is not on PATH — the status line needs it and will render a hint instead", "install jq (brew install jq)"); }
+  // The status line parses its payload with node, not jq — node is already required by every hook,
+  // so there is no second system dependency to check for here. Kept as an explicit note rather than
+  // deleted silently: an earlier build DID need jq, and a reader of an old doctor report deserves
+  // to know the requirement went away rather than assume the check was dropped.
+  try { execFileSync("node", ["--version"], { stdio: "ignore" }); }
+  catch { fail("statusline", "`node` is not on PATH — the status line and every pack hook need it", "install Node.js"); }
 }
 
 // ── 5. Tokenomics + ccusage ──────────────────────────────────────────────────────────────────
