@@ -2,7 +2,7 @@
   "name": "@octoshell/vscode-extension",
   "displayName": "Octobots",
   "description": "Plan and track AI coding work as markdown boards \u2014 campaigns, missions, tasks and bugs \u2014 right inside VS Code, and install a workflow pack that teaches CLI coding agents (Claude Code, Codex, Copilot) to drive them.",
-  "version": "0.0.49",
+  "version": "0.0.50",
   "private": true,
   "license": "Apache-2.0",
   "publisher": "onetest-ai",
