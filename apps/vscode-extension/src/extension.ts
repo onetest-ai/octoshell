@@ -12,6 +12,7 @@ import { packStatus, installPack, OCTOBOTS_PACK_VERSION } from "./host/octobots-
 import { claudeHookStatus } from "./host/octobots-hooks.js";
 import { launchSdlcBundleInstall } from "./host/sdlc-bundles-command.js";
 import { launchInstallGraph, launchRebuildGraph } from "./host/octograph-command.js";
+import { launchDoctor } from "./host/octobots-doctor-command.js";
 
 /** The bundled pack resources directory — the source side of every pack install. */
 function packSrcRoot(context: vscode.ExtensionContext): string {
@@ -77,6 +78,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       launchInstallGraph(packSrcRoot(context), repoRoot),
     ),
     vscode.commands.registerCommand("octoshell.rebuildGraph", () => launchRebuildGraph(repoRoot)),
+    vscode.commands.registerCommand("octoshell.doctor", () => launchDoctor(packSrcRoot(context), repoRoot)),
   );
 
   // Explicit-only: on open, if the pack (skill + planning agents) is missing/outdated, PROMPT —
