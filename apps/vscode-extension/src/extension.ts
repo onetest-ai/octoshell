@@ -10,6 +10,7 @@ import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
 import { packStatus, installPack, OCTOBOTS_PACK_VERSION } from "./host/octobots-skill.js";
 import { claudeHookStatus } from "./host/octobots-hooks.js";
+import { toolsStatus } from "./host/octobots-tools.js";
 import { launchSdlcBundleInstall } from "./host/sdlc-bundles-command.js";
 import { launchInstallGraph, launchRebuildGraph } from "./host/octograph-command.js";
 import { launchDoctor } from "./host/octobots-doctor-command.js";
@@ -47,10 +48,34 @@ async function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: s
     hooks = answer === "Install hooks";
   }
 
-  const res = installPack(src, repoRoot, hooks === undefined ? {} : { hooks });
-  const suffix = res.hooksRegistered ? " with session hooks" : " without session hooks";
+  // The tools step is asked separately because it is the only one that needs the NETWORK: it
+  // installs the pinned `ccusage` into `.octobots/tools` once, so tokenomics stops paying an `npx`
+  // re-resolution on every call (measured 823ms vs 29ms). Declining is a real choice — everything
+  // still works through the npx fallback, just slowly, and the doctor says so.
+  let tools: boolean | undefined;
+  if (!toolsStatus(repoRoot).ccusage) {
+    const answer = await vscode.window.showInformationMessage(
+      "Octobots: install the tokenomics CLI (ccusage) into this workspace? One ~340ms download, " +
+        "reused after that. Without it every usage call re-resolves it through npx (~823ms each).",
+      { modal: false },
+      "Install",
+      "Skip",
+    );
+    if (answer !== undefined) tools = answer === "Install";
+  }
+
+  const res = installPack(src, repoRoot, {
+    ...(hooks === undefined ? {} : { hooks }),
+    ...(tools === undefined ? {} : { tools }),
+  });
+  const parts = [
+    res.hooksRegistered ? "session hooks" : null,
+    res.tools === "installed" ? "tokenomics CLI" : null,
+  ].filter(Boolean);
+  const suffix = parts.length ? ` with ${parts.join(" and ")}` : "";
+  const failed = res.tools === "failed" ? " (the tokenomics CLI could not be downloaded — the npx fallback still works)" : "";
   void vscode.window.showInformationMessage(
-    `Octobots: workflow pack installed (${res.written} files)${suffix}.`,
+    `Octobots: workflow pack installed (${res.written} files)${suffix}.${failed}`,
   );
 }
 

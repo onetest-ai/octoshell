@@ -152,12 +152,19 @@ if (!sl?.command) {
 if (!existsSync(join(ROOT, ".octobots", "tokenomics"))) {
   fail("tokenomics", "the tokenomics CLI is missing", 'run "Octobots: Install Workflow Pack"');
 } else ok("tokenomics", "CLI installed");
-try { execFileSync("ccusage", ["--version"], { stdio: "ignore" }); ok("tokenomics", "ccusage is on PATH"); }
-catch {
-  warn("tokenomics",
-    "`ccusage` is not on PATH, so every usage call falls back to `npx -y ccusage` — a package " +
-      "resolution per call. Measured on a real board: 22 seconds of dead time at session start.",
-    "npm i -g ccusage");
+// ccusage: the workspace's own copy first — that is the one the pack installs and the scripts use.
+const localCcusage = join(ROOT, ".octobots", "tools", "node_modules", ".bin", "ccusage");
+if (existsSync(localCcusage)) {
+  ok("tokenomics", "ccusage installed in .octobots/tools (no npx resolution per call)");
+} else {
+  let onPath = false;
+  try { execFileSync("ccusage", ["--version"], { stdio: "ignore" }); onPath = true; } catch { /* not on PATH */ }
+  if (onPath) note("tokenomics", "ccusage is on PATH — usable, though the pack's own copy is what it installs");
+  else warn("tokenomics",
+    "ccusage is not installed for this workspace, so every usage call falls back to `npx` — which " +
+      "re-resolves a platform-specific native package each time. Measured: 823ms per call against " +
+      "29ms for an installed binary, and the usage wait loop makes up to fifteen calls.",
+    'run "Octobots: Install Workflow Pack" and accept the tools step (installs once, ~340ms, into .octobots/tools)');
 }
 
 // ── 6. Board ─────────────────────────────────────────────────────────────────────────────────
