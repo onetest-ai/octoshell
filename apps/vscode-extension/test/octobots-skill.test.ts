@@ -9,7 +9,7 @@ import {
   installPack,
   packStatus,
 } from "../src/host/octobots-skill.js";
-import { registerClaudeHook } from "../src/host/octobots-hooks.js";
+import { registerClaudeHook, claudeHookStatus } from "../src/host/octobots-hooks.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
@@ -139,7 +139,7 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
 
   it("installs the primer + Claude hook, and reports up-to-date only when both are current", () => {
     const repo = mkdtempClean("octobots-pack-");
-    installPack(PACK_SRC, repo);
+    installPack(PACK_SRC, repo, { hooks: true }); // hooks are opt-in — ask for them explicitly
     expect(existsSync(join(repo, ".octobots", "hooks", "primer.mjs"))).toBe(true);
     const settings = JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8"));
     expect(settings.hooks.SessionStart.some((e: any) => e._octobots === OCTOBOTS_PACK_VERSION)).toBe(true);
@@ -149,18 +149,39 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
     expect(st.upToDate).toBe(true);
   });
 
-  it("reports not-installed when the Claude hook registration is missing", () => {
+  /**
+   * CONTRACT CHANGE: hooks are opt-in (see `installPack`), so their absence is a choice, not a
+   * broken install. Reporting not-installed here re-prompted a workspace that had declined them on
+   * every open. Staleness still counts once they ARE present — the test below.
+   */
+  it("stays installed and up-to-date when hooks are absent, because they are opt-in", () => {
     const repo = mkdtempClean("octobots-pack-");
-    installPack(PACK_SRC, repo);
+    installPack(PACK_SRC, repo, { hooks: true });
     writeFileSync(join(repo, ".claude", "settings.json"), JSON.stringify({ hooks: {} }));
     const st = packStatus(repo);
-    expect(st.installed).toBe(false);
-    expect(st.upToDate).toBe(false);
+    expect(st.installed).toBe(true);
+    expect(st.upToDate).toBe(true);
+  });
+
+  it("does not register hooks unless asked, and refreshes them once present", () => {
+    const repo = mkdtempClean("octobots-pack-");
+    expect(installPack(PACK_SRC, repo).hooksRegistered).toBe(false);
+    expect(claudeHookStatus(repo, OCTOBOTS_PACK_VERSION).present).toBe(false);
+
+    expect(installPack(PACK_SRC, repo, { hooks: true }).hooksRegistered).toBe(true);
+    expect(claudeHookStatus(repo, OCTOBOTS_PACK_VERSION).present).toBe(true);
+
+    // already present → a plain re-install refreshes them without being asked again
+    expect(installPack(PACK_SRC, repo).hooksRegistered).toBe(true);
+
+    // an explicit no clears ours
+    expect(installPack(PACK_SRC, repo, { hooks: false }).hooksRegistered).toBe(false);
+    expect(claudeHookStatus(repo, OCTOBOTS_PACK_VERSION).present).toBe(false);
   });
 
   it("reports installed but not-up-to-date when the Claude hook is a stale version", () => {
     const repo = mkdtempClean("octobots-pack-");
-    installPack(PACK_SRC, repo);
+    installPack(PACK_SRC, repo, { hooks: true });
     registerClaudeHook(repo, OCTOBOTS_PACK_VERSION - 1); // downgrade our hook entry in place
     const st = packStatus(repo);
     expect(st.installed).toBe(true);
