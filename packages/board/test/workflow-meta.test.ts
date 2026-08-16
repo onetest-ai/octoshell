@@ -81,9 +81,33 @@ describe("parseWorkflowMeta", () => {
     expect(() => parseWorkflowMeta(`export const meta = { phases: [] }`)).toThrow(/meta\.name/);
   });
 
-  it("throws when a step has no agent", () => {
-    const src = `export const meta = { name: 'a', phases: [{ title: 'P', steps: [{ id: 's1', label: 'x' }] }] }`;
-    expect(() => parseWorkflowMeta(src)).toThrow(/agent/);
+  it("accepts a step with no agent — the call named no agentType", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Run", steps: [{ id: "run-1", label: "do the thing" }] }],
+}`;
+    const meta = parseWorkflowMeta(src);
+    expect(meta.phases[0]?.steps[0]).toEqual({ id: "run-1", label: "do the thing" });
+  });
+
+  it("keeps kind and repeat when present, and drops an unknown kind", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Run", steps: [
+    { id: "run-1", label: "compose", kind: "workflow", repeat: true },
+    { id: "run-2", label: "bogus", kind: "wat" },
+  ] }],
+}`;
+    const meta = parseWorkflowMeta(src);
+    expect(meta.phases[0]?.steps[0]).toEqual({ id: "run-1", label: "compose", kind: "workflow", repeat: true });
+    expect(meta.phases[0]?.steps[1]).toEqual({ id: "run-2", label: "bogus" });
+  });
+
+  it("still requires id and label", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [{ title: "Run", steps: [{ label: "x" }] }] }`;
+    expect(() => parseWorkflowMeta(src)).toThrow(/\.id is missing/);
   });
 });
 

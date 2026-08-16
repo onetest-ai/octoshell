@@ -114,6 +114,9 @@ importers:
 
   packages/board:
     dependencies:
+      acorn:
+        specifier: ^8.12.0
+        version: 8.16.0
       js-yaml:
         specifier: ^5.2.2
         version: 5.2.2

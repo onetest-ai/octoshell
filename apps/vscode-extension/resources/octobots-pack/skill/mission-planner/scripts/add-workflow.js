@@ -71,7 +71,10 @@ const desc = (description ?? "").trim();
 const meta = {
   name: slug,
   description: desc,
-  phases: [{ title: "Run", steps: [{ id: "s1", agent: "claude", label: name }] }],
+  // No steps: the body below only calls phase('Run') — validate now checks that meta agrees
+  // with the body it was generated from, so a placeholder step here (with nothing in the body
+  // to back it) would fail that check the moment the file is created.
+  phases: [{ title: "Run", steps: [] }],
 };
 
 writeFileSync(
@@ -79,10 +82,12 @@ writeFileSync(
   [
     `export const meta = ${serializeMeta(meta)}`,
     "",
-    "// Body: use phase() / agent() / parallel() / pipeline().",
-    "// Keep `meta.phases` above in step with the phases this body enters —",
-    "// the Octobots board draws its diagram from meta, not from this code.",
-    "phase('Run')",
+    "// Body: use phase() / agent() / parallel() / pipeline() / workflow().",
+    "// The board's diagram is GENERATED from this code — after editing, run:",
+    "//   node .claude/skills/mission-planner/scripts/sync-meta.js <this folder>",
+    // Quoted the same way packages/board's `scaffoldScript` quotes it, so the two scaffolds are
+    // byte-identical — a workflow created in the app and one created here are the same file.
+    `phase(${JSON.stringify(meta.phases[0].title)})`,
     "",
   ].join("\n"),
   "utf8",

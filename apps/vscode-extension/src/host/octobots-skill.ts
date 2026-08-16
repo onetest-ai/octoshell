@@ -6,7 +6,7 @@ import { installGraph, graphStatus } from "./octograph-install.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
-export const OCTOBOTS_PACK_VERSION = 53;
+export const OCTOBOTS_PACK_VERSION = 54;
 
 /** The skills the pack ships, by directory name under `skill/` and `.claude/skills/`. */
 export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate", "knowledge-explorer"] as const;
@@ -16,6 +16,12 @@ export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission
  * agent never sees a renamed skill twice (v18's `octobots` is now `mission-planner`).
  */
 const RETIRED_SKILLS = ["octobots"] as const;
+
+/**
+ * Files earlier pack versions installed that no longer exist. Removed on install, so an upgraded
+ * workspace never keeps a script the skills no longer mention. Paths are relative to `.claude`.
+ */
+const RETIRED_FILES = ["skills/mission-planner/scripts/set-step.js"] as const;
 
 /** Skill ids an agent needs to drive Octobots. Today every agent needs the whole pack. */
 export function requiredSkillsForAgent(_agent: string): string[] {
@@ -101,6 +107,9 @@ export function installPack(srcRoot: string, repoRoot: string): { written: numbe
   let written = 0;
   for (const name of RETIRED_SKILLS) {
     rmSync(join(repoRoot, ".claude", "skills", name), { recursive: true, force: true });
+  }
+  for (const rel of RETIRED_FILES) {
+    rmSync(join(repoRoot, ".claude", rel), { force: true });
   }
   for (const name of OCTOBOTS_SKILLS) {
     written += copyTree(

@@ -29,31 +29,18 @@ describe("BoardHost workflows", () => {
     let fired = 0;
     board.on("entities:changed", () => { fired++; });
     const { id } = board.createWorkflow({ missionId }, { name: "Build" });
-    board.setWorkflowMeta(id, {
-      name: "build",
-      description: "d",
-      phases: [{ title: "Run", steps: [{ id: "s1", agent: "claude", label: "Build" }] }],
-    });
     board.appendWorkflowRun(id, { status: "done", summary: "ok", at: "2026-07-23" });
     board.deleteWorkflow(id);
-    expect(fired).toBe(4);
-  });
-
-  it("writes meta back and keeps the workflow parseable", () => {
-    const { board, campaignId } = host();
-    const { id } = board.createWorkflow({ campaignId }, { name: "w" });
-    board.setWorkflowMeta(id, {
-      name: "w",
-      description: "d",
-      phases: [{ title: "Build", steps: [{ id: "s1", agent: "impl", label: "Build it" }] }],
-    });
-    const wf = board.getWorkflow(id)!;
-    expect(wf.parseError).toBeNull();
-    expect(wf.phases[0]!.steps[0]!.label).toBe("Build it");
+    expect(fired).toBe(3);
   });
 
   it("throws a clear error for an unknown workflow id", () => {
     const { board } = host();
     expect(() => board.workflowScriptPath("folder:nope")).toThrow(/Workflow not found/);
+  });
+
+  it("no longer exposes a way to write a workflow's meta", () => {
+    const { board } = host();
+    expect("setWorkflowMeta" in board).toBe(false);
   });
 });

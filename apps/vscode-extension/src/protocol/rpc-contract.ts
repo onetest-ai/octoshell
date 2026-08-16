@@ -145,25 +145,6 @@ export const rpcArgs = {
     campaignId: z.string().optional(),
     missionId: z.string().optional(),
   }),
-  "workflow:setMeta": z.object({
-    workflowId: z.string(),
-    meta: z.object({
-      name: z.string(),
-      description: z.string(),
-      phases: z.array(z.object({
-        title: z.string(),
-        detail: z.string().optional(),
-        steps: z.array(z.object({
-          id: z.string(),
-          agent: z.string(),
-          label: z.string(),
-          parallel: z.string().optional(),
-          dependsOn: z.array(z.string()).optional(),
-          backend: z.string().optional(),
-        })),
-      })),
-    }),
-  }),
   "workflow:addRun": z.object({
     workflowId: z.string(),
     status: z.string(),
@@ -231,7 +212,6 @@ export interface RpcResults {
   "workflow:list": Workflow[];
   "workflow:get": Workflow | null;
   "workflow:create": { id: string; folderPath: string };
-  "workflow:setMeta": { ok: true };
   "workflow:addRun": { ok: true };
   "workflow:delete": { ok: true };
   "workflow:openScript": { ok: true };

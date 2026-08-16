@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BoardModel, createCampaign, createMission, createTask, createBug } from "@octoshell/board";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
@@ -17,6 +17,21 @@ function run(script: string, args: string[], cwd: string): { out: string; code: 
   const out = `${result.stdout ?? ""}${result.stderr ?? ""}`;
   const code = result.status ?? 1;
   return { out, code };
+}
+
+/** Run a pack script against the current temp project, throwing on a nonzero exit. */
+function runScript(script: string, args: string[]): string {
+  const { out, code } = run(script, args, projectDir);
+  if (code !== 0) throw new Error(`${script} ${args.join(" ")} exited ${code}:\n${out}`);
+  return out;
+}
+
+/** Write a bare workflow.js (no BoardModel campaign needed — sync-meta.js only reads the file). */
+function writeWorkflow(name: string, script: string): string {
+  const dir = join(boardRoot, "campaigns", "c", "workflows", name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "workflow.js"), script, "utf8");
+  return dir;
 }
 
 // projectDir is the project root (parent of .octobots); boardRoot = projectDir/.octobots
@@ -311,5 +326,106 @@ describe("delete-task.js", () => {
     expect(r.code).toBe(0);
     expect(existsSync(taskFolder)).toBe(false);
     expect(board().getTask(t.id)).toBeNull();
+  });
+});
+
+describe("mission-input.js", () => {
+  /** M1 with two tasks: T1.1 (a regular task) and T1.2 (the QA/verification task). */
+  function boardWithMission(): void {
+    const c = createCampaign(boardRoot, { name: "C" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Mission", acceptanceCriteria: "- [ ] ship it" });
+    createTask(boardRoot, m.id, { name: "T1.1 - Wire the auth flow", acceptanceCriteria: "- [ ] logs in" });
+    createTask(boardRoot, m.id, { name: "T1.2 - QA verification", acceptanceCriteria: "- [ ] all criteria verified" });
+  }
+
+  it("mission-input emits a mission's tasks and criteria as args JSON", () => {
+    boardWithMission();
+    const out = JSON.parse(runScript("mission-input.js", ["M1"]));
+    expect(out.mission).toBe("M1");
+    expect(out.missionDir).toMatch(/campaigns\/.+\/missions\/m1-/);
+    expect(out.criteria.length).toBeGreaterThan(0);
+    expect(out.tasks.map((t: { id: string }) => t.id)).toEqual(["T1.1", "T1.2"]);
+    expect(out.tasks[0].dir).toMatch(/tasks\/t1-1-/);
+    expect(out.qaTask?.id).toBe("T1.2");
+  });
+
+  it("mission-input exits non-zero for a mission that is not on the board", () => {
+    boardWithMission();
+    expect(() => runScript("mission-input.js", ["M9"])).toThrow();
+  });
+
+  it("mission-input exits non-zero and names every candidate when a mission id is ambiguous across campaigns", () => {
+    const c1 = createCampaign(boardRoot, { name: "Alpha" });
+    createMission(boardRoot, c1.id, { title: "M1 - First" });
+    const c2 = createCampaign(boardRoot, { name: "Beta" });
+    createMission(boardRoot, c2.id, { title: "M1 - Second" });
+
+    const { out, code } = run("mission-input.js", ["M1"], projectDir);
+    expect(code).not.toBe(0);
+    expect(out.toLowerCase()).toContain("ambiguous");
+    expect(out).toContain("alpha");
+    expect(out).toContain("beta");
+  });
+
+  it("mission-input --campaign <slug> resolves an id that would otherwise be ambiguous", () => {
+    const c1 = createCampaign(boardRoot, { name: "Alpha" });
+    createMission(boardRoot, c1.id, { title: "M1 - First" });
+    const c2 = createCampaign(boardRoot, { name: "Beta" });
+    createMission(boardRoot, c2.id, { title: "M1 - Second" });
+
+    const out = JSON.parse(runScript("mission-input.js", ["M1", "--campaign", "beta"]));
+    expect(out.missionName).toBe("M1 - Second");
+    expect(out.campaignDir).toMatch(/campaigns\/beta$/);
+  });
+
+  it("mission-input sorts tasks by the full numeric id, not the minor digit alone or string order", () => {
+    const c = createCampaign(boardRoot, { name: "C" });
+    const m = createMission(boardRoot, c.id, { title: "M4 - Mission" });
+    createTask(boardRoot, m.id, { name: "T4.10 - Tenth" });
+    createTask(boardRoot, m.id, { name: "T4.9 - Ninth" });
+    createTask(boardRoot, m.id, { name: "T4.2 - Second" });
+
+    const out = JSON.parse(runScript("mission-input.js", ["M4"]));
+    expect(out.tasks.map((t: { id: string }) => t.id)).toEqual(["T4.2", "T4.9", "T4.10"]);
+  });
+
+  it("mission-input sorts by major id before minor when the majors differ", () => {
+    const c = createCampaign(boardRoot, { name: "C" });
+    const m = createMission(boardRoot, c.id, { title: "M5 - Mission" });
+    createTask(boardRoot, m.id, { name: "T10.1 - Later major" });
+    createTask(boardRoot, m.id, { name: "T2.1 - Earlier major" });
+
+    const out = JSON.parse(runScript("mission-input.js", ["M5"]));
+    expect(out.tasks.map((t: { id: string }) => t.id)).toEqual(["T2.1", "T10.1"]);
+  });
+
+  it("mission-input picks the LAST task whose label matches qa/verification when more than one does", () => {
+    const c = createCampaign(boardRoot, { name: "C" });
+    const m = createMission(boardRoot, c.id, { title: "M6 - Mission" });
+    createTask(boardRoot, m.id, { name: "T6.1 - Verification of preconditions" });
+    createTask(boardRoot, m.id, { name: "T6.2 - Build the thing" });
+    createTask(boardRoot, m.id, { name: "T6.3 - QA verification" });
+
+    const out = JSON.parse(runScript("mission-input.js", ["M6"]));
+    expect(out.qaTask?.id).toBe("T6.3");
+  });
+});
+
+describe("sync-meta.js", () => {
+  it("sync-meta rewrites meta from the body and leaves the body alone", () => {
+    const dir = writeWorkflow("w", `export const meta = {
+  name: "w",
+  description: "keep me",
+  phases: [{ title: "Old", steps: [] }],
+}
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build it', agentType: 'js-dev' })
+`);
+    runScript("sync-meta.js", [dir]);
+    const after = readFileSync(join(dir, "workflow.js"), "utf8");
+    expect(after).toContain('description: "keep me"');
+    expect(after).toContain('{"id":"build-1","label":"build it","agent":"js-dev"}');
+    expect(after).toContain("phase('Build')");
+    expect(after).not.toContain('"Old"');
   });
 });

@@ -447,8 +447,23 @@ function parseWorkflows(
   for (const slug of safeReaddir(dir)) {
     const folderPath = `${parentFolder}/workflows/${slug}`;
     const jsPath = join(root, folderPath, "workflow.js");
-    const jsText = safeReadFile(jsPath);
-    if (jsText === null) continue; // no workflow.js → not a workflow folder
+
+    // A folder may hold a pointer instead of a script: shared pipelines live at campaign level and
+    // several missions run the same one. Without this a mission's workflow folder holds only its
+    // run log, and the board draws nothing for it.
+    let usesPath: string | null = null;
+    let sourceFolder = folderPath;
+    let jsText = safeReadFile(jsPath);
+    if (jsText === null) {
+      const pointer = readPointer(join(root, folderPath, "workflow.json"));
+      if (!pointer.ok) continue; // no workflow.js and no usable pointer → not a workflow folder
+      const resolved = resolveWithin(folderPath, pointer.uses);
+      if (resolved === null) continue; // escapes the board — validate reports it
+      usesPath = resolved;
+      sourceFolder = resolved;
+      jsText = safeReadFile(join(root, resolved, "workflow.js"));
+      if (jsText === null) continue;
+    }
 
     let name = deSlug(slug);
     let description = "";
@@ -472,8 +487,9 @@ function parseWorkflows(
       name,
       description,
       phases,
-      scriptPath: `${folderPath}/workflow.js`,
+      scriptPath: `${sourceFolder}/workflow.js`,
       folderPath,
+      usesPath,
       parseError,
       lastRunStatus: readLastRunStatus(root, folderPath),
       createdAt: mtime,
@@ -666,4 +682,63 @@ function sortEntities<T extends { createdAt: number; folderPath: string }>(entit
     if (dtMs !== 0) return dtMs;
     return a.folderPath < b.folderPath ? -1 : a.folderPath > b.folderPath ? 1 : 0;
   });
+}
+
+/**
+ * A pointer file read: either its `uses` path, or why there isn't one.
+ *
+ * The failures are kept apart because they are different author mistakes: a file that is not JSON
+ * at all was reported as "has no `uses` string", which sends the author looking for a missing key
+ * in a file whose real problem is a syntax error. `error` is the ready-to-report sentence.
+ */
+export type PointerRead = { ok: true; uses: string } | { ok: false; error: string };
+
+/** The `uses` string of a pointer file, or the reason it yielded none. */
+export function readPointer(path: string): PointerRead {
+  const text = safeReadFile(path);
+  if (text === null) return { ok: false, error: "workflow.json could not be read" };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return { ok: false, error: `workflow.json is not valid JSON: ${(err as Error).message}` };
+  }
+  const uses = (parsed as { uses?: unknown } | null)?.uses;
+  if (typeof uses !== "string" || !uses.trim()) return { ok: false, error: "workflow.json has no `uses` string" };
+  return { ok: true, uses };
+}
+
+/**
+ * Resolve `rel` against `from`, both relative to the board root, refusing anything that climbs out
+ * of it. A pointer is a link the board follows on every rebuild; it must not be able to leave the
+ * tree, so this is a containment check and not merely a tidy-up.
+ *
+ * A leading `/` is refused outright rather than folded under `from`: an author who writes an
+ * absolute-looking `uses` almost certainly means "from some root", and silently reinterpreting it
+ * as same-folder-relative would resolve to a path they never asked for. A security boundary should
+ * not quietly reinterpret its input.
+ *
+ * A `\` anywhere in `rel` is refused outright too, and checked before anything else runs: this
+ * function only ever splits on `/`, so on POSIX a backslash is just an odd literal character and
+ * `..\..\..\etc` looks like one harmless, contained segment. But `board-model.ts`'s own later
+ * `join(root, resolved, ...)` and every `existsSync` downstream go through Node's `fs`/`path`,
+ * which on Windows treats `\` as a real separator — so a value this function blessed as "contained"
+ * would be re-interpreted by the OS as a genuine climb out of the board. A pointer is a
+ * repo-relative, POSIX-style path; a backslash has no legitimate meaning in one, so rejecting it
+ * outright is simpler and safer than trying to normalise separators and re-analyse.
+ */
+export function resolveWithin(from: string, rel: string): string | null {
+  if (rel.startsWith("/") || rel.includes("\\")) return null;
+  const stack: string[] = [];
+  for (const part of `${from}/${rel}`.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (stack.length === 0) return null;
+      stack.pop();
+      continue;
+    }
+    stack.push(part);
+  }
+  const resolved = stack.join("/");
+  return resolved.startsWith("campaigns/") ? resolved : null;
 }

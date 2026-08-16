@@ -12,7 +12,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
+import { createCampaign, createMission, createTask, createBug, createWorkflow } from "../src/write.js";
 import { loadEntity, dumpEntity, type EntityFields, type EntityKind } from "../src/entity-schema.js";
 import { BoardModel } from "../src/board-model.js";
 
@@ -439,40 +439,174 @@ describe("workflow script guards", () => {
     expect(line.at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("set-step.js replaces a step with the same id rather than duplicating it", () => {
-    const dir = workflowDir();
-    const common = ["--workflow", dir, "--phase", "Build", "--id", "s2"];
-    runScript("set-step.js", [...common, "--agent", "impl", "--label", "First"], projectDir);
-    runScript("set-step.js", [...common, "--agent", "impl2", "--label", "Second", "--depends-on", "s1,s2"], projectDir);
-
-    const b = board();
-    const wf = b.listWorkflows({ campaignId: b.listCampaigns()[0]!.id })[0]!;
-    const steps = wf.phases.flatMap((p) => p.steps).filter((s) => s.id === "s2");
-    expect(steps).toHaveLength(1);
-    expect(steps[0]!.agent).toBe("impl2");
-    expect(steps[0]!.dependsOn).toEqual(["s1", "s2"]);
+  // sync-meta.js rewrites source files in bulk (--all can touch every workflow under a board), so
+  // its refusals matter as much as add-run.js's — a silent write on a file it could not fully read
+  // is how a bad rewrite reaches disk.
+  it("sync-meta.js refuses when invoked with no arguments", () => {
+    const { status, stderr } = runFailing("sync-meta.js", [], projectDir);
+    expect(status).toBe(2);
+    expect(stderr).toContain("usage: sync-meta.js");
   });
 
-  it("set-step.js refuses to rewrite a script whose meta it cannot read", () => {
+  it("sync-meta.js refuses a workflow directory that does not exist, and writes nothing", () => {
+    const missing = join(boardRoot, "campaigns", "nope");
+    const { status, stderr } = runFailing("sync-meta.js", [missing], projectDir);
+    expect(status).toBe(2);
+    expect(stderr).toContain("no workflow.js at");
+    expect(existsSync(missing)).toBe(false);
+  });
+
+  it("sync-meta.js refuses a workflow.js with no `export const meta` literal, leaving it untouched", () => {
     const dir = workflowDir();
-    writeFileSync(join(dir, "workflow.js"), "// no meta here\nexport default 1;\n", "utf8");
-    const { status, stderr } = runFailing(
-      "set-step.js",
-      ["--workflow", dir, "--phase", "Build", "--id", "s2", "--agent", "a", "--label", "L"],
-      projectDir,
-    );
+    const jsPath = join(dir, "workflow.js");
+    writeFileSync(jsPath, "// no meta here\nexport default 1;\n", "utf8");
+    const before = readFileSync(jsPath, "utf8");
+
+    const { status, stderr } = runFailing("sync-meta.js", [dir], projectDir);
+    expect(status).toBe(2);
+    expect(stderr).toContain("no `export const meta` literal");
+    expect(readFileSync(jsPath, "utf8")).toBe(before);
+  });
+
+  it("sync-meta.js refuses a meta that is not a pure object literal, leaving the file untouched", () => {
+    const dir = workflowDir();
+    const jsPath = join(dir, "workflow.js");
+    writeFileSync(jsPath, "export const meta = { name: someVar }\nphase('Run')\n", "utf8");
+    const before = readFileSync(jsPath, "utf8");
+
+    const { status, stderr } = runFailing("sync-meta.js", [dir], projectDir);
     expect(status).toBe(2);
     expect(stderr).toContain("refusing to rewrite the script");
+    expect(readFileSync(jsPath, "utf8")).toBe(before);
   });
 
-  it("set-step.js refuses a missing workflow folder and missing args", () => {
-    expect(
-      runFailing(
-        "set-step.js",
-        ["--workflow", join(boardRoot, "nope"), "--phase", "P", "--id", "s", "--agent", "a", "--label", "L"],
-        projectDir,
-      ).stderr,
-    ).toContain("not a directory");
-    expect(runFailing("set-step.js", [], projectDir).status).toBe(2);
+  it("sync-meta.js refuses a body that fails to parse, leaving the file untouched", () => {
+    const dir = workflowDir();
+    const jsPath = join(dir, "workflow.js");
+    writeFileSync(jsPath, 'export const meta = { name: "ship", description: "", phases: [] }\nphase(\'Run\'\n', "utf8");
+    const before = readFileSync(jsPath, "utf8");
+
+    const { status, stderr } = runFailing("sync-meta.js", [dir], projectDir);
+    expect(status).toBe(2);
+    expect(stderr).toContain("body does not parse");
+    expect(readFileSync(jsPath, "utf8")).toBe(before);
+  });
+
+  it("sync-meta.js --all updates every workflow it finds under .octobots/campaigns", () => {
+    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+    const slug = c.folderPath.split("/").pop()!;
+    runScript("add-workflow.js", ["--campaign", slug, "--name", "ship"], projectDir);
+    runScript("add-workflow.js", ["--campaign", slug, "--name", "gate"], projectDir);
+    const shipPath = join(boardRoot, c.folderPath, "workflows", "ship", "workflow.js");
+    const gatePath = join(boardRoot, c.folderPath, "workflows", "gate", "workflow.js");
+    // Drift both from what their (unchanged) bodies actually produce, so --all has real work to do.
+    writeFileSync(shipPath, readFileSync(shipPath, "utf8").replace('title: "Run"', 'title: "Old"'), "utf8");
+    writeFileSync(gatePath, readFileSync(gatePath, "utf8").replace('title: "Run"', 'title: "Old"'), "utf8");
+
+    const out = runScript("sync-meta.js", ["--all"], projectDir);
+
+    expect(out).toContain("2 of 2 workflow(s) updated");
+    expect(readFileSync(shipPath, "utf8")).not.toContain('"Old"');
+    expect(readFileSync(gatePath, "utf8")).not.toContain('"Old"');
+    expect(readFileSync(shipPath, "utf8")).toContain('title: "Run"');
+    expect(readFileSync(gatePath, "utf8")).toContain('title: "Run"');
+  });
+
+  // A phase's `detail` is AUTHORED, not derived — nothing in the body carries it, and it is the one
+  // meta.phases field Claude Code's own Workflow runtime consumes. Extraction never emits it, so
+  // before `mergeAuthoredPhases` a detail-bearing workflow reported "meta is out of date" on every
+  // validate and sync-meta.js "fixed" that by DELETING the caption. Data loss, silently, on the one
+  // field the runtime reads.
+  it("sync-meta.js regenerates the graph without losing an authored phase detail", () => {
+    const dir = workflowDir();
+    const jsPath = join(dir, "workflow.js");
+    writeFileSync(
+      jsPath,
+      [
+        "export const meta = {",
+        '  name: "ship",',
+        '  description: "",',
+        "  phases: [",
+        '    { title: "Run", detail: "build every task, then gate", steps: [] },',
+        "  ],",
+        "}",
+        "",
+        "phase('Run')",
+        "await agent(p, { phase: 'Run', label: 'build', agentType: 'js-dev' })",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const out = runScript("sync-meta.js", [dir], projectDir);
+    expect(out).toContain("1 of 1 workflow(s) updated");
+
+    const updated = readFileSync(jsPath, "utf8");
+    // The graph was regenerated from the body…
+    expect(updated).toContain('"id":"run-1"');
+    expect(updated).toContain('"agent":"js-dev"');
+    // …and the caption survived it.
+    expect(updated).toContain('detail: "build every task, then gate"');
+
+    // Idempotent: the file it just wrote is the file it would write again.
+    expect(runScript("sync-meta.js", [dir], projectDir)).toContain("unchanged");
+    // And a detail-bearing workflow validates clean, rather than reporting "meta is out of date"
+    // forever because the extractor cannot produce a field no body carries.
+    expect(runScript("validate.js", [dir], projectDir)).toContain("OK");
+  });
+
+  // The pack's validate.js mirrors packages/board's validateWorkflow, so the two corrected messages
+  // are asserted on this side too — a mirror that drifts on wording is a mirror that drifts.
+  it("validate.js names an unreadable { phase } as such, not as a missing label", () => {
+    const dir = workflowDir();
+    writeFileSync(
+      join(dir, "workflow.js"),
+      [
+        'export const meta = { name: "ship", description: "", phases: [{ title: "Build", steps: [] }] }',
+        "const ph = 'Build'",
+        "await agent(p, { phase: ph, label: 'unresolvable', agentType: 'js-dev' })",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const { stderr } = runFailing("validate.js", [dir], projectDir);
+    expect(stderr).toContain("not a string literal");
+    expect(stderr).not.toContain("no readable label");
+  });
+
+  it("validate.js tells a malformed pointer file apart from one missing its `uses` key", () => {
+    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Auth", acceptanceCriteria: "- [ ] ships" });
+    const missionDir = join(boardRoot, m.folderPath);
+    mkdirSync(join(missionDir, "workflows", "implementation"), { recursive: true });
+    writeFileSync(
+      join(missionDir, "workflows", "implementation", "workflow.json"),
+      '{ "uses": "../../../../workflows/implementation" ',
+      "utf8",
+    );
+
+    const { stderr } = runFailing("validate.js", [missionDir], projectDir);
+    expect(stderr).toContain("not valid JSON");
+    expect(stderr).not.toContain("no `uses` string");
+  });
+
+  // The two scaffolds — the pack's add-workflow.js and packages/board's createWorkflow, which the
+  // VS Code "new workflow" command calls — are the same command from an author's point of view, so
+  // they must hand out the same file. The retired "keep meta.phases in step with the body" doctrine
+  // survived in the TS one for a whole branch because nothing compared them.
+  it("add-workflow.js scaffolds byte-for-byte what the app's createWorkflow scaffolds", () => {
+    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+    const slug = c.folderPath.split("/").pop()!;
+    runScript("add-workflow.js", ["--campaign", slug, "--name", "ship"], projectDir);
+    const fromScript = readFileSync(join(boardRoot, c.folderPath, "workflows", "ship", "workflow.js"), "utf8");
+
+    const { folderPath } = createWorkflow(boardRoot, { campaignId: c.id }, { name: "ship" });
+    const fromApp = readFileSync(join(boardRoot, folderPath, "workflow.js"), "utf8");
+
+    // The slug differs (the app de-duplicates against the sibling the script just made), so compare
+    // everything else — including the comment block, which is the half that drifted.
+    expect(fromApp.replace(/"ship-2"/g, '"ship"')).toBe(fromScript);
+    expect(fromApp).toContain("sync-meta.js");
+    expect(fromApp).not.toContain("Keep `meta.phases`");
   });
 });

@@ -95,8 +95,10 @@ Two sides, talking over the webview `postMessage` channel:
   `chat-entry.tsx` is the entry (a legacy name — there is no chat); it routes on the host's `bind`
   message (`{kind, id}`) to `CampaignView`, `MissionView`, `TaskView`, `BugView`, or `WorkflowView` —
   the entity detail editors with status dropdowns, acceptance‑criteria checklists, and document links.
-  `WorkflowView` pairs a read‑only `workflow-diagram.tsx` (hand‑rolled SVG, no layout library) with a
-  structured step editor that round‑trips through `workflow:setMeta`. `rpc-client.ts` wraps `postMessage` as request/response (`rpc` → `rpc:result`);
+  `WorkflowView` is read‑only: it renders `workflow-diagram.tsx` (hand‑rolled SVG, no layout library)
+  over the `meta` the host parsed, since `meta` is **generated from the script body** by the pack's
+  `sync-meta.js` — there is no step editor and no `workflow:setMeta` RPC.
+  `rpc-client.ts` wraps `postMessage` as request/response (`rpc` → `rpc:result`);
   `octoshell-shim.ts` exposes the `window.octoshell` API the views consume.
 
 The host↔webview protocol: host → webview posts `bind` (which entity this panel shows) and
@@ -120,8 +122,10 @@ the `scripts/` that edit boards — named `octobots` before pack v19), the `work
 the `mission-execution` skill
 (driving a planned task to a merged, verified PR), the `mission-completion-gate` skill, and a
 `hooks/primer.mjs` session hook that teaches a CLI agent how to read
-and drive the `.octobots/` board. `scripts/add-workflow.js`, `set-step.js` and `add-run.js` author
-the workflows the app draws; `mission-execution` hands a mission's `workflow.js` to Claude Code's
+and drive the `.octobots/` board. `scripts/add-workflow.js`, `sync-meta.js` and `add-run.js` author
+the workflows the app draws — `sync-meta.js` regenerates a script's `export const meta` from its own
+body, so the diagram cannot drift from the program; `mission-execution` hands a mission's
+`workflow.js` to Claude Code's
 `Workflow` tool — the extension never runs it. `installPack` deletes skill dirs retired by a rename, so an
 upgraded workspace never ends up with two copies. This is product payload — keep it in sync with the board model in
 `packages/board`.

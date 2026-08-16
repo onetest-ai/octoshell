@@ -25,7 +25,6 @@ import {
   deleteBug,
   createWorkflow as createWorkflowFile,
   deleteWorkflow as deleteWorkflowFile,
-  setWorkflowMeta as setWorkflowMetaFile,
   appendWorkflowRun as appendWorkflowRunFile,
   migrateLegacyWorkflows as migrateLegacyWorkflowsFile,
   migrateEntitiesToYaml as migrateEntitiesToYamlFile,
@@ -41,7 +40,6 @@ import {
   type BugSeverity,
   type Workflow,
   type WorkflowParent,
-  type WorkflowMeta,
 } from "@octoshell/board";
 import { rollupCampaign, type Rollup } from "./board-rollup.js";
 import type { DocLink, DocFile, CampaignSummary, MissionProposal } from "../protocol/index.js";
@@ -386,11 +384,6 @@ export class BoardHost {
     const res = createWorkflowFile(this.octobotsDir, parent, input);
     this.reconcile();
     return res;
-  }
-
-  setWorkflowMeta(id: string, meta: WorkflowMeta): void {
-    setWorkflowMetaFile(this.octobotsDir, id, meta);
-    this.reconcile();
   }
 
   appendWorkflowRun(id: string, entry: { status: string; summary: string; at: string }): void {

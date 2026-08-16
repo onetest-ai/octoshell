@@ -10,6 +10,7 @@ const WF = {
   phases: [{ title: "Build", steps: [{ id: "s1", agent: "impl", label: "Build it" }] }],
   scriptPath: "campaigns/a/workflows/w/workflow.js",
   folderPath: "campaigns/a/workflows/w",
+  usesPath: null,
   parseError: null, lastRunStatus: "done", createdAt: 1, updatedAt: 1,
 };
 
@@ -32,42 +33,23 @@ describe("WorkflowView", () => {
     const { rpc } = stubRpc();
     render(<WorkflowView id={WF.id} rpc={rpc} />);
     expect(await screen.findByText("build-tasks")).toBeTruthy();
+    expect(await screen.findByText(WF.description)).toBeTruthy();
     expect(await screen.findByText("Build it")).toBeTruthy();
     expect(await screen.findByText("impl")).toBeTruthy();
   });
 
-  it("writes a step edit back through workflow:setMeta", async () => {
-    const { rpc, calls } = stubRpc();
+  it("shows the run status", async () => {
+    const { rpc } = stubRpc();
     render(<WorkflowView id={WF.id} rpc={rpc} />);
-    const label = await screen.findByLabelText("Step s1 label");
-    fireEvent.change(label, { target: { value: "Build it well" } });
-    fireEvent.blur(label);
-    await waitFor(() => {
-      const call = calls.find(([m]) => m === "workflow:setMeta");
-      expect(call).toBeDefined();
-      const args = call![1] as { meta: { phases: { steps: { label: string }[] }[] } };
-      expect(args.meta.phases[0]!.steps[0]!.label).toBe("Build it well");
-    });
+    expect(await screen.findByText(/last run: done/i)).toBeTruthy();
   });
 
-  it("adds a step to a phase", async () => {
-    const { rpc, calls } = stubRpc();
-    render(<WorkflowView id={WF.id} rpc={rpc} />);
-    fireEvent.click(await screen.findByRole("button", { name: /add step/i }));
-    await waitFor(() => {
-      const call = calls.find(([m]) => m === "workflow:setMeta");
-      const args = call![1] as { meta: { phases: { steps: unknown[] }[] } };
-      expect(args.meta.phases[0]!.steps).toHaveLength(2);
-    });
-  });
-
-  it("shows the parse error and hides the editor when the script is unreadable", async () => {
+  it("shows the parse error and withholds the diagram when the script is unreadable", async () => {
     const broken = { ...WF, parseError: "no `export const meta` object literal found in workflow.js", phases: [] };
     const { rpc } = stubRpc({ "workflow:get": broken });
     render(<WorkflowView id={WF.id} rpc={rpc} />);
     expect(await screen.findByText(broken.parseError)).toBeTruthy();
     expect(screen.getByText(/script could not be read/i)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /add step/i })).toBeNull();
   });
 
   it("opens the script", async () => {
@@ -76,34 +58,6 @@ describe("WorkflowView", () => {
     fireEvent.click(await screen.findByRole("button", { name: /open script/i }));
     await waitFor(() => {
       expect(calls.some(([m]) => m === "workflow:openScript")).toBe(true);
-    });
-  });
-
-  it("edits dependsOn as comma-separated ids, persisting a string array", async () => {
-    const { rpc, calls } = stubRpc();
-    render(<WorkflowView id={WF.id} rpc={rpc} />);
-    const deps = await screen.findByLabelText("Step s1 depends on");
-    fireEvent.change(deps, { target: { value: "s0, s2 ,  s3 " } });
-    fireEvent.blur(deps);
-    await waitFor(() => {
-      const call = calls.find(([m]) => m === "workflow:setMeta");
-      expect(call).toBeDefined();
-      const args = call![1] as { meta: { phases: { steps: { dependsOn?: string[] }[] }[] } };
-      expect(args.meta.phases[0]!.steps[0]!.dependsOn).toEqual(["s0", "s2", "s3"]);
-    });
-  });
-
-  it("clears dependsOn to undefined when the field is emptied", async () => {
-    const withDeps = { ...WF, phases: [{ title: "Build", steps: [{ id: "s1", agent: "impl", label: "Build it", dependsOn: ["s0"] }] }] };
-    const { rpc, calls } = stubRpc({ "workflow:get": withDeps });
-    render(<WorkflowView id={WF.id} rpc={rpc} />);
-    const deps = await screen.findByLabelText("Step s1 depends on");
-    fireEvent.change(deps, { target: { value: "  " } });
-    fireEvent.blur(deps);
-    await waitFor(() => {
-      const call = calls.find(([m]) => m === "workflow:setMeta");
-      const args = call![1] as { meta: { phases: { steps: { dependsOn?: string[] }[] }[] } };
-      expect(args.meta.phases[0]!.steps[0]!.dependsOn).toBeUndefined();
     });
   });
 });

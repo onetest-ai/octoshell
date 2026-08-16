@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BoardModel } from "../src/board-model.js";
+import { BoardModel, readPointer, resolveWithin } from "../src/board-model.js";
 import { renderManagedBlock } from "../src/managed-block.js";
 
 let root: string;
@@ -173,5 +173,157 @@ describe("workflows", () => {
     board.rebuild();
     const campaignId = board.listCampaigns()[0]!.id;
     expect(board.listWorkflows({ campaignId })[0]!.lastRunStatus).toBe("done");
+  });
+
+  it("draws a shared pipeline under the mission that points at it", () => {
+    const c = join(root, "campaigns", "c");
+    mkdirSync(join(c, "workflows", "implementation"), { recursive: true });
+    writeFileSync(join(c, "campaign.md"), "# C\n\n## Description\nx\n");
+    writeFileSync(
+      join(c, "workflows", "implementation", "workflow.js"),
+      "export const meta = {\n" +
+        "  name: \"implementation\",\n" +
+        "  description: \"shared\",\n" +
+        "  phases: [{ title: \"Build\", steps: [{ id: \"build-1\", label: \"build\", agent: \"js-dev\" }] }],\n" +
+        "}\n" +
+        "phase('Build')\n",
+    );
+
+    const m = join(c, "missions", "m1");
+    mkdirSync(join(m, "workflows", "implementation"), { recursive: true });
+    writeFileSync(join(m, "mission.md"), "# M1\n\n## Description\nx\n");
+    writeFileSync(
+      join(m, "workflows", "implementation", "workflow.json"),
+      JSON.stringify({ uses: "../../../../workflows/implementation" }),
+    );
+
+    const board = new BoardModel(root);
+    board.rebuild();
+    const missionId = board.listMissions(board.listCampaigns()[0]!.id)[0]!.id;
+    const wf = board.listWorkflows({ missionId })[0];
+    expect(wf?.name).toBe("implementation");
+    expect(wf?.phases[0]?.steps[0]?.label).toBe("build");
+    expect(wf?.usesPath).toBe("campaigns/c/workflows/implementation");
+    // scriptPath follows the pointer to where the script actually lives, not the mission's own folder.
+    expect(wf?.scriptPath).toBe("campaigns/c/workflows/implementation/workflow.js");
+  });
+
+  it("drops a pointer that escapes the board instead of following it", () => {
+    const c = join(root, "campaigns", "c");
+    mkdirSync(c, { recursive: true });
+    writeFileSync(join(c, "campaign.md"), "# C\n\n## Description\nx\n");
+
+    const m = join(c, "missions", "m1");
+    mkdirSync(join(m, "workflows", "implementation"), { recursive: true });
+    writeFileSync(join(m, "mission.md"), "# M1\n\n## Description\nx\n");
+    writeFileSync(
+      join(m, "workflows", "implementation", "workflow.json"),
+      JSON.stringify({ uses: "../../../../../../etc" }),
+    );
+
+    const board = new BoardModel(root);
+    board.rebuild();
+    const missionId = board.listMissions(board.listCampaigns()[0]!.id)[0]!.id;
+    expect(board.listWorkflows({ missionId })).toEqual([]);
+  });
+});
+
+describe("resolveWithin", () => {
+  it("resolves a normal pointer to its target folder", () => {
+    expect(
+      resolveWithin("campaigns/c/missions/m1/workflows/implementation", "../../../../workflows/implementation"),
+    ).toBe("campaigns/c/workflows/implementation");
+  });
+
+  it("refuses a pointer that climbs above the board root", () => {
+    expect(resolveWithin("campaigns/c/missions/m1/workflows/implementation", "../../../../../../etc")).toBeNull();
+  });
+
+  it("refuses an absolute-looking pointer that still climbs above the board root", () => {
+    expect(resolveWithin("campaigns/c/missions/m1/workflows/implementation", "/../../../../../../etc")).toBeNull();
+  });
+
+  // A `uses` beginning with "/" is refused outright, even with no ".." in it at all. Earlier this
+  // degraded to a same-folder-relative append (the leading "/" contributed one skipped empty split
+  // segment) and stayed contained; that was safe but surprising — an author writing a leading slash
+  // almost certainly means "from some root", so silently reinterpreting it resolves to a path they
+  // never asked for. A security boundary should not quietly reinterpret its input, so this now
+  // refuses instead of resolving. (Superseded assertion: this pointer used to resolve to
+  // "campaigns/c/workflows/w/sibling" — that contract is deliberately no longer true.)
+  it("refuses an absolute-looking pointer even with no climb in it", () => {
+    expect(resolveWithin("campaigns/c/workflows/w", "/sibling")).toBeNull();
+  });
+
+  // A climb that lands EXACTLY on "campaigns" (no subpath under it) must still be refused — the
+  // containment check requires the "campaigns/" PREFIX, and the bare string "campaigns" does not
+  // have one.
+  it("refuses a climb that lands exactly on the campaigns root with no subpath", () => {
+    expect(resolveWithin("campaigns/c", "..")).toBeNull();
+  });
+
+  // A sibling directory that merely starts with "campaigns" — e.g. "campaigns-evil" — must not
+  // satisfy the "campaigns/" prefix check. `String.startsWith` on "campaigns-evil/x" against
+  // "campaigns/" is false only because the check includes the trailing slash; pin that here so it
+  // can never be "simplified" into a bare startsWith("campaigns") again.
+  it("refuses a sibling of campaigns/ whose name merely starts with campaigns", () => {
+    expect(resolveWithin("campaigns/c", "../../campaigns-evil/x")).toBeNull();
+  });
+
+  // This function only ever splits on "/", so a backslash is just an odd literal character to it —
+  // on POSIX, "..\..\etc" looks like one harmless, contained segment. But the fs/path calls
+  // downstream (board-model.ts's own join(root, resolved, ...), and every existsSync in validate)
+  // go through Node, which on Windows treats "\" as a real separator: a value blessed as
+  // "contained" here would be re-interpreted by the OS as a genuine climb out of the board. A
+  // pointer is a repo-relative, POSIX-style path, so any backslash is refused outright.
+  describe("backslash refusal (Windows path separators)", () => {
+    it("refuses a leading-backslash pointer", () => {
+      expect(resolveWithin("campaigns/c/workflows/w", "\\..\\..\\etc")).toBeNull();
+    });
+
+    it("refuses a pointer mixing forward and backward slashes", () => {
+      expect(resolveWithin("campaigns/c/workflows/w", "../..\\..\\etc")).toBeNull();
+    });
+
+    it("refuses a plain backslash-separated relative pointer with no climb at all", () => {
+      expect(resolveWithin("campaigns/c/workflows/w", "foo\\bar")).toBeNull();
+    });
+  });
+
+  it("runs both the leading-/ and the backslash guard before any other processing — neither can be reached around by a value combining both", () => {
+    // "/\..\..\..\..\..\..\etc" starts with "/" AND contains "\": either guard alone refuses it,
+    // and nothing between the two guards and the return could let one bypass the other.
+    expect(resolveWithin("campaigns/c/missions/m1/workflows/implementation", "/\\..\\..\\..\\..\\..\\..\\etc")).toBeNull();
+  });
+});
+
+// CHANGED CONTRACT: readPointer used to return `string | null`, collapsing every failure into one
+// null. It now returns `{ ok: true, uses } | { ok: false, error }` — because "this file is not
+// JSON" was being reported to the author as "has no `uses` string", which names the wrong problem.
+describe("readPointer", () => {
+  it("reads the uses string from a well-formed pointer file", () => {
+    const p = join(root, "workflow.json");
+    writeFileSync(p, JSON.stringify({ uses: "../../x" }));
+    expect(readPointer(p)).toEqual({ ok: true, uses: "../../x" });
+  });
+
+  it("fails for a missing file, naming the read", () => {
+    const result = readPointer(join(root, "missing.json"));
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toMatch(/could not be read/);
+  });
+
+  it("tells malformed JSON apart from a missing `uses` key, rather than reporting both as the latter", () => {
+    const bad = join(root, "bad.json");
+    writeFileSync(bad, "{not json");
+    const malformed = readPointer(bad);
+    expect(malformed.ok).toBe(false);
+    expect(malformed.ok === false && malformed.error).toMatch(/not valid JSON/);
+    expect(malformed.ok === false && malformed.error).not.toMatch(/`uses`/);
+
+    const blank = join(root, "blank.json");
+    writeFileSync(blank, JSON.stringify({ uses: "  " }));
+    const missing = readPointer(blank);
+    expect(missing.ok).toBe(false);
+    expect(missing.ok === false && missing.error).toMatch(/no `uses` string/);
   });
 });

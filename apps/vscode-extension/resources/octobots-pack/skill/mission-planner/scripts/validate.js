@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import { parseWorkflowMeta } from "./workflow-meta.mjs";
+import { basename, dirname, join, sep } from "node:path";
+import { mergeAuthoredPhases, parseWorkflowMeta, serializeMeta } from "./workflow-meta.mjs";
+import { extractPhases, unclassifiedMessage } from "./extract-meta.mjs";
 import { readEntity, resolveEntityFile, KIND_KEYS, KNOWN_KEYS } from "./entity-io.mjs";
 
 const arg = process.argv[2];
@@ -97,7 +98,7 @@ if (kind === "campaign" || kind === "mission") {
     ? readdirSync(workflowsDir, { withFileTypes: true })
         .filter((e) => e.isDirectory())
         .map((e) => e.name)
-        .filter((slug) => existsSync(join(workflowsDir, slug, "workflow.js")))
+        .filter((slug) => existsSync(join(workflowsDir, slug, "workflow.js")) || existsSync(join(workflowsDir, slug, "workflow.json")))
     : [];
   for (const slug of slugs) {
     for (const p of validateWorkflowDir(join(workflowsDir, slug))) {
@@ -126,46 +127,154 @@ function validateWorkflowDir(dir) {
   const out = [];
   const slug = basename(dir);
   const jsPath = join(dir, "workflow.js");
-  if (!existsSync(jsPath)) return ["workflow.js is missing"];
+  if (!existsSync(jsPath)) {
+    // A folder may point at a shared pipeline instead of owning a script — shared pipelines live at
+    // campaign level and several missions run the same one.
+    const pointerPath = join(dir, "workflow.json");
+    if (!existsSync(pointerPath)) return ["workflow.js is missing"];
+    const pointer = readPointer(pointerPath);
+    // Unreadable, not JSON, and no `uses` key are three different mistakes; readPointer names each.
+    if (!pointer.ok) return [pointer.error];
+    const uses = pointer.uses;
+    if (uses.includes("\\")) {
+      // Named ahead of the generic "resolves outside the board" finding: the author's mistake here
+      // is a stray backslash, not a climb, and Windows would treat it as a real separator.
+      return [`pointer "${uses}" contains a backslash — pointers are POSIX-style paths (forward slashes only)`];
+    }
+    const from = boardRelative(dir);
+    const target = from === null ? null : resolveWithin(from, uses);
+    if (target === null) return [`pointer "${uses}" resolves outside the board`];
+    const root = boardRootOf(dir);
+    if (root === null || !existsSync(join(root, target, "workflow.js"))) {
+      return [`pointer "${uses}" names a folder with no workflow.js`];
+    }
+    return out; // valid pointer — the target it names is validated on its own, as its own workflow folder
+  }
 
+  const source = readFileSync(jsPath, "utf8");
   let meta;
   try {
-    meta = parseWorkflowMeta(readFileSync(jsPath, "utf8"));
+    meta = parseWorkflowMeta(source);
   } catch (err) {
     return [err.message];
   }
 
   if (meta.name !== slug) out.push(`meta.name "${meta.name}" does not match its folder "${slug}"`);
+
+  // The declared graph is GENERATED from the body, so its internal consistency is not a thing to
+  // check — it is a thing that cannot be wrong. What can be wrong is the body: whether it parses,
+  // whether meta was regenerated after the last edit, and whether every agent() call actually
+  // dispatches to the agent the diagram names. Checked ahead of `meta.phases.length` so a body
+  // that fails to parse is reported even when meta happens to declare zero phases.
+  let extracted;
+  try {
+    extracted = extractPhases(source);
+  } catch (err) {
+    return [...out, `body does not parse: ${err.message}`];
+  }
+
   if (meta.phases.length === 0) {
     out.push("workflow has no phases");
     return out;
   }
 
-  const stepPhase = new Map();
-  const parallelPhase = new Map();
-  meta.phases.forEach((phase, pi) => {
-    if (phase.steps.length === 0) out.push(`phase "${phase.title}" has no steps`);
-    for (const step of phase.steps) {
-      if (stepPhase.has(step.id)) out.push(`duplicate step id "${step.id}"`);
-      else stepPhase.set(step.id, pi);
-      if (step.parallel !== undefined) {
-        const seen = parallelPhase.get(step.parallel);
-        if (seen !== undefined && seen !== pi) {
-          out.push(`parallel group "${step.parallel}" spans more than one phase`);
-        } else if (seen === undefined) {
-          parallelPhase.set(step.parallel, pi);
-        }
-      }
-    }
-  });
-  for (const phase of meta.phases) {
-    for (const step of phase.steps) {
-      for (const dep of step.dependsOn ?? []) {
-        if (!stepPhase.has(dep)) out.push(`step "${step.id}" dependsOn "${dep}", which is not a step`);
-      }
-    }
+  // Compare through the real writer/reader, not the raw extraction — serializeMeta writes each
+  // step with JSON.stringify(step), so key INSERTION order becomes file order, while
+  // parseWorkflowMeta rebuilds steps through coerceStep in its own canonical order. Comparing
+  // extracted.phases against meta.phases directly would flag a perfectly current file as stale
+  // over key order alone; round-tripping through the same writer+reader a real regenerate would
+  // use makes this immune to that. `mergeAuthoredPhases` is part of that same regenerate: a phase's
+  // `detail` is authored, not derived, so a workflow carrying one is current, not stale.
+  const roundTripped = parseWorkflowMeta(
+    `export const meta = ${serializeMeta({
+      name: meta.name,
+      description: meta.description,
+      phases: mergeAuthoredPhases(meta.phases, extracted.phases),
+    })}`,
+  ).phases;
+  if (JSON.stringify(roundTripped) !== JSON.stringify(meta.phases)) {
+    out.push("meta is out of date — regenerate it with sync-meta.js");
   }
+  for (const call of extracted.unclassified) {
+    out.push(`line ${call.line}: ${unclassifiedMessage(call)}`);
+  }
+  // A step with a computed agentType (e.g. `agentType: task.role`) dispatches for real at
+  // runtime — it is NOT the "no agentType" defect below, just unreadable by the extractor — so it
+  // is excluded by id rather than folded into the same check.
+  const computedAgentTypeIds = new Set(extracted.computedAgentType.map((c) => c.stepId));
+  for (const step of extracted.phases.flatMap((p) => p.steps)) {
+    if (step.kind === "workflow") continue;
+    if (step.agent || computedAgentTypeIds.has(step.id)) continue;
+    out.push(`step "${step.id}" (${step.label}) has no agentType — it runs as the default subagent`);
+  }
+
   return out;
+}
+
+/**
+ * The `uses` string of a pointer file, or why there isn't one: `{ ok: true, uses }` /
+ * `{ ok: false, error }`. The failures are kept apart because they are different author mistakes —
+ * a file that is not JSON at all used to be reported as "has no `uses` string", which sends the
+ * author looking for a missing key in a file whose real problem is a syntax error.
+ * Mirrors packages/board/src/board-model.ts `readPointer` — keep the two in step.
+ */
+function readPointer(path) {
+  let text;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch {
+    return { ok: false, error: "workflow.json could not be read" };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return { ok: false, error: `workflow.json is not valid JSON: ${err.message}` };
+  }
+  const uses = parsed?.uses;
+  if (typeof uses !== "string" || !uses.trim()) return { ok: false, error: "workflow.json has no `uses` string" };
+  return { ok: true, uses };
+}
+
+/**
+ * Resolve `rel` against `from`, both relative to the board root, refusing anything that climbs out
+ * of it. A pointer is a link the board follows on every read; it must not be able to leave the
+ * tree, so this is a containment check and not merely a tidy-up.
+ *
+ * A leading `/` is refused outright rather than folded under `from`, and a `\` anywhere in `rel`
+ * is refused outright too (this function only splits on `/`, so on Windows the fs/path layer
+ * downstream would treat a blessed-as-contained `\` value as a real separator and a genuine climb)
+ * — see the identical notes on packages/board/src/board-model.ts `resolveWithin`, which this
+ * mirrors — keep the two in step.
+ */
+function resolveWithin(from, rel) {
+  if (rel.startsWith("/") || rel.includes("\\")) return null;
+  const stack = [];
+  for (const part of `${from}/${rel}`.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (stack.length === 0) return null;
+      stack.pop();
+      continue;
+    }
+    stack.push(part);
+  }
+  const resolved = stack.join("/");
+  return resolved.startsWith("campaigns/") ? resolved : null;
+}
+
+/** The `.octobots` ancestor of `absDir`, or null when `absDir` is not under one. */
+function boardRootOf(absDir) {
+  const parts = absDir.split(sep);
+  const idx = parts.lastIndexOf(".octobots");
+  return idx === -1 ? null : parts.slice(0, idx + 1).join(sep);
+}
+
+/** `absDir`'s path relative to its `.octobots` ancestor, forward-slashed, or null when it has none. */
+function boardRelative(absDir) {
+  const parts = absDir.split(sep);
+  const idx = parts.lastIndexOf(".octobots");
+  return idx === -1 ? null : parts.slice(idx + 1).join("/");
 }
 
 /**
