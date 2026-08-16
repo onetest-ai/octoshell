@@ -3,10 +3,11 @@ import { join } from "node:path";
 import { installPrimer, registerClaudeHook, unregisterClaudeHook, claudeHookStatus } from "./octobots-hooks.js";
 import { installTokenomics, tokenomicsStatus } from "./octobots-tokenomics.js";
 import { installGraph, graphStatus } from "./octograph-install.js";
+import { installStatusline, registerStatusline, unregisterStatusline, statuslineStatus } from "./octobots-statusline.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
-export const OCTOBOTS_PACK_VERSION = 54;
+export const OCTOBOTS_PACK_VERSION = 55;
 
 /** The skills the pack ships, by directory name under `skill/` and `.claude/skills/`. */
 export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate", "knowledge-explorer"] as const;
@@ -115,8 +116,8 @@ function copyTree(from: string, to: string): number {
 export function installPack(
   srcRoot: string,
   repoRoot: string,
-  opts: { hooks?: boolean } = {},
-): { written: number; hooksRegistered: boolean } {
+  opts: { hooks?: boolean; statusline?: boolean } = {},
+): { written: number; hooksRegistered: boolean; statusline: "registered" | "foreign" | "skipped" } {
   let written = 0;
   for (const name of RETIRED_SKILLS) {
     rmSync(join(repoRoot, ".claude", "skills", name), { recursive: true, force: true });
@@ -153,5 +154,16 @@ export function installPack(
     registerClaudeHook(repoRoot, OCTOBOTS_PACK_VERSION);
     hooksRegistered = true;
   }
-  return { written, hooksRegistered };
+  // The status line follows the hooks rule exactly — opt-in, refresh-if-present — with one addition:
+  // `statusLine` holds a SINGLE entry, so registering ours over a status line we did not write would
+  // delete it irrecoverably. `registerStatusline` refuses that case and reports `foreign` instead.
+  const slBefore = statuslineStatus(repoRoot, OCTOBOTS_PACK_VERSION);
+  let statusline: "registered" | "foreign" | "skipped" = "skipped";
+  if (opts.statusline === false) {
+    unregisterStatusline(repoRoot);
+  } else if (opts.statusline === true || slBefore.registered) {
+    written += installStatusline(srcRoot, repoRoot);
+    statusline = registerStatusline(repoRoot);
+  }
+  return { written, hooksRegistered, statusline };
 }
