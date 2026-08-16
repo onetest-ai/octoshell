@@ -82,6 +82,41 @@ budgetTokens: 2000
 # override that default location.
 out: null
 
+# Confidence floor for the LEXICAL predictor — the cold-start guess that
+# scores a task's acceptance criteria against file paths when the co-change
+# graph has no history to answer from. Below this, octograph says "no
+# confident match" rather than naming a file.
+#
+# 0.2 is a FIRST FIT, not a settled constant: calibrated on this repo's own
+# history (`scripts/calibrate-lexical.mjs`, 2026-08-11) against 8
+# provenance-attributed samples. Settable per repo precisely because a naming
+# convention it was fitted to need not hold in yours. Raising it to 0.30 bought
+# precision 0.50 -> 0.67 on that dataset by dropping a third of the answered
+# tasks for no recall gain — worth revisiting once you have a larger labelled
+# sample than 8.
+lexicalConfidenceFloor: 0.2
+
+# Minimum gap between the best and second-best lexical candidate. A runner-up
+# within this margin is an ambiguous near-tie, not a confident pick, so the
+# prediction is withheld.
+#
+# Measured alongside the floor, same dataset and run: holding the floor at 0.2,
+# this margin cut 3 of 5 false positives while keeping BOTH true positives,
+# moving precision 0.29 -> 0.50. On that dataset it is this constant, not the
+# floor, that carries the precision. Same caveat: fitted to 8 samples.
+lexicalRunnerUpMargin: 0.05
+
+# Where the committed knowledge vault lives, relative to the repo root.
+# An OPTIONAL evidence tier: a repo without one still gets every other answer,
+# just without note citations alongside the co-change evidence. Point this at
+# your own directory if you keep durable notes somewhere else.
+vaultPath: .agents/knowledge
+
+# The ref `impact --diff` measures a branch against. `main` because a mission
+# is a feature branch off it. A repo whose trunk is named otherwise sets this
+# once here rather than passing `--base` on every run.
+diffBase: main
+
 # Repo-relative path prefixes dropped from the graph entirely, at its input
 # (packages/graph/src/harvest.ts, matched by noise.ts's isExcludedPath). The
 # module map, clustering, hubs, working sets, `impact` and `drift` all see one

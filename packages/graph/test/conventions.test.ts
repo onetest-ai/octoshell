@@ -1142,3 +1142,52 @@ describe("package conventions", () => {
     expect(members.sort()).toEqual(['"predicted"', '"provenance"']);
   });
 });
+
+/**
+ * `octograph.yaml` claims, in its own header and in docs/octograph.md, that it ships with EVERY
+ * default spelled out explicitly. That claim is the whole reason the file is worth committing: a
+ * key absent from it is invisible unless you read the source.
+ *
+ * It had quietly gone false for four keys — `lexicalConfidenceFloor` and `lexicalRunnerUpMargin`
+ * (long-standing), plus `vaultPath` and `diffBase` (added with the vault/diff-impact work). Nothing
+ * caught it; the gap surfaced only because `impact --diff` noticed octograph.yaml historically
+ * co-changes with config.ts. This turns the claim into something that fails loudly instead.
+ * (github.com/onetest-ai/octoshell/issues/101)
+ */
+describe("octograph.yaml documents every Config key", () => {
+  const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+
+  /** Field names of the `Config` interface, read from source rather than a second hand-kept list. */
+  function configKeys(): string[] {
+    const src = readFileSync(join(SRC, "config.ts"), "utf8");
+    const body = /export interface Config\s*\{([\s\S]*?)\n\}/.exec(src)?.[1];
+    expect(body, "Config interface not found in config.ts").toBeTruthy();
+    return [...(body ?? "").matchAll(/^\s{2}([a-zA-Z][A-Za-z0-9]*)\??:/gm)].flatMap((m) =>
+      m[1] === undefined ? [] : [m[1]],
+    );
+  }
+
+  /** Top-level keys the committed octograph.yaml actually sets (not commented-out examples). */
+  function yamlKeys(): string[] {
+    const yaml = readFileSync(join(REPO_ROOT, "octograph.yaml"), "utf8");
+    return [...yaml.matchAll(/^([a-zA-Z][A-Za-z0-9]*):/gm)].flatMap((m) =>
+      m[1] === undefined ? [] : [m[1]],
+    );
+  }
+
+  it("every Config key appears in the committed octograph.yaml", () => {
+    const missing = configKeys().filter((k) => !yamlKeys().includes(k));
+    expect(
+      missing,
+      `octograph.yaml says it spells out every default, but these Config keys are absent: ${missing.join(", ")}. ` +
+        "Add them WITH their reasoning, in the file's existing style — the reasoning is the point, " +
+        "not the key.",
+    ).toEqual([]);
+  });
+
+  it("octograph.yaml sets no key that Config does not have", () => {
+    // The other direction: a key removed from Config leaves a stale block that reads as tunable.
+    const unknown = yamlKeys().filter((k) => !configKeys().includes(k));
+    expect(unknown, `octograph.yaml sets keys Config no longer has: ${unknown.join(", ")}`).toEqual([]);
+  });
+});
