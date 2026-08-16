@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 55
+// octobots-pack-version: 56
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -19,6 +19,14 @@ function isTestPath(path) {
   if (filename === "conftest.py") return true;
   if (/_test\.go$/.test(filename)) return true;
   return false;
+}
+function matchedExcludePrefix(path, excludePaths) {
+  for (const raw of excludePaths) {
+    const prefix = raw.endsWith("/") ? raw.slice(0, -1) : raw;
+    if (prefix.length === 0) continue;
+    if (path === prefix || path.startsWith(`${prefix}/`)) return raw;
+  }
+  return null;
 }
 function isExcludedPath(path, excludePaths) {
   for (const raw of excludePaths) {
@@ -11237,6 +11245,17 @@ function runMapCommand(repoRoot, config, since, now, json) {
 function runImpactCommand(repoRoot, config, since, now, rawPath, json) {
   const { edges, files } = analyze(repoRoot, config, { now, since });
   const path = repoRelative(repoRoot, rawPath) ?? rawPath;
+  const excludedBy = matchedExcludePrefix(path, config.excludePaths);
+  if (excludedBy !== null) {
+    const why = `${path} is excluded by octograph.yaml ("${excludedBy}") \u2014 not analysed, so this is not a finding about its coupling
+`;
+    return { code: 0, stdout: json ? "[]\n" : "(path excluded \u2014 not analysed)\n", stderr: why };
+  }
+  if (!files.includes(path)) {
+    const why = `${path} never entered the co-change graph \u2014 untracked, outside --since, or only ever committed alone (harvest keeps commits touching 2..${config.maxCommitFiles} files). Not analysed, so this is not a finding about its coupling
+`;
+    return { code: 0, stdout: json ? "[]\n" : "(path not in the analysed history \u2014 not analysed)\n", stderr: why };
+  }
   const rows = impact(path, edges, files, void 0, config.minSupport);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatImpact(rows);
   return { code: 0, stdout, stderr: "" };

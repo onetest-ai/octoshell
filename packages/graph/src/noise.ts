@@ -81,6 +81,23 @@ export function isTestPath(path: string): boolean {
  * directory" to whoever writes it. An empty entry (a stray blank line) never
  * matches anything, rather than matching every path.
  */
+/**
+ * The `excludePaths` entry that swallows `path`, or null. Same matching rule as
+ * {@link isExcludedPath} — this returns WHICH prefix matched so a caller can say so.
+ *
+ * `impact` used to print "(no coupled files)" for an excluded path, byte-identical to the answer
+ * for a path it analysed and found genuinely uncoupled: a blind spot rendered as a finding. The
+ * decision was already computed at harvest and simply not carried forward.
+ */
+export function matchedExcludePrefix(path: string, excludePaths: readonly string[]): string | null {
+  for (const raw of excludePaths) {
+    const prefix = raw.endsWith("/") ? raw.slice(0, -1) : raw;
+    if (prefix.length === 0) continue;
+    if (path === prefix || path.startsWith(`${prefix}/`)) return raw;
+  }
+  return null;
+}
+
 export function isExcludedPath(path: string, excludePaths: readonly string[]): boolean {
   for (const raw of excludePaths) {
     const prefix = raw.endsWith("/") ? raw.slice(0, -1) : raw;

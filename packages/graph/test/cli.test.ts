@@ -1536,3 +1536,70 @@ describe("runCli — impact --diff", () => {
     expect(answer.source).toEqual([]); // but the co-change graph is now empty
   });
 });
+
+/**
+ * Three distinct causes used to collapse into one string: `impact` printed `(no coupled files)`
+ * for a path it had EXCLUDED, for a path with no commits, and for a path it genuinely analysed and
+ * found uncoupled. Only the third is a finding — the other two are blind spots, and a caller could
+ * not tell them apart. (github.com/onetest-ai/octoshell/issues/94)
+ */
+describe("impact distinguishes 'not analysed' from 'no coupling found'", () => {
+  it("names the octograph.yaml rule that excluded the path", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    writeFileSync(join(repo, "octograph.yaml"), "excludePaths:\n  - vendor/\n");
+
+    const res = runCli(["impact", "vendor/thing.ts"], repo, NOW);
+    expect(res.code).toBe(0);
+    expect(res.stdout).toContain("excluded");
+    expect(res.stdout).not.toContain("no coupled files"); // the misleading answer must be gone
+    // the REASON names the rule, so a caller can act on it rather than guess
+    expect(res.stderr).toContain("vendor/");
+    expect(res.stderr).toContain("not analysed");
+  });
+
+  it("says so when the path has no commits in the analysed history", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    const res = runCli(["impact", "never-committed.ts"], repo, NOW);
+    expect(res.code).toBe(0);
+    expect(res.stdout).toContain("not in the analysed history");
+    expect(res.stdout).not.toContain("no coupled files");
+    expect(res.stderr).toContain("never entered the co-change graph");
+  });
+
+  it("still says '(no coupled files)' for a path it DID analyse and found uncoupled", () => {
+    // The one case where that string is true — it must survive, or the fix would have replaced a
+    // misleading message with a missing one. `weak.ts` IS harvested (it shares a commit, so the
+    // commit yields a pair) but its single co-occurrence falls below the default minSupport, which
+    // is cause (3) from the issue: analysed, and genuinely not coupled above the floor.
+    const repo = buildRepo([
+      { files: ["a.ts", "b.ts"] },
+      { files: ["a.ts", "b.ts"], daysAgo: 1 },
+      { files: ["weak.ts", "unrelated.ts"], daysAgo: 2 },
+    ]);
+    const res = runCli(["impact", "weak.ts"], repo, NOW);
+    expect(res.stdout).toContain("(no coupled files)");
+    expect(res.stderr).toBe("");
+  });
+
+  it("a file only ever committed ALONE is 'not analysed', not 'uncoupled'", () => {
+    // harvest.ts drops any commit touching fewer than two files, so such a file never enters the
+    // co-change graph at all. Reporting it as uncoupled would be the same blind spot in a new hat.
+    const repo = buildRepo([
+      { files: ["a.ts", "b.ts"] },
+      { files: ["a.ts", "b.ts"], daysAgo: 1 },
+      { files: ["solo.ts"], daysAgo: 2 },
+    ]);
+    const res = runCli(["impact", "solo.ts"], repo, NOW);
+    expect(res.stdout).toContain("not analysed");
+    expect(res.stderr).toContain("only ever committed alone");
+  });
+
+  it("--json stays a parseable array in every case", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }, { files: ["a.ts", "b.ts"], daysAgo: 1 }]);
+    writeFileSync(join(repo, "octograph.yaml"), "excludePaths:\n  - vendor/\n");
+    for (const p of ["vendor/thing.ts", "never-committed.ts", "a.ts"]) {
+      const res = runCli(["impact", p, "--json"], repo, NOW);
+      expect(Array.isArray(JSON.parse(res.stdout)), p).toBe(true);
+    }
+  });
+});
