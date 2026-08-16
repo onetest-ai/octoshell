@@ -8,7 +8,8 @@ import { renderReportHtml, type Report as TokenomicsReport } from "@octoshell/to
 import { CampaignsTree } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
-import { packStatus, installPack } from "./host/octobots-skill.js";
+import { packStatus, installPack, OCTOBOTS_PACK_VERSION } from "./host/octobots-skill.js";
+import { claudeHookStatus } from "./host/octobots-hooks.js";
 import { launchSdlcBundleInstall } from "./host/sdlc-bundles-command.js";
 import { launchInstallGraph, launchRebuildGraph } from "./host/octograph-command.js";
 
@@ -17,11 +18,39 @@ function packSrcRoot(context: vscode.ExtensionContext): string {
   return vscode.Uri.joinPath(context.extensionUri, "resources", "octobots-pack").fsPath;
 }
 
-// Explicit-only install of the bundled octobots pack (skill + planning agents) into <workspace>/.claude.
-function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: string): void {
+/**
+ * Explicit-only install of the bundled octobots pack (skills + primer + tokenomics) into
+ * <workspace>/.claude.
+ *
+ * Hooks get their own question. They are not payload the user can ignore: the session primer runs
+ * on every session start, and the work-log and mission-gate hooks run after every Bash tool call —
+ * a process per call, and the mission gate is synchronous by design, so it can steer the agent.
+ * Installing that silently changes how the repo's agents behave, which is the user's call to make,
+ * not ours. Asked only when they are not already registered; when they are, the install just
+ * refreshes them (and repairs any duplicates an older version left).
+ */
+async function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: string): Promise<void> {
   const src = packSrcRoot(context);
-  const res = installPack(src, repoRoot);
-  void vscode.window.showInformationMessage(`Octobots: workflow pack installed (${res.written} files).`);
+  const alreadyHooked = claudeHookStatus(repoRoot, OCTOBOTS_PACK_VERSION).present;
+
+  let hooks: boolean | undefined;
+  if (!alreadyHooked) {
+    const answer = await vscode.window.showInformationMessage(
+      "Octobots: also install the session hooks? They run the primer at session start and a " +
+        "work-log + mission-gate hook after every Bash tool call. The pack works without them.",
+      { modal: false },
+      "Install hooks",
+      "Skip hooks",
+    );
+    if (answer === undefined) return; // dismissed — install nothing rather than guess
+    hooks = answer === "Install hooks";
+  }
+
+  const res = installPack(src, repoRoot, hooks === undefined ? {} : { hooks });
+  const suffix = res.hooksRegistered ? " with session hooks" : " without session hooks";
+  void vscode.window.showInformationMessage(
+    `Octobots: workflow pack installed (${res.written} files)${suffix}.`,
+  );
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -36,7 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand("octoshell.installOctobotsWorkflowSkill", () => {
-      installOctobotsPack(context, repoRoot);
+      void installOctobotsPack(context, repoRoot);
     }),
     vscode.commands.registerCommand("octoshell.installSdlcBundle", () =>
       launchSdlcBundleInstall(repoRoot, false),
@@ -62,7 +91,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       "Install",
       "Not now",
     );
-    if (choice === "Install") installOctobotsPack(context, repoRoot);
+    if (choice === "Install") await installOctobotsPack(context, repoRoot);
   })();
 
   const board = new BoardHost(join(fsPath, ".octobots"));
