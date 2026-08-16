@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { drift } from "../src/drift.js";
 import type { Edge } from "../src/weights.js";
 import type { Spine } from "../src/spine.js";
+import type { VaultNote } from "../src/vault.js";
 
 const files = [
   "package.json",
@@ -219,4 +220,62 @@ describe("drift", () => {
    * opt-in per call — `cli.ts` is the one caller that feeds it
    * `config.excludePaths`.
    */
+});
+
+describe("vault marking", () => {
+  // `edges`, `files` and `spine` are the file-level fixtures: drift's top row
+  // is svc/a/client.ts <-> svc/b/api.ts, the cross-boundary finding.
+  const driftEdges = [edge(0, 1, 1.0), edge(2, 3, 0.95), edge(2, 4, 0.85)];
+
+  const note = (name: string, body: string): VaultNote => ({
+    note: `architecture/${name}.md`,
+    name,
+    description: `${name} description`,
+    verified: "2026-08-13",
+    body,
+  });
+
+  it("marks a pair one note cites both halves of", () => {
+    const notes = [note("pair", "the pair is svc/a/client.ts and svc/b/api.ts")];
+    const rows = drift(driftEdges, files, spine, 20, 2, notes);
+    expect(rows[0]?.a).toBe("svc/a/client.ts");
+    expect(rows[0]?.known).toBe("architecture/pair.md");
+  });
+
+  it("does not mark a pair whose halves are cited by DIFFERENT notes", () => {
+    // The claim is about the PAIR. Two notes each describing one file are not
+    // a record that the two are coupled — which is the whole finding.
+    const notes = [
+      note("left", "svc/a/client.ts alone"),
+      note("right", "svc/b/api.ts alone"),
+    ];
+    expect(drift(driftEdges, files, spine, 20, 2, notes)[0]?.known).toBeNull();
+  });
+
+  it("does not mark on a bare basename", () => {
+    const notes = [note("loose", "client.ts and api.ts")];
+    expect(drift(driftEdges, files, spine, 20, 2, notes)[0]?.known).toBeNull();
+  });
+
+  it("leaves known null when no notes are supplied", () => {
+    expect(drift(driftEdges, files, spine)[0]?.known).toBeNull();
+  });
+
+  /**
+   * The regression this test exists for: when two notes both cite the same
+   * pair, the winner was whichever happened to come FIRST in the caller's
+   * `notes` array — an ordering `drift` does not control (`readVault` sorts
+   * its own output, but `drift` is a public export a caller can feed
+   * directly). `known` must resolve to the same note however the caller
+   * ordered its list, the same determinism `scored.sort`'s tie-break already
+   * guarantees for row order.
+   */
+  it("resolves to the same note regardless of the caller's note ordering", () => {
+    const zzz = note("zzz-later", "svc/a/client.ts and svc/b/api.ts");
+    const aaa = note("aaa-earlier", "svc/a/client.ts and svc/b/api.ts");
+    const forward = drift(driftEdges, files, spine, 20, 2, [zzz, aaa]);
+    const reversed = drift(driftEdges, files, spine, 20, 2, [aaa, zzz]);
+    expect(forward[0]?.known).toBe("architecture/aaa-earlier.md");
+    expect(reversed[0]?.known).toBe("architecture/aaa-earlier.md");
+  });
 });

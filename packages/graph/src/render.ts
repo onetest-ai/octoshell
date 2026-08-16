@@ -39,7 +39,15 @@ export const oneLine = (s: string): string =>
   // eslint-disable-next-line no-control-regex
   s.replace(/[\u0000-\u001f\u007f]/gu, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
 
-export function renderMap(analysis: Analysis, budgetTokens: number): string {
+export function renderMap(
+  analysis: Analysis,
+  budgetTokens: number,
+  /** Module name → a one-line "what this is for", already labelled with its
+   *  own evidence mode by the caller (`provenance` / `predicted` / a cited
+   *  note). `render` does not decide what counts as evidence; it escapes and
+   *  budgets whatever it is handed. */
+  purpose?: ReadonlyMap<string, string>,
+): string {
   const header = [
     "# Module map",
     "",
@@ -112,10 +120,22 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     (a, b) => (scores.get(b.name) ?? 0) - (scores.get(a.name) ?? 0) || compare(a.name, b.name),
   );
 
+  // ONE ENTRY PER MODULE, even when that entry spans several rendered lines.
+  //
+  // `keptModules` slices BOTH this list and `ranked` (see `shownModules`), and
+  // the two must name the same set or `visibleEdges`/`visibleSets` will keep an
+  // edge whose endpoint lost its heading — a dangling reference in a committed
+  // artifact an agent reads as architecture truth. Keeping the entry, rather
+  // than the line, as the unit is what makes that invariant survive a module
+  // rendering more than one line. The shrink loop below already weighs sections
+  // by RENDERED LINES rather than item counts (see its comment), so the extra
+  // lines are costed correctly without touching it.
   const lines: string[] = [];
   for (const m of ranked) {
     const layer = m.layer === null ? "" : ` [layer ${m.layer}]`;
-    lines.push(`- **${oneLine(m.name)}**${layer} — ${countLabel(m.members)}`);
+    const head = `- **${oneLine(m.name)}**${layer} — ${countLabel(m.members)}`;
+    const why = purpose?.get(m.name);
+    lines.push(why === undefined ? head : `${head}\n  - ${oneLine(why)}`);
   }
 
   // An arrow is a claim, and only one of the two edge producers can back it.
@@ -277,7 +297,8 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     const shownEdges = Math.min(keptEdges, visibleEdges(keptModules).length);
     const sets = shownSetsFor(keptModules, keptSets);
     const shownSets = sets.length;
-    // Compare LINES, never items. A module row and an edge are one line each,
+    // Compare LINES, never items. A module row and an edge are one line each
+    // — UNLESS the module carries a purpose line (see `lines`'s build above),
     // so the original two-counter loop could compare the counters directly; a
     // working set is a header plus N file lines, so its COUNT is not its cost.
     // Comparing counts made one 200-file set (201 lines) lose every tiebreak
@@ -289,15 +310,43 @@ export function renderMap(analysis: Analysis, budgetTokens: number): string {
     // more than one line per item.
     const setLineCount = setLines(sets).length;
     if (keptModules + shownEdges + shownSets === 0) break;
+    // Same reasoning applied to the module side: `keptModules` is an ENTRY
+    // count (see `lines`'s build above — one entry per module, even a module
+    // with a purpose line spans two rendered lines), so it is not directly
+    // comparable to `shownEdges`/`setLineCount`, which already count lines.
+    // Measured against the actually-rendered `lines` slice, never against
+    // `keptModules * (1 or 2)`, because a purpose line is only present on
+    // SOME modules — the count cannot be inferred from `keptModules` alone.
+    //
+    // `join("\n").split("\n").length` reads 1, not 0, when `keptModules` is
+    // 0 (`[].join("\n") === ""`, and `"".split("\n")` is `[""]`, length 1) —
+    // an off-by-one that would undercost an empty module section against the
+    // other two. It never actually executes at that value, though: the
+    // `break` above already fires the SAME iteration `keptModules` reaches 0,
+    // because `shownEdges` and `shownSets` are also 0 by then —
+    // `shownModules(0)` is the empty set, and `visibleEdges`/`visibleSets`
+    // (both filtered by that set) admit nothing once no module has a
+    // heading. That second half is not a fact this file can verify on its
+    // own: it holds only because `working-sets.ts`'s `WorkingSet.modules` is
+    // documented "Always >= 2" — a working set can never keep only its
+    // module-less self visible, so it goes to 0 in step with the edges. If
+    // that invariant is ever relaxed to allow a single-module working set,
+    // this line's off-by-one becomes reachable and this comment is the
+    // signal to revisit it.
+    const moduleLineCount = lines.slice(0, keptModules).join("\n").split("\n").length;
     // Whichever of the three currently occupies the most LINES gives up the
     // next slice, so no section is starved to pay for the other two. Each
     // branch still strictly decreases its own counter: the branch below is
     // reachable only when `setLineCount` exceeds one of the other two, and a
     // non-zero line count implies at least one shown set, so `shrink` always
     // has something to take.
-    if (keptModules >= shownEdges && keptModules >= setLineCount) keptModules = shrink(keptModules);
-    else if (shownEdges >= keptModules && shownEdges >= setLineCount) keptEdges = shrink(shownEdges);
-    else keptSets = shrink(shownSets);
+    if (moduleLineCount >= shownEdges && moduleLineCount >= setLineCount) {
+      keptModules = shrink(keptModules);
+    } else if (shownEdges >= moduleLineCount && shownEdges >= setLineCount) {
+      keptEdges = shrink(shownEdges);
+    } else {
+      keptSets = shrink(shownSets);
+    }
     out = compose(keptModules, keptEdges, keptSets);
   }
   return out;

@@ -304,6 +304,46 @@ describe("doctor — artifact durability", () => {
   });
 });
 
+/** Write a knowledge note into an existing fixture repo. */
+function writeNote(root: string, rel: string, body: string): void {
+  const abs = join(root, ".agents", "knowledge", rel);
+  mkdirSync(join(abs, ".."), { recursive: true });
+  writeFileSync(abs, body);
+}
+
+describe("knowledge vault check", () => {
+  it("reports missing when there is no vault, and never degrades status", () => {
+    const report = doctor(healthyRepo(), { ...DEFAULTS, minCommits: 10 });
+    expect(check(report, "knowledge vault")?.state).toBe("missing");
+    expect(check(report, "knowledge vault")?.required).toBe(false);
+    expect(check(report, "knowledge vault")?.fix).toBeTruthy();
+    expect(report.status).toBe("ok"); // an optional input never moves status
+  });
+
+  it("reports how many notes cite at least one path in the graph", () => {
+    // NOT `healthyRepo()`: its files are bare top-level names (`a0.ts`,
+    // `b0.ts`, no directory), and `citedPaths` deliberately refuses to treat a
+    // bare basename as a citation — "a citation must be unambiguous"
+    // (`test/vault.test.ts`: "drops a bare basename"). A note body naming
+    // `a0.ts` can therefore never cite it; the candidate needs a real `/` for
+    // there to be anything to cite at all.
+    const repo = buildRepo(
+      Array.from({ length: 12 }, (_, i) => ({ files: [`pkg/a${i}.ts`, `pkg/b${i}.ts`] })),
+    );
+    writeNote(repo, "architecture/pair.md", "---\nname: pair\n---\npkg/a0.ts and pkg/b0.ts move together\n");
+    writeNote(repo, "practices/loose.md", "---\nname: loose\n---\nno paths at all\n");
+    const detail =
+      check(doctor(repo, { ...DEFAULTS, minCommits: 10 }), "knowledge vault")?.detail ?? "";
+    expect(detail).toContain("2 notes");
+    expect(detail).toContain("1 citing");
+  });
+
+  it("keeps every check name unique with the vault check present", () => {
+    const names = doctor(healthyRepo(), { ...DEFAULTS, minCommits: 10 }).checks.map((c) => c.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+});
+
 describe("doctor — graph composition", () => {
   /**
    * The onboarding problem: nobody should have to discover, by reading

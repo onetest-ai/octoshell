@@ -93,7 +93,6 @@ const handlers: { [M in RpcMethod]: RpcHandler<M> } = {
   "workflow:get": (a, c) => c.board.getWorkflow(a.workflowId),
   "workflow:create": (a, c) =>
     c.board.createWorkflow(a.campaignId ? { campaignId: a.campaignId } : { missionId: a.missionId! }, { name: a.name }),
-  "workflow:setMeta": (a, c) => { c.board.setWorkflowMeta(a.workflowId, a.meta); return { ok: true }; },
   "workflow:addRun": (a, c) => {
     c.board.appendWorkflowRun(a.workflowId, { status: a.status, summary: a.summary, at: a.at });
     return { ok: true };

@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, cpSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { BoardModel } from "../src/board-model.js";
+import { validateBoard } from "../src/validate.js";
 import {
-  createWorkflow, deleteWorkflow, setWorkflowMeta, appendWorkflowRun, migrateLegacyWorkflows,
+  createWorkflow, deleteWorkflow, appendWorkflowRun, migrateLegacyWorkflows,
 } from "../src/write.js";
 
 function fixture(): { root: string; campaignId: string; missionId: string } {
@@ -41,6 +42,28 @@ describe("createWorkflow", () => {
     expect(wf!.phases).toHaveLength(1);
   });
 
+  // The scaffold is advice as much as code: it is the first thing an author reads in a new
+  // workflow. It carried the retired "keep `meta.phases` in step with the phases this body enters"
+  // doctrine for a whole branch after `meta` became generated, because nothing validated a
+  // freshly-scaffolded workflow or read its comment. Both are checked here.
+  it("scaffolds a workflow that validates clean and points the author at sync-meta.js", () => {
+    const { root, campaignId } = fixture();
+    // validateBoard walks `<root>/.octobots`, while this fixture's root IS the board dir — so
+    // validate from the parent, the same relationship a real workspace has.
+    const { folderPath } = createWorkflow(root, { campaignId }, { name: "Ship Missions" });
+    const project = mkdtempSync(join(tmpdir(), "wf-val-root-"));
+    cpSync(root, join(project, ".octobots"), { recursive: true });
+
+    expect(validateBoard(project).filter((f) => f.kind === "workflow")).toEqual([]);
+
+    const script = readFileSync(join(root, folderPath, "workflow.js"), "utf8");
+    expect(script).toContain("sync-meta.js");
+    expect(script).toContain("GENERATED from this code");
+    // The retired doctrine: meta is no longer a thing the author keeps in step by hand.
+    expect(script).not.toContain("Keep `meta.phases`");
+    expect(script).not.toContain("draws its diagram from meta, not from this code");
+  });
+
   it("scaffolds under a mission and de-duplicates slugs", () => {
     const { root, missionId } = fixture();
     const a = createWorkflow(root, { missionId }, { name: "Build" });
@@ -49,32 +72,6 @@ describe("createWorkflow", () => {
     const board = new BoardModel(root);
     board.rebuild();
     expect(board.listWorkflows({ missionId })).toHaveLength(2);
-  });
-});
-
-describe("setWorkflowMeta", () => {
-  it("replaces only the meta span and preserves the body byte-for-byte", () => {
-    const { root, campaignId } = fixture();
-    const { id, folderPath } = createWorkflow(root, { campaignId }, { name: "w" });
-    const body = "\n\n// a hand-written body\nphase('Go')\nawait agent('do it')\n";
-    const original = readFileSync(join(root, folderPath, "workflow.js"), "utf8");
-    writeFileSync(join(root, folderPath, "workflow.js"), original.trimEnd() + body, "utf8");
-
-    expect(setWorkflowMeta(root, id, {
-      name: "w",
-      description: "d",
-      phases: [{ title: "Go", steps: [{ id: "s1", agent: "impl", label: "Build" }] }],
-    })).toBe(true);
-
-    const after = read(root, id, "workflow.js");
-    expect(after).toContain("// a hand-written body");
-    expect(after).toContain("await agent('do it')");
-
-    const board = new BoardModel(root);
-    board.rebuild();
-    const wf = board.getWorkflow(id)!;
-    expect(wf.parseError).toBeNull();
-    expect(wf.phases[0]!.steps[0]!.label).toBe("Build");
   });
 });
 

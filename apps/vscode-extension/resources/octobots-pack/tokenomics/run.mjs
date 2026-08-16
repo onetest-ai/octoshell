@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 51
+// octobots-pack-version: 54
 // Tokenomics pipeline runner — collect -> rollup -> render, in one call.
 //
 // This is what the mission-completion gate invokes. It is deliberately

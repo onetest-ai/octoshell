@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 51
+version: 54
 ---
 
 # mission-completion-gate
@@ -64,6 +64,9 @@ omitted. Phases:
    type-checks and full suites green **and** new-code coverage at or above the
    project's threshold (80% unless the project sets its own). Red → back to the dev,
    bounded fix loop, re-run. Structured result: `{green, coveragePct, failures}`.
+   Where octograph is installed, `impact --diff`'s `tests that historically move with this`
+   section feeds this question directly — a suggested test absent from the coverage run is
+   worth a look before calling coverage sufficient.
 2. **QA — black-box (Sage)** — input is **only** the mission's acceptance criteria
    + the BA spec. Sage checks each criterion as pass/fail with observable
    evidence (behavior, endpoints, artifacts), **without reading code**. Ambiguity

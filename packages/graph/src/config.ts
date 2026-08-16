@@ -3,6 +3,11 @@ import { join } from "node:path";
 import { load as loadYaml } from "js-yaml";
 import { CONFIDENCE_FLOOR, RUNNER_UP_MARGIN, type LexicalOptions } from "./lexical.js";
 import { insideRepo } from "./paths.js";
+// One producer of the path, two readers — same rule `graphifyGraphPath`'s
+// doc comment (graphify.ts) states for its own default path. Importing here
+// rather than re-typing ".agents/knowledge" is what keeps `vault.ts`'s
+// default and `Config`'s default from being able to drift apart.
+import { DEFAULT_VAULT_PATH } from "./vault.js";
 
 export interface Config {
   maxCommitFiles: number;
@@ -26,6 +31,14 @@ export interface Config {
    * moved this from one surface to all of them.
    */
   excludePaths: string[];
+  /** Where the committed knowledge vault lives, relative to the repo root.
+   *  An OPTIONAL evidence tier: a repo without one still gets every other
+   *  answer, just without note citations. */
+  vaultPath: string;
+  /** The ref `impact --diff` measures a branch against. `main` here because a
+   *  mission is a feature branch off it; a repo whose trunk is named otherwise
+   *  sets this once in octograph.yaml rather than passing --base every run. */
+  diffBase: string;
 }
 
 export const DEFAULTS: Config = {
@@ -107,6 +120,8 @@ export const DEFAULTS: Config = {
     ".nuxt/",
     ".cache/",
   ],
+  vaultPath: DEFAULT_VAULT_PATH,
+  diffBase: "main",
 };
 
 const NUMERIC = [
@@ -147,6 +162,28 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
         if (typeof parsed.out === "string" && insideRepo(repoRoot, parsed.out) !== null) {
           cfg.out = parsed.out;
         }
+        // `vaultPath` is repo content too, exactly like `out` above: read out
+        // of octograph.yaml, contained with the same `insideRepo` helper so a
+        // `vaultPath: '../../..'` cannot point `readVault` outside the repo,
+        // and left at the default rather than throwing when it escapes.
+        //
+        // `!== ""` for the same reason `diffBase` below carries it: `paths.ts`'s
+        // own threat model is that octograph is pointed at checkouts nobody on
+        // this team wrote, so `octograph.yaml` IS the hostile input this must
+        // survive, not a config file a trusted author hand-wrote. `insideRepo`
+        // alone does not reject `""` — `join(root, "")` resolves to the repo
+        // root itself, which is a legitimate `insideRepo` answer for a caller
+        // that means it — so an empty string silently became "read every `.md`
+        // body under the repo root", `node_modules` included: verified, a
+        // vendored dependency's readme became a `cited` (confidence 1, a FACT)
+        // vault note purely because `vaultPath: ""` slipped past this guard.
+        if (
+          typeof parsed.vaultPath === "string"
+          && parsed.vaultPath !== ""
+          && insideRepo(repoRoot, parsed.vaultPath) !== null
+        ) {
+          cfg.vaultPath = parsed.vaultPath;
+        }
         // `excludePaths` is the first LIST-valued key this file validates —
         // same spirit as every scalar key above, extended to an array: the
         // whole value is accepted only when every element is the right type,
@@ -161,6 +198,14 @@ export function loadConfig(repoRoot: string, overrides: Partial<Config> = {}): C
           && parsed.excludePaths.every((v): v is string => typeof v === "string")
         ) {
           cfg.excludePaths = parsed.excludePaths;
+        }
+        // `diffBase` is a git ref name, not a repo-relative path, so it takes
+        // no `insideRepo` containment check — `out`/`vaultPath` above guard
+        // against escaping the repo tree, which a ref like `origin/main` was
+        // never going to do. Same degrade-to-default discipline otherwise: a
+        // non-string value is left at `DEFAULTS.diffBase` rather than thrown.
+        if (typeof parsed.diffBase === "string" && parsed.diffBase !== "") {
+          cfg.diffBase = parsed.diffBase;
         }
       }
     } catch {

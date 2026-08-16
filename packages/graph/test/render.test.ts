@@ -670,3 +670,109 @@ describe("renderMap", () => {
     });
   });
 });
+
+/** The many-module fixture the existing truncation tests already build. */
+const many: Analysis = {
+  ...analysis,
+  modules: Array.from({ length: 500 }, (_, i) => ({
+    id: i,
+    name: `module/number-${i}`,
+    members: [`module/number-${i}/file.ts`],
+    layer: 0,
+  })),
+};
+
+describe("module purpose lines", () => {
+  // `analysis` is the file-level fixture: modules `packages/board` and `apps/ext`.
+  const purpose = new Map([["packages/board", "M3 - Drift, doctor and the shipped CLI (provenance)"]]);
+
+  it("renders a purpose line under a module that has one", () => {
+    const out = renderMap(analysis, 2000, purpose);
+    expect(out).toContain("- **packages/board**");
+    expect(out).toContain("  - M3 - Drift, doctor and the shipped CLI (provenance)");
+  });
+
+  it("renders nothing extra for a module without one", () => {
+    const lines = renderMap(analysis, 2000, purpose).split("\n");
+    const i = lines.findIndex((l) => l.startsWith("- **apps/ext**"));
+    expect(i).toBeGreaterThan(-1);
+    expect(lines[i + 1]?.startsWith("  - ")).toBe(false);
+  });
+
+  it("escapes a purpose line through oneLine, so it cannot inject a row", () => {
+    const out = renderMap(analysis, 2000, new Map([["packages/board", "M3\n  - apps/injected"]]));
+    expect(out).not.toContain("\n  - apps/injected");
+    expect(out).toContain("\\x0a");
+  });
+
+  it("ignores a purpose entry for a module that does not exist", () => {
+    const out = renderMap(analysis, 2000, new Map([["no/such-module", "orphan"]]));
+    expect(out).not.toContain("orphan");
+  });
+
+  /**
+   * `many` (below) inherits `analysis.moduleEdges` — `apps/ext ↔
+   * packages/board` — but `many.modules` replaces the module list with 500
+   * `module/number-N` entries that never include either endpoint. That edge
+   * can therefore NEVER render regardless of whether this fix holds (neither
+   * endpoint is ever in `shownModules`), so a version of this test built on
+   * `many` alone would pass vacuously — the edge-matching loop below would
+   * never find a line to check. This fixture instead mirrors the existing
+   * "never renders an edge whose endpoint was truncated" regression
+   * (render.test.ts's own 16-module fixture), with a purpose line added to
+   * every module so `lines` genuinely carries two-line entries, and a budget
+   * (empirically 220 — 4 of 16 headings survive, 1 of 3 edges renders)
+   * chosen so truncation actually happens and at least one edge line exists
+   * to assert against.
+   */
+  it("never emits an edge naming a module the budget cut, with purpose lines present", () => {
+    const withEdges: Analysis = {
+      ...analysis,
+      modules: Array.from({ length: 16 }, (_, i) => ({
+        id: i,
+        name: `pkg/m${i}`,
+        members: [`pkg/m${i}/x.ts`],
+        layer: null,
+      })),
+      moduleEdges: [
+        { from: "pkg/m0", to: "pkg/m15", weight: 9.5 },
+        { from: "pkg/m1", to: "pkg/m14", weight: 9.4 },
+        { from: "pkg/m2", to: "pkg/m13", weight: 9.3 },
+      ],
+    };
+    const withPurpose = new Map(withEdges.modules.map((m) => [m.name, `owned by ${m.name}`]));
+
+    const budget = 220;
+    const out = renderMap(withEdges, budget, withPurpose);
+    const headings = new Set(
+      out
+        .split("\n")
+        .filter((l) => l.startsWith("- **"))
+        .map((l) => l.slice(4, l.indexOf("**", 4))),
+    );
+    // Preconditions: truncation really happened, and there is really an edge
+    // line to check — otherwise the loop below asserts on nothing at all.
+    expect(headings.size).toBeLessThan(withEdges.modules.length);
+    let edgeLinesSeen = 0;
+    for (const line of out.split("\n")) {
+      const edge = /^- (.+) [↔→] (.+) \(/u.exec(line);
+      const from = edge?.[1];
+      const to = edge?.[2];
+      if (from !== undefined && to !== undefined) {
+        edgeLinesSeen++;
+        expect(headings.has(from)).toBe(true);
+        expect(headings.has(to)).toBe(true);
+      }
+    }
+    expect(edgeLinesSeen).toBeGreaterThan(0);
+  });
+
+  it("stays under the token budget with purpose lines present", () => {
+    const withPurpose = new Map(many.modules.map((m) => [m.name, `owned by ${m.name}`]));
+    expect(estimateTokens(renderMap(many, 300, withPurpose))).toBeLessThanOrEqual(300);
+  });
+
+  it("is byte-identical across runs with purpose lines present", () => {
+    expect(renderMap(analysis, 2000, purpose)).toBe(renderMap(analysis, 2000, purpose));
+  });
+});

@@ -7,6 +7,7 @@ import { graphifyGraphPath } from "./graphify.js";
 import { declaredSpine } from "./spine.js";
 import { compare } from "./rollup.js";
 import { historyIsThin, type Config } from "./config.js";
+import { readVault, citedPaths } from "./vault.js";
 
 export type CheckState = "ok" | "warn" | "missing";
 export type Status = "ok" | "degraded" | "blocked";
@@ -287,6 +288,35 @@ export function doctor(repoRoot: string, config: Config): Report {
         : `run Graphify in this repo to produce ${graphRel} — install it with \`uv tool install graphifyy\` if you have not`,
     required: false,
   });
+
+  // The vault is an OPTIONAL tier, so `required: false` — it never moves
+  // `status`, exactly like graphify. It is graded anyway because an absent
+  // vault changes what `drift` can claim: without it, a coupling can be
+  // ranked but not called already-documented, and a reader has no way to
+  // tell "nothing documents this" from "nothing was read".
+  //
+  // `files` is the same candidate corpus the graph-composition check above
+  // already computed from `harvest` — reused here, not re-harvested, so
+  // "cites a path in the graph" means the same graph in both checks.
+  const notes = readVault(repoRoot, config.vaultPath);
+  if (notes.length === 0) {
+    checks.push({
+      name: "knowledge vault",
+      state: "missing",
+      required: false,
+      detail: `not found at ${config.vaultPath} — drift can rank a coupling but cannot say whether it is already documented`,
+      fix: `create ${config.vaultPath}/ and record verified, cross-role facts there (see AGENTS.md § Agent memory)`,
+    });
+  } else {
+    const candidates = new Set(files);
+    const citing = notes.filter((n) => citedPaths(n, candidates).length > 0).length;
+    checks.push({
+      name: "knowledge vault",
+      state: "ok",
+      required: false,
+      detail: `${notes.length} notes, ${citing} citing at least one path in the graph`,
+    });
+  }
 
   // Through `hasBoard` (artifact.ts), never a second `existsSync` of the same
   // directory: `resolveOut` decides where the artifact is WRITTEN on exactly

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateBriefText, isPlaceholderName, validateBoard } from "../src/validate.js";
+import { validateBriefText, isPlaceholderName, validateBoard, type BoardFinding } from "../src/validate.js";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -153,6 +153,21 @@ describe("workflow validation", () => {
   const MISSION = "# M1 - Auth\n\n## Description\nA real description here.\n\n## Acceptance Criteria\n- [ ] ships\n";
   const WF_MD = "# w\n\n## Description\nA workflow.\n";
 
+  /**
+   * Findings for a single workflow.js body, isolated from the campaign/mission scaffolding
+   * `wfBoard` needs to exercise `validateBoard`. `validateBoard` is the only exported entry point
+   * that reaches `validateWorkflow`, so every case still goes through a real board tree — this
+   * just fixes the folder slug at "w" and hides the boilerplate every case here would repeat.
+   */
+  function findingsFor(src: string) {
+    const root = wfBoard({
+      "campaigns/alpha/campaign.md": CAMPAIGN,
+      "campaigns/alpha/workflows/w/workflow.md": WF_MD,
+      "campaigns/alpha/workflows/w/workflow.js": src,
+    });
+    return validateBoard(root).filter((f) => f.kind === "workflow");
+  }
+
   it("reports a missing meta export", () => {
     const root = wfBoard({
       "campaigns/alpha/campaign.md": CAMPAIGN,
@@ -181,30 +196,18 @@ describe("workflow validation", () => {
     expect(validateBoard(root).some((f) => /does not match its folder/.test(f.message))).toBe(true);
   });
 
-  it("reports no phases, empty phases, duplicate ids, unknown dependsOn and split parallel groups", () => {
+  // The declared graph (duplicate step ids, dangling dependsOn, a parallel group split across
+  // phases) can no longer be wrong on its own terms — it is GENERATED from the body, not
+  // hand-authored — so validate no longer checks it. `meta.phases.length === 0` survives: a
+  // workflow with no phases at all is still a real problem no extraction can paper over.
+  it("reports no phases", () => {
     const root = wfBoard({
       "campaigns/alpha/campaign.md": CAMPAIGN,
       "campaigns/alpha/workflows/none/workflow.md": WF_MD,
       "campaigns/alpha/workflows/none/workflow.js": "export const meta = { name: 'none', phases: [] }\n",
-      "campaigns/alpha/workflows/empty/workflow.md": WF_MD,
-      "campaigns/alpha/workflows/empty/workflow.js":
-        "export const meta = { name: 'empty', phases: [{ title: 'P', steps: [] }] }\n",
-      "campaigns/alpha/workflows/dup/workflow.md": WF_MD,
-      "campaigns/alpha/workflows/dup/workflow.js":
-        "export const meta = { name: 'dup', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l' }, { id: 's1', agent: 'b', label: 'm' }] }] }\n",
-      "campaigns/alpha/workflows/dep/workflow.md": WF_MD,
-      "campaigns/alpha/workflows/dep/workflow.js":
-        "export const meta = { name: 'dep', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l', dependsOn: ['nope'] }] }] }\n",
-      "campaigns/alpha/workflows/par/workflow.md": WF_MD,
-      "campaigns/alpha/workflows/par/workflow.js":
-        "export const meta = { name: 'par', phases: [{ title: 'A', steps: [{ id: 's1', agent: 'a', label: 'l', parallel: 'g' }] }, { title: 'B', steps: [{ id: 's2', agent: 'b', label: 'm', parallel: 'g' }] }] }\n",
     });
     const messages = validateBoard(root).map((f) => f.message).join("\n");
     expect(messages).toMatch(/has no phases/);
-    expect(messages).toMatch(/phase "P" has no steps/);
-    expect(messages).toMatch(/duplicate step id "s1"/);
-    expect(messages).toMatch(/dependsOn "nope"/);
-    expect(messages).toMatch(/parallel group "g" spans more than one phase/);
   });
 
   // A mission has THREE distinct execution loops, not one — implementation
@@ -238,8 +241,230 @@ describe("workflow validation", () => {
       "campaigns/alpha/campaign.md": CAMPAIGN,
       "campaigns/alpha/workflows/ok/workflow.md": WF_MD,
       "campaigns/alpha/workflows/ok/workflow.js":
-        "export const meta = { name: 'ok', phases: [{ title: 'P', steps: [{ id: 's1', agent: 'a', label: 'l' }] }] }\nphase('P')\n",
+        "export const meta = { name: 'ok', phases: [{ title: 'P', steps: [{ id: 'p-1', label: 'l', agent: 'a' }] }] }\n" +
+        "phase('P')\nawait agent(p, { phase: 'P', label: 'l', agentType: 'a' })\n",
     });
     expect(validateBoard(root).filter((f) => f.kind === "workflow")).toEqual([]);
+  });
+
+  it("fails when meta disagrees with the body", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Build", steps: [{ id: "build-1", label: "stale", agent: "ios-dev" }] }],
+}
+phase('Build')
+await agent(p, { phase: 'Build', label: 'fresh', agentType: 'ios-dev' })
+`;
+    expect(findingsFor(src)).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("meta is out of date") }),
+    );
+  });
+
+  it("fails when the body does not parse", () => {
+    const src = `export const meta = { name: "w", description: "", phases: [] }
+phase('Build'
+`;
+    expect(findingsFor(src)).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("body does not parse") }),
+    );
+  });
+
+  it("fails when an agent() call names no agentType", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Build", steps: [{ id: "build-1", label: "build" }] }],
+}
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build' })
+`;
+    expect(findingsFor(src)).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("no agentType") }),
+    );
+  });
+
+  // A computed `agentType` (a variable, not a string literal) dispatches for real at runtime — the
+  // extractor just cannot read it, so the generated step has no `agent` field either. That is NOT
+  // the same finding as a call that never named an agentType at all: the diagram cannot show the
+  // agent, but the step is not "the default subagent". Reported once as a false positive (M3-M7's
+  // shared `agentType: task.role`) — see the 2026-08-15 workflow-generated-meta plan, task 14.
+  it("does not fail when an agent() call names a computed agentType", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Build", steps: [{ id: "build-1", label: "build" }] }],
+}
+const role = 'js-dev'
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build', agentType: role })
+`;
+    expect(findingsFor(src)).not.toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("no agentType") }),
+    );
+  });
+
+  // An unreadable `{ phase }` and an unreadable `{ label }` are different mistakes with different
+  // fixes — the first leaves the call OUT of the diagram entirely, the second draws it with an
+  // ellipsis for a caption — and used to share the message "has no readable label", which names the
+  // wrong problem for the first.
+  it("names an unreadable { phase } as such, not as a missing label", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Build", steps: [{ id: "build-1", label: "resolvable", agent: "qa" }] }],
+}
+const ph = 'Build'
+await agent(p, { phase: ph, label: 'unresolvable', agentType: 'project-manager' })
+phase('Build')
+await agent(p, { phase: 'Build', label: 'resolvable', agentType: 'qa' })
+`;
+    const messages = findingsFor(src).map((f) => f.message);
+    expect(messages).toContainEqual(expect.stringContaining("not a string literal"));
+    expect(messages).not.toContainEqual(expect.stringContaining("no readable label"));
+  });
+
+  it("still says 'no readable label' for a call whose caption is the unreadable half", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Build", steps: [{ id: "build-1", label: "…", agent: "qa" }] }],
+}
+phase('Build')
+await agent(p, { phase: 'Build', label: t.title, agentType: 'qa' })
+`;
+    expect(findingsFor(src).map((f) => f.message)).toContainEqual(
+      expect.stringContaining("has no readable label"),
+    );
+  });
+
+  // A phase's `detail` is authored, not derived: extraction cannot produce it, so comparing raw
+  // extraction against meta reported every detail-bearing workflow as stale forever — and
+  // sync-meta.js "fixed" that by deleting the caption. The regenerate both sides run must carry it.
+  it("does not call a workflow stale merely because a phase carries an authored detail", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [
+    { title: "Build", detail: "build every task, then gate", steps: [{ id: "build-1", label: "build", agent: "js-dev" }] },
+  ],
+}
+phase('Build')
+await agent(p, { phase: 'Build', label: 'build', agentType: 'js-dev' })
+`;
+    expect(findingsFor(src)).toEqual([]);
+  });
+
+  it("no longer objects to a phase with no steps", () => {
+    const src = `export const meta = {
+  name: "w",
+  description: "",
+  phases: [{ title: "Run", steps: [] }],
+}
+phase('Run')
+`;
+    expect(findingsFor(src)).toEqual([]);
+  });
+});
+
+describe("workflow pointer validation", () => {
+  const CAMPAIGN = "# Alpha\n\n## Description\nA real description here.\n\n## Acceptance Criteria\n- [ ] ships\n";
+  const MISSION = "# M1 - Auth\n\n## Description\nA real description here.\n\n## Acceptance Criteria\n- [ ] ships\n";
+  const WF_MD = "# w\n\n## Description\nA workflow.\n";
+  const SHARED_JS =
+    "export const meta = { name: 'implementation', phases: [{ title: 'P', steps: [{ id: 'p-1', label: 'l', agent: 'a' }] }] }\n" +
+    "phase('P')\nawait agent(p, { phase: 'P', label: 'l', agentType: 'a' })\n";
+
+  /**
+   * Findings for a mission whose `workflows/implementation` folder holds only a pointer file
+   * (`workflow.json`) — the shared-pipeline case — instead of its own `workflow.js`. `extra` is
+   * merged onto the campaign-level board tree so a case can supply (or omit) the pointer's target.
+   */
+  function findingsForPointer(pointer: unknown, extra: Record<string, string> = {}): BoardFinding[] {
+    return findingsForPointerText(JSON.stringify(pointer), extra);
+  }
+
+  /** The same, for a pointer file whose TEXT is the thing under test (e.g. not JSON at all). */
+  function findingsForPointerText(text: string, extra: Record<string, string> = {}): BoardFinding[] {
+    const root = mkdtempSync(join(tmpdir(), "wf-val-"));
+    const files: Record<string, string> = {
+      "campaigns/alpha/campaign.md": CAMPAIGN,
+      "campaigns/alpha/missions/m1/mission.md": MISSION,
+      "campaigns/alpha/missions/m1/workflows/implementation/workflow.json": text,
+      ...extra,
+    };
+    for (const [rel, body] of Object.entries(files)) {
+      const abs = join(root, ".octobots", rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, body, "utf8");
+    }
+    return validateBoard(root).filter((f) => f.kind === "workflow");
+  }
+
+  it("refuses a pointer that escapes the board", () => {
+    expect(findingsForPointer({ uses: "../../../../../../etc" })).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("outside the board") }),
+    );
+  });
+
+  it("refuses an absolute-looking pointer that still climbs out of the board", () => {
+    expect(findingsForPointer({ uses: "/../../../../../../etc" })).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("outside the board") }),
+    );
+  });
+
+  // An absolute `uses` is refused outright, even with no ".." in it — see the note on
+  // resolveWithin in board-model.ts. Superseded contract: this used to resolve (harmlessly, folded
+  // under the pointer's own folder) rather than refuse; that silent reinterpretation is exactly what
+  // this hardening removes.
+  it("refuses an absolute pointer with no climb in it at all", () => {
+    expect(findingsForPointer({ uses: "/workflows/implementation" })).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("outside the board") }),
+    );
+  });
+
+  // A backslash gets a dedicated, actionable message naming the mistake — the author wrote a
+  // Windows-style separator, not a climb, so "resolves outside the board" would be misleading.
+  it("refuses a pointer containing a backslash, with a message naming it", () => {
+    expect(findingsForPointer({ uses: "..\\..\\..\\..\\workflows\\implementation" })).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("backslash") }),
+    );
+  });
+
+  it("flags a pointer file with no `uses` string", () => {
+    expect(findingsForPointer({})).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("no `uses` string") }),
+    );
+  });
+
+  // A file that is not JSON at all used to be reported as "has no `uses` string", sending the
+  // author hunting for a missing key in a file whose real problem is a syntax error.
+  it("tells a malformed pointer file apart from one missing its `uses` key", () => {
+    const findings = findingsForPointerText('{ "uses": "../../../../workflows/implementation" ');
+    expect(findings).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("not valid JSON") }),
+    );
+    expect(findings).not.toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("no `uses` string") }),
+    );
+  });
+
+  it("flags a pointer naming a folder with no workflow.js", () => {
+    expect(findingsForPointer({ uses: "../../../../workflows/does-not-exist" })).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("no workflow.js") }),
+    );
+  });
+
+  it("accepts a pointer that resolves to a real shared workflow, with no findings of its own", () => {
+    const findings = findingsForPointer(
+      { uses: "../../../../workflows/implementation" },
+      {
+        "campaigns/alpha/workflows/implementation/workflow.md": WF_MD,
+        "campaigns/alpha/workflows/implementation/workflow.js": SHARED_JS,
+      },
+    );
+    // The pointer folder itself produces nothing — the shared workflow it names is a well-formed,
+    // separately-validated workflow (found once, under the campaign).
+    expect(findings).toEqual([]);
   });
 });

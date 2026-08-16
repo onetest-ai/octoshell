@@ -86,12 +86,57 @@ answer. Everything below is the instrument; that skill is the discipline for usi
 |---|---|
 | `map` | What is this codebase, in 2,000 tokens? |
 | `impact <path>` | If I change this, what else moves? |
+| `impact --diff [--staged\|--worktree] [--base <ref>]` | Given everything I've changed on this branch, what else should I check? |
 | `drift` | What is coupled that nothing imports? |
 | `own <path>` | Which mission owns this, and which acceptance criterion does it satisfy? |
 | `conflicts <mission>` | Is this decomposition clean, or did I split one piece of work into three? |
 | `doctor` | Why is my output thin, and what do I do about it? |
 
 `own` and `conflicts` need an Octobots board; the rest work in any git repository.
+
+### `impact --diff` — what does everything I've already changed touch?
+
+`impact <path>` answers for one file. `impact --diff` unions that answer over every file the
+current branch has changed — the question an executing agent actually has mid-task, since a
+mission is a feature branch and the unit of work spans several commits plus whatever is not
+committed yet.
+
+```
+changed: 3 file(s)
+
+you may also need to change:
+  packages/graph/test/cli.test.ts  npmi=0.612  support=4  via packages/graph/src/cli.ts
+      known: architecture/dual-schema-entity-io.md — touch one, touch the other in the same PR
+
+tests that historically move with this:
+  packages/graph/test/conventions.test.ts  npmi=0.481  support=3  via packages/graph/src/diff-impact.ts
+```
+
+`--staged` and `--worktree` narrow the change set to the index or the uncommitted worktree only;
+the default (`--diff` alone) is `merge-base(<ref>, HEAD)..HEAD` plus uncommitted work. `--base <ref>`
+picks what the branch is measured against — `main` by default, or `Config.diffBase` in
+`octograph.yaml`. `known:` lines are notes from the committed vault (`.agents/knowledge/` by
+default) that explicitly *cite* the row's path — never a lexical guess, the same `cited`/`predicted`
+distinction `own` makes.
+
+`limit` means two different things on purpose: the inner `impact()` keeps its own per-path default
+(20) so no single changed file can flood the union, and the same number caps each of the two
+sections (`you may also need to change:` / `tests that historically move with this:`) again after
+the merge. There is no `--limit` flag exposed for either — `octograph.yaml` and the CLI accept no
+such key, so both stay at their defaults for every run.
+
+`npmi`/`support` on a row describe only its STRONGEST source — the one changed file whose edge to
+that row scored highest. Several changed files often pull the same row in (a shared test file, a
+type both touch); rather than inline all of them beside a single edge's strength, the row names
+that one explicitly (`strongest via <path>`) and counts the rest (`(+N more changed files)`). A row
+pulled in by exactly one changed file has nothing to count, so it reads `via <path>` — the same
+wording either way, this section's example above included. `impact --diff --json` serialises the
+full `predictedBy` list for a caller that wants every source, not only the strongest.
+
+An empty answer here is never printed bare: on thin or squash-merged history, the fine-grained
+co-change `impact --diff` reads is exactly what a squash discards at merge time (see "Honest
+limits" below), so "no rows" is rendered alongside `doctor`'s verdict — missing evidence, not
+evidence of absence.
 
 ### `own` — tracing code back to intent
 
@@ -112,8 +157,10 @@ The two are never blended. A lexical guess is never dressed as provenance.
 
 ## What it needs, and what it will tell you
 
-Run `doctor` first. It grades every input and names a fix for each degradation. Real output from
-this repository:
+Run `doctor` first. It grades every input and names a fix for each degradation. Alongside history
+depth and Graphify, it also grades the committed knowledge vault as an optional third tier:
+present, it lets `drift` say a coupling is already documented (`[known: <note>]`); absent, `drift`
+still ranks the coupling but cannot make that call. Real output from this repository:
 
 ```
 status: degraded
@@ -130,6 +177,7 @@ status: degraded
 [missing] graphify: not installed — drift can say "different modules" but not
           "nothing imports across them"
           fix: uv tool install graphifyy
+[ok]      knowledge vault: 16 notes, 12 citing at least one path in the graph
 ```
 
 Three states, three exit codes, so CI can gate on it: `ok` → 0, `degraded` → 1, `blocked` → 1.
@@ -217,3 +265,9 @@ in the file itself. Commit it, so a local run and a CI run cannot disagree and c
 Artifacts land in `.octobots/graph/` when you have a board, `.octograph/` otherwise. If that
 directory is gitignored, `doctor` will point out that cluster ids reset on every fresh clone — a
 recommendation, never a requirement.
+
+Two more keys, both optional: `vaultPath` (default `.agents/knowledge`) points `doctor` and
+`drift`'s `[known: <note>]` marking at the committed knowledge vault, for a repository that keeps
+it somewhere else. `diffBase` (default `main`) is the ref `impact --diff` measures the current
+branch against, for a repository whose trunk has another name — set it once here rather than
+passing `--base` on every run.

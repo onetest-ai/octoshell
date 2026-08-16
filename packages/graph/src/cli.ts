@@ -6,12 +6,15 @@ import { insideRepo } from "./paths.js";
 import { readBoard, type BoardTask, type BoardView } from "./board.js";
 import { lexicalOptions, loadConfig, type Config } from "./config.js";
 import { conflicts as computeConflicts, type ConflictPair, type ConflictReport } from "./conflicts.js";
+import { changedPaths, diffImpact, type DiffImpactRow, type DiffScope } from "./diff-impact.js";
 import { doctor, exitCode, type Report } from "./doctor.js";
 import { drift as computeDrift, type DriftRow } from "./drift.js";
 import { impact as computeImpact, type ImpactRow } from "./impact.js";
 import { own as computeOwn, type OwnAnswer } from "./own.js";
 import { repoRelative } from "./paths.js";
 import { oneLine, renderMap } from "./render.js";
+import { compare } from "./rollup.js";
+import { matchCited, readVault, type VaultNote } from "./vault.js";
 import { readWorklog } from "./worklog.js";
 
 export type Command = "map" | "impact" | "drift" | "doctor" | "own" | "conflicts";
@@ -28,7 +31,25 @@ interface ParsedCommand {
   overrides: Partial<Config>;
   since: string | undefined;
   json: boolean;
+  /**
+   * Non-null when `--diff` was given: which change set `impact --diff`
+   * measures. Deliberately NOT `since` reinterpreted: `since` already has one
+   * meaning across this whole CLI — the history window `map`/`drift` pass to
+   * `git log` — and giving it a second, scope-shaped meaning only when
+   * `--diff` is present is exactly the "same flag, surprise second behaviour"
+   * class `parseArgs`'s flag-recognition discipline exists to rule out.
+   * `DiffScope` has no "since" variant for the same reason (diff-impact.ts).
+   */
+  diff: DiffScope | null;
+  /** `--base <ref>`; `undefined` means "use `Config.diffBase`". */
+  base: string | undefined;
 }
+
+/** {@link ParsedCommand.diff}'s error when two scope flags are given at once
+ *  — `--staged --worktree` names two different change sets, and picking one
+ *  silently would be the same unresolved ambiguity `--out --json` was fixed
+ *  to reject (see the `takeValue` doc comment below). */
+const DUPLICATE_SCOPE = "only one of --staged, --worktree may be given";
 
 type ParseResult = { ok: true; parsed: ParsedCommand } | { ok: false; error: string };
 
@@ -67,6 +88,9 @@ export function parseArgs(argv: string[]): ParseResult {
   const overrides: Partial<Config> = {};
   let since: string | undefined;
   let json = false;
+  let sawDiff = false;
+  let scopeFlag: string | null = null;
+  let base: string | undefined;
 
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
@@ -162,13 +186,58 @@ export function parseArgs(argv: string[]): ParseResult {
         overrides.budgetTokens = n;
         break;
       }
+      case "--diff":
+        sawDiff = true;
+        break;
+      case "--staged":
+      case "--worktree":
+        if (scopeFlag !== null) return { ok: false, error: DUPLICATE_SCOPE };
+        scopeFlag = arg;
+        break;
+      case "--base": {
+        const value = takeValue();
+        if (value === null) return missingValue();
+        base = value;
+        break;
+      }
       default:
         // Unrecognised flag — exits 2 rather than being silently ignored.
         return { ok: false, error: `unrecognised flag: ${arg}` };
     }
   }
 
-  return { ok: true, parsed: { command: rawCommand, positionals, overrides, since, json } };
+  // `--diff` names the QUESTION ("what does everything I changed touch?");
+  // the scope flags narrow WHICH change set answers it. A scope flag given
+  // alone is rejected rather than silently implying `--diff`, for the same
+  // reason an unrecognised flag is rejected rather than ignored: a caller who
+  // typed `impact --staged` and got a whole-repo `impact <path>` error (or,
+  // worse, a quietly different answer) would have no way to notice the flag
+  // did nothing.
+  if (!sawDiff && scopeFlag !== null) {
+    return { ok: false, error: `${scopeFlag} requires --diff` };
+  }
+  // Same guard, same reason, for `--base`: it selects what a branch is
+  // measured AGAINST, which means nothing without `--diff` naming a change
+  // set to measure in the first place. Missed in the original pass —
+  // `--staged`/`--worktree` got this check and `--base` did not, so `impact
+  // --base main <path>` parsed clean and ran ordinary `impact <path>` with
+  // `--base` silently doing nothing. Exactly the "recognised flag the parser
+  // then discards" defect this whole file's flag-recognition discipline
+  // exists to rule out (see the `--out`/`--half-life-days` history above).
+  if (!sawDiff && base !== undefined) {
+    return { ok: false, error: "--base requires --diff" };
+  }
+  let diff: DiffScope | null = null;
+  if (sawDiff) {
+    if (scopeFlag === "--staged") diff = { kind: "staged" };
+    else if (scopeFlag === "--worktree") diff = { kind: "worktree" };
+    else diff = { kind: "branch" };
+  }
+
+  return {
+    ok: true,
+    parsed: { command: rawCommand, positionals, overrides, since, json, diff, base },
+  };
 }
 
 export interface CliResult {
@@ -237,11 +306,11 @@ function formatImpact(rows: ImpactRow[]): string {
 }
 
 function formatDriftRow(row: DriftRow): string {
-  const { a, b, moduleA, moduleB, npmi, support, confidence } = row;
-  return (
-    `${a} <-> ${b}  (${moduleA} <-> ${moduleB})` +
-    `\tnpmi=${npmi.toFixed(3)}\tsupport=${support}\tconfidence=${confidence.toFixed(3)}`
-  );
+  const { a, b, moduleA, moduleB, npmi, support, confidence, known } = row;
+  const base =
+    `${oneLine(a)} <-> ${oneLine(b)}  (${oneLine(moduleA)} <-> ${oneLine(moduleB)})` +
+    `\tnpmi=${npmi.toFixed(3)}\tsupport=${support}\tconfidence=${confidence.toFixed(3)}`;
+  return known === null ? base : `${base}  [known: ${oneLine(known)}]`;
 }
 
 function formatDrift(rows: DriftRow[]): string {
@@ -338,6 +407,81 @@ function sincePredictedWarning(since: string | undefined): string {
 }
 
 /**
+ * Module name → a one-line "what this is for".
+ *
+ * Two sources, each carrying its own label into the string, because `render`
+ * escapes and budgets what it is handed but does not decide what counts as
+ * evidence. A module's owner is the mission of the MOST-attributed task among
+ * its files — one line per module is the budget, so a module owned by three
+ * tasks names the one with the most files rather than listing all three.
+ *
+ * The `(mode)` on that one line is the AGGREGATE of every answer folded into
+ * it, never the first one seen. `OwnAnswer.mode` is per-TASK, and one mission
+ * routinely mixes a task with a recorded merge SHA (`provenance`) and a task
+ * with none (`predicted`) — this repo's own M4 does. Labelling from whichever
+ * task happened to sort first made a mixed-mode mission read as a pure
+ * `(provenance)` line whenever the provenance task's id happened to sort
+ * first, which is exactly the guess-dressed-as-a-fact failure this whole
+ * evidence tier exists to rule out (see `formatOwnAnswer`'s doc comment
+ * above, restating the same rule for `own`'s per-row output). The safe
+ * direction only runs one way: a group is `provenance` only when EVERY
+ * contributing answer is — one `predicted` answer taints the whole group. A
+ * fact demoted to a guess costs a reader nothing (they double-check something
+ * that didn't need it); a guess promoted to a fact costs them the campaign's
+ * entire promise.
+ */
+function purposeByModule(
+  answers: readonly OwnAnswer[],
+  notes: readonly VaultNote[],
+  files: readonly string[],
+  moduleOf: (p: string) => string,
+): Map<string, string> {
+  const tally = new Map<
+    string,
+    Map<string, { missionName: string; n: number; allProvenance: boolean }>
+  >();
+  for (const a of answers) {
+    const mod = moduleOf(a.path);
+    const byMission =
+      tally.get(mod) ?? new Map<string, { missionName: string; n: number; allProvenance: boolean }>();
+    const key = a.mission;
+    const seen = byMission.get(key);
+    if (seen === undefined) {
+      byMission.set(key, { missionName: a.missionName, n: 1, allProvenance: a.mode === "provenance" });
+    } else {
+      seen.n += 1;
+      // See this function's doc comment: ANY predicted answer taints the
+      // whole group, so this can only ever turn `false`, never back to `true`.
+      if (a.mode !== "provenance") seen.allProvenance = false;
+    }
+    tally.set(mod, byMission);
+  }
+
+  const citedByModule = new Map<string, string>();
+  for (const m of matchCited(notes, files)) {
+    const mod = moduleOf(m.path);
+    // First wins: `matchCited` is sorted by path then note, so this is stable
+    // across runs — `map.md` is committed and must not churn between two
+    // identical runs.
+    if (!citedByModule.has(mod)) citedByModule.set(mod, m.note);
+  }
+
+  const out = new Map<string, string>();
+  for (const mod of new Set([...tally.keys(), ...citedByModule.keys()])) {
+    const missions = [...(tally.get(mod)?.values() ?? [])].sort(
+      (x, y) => y.n - x.n || compare(x.missionName, y.missionName),
+    );
+    const parts: string[] = [];
+    const top = missions[0];
+    if (top !== undefined) parts.push(`${top.missionName} (${top.allProvenance ? "provenance" : "predicted"})`);
+    const note = citedByModule.get(mod);
+    if (note !== undefined) parts.push(`see ${note}`);
+    if (parts.length > 0) out.set(mod, parts.join(" — "));
+  }
+  return out;
+}
+
+/**
  * `map`'s whole pipeline — `analyze` -> `renderMap` -> `writeArtifact` — as
  * ONE function, exported so a second caller never reassembles that sequence
  * by hand. `setup.ts`'s build step calls this directly rather than
@@ -368,8 +512,23 @@ export function runMapCommand(
   // against the artifact this run itself produces.
   const sinceWarning = sinceMismatchWarning(previous, since);
 
-  const { analysis } = analyze(repoRoot, config, { now, since, previousClusters });
-  const mapText = renderMap(analysis, config.budgetTokens);
+  const { analysis, files, spine } = analyze(repoRoot, config, { now, since, previousClusters });
+
+  // Purpose lines are OPTIONAL evidence, same posture as the vault itself
+  // (vault.ts's own doc comment): a repo with no board still gets vault-only
+  // purpose lines, a repo with neither gets an unchanged map.md. `own` needs
+  // a `BoardView` to answer at all (see `runOwnCommand`'s early exit), so
+  // this is the one call site in `map` that is conditional on the board
+  // existing — everything else `map` computes works on a boardless repo.
+  const board = readBoard(repoRoot);
+  const answers =
+    board === null
+      ? []
+      : computeOwn(repoRoot, board, readWorklog(repoRoot), files, null, lexicalOptions(config));
+  const notes = readVault(repoRoot, config.vaultPath);
+  const purpose = purposeByModule(answers, notes, files, spine.moduleOf);
+
+  const mapText = renderMap(analysis, config.budgetTokens, purpose);
 
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, "map.md"), mapText);
@@ -428,6 +587,125 @@ function runImpactCommand(
   const rows = computeImpact(path, edges, files, undefined, config.minSupport);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatImpact(rows);
   return { code: 0, stdout, stderr: "" };
+}
+
+/**
+ * One `impact --diff` row: the strongest changed file it came from, the
+ * evidence, and any `cited` vault notes — all through `oneLine`, same reason
+ * as `formatOwnAnswer`/`formatConflictPair`: a repo-relative path or a vault
+ * description is free-form text that may legally carry a newline, and this
+ * formatter joins rows with `\n`.
+ *
+ * Names ONLY {@link DiffImpactRow.strongestVia}, never the whole of
+ * `predictedBy`. `npmi`/`support` on this row describe that ONE edge — the
+ * max-scoring changed file that pulled this row in — while `predictedBy`
+ * accumulates EVERY changed file that did, which can run to a dozen-plus
+ * paths on a real branch. Printing the full list beside a single edge's
+ * strength read as though that strength described all of them; it never did.
+ * The remaining count is still said, so a reader knows more evidence exists
+ * without every path being inlined — `--json` serialises `predictedBy`
+ * whole for a caller that wants it.
+ */
+function formatDiffImpactRow(row: DiffImpactRow): string {
+  const { path, npmi, support, predictedBy, strongestVia, notes } = row;
+  const extra = predictedBy.length - 1;
+  const via =
+    extra > 0
+      ? `strongest via ${oneLine(strongestVia)} (+${extra} more changed file${extra === 1 ? "" : "s"})`
+      : `via ${oneLine(strongestVia)}`;
+  const lines = [`  ${oneLine(path)}  npmi=${npmi.toFixed(3)}  support=${support}  ${via}`];
+  for (const n of notes) lines.push(`      known: ${oneLine(n.note)} — ${oneLine(n.description)}`);
+  return lines.join("\n");
+}
+
+function formatDiffImpactSection(title: string, rows: DiffImpactRow[]): string[] {
+  if (rows.length === 0) return [title, "  (none)"];
+  return [title, ...rows.map(formatDiffImpactRow)];
+}
+
+/**
+ * `changed.length === 0`'s message, scoped to what was actually asked. Fix
+ * round 1, minor 2: `--staged` and `--worktree` compare the index / the
+ * worktree to HEAD — no `base` ref is ever consulted for either (see
+ * `changedPaths`'s own `switch` in diff-impact.ts) — so a message claiming
+ * "against the base" under those scopes describes a comparison that did not
+ * happen. Only `branch` scope (the default) actually measures against
+ * `base`.
+ */
+function emptyChangedMessage(scope: DiffScope): string {
+  switch (scope.kind) {
+    case "staged":
+      return "nothing staged — no impact to report";
+    case "worktree":
+      return "worktree is clean — no impact to report";
+    case "branch":
+      return "nothing changed against the base — no impact to report";
+  }
+}
+
+/**
+ * `impact --diff` — what else moves, given everything this branch (or the
+ * index, or the worktree) has changed.
+ *
+ * `changedPaths` and `analyze` are two INDEPENDENT reads of this repository,
+ * not a two-step pipeline — `changedPaths` never consults `since` (it walks
+ * `merge-base(base, HEAD)..HEAD` plus uncommitted work, see diff-impact.ts),
+ * and `analyze` never consults `scope`/`base`. `since` keeps its one meaning
+ * (the history window feeding the co-change graph) exactly as it does for
+ * `impact <path>` — see the doc comment on `ParsedCommand.diff` for why a
+ * second, diff-scoped meaning is deliberately not on offer here.
+ *
+ * An empty `source`/`tests` is rendered WITH `doctor`'s verdict when history
+ * is thin or this repository squash-merges: the fine-grained co-change this
+ * reads is exactly what a squash merge discards at merge time (doctor.ts,
+ * "history shape"), so "no rows" there means "we cannot see", never "nothing
+ * else moves" — the same honesty `docs/octograph.md`'s "Honest limits"
+ * section states for `drift` and the working sets, applied here to the one
+ * other surface built on the same discovered co-change edges. A genuinely
+ * healthy history that simply found nothing prints no caveat: `doctor`'s
+ * `status` is the single spelling of "is this evidence trustworthy", so this
+ * reads it rather than re-deriving a second opinion from the same inputs.
+ */
+function runDiffImpactCommand(
+  repoRoot: string,
+  config: Config,
+  since: string | undefined,
+  now: number,
+  scope: DiffScope,
+  base: string,
+  json: boolean,
+): CliResult {
+  const changed = changedPaths(repoRoot, scope, base, config.excludePaths);
+  const { edges, files } = analyze(repoRoot, config, { now, since });
+  const notes = readVault(repoRoot, config.vaultPath);
+  // `undefined` for `limit` keeps `diffImpact`'s own default (20 per
+  // section) — only `minSupport` is overridden, from the SAME
+  // `config.minSupport` the edges were already admitted against, exactly as
+  // `runImpactCommand` does above.
+  const answer = diffImpact(changed, edges, files, notes, undefined, config.minSupport);
+
+  if (json) return { code: 0, stdout: `${JSON.stringify(answer)}\n`, stderr: "" };
+
+  const lines: string[] = [`changed: ${changed.length} file(s)`];
+  if (changed.length === 0) {
+    lines.push("", emptyChangedMessage(scope));
+    return { code: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
+  }
+
+  lines.push("", ...formatDiffImpactSection("you may also need to change:", answer.source));
+  lines.push("", ...formatDiffImpactSection("tests that historically move with this:", answer.tests));
+
+  if (answer.source.length === 0 && answer.tests.length === 0) {
+    const report = doctor(repoRoot, config);
+    if (report.status !== "ok") {
+      lines.push(
+        "",
+        `history is ${report.status} — this is missing evidence, not evidence of absence.`,
+        "run `octograph doctor` for what is degraded and how to fix it.",
+      );
+    }
+  }
+  return { code: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
 }
 
 /**
@@ -511,10 +789,11 @@ function runDriftCommand(
   json: boolean,
 ): CliResult {
   const { edges, files, spine } = analyze(repoRoot, config, { now, since });
+  const notes = readVault(repoRoot, config.vaultPath);
   // `undefined` keeps `drift`'s own default `limit` (20). `excludePaths` is
   // no longer threaded here: it applies at `harvest`, so the edges this
   // receives are already filtered — see drift.ts's doc comment.
-  const rows = computeDrift(edges, files, spine, undefined, config.minSupport);
+  const rows = computeDrift(edges, files, spine, undefined, config.minSupport, notes);
   const stdout = json ? JSON.stringify(rows) + "\n" : formatDrift(rows);
   return { code: 0, stdout, stderr: "" };
 }
@@ -667,7 +946,7 @@ function runConflictsCommand(
 export function runCli(argv: string[], repoRoot: string, now: number): CliResult {
   const parsed = parseArgs(argv);
   if (!parsed.ok) return usageError(parsed.error);
-  const { command, positionals, overrides, since, json } = parsed.parsed;
+  const { command, positionals, overrides, since, json, diff, base } = parsed.parsed;
 
   // `--out` is REJECTED here rather than quietly dropped later.
   //
@@ -695,8 +974,16 @@ export function runCli(argv: string[], repoRoot: string, now: number): CliResult
   }
 
   if (command === "impact") {
-    if (positionals.length !== 1) {
-      return usageError("impact requires exactly one <path> argument");
+    // `--diff` and a positional `<path>` ask two different questions — "what
+    // does everything I changed touch" vs. "what touches this one file" — so
+    // picking one silently would answer a question the caller did not ask,
+    // the same reasoning `--diff` alone-without-a-scope-flag rejection above
+    // (parseArgs) already applies one level up.
+    if (diff !== null && positionals.length > 0) {
+      return usageError("--diff and a <path> are mutually exclusive");
+    }
+    if (diff === null && positionals.length !== 1) {
+      return usageError("impact requires exactly one <path> argument, or --diff");
     }
   } else if (command === "own") {
     // `own [<path>]` — the optional positional every other non-`impact`
@@ -731,6 +1018,9 @@ export function runCli(argv: string[], repoRoot: string, now: number): CliResult
       case "drift":
         return runDriftCommand(repoRoot, config, since, now, json);
       case "impact": {
+        if (diff !== null) {
+          return runDiffImpactCommand(repoRoot, config, since, now, diff, base ?? config.diffBase, json);
+        }
         const path = positionals[0];
         if (path === undefined) return usageError("impact requires exactly one <path> argument");
         return runImpactCommand(repoRoot, config, since, now, path, json);

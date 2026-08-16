@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createCampaign, createMission, createTask } from "@octoshell/board";
-import { runCli } from "../src/cli.js";
+import { parseArgs, runCli } from "../src/cli.js";
 import { appendCommits, buildRepo } from "./fixtures/repo.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
@@ -726,6 +726,199 @@ describe("runCli — own", () => {
   });
 });
 
+/**
+ * `map`'s purpose-line PRODUCER (`cli.ts`'s `purposeByModule`), not its
+ * consumer. `render.test.ts` covers `renderMap`'s handling of an already-built
+ * purpose map exhaustively; nothing anywhere ran `map` end to end against a
+ * board and a vault and checked a purpose line actually reached `map.md` —
+ * `purposeByModule` could be stubbed to return an empty `Map` and the whole
+ * graph suite still passed, which is exactly how the mixed-mode mislabel
+ * below (Important 1) reached final review unnoticed.
+ */
+describe("runCli — map's purpose lines", () => {
+  function repoWithBoardAndGit(): { root: string; octobotsDir: string; git: (args: string[]) => string } {
+    const root = mkdtempClean("octograph-cli-map-purpose-");
+    const git = (args: string[]): string =>
+      execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" });
+    git(["init", "-q", "-b", "main"]);
+    git(["config", "user.email", "test@example.com"]);
+    git(["config", "user.name", "Test"]);
+    const octobotsDir = join(root, ".octobots");
+    mkdirSync(octobotsDir, { recursive: true });
+    return { root, octobotsDir, git };
+  }
+
+  function commit(root: string, git: (args: string[]) => string, files: Record<string, string>): string {
+    for (const [rel, content] of Object.entries(files)) {
+      const abs = join(root, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, content);
+    }
+    git(["add", "-A"]);
+    git(["commit", "-q", "-m", "test commit"]);
+    return git(["rev-parse", "HEAD"]).trim();
+  }
+
+  function writeWorklog(root: string, lines: Array<Record<string, unknown>>): void {
+    const dir = join(root, ".octobots", "tokenomics");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "worklog.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  }
+
+  /** A vault note under the default `.agents/knowledge` vault path, with a
+   *  body that CITES `body`'s paths outright — `citedPaths` (vault.ts) only
+   *  ever matches a full repo-relative path, never a bare basename. */
+  function writeVaultNote(
+    root: string,
+    rel: string,
+    frontmatter: Record<string, string>,
+    body: string,
+  ): void {
+    const abs = join(root, ".agents", "knowledge", rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    const fm = Object.entries(frontmatter)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("\n");
+    writeFileSync(abs, `---\n${fm}\n---\n\n${body}\n`);
+  }
+
+  function readMap(root: string): string {
+    return readFileSync(join(root, ".octobots", "graph", "map.md"), "utf8");
+  }
+
+  /** The purpose line rendered directly under a module's heading line
+   *  (`- **<module>** — ...`) — `renderMap` puts it on the NEXT line, indented
+   *  two spaces (render.ts's `lines.push` for `why`), never on the heading
+   *  line itself. */
+  function purposeLineFor(mapText: string, moduleName: string): string | undefined {
+    const lines = mapText.split("\n");
+    const idx = lines.findIndex((l) => l.includes(`**${moduleName}**`));
+    return idx === -1 ? undefined : lines[idx + 1];
+  }
+
+  it("names the owning mission and a cited vault note under the module they belong to", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, {
+      "src/auth/session.ts": "export {}\n",
+      "src/auth/login.ts": "export {}\n",
+    });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M1 - Auth" });
+    const task = createTask(octobotsDir, mission.id, {
+      name: "T1.1 - Session",
+      acceptanceCriteria: "- [ ] the session token is validated",
+    });
+    writeWorklog(root, [
+      { session_id: "s1", task: task.id, branch: "feat/x-t1", merged_sha: sha, at: "2026-08-10T00:00:00.000Z" },
+    ]);
+    writeVaultNote(
+      root,
+      "architecture/auth-session.md",
+      { name: "Auth session notes", description: "how the session module works" },
+      "See src/auth/session.ts for the implementation.",
+    );
+
+    const result = runCli(["map"], root, NOW);
+    expect(result.code).toBe(0);
+
+    const purposeLine = purposeLineFor(readMap(root), "src/auth");
+    expect(purposeLine).toBeDefined();
+    expect(purposeLine).toContain("M1 - Auth (provenance)");
+    expect(purposeLine).toContain("see architecture/auth-session.md");
+  });
+
+  it("names the mission with the MOST attributed files when two missions both own the same module", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const shaAlpha = commit(root, git, {
+      "src/util/format.ts": "export {}\n",
+      "src/util/parse.ts": "export {}\n",
+    });
+    const shaBeta = commit(root, git, { "src/util/helpers.ts": "export {}\n" });
+
+    const campaignA = createCampaign(octobotsDir, { name: "Q3" });
+    const missionA = createMission(octobotsDir, campaignA.id, { title: "M1 - Alpha" });
+    const taskA = createTask(octobotsDir, missionA.id, {
+      name: "T1.1 - Format",
+      acceptanceCriteria: "- [ ] formatting is stable",
+    });
+
+    const campaignB = createCampaign(octobotsDir, { name: "Q4" });
+    const missionB = createMission(octobotsDir, campaignB.id, { title: "M2 - Beta" });
+    const taskB = createTask(octobotsDir, missionB.id, {
+      name: "T2.1 - Helpers",
+      acceptanceCriteria: "- [ ] helpers are documented",
+    });
+
+    writeWorklog(root, [
+      { session_id: "s1", task: taskA.id, branch: "feat/a", merged_sha: shaAlpha, at: "2026-08-10T00:00:00.000Z" },
+      { session_id: "s2", task: taskB.id, branch: "feat/b", merged_sha: shaBeta, at: "2026-08-10T00:00:00.000Z" },
+    ]);
+
+    const result = runCli(["map"], root, NOW);
+    expect(result.code).toBe(0);
+
+    // Mission A owns 2 files in src/util (format.ts + parse.ts), mission B
+    // owns 1 (helpers.ts) — A has the most attribution, so A wins the line,
+    // never B, however the two missions sort by id or insertion order.
+    const purposeLine = purposeLineFor(readMap(root), "src/util");
+    expect(purposeLine).toContain("M1 - Alpha (provenance)");
+    expect(purposeLine).not.toContain("M2 - Beta");
+  });
+
+  /**
+   * Important 1's regression, pinned directly: a mission whose tasks split
+   * between `provenance` (a recorded merge SHA) and `predicted` (the lexical
+   * fallback) must render `(predicted)` for the whole group, never
+   * `(provenance)` — labelling from whichever task's answer happened to sort
+   * first (here, the provenance task, since `t1-1-...` sorts before
+   * `t1-2-...`) is the exact defect this pins against. `formatOwnAnswer`'s
+   * doc comment states the same rule for `own`'s per-row output; this is the
+   * identical rule at `map`'s per-module rollup.
+   */
+  it("labels a module (predicted), never (provenance), when its owning mission mixes provenance and predicted tasks", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, {
+      "src/auth/session.ts": "export {}\n",
+      "src/auth/login.ts": "export {}\n",
+    });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M4 - Mixed" });
+    const provTask = createTask(octobotsDir, mission.id, {
+      name: "T1.1 - Login",
+      acceptanceCriteria: "- [ ] the login page renders",
+    });
+    // No worklog entry at all for this task — `attribute()` defaults it to
+    // `predicted`, exactly the day-one state of every adopting repo (see
+    // own.ts's own doc comment).
+    createTask(octobotsDir, mission.id, {
+      name: "T1.2 - Session",
+      acceptanceCriteria: "- [ ] the session token is validated on every login attempt",
+    });
+    writeWorklog(root, [
+      {
+        session_id: "s1",
+        task: provTask.id,
+        branch: "feat/x-t1",
+        merged_sha: sha,
+        at: "2026-08-10T00:00:00.000Z",
+      },
+    ]);
+
+    const result = runCli(["map"], root, NOW);
+    expect(result.code).toBe(0);
+
+    const purposeLine = purposeLineFor(readMap(root), "src/auth");
+    expect(purposeLine).toBeDefined();
+    expect(purposeLine).toContain("M4 - Mixed (predicted)");
+    expect(purposeLine).not.toContain("(provenance)");
+  });
+});
+
 describe("runCli — conflicts", () => {
   /** A campaign spanning two missions, each with its own task(s), on a repo
    *  whose git history co-changes the two files those tasks' criteria
@@ -1129,5 +1322,217 @@ describe("--out containment", () => {
     const outside = join(mkdtempClean("octograph-outside-"), "artifacts");
     expect(runCli(["map", "--out", outside], repo, NOW).code)
       .toBe(runCli(["map", "--nonsense-flag"], repo, NOW).code);
+  });
+});
+
+describe("runCli — impact --diff", () => {
+  /** Writes `body` at `rel` inside `root`, creating parent directories. */
+  function write(root: string, rel: string, body: string): void {
+    const abs = join(root, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, body);
+  }
+
+  /**
+   * `main` two commits deep — a.ts/b.ts co-change both times, support 2,
+   * clearing the default `minSupport` floor — with a `feature` branch one
+   * commit ahead that edits only a.ts. Gives `diffImpact` a real answer:
+   * b.ts is the historically-coupled file a.ts's change should have pulled
+   * in, without touching it directly.
+   */
+  function repoWithCoupledBranch(): string {
+    const repo = buildRepo([
+      { files: ["a.ts", "b.ts"], daysAgo: 2 },
+      { files: ["a.ts", "b.ts"], daysAgo: 1 },
+    ]);
+    execFileSync("git", ["checkout", "-qb", "feature"], { cwd: repo });
+    appendCommits(repo, [{ files: ["a.ts"] }]);
+    return repo;
+  }
+
+  describe("parsing", () => {
+    it("rejects --diff together with a positional path", () => {
+      const result = runCli(["impact", "--diff", "a.ts"], tinyRepo(), NOW);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("--diff and a <path> are mutually exclusive");
+    });
+
+    it("rejects a scope flag given without --diff, naming the flag rather than silently implying it", () => {
+      const result = runCli(["impact", "--staged"], tinyRepo(), NOW);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("--staged requires --diff");
+    });
+
+    it("rejects two scope flags at once", () => {
+      const result = runCli(["impact", "--diff", "--staged", "--worktree"], tinyRepo(), NOW);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("only one of --staged, --worktree");
+    });
+
+    it("requires a value for --base", () => {
+      expect(parseArgs(["impact", "--diff", "--base"])).toEqual({
+        ok: false,
+        error: "--base requires a value",
+      });
+    });
+
+    it("--base takes a ref, and an unrelated flag typo is still named as unrecognised", () => {
+      // `--sInce` is deliberately NOT `--since` (a real flag, case-sensitive
+      // match only) — this pins that a scope-shaped or lookalike flag never
+      // gets a special "did you mean a scope?" pass; it is just unrecognised,
+      // the same as everywhere else in this parser.
+      const result = runCli(["impact", "--diff", "--sInce"], tinyRepo(), NOW);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("unrecognised flag: --sInce");
+    });
+
+    it("rejects --base given without --diff, naming the flag, rather than silently ignoring it", () => {
+      // Fix round 1: `--staged`/`--worktree` got the "requires --diff" guard
+      // from day one, but `--base` did not — `impact --base main <path>`
+      // parsed clean, exited 0, and produced ordinary `impact <path>` output
+      // with `--base` doing nothing at all. That is the exact defect class
+      // `--out`/`--half-life-days` were rewritten to make impossible: a flag
+      // the parser recognises and then quietly drops.
+      const result = runCli(["impact", "--base", "main", "a.ts"], tinyRepo(), NOW);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("--base requires --diff");
+    });
+
+    it("rejects --base on a command other than impact too, since it is parsed generically", () => {
+      // `--base` is recognised in the flag loop for every command, not just
+      // `impact` — same as `--staged`/`--worktree` above. `octograph map
+      // --base main` must not silently accept and discard it either.
+      const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
+      const result = runCli(["map", "--base", "main"], repo, NOW);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("--base requires --diff");
+    });
+  });
+
+  it("changed: 0 when the branch matches its base, and reports no impact rather than erroring", () => {
+    const repo = buildRepo([{ files: ["a.ts", "b.ts"] }]);
+    const result = runCli(["impact", "--diff"], repo, NOW);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("changed: 0 file(s)");
+    expect(result.stdout).toContain("nothing changed against the base");
+  });
+
+  it("changed: 0 under --staged/--worktree names the actual scope, never 'the base' those scopes never measure against", () => {
+    // Fix round 1, minor 2: --staged and --worktree compare the index/
+    // worktree to HEAD, not to any base ref — the empty message must not
+    // claim otherwise.
+    const repo = repoWithCoupledBranch(); // committed feature branch, nothing staged or loose
+
+    const staged = runCli(["impact", "--diff", "--staged"], repo, NOW);
+    expect(staged.code).toBe(0);
+    expect(staged.stdout).toContain("changed: 0 file(s)");
+    expect(staged.stdout).toContain("nothing staged");
+    expect(staged.stdout).not.toContain("against the base");
+
+    const worktree = runCli(["impact", "--diff", "--worktree"], repo, NOW);
+    expect(worktree.code).toBe(0);
+    expect(worktree.stdout).toContain("changed: 0 file(s)");
+    expect(worktree.stdout).toContain("worktree is clean");
+    expect(worktree.stdout).not.toContain("against the base");
+  });
+
+  it("reports a historically coupled file as source impact, citing the changed file that pulled it in", () => {
+    const repo = repoWithCoupledBranch();
+    const result = runCli(["impact", "--diff", "--json"], repo, NOW);
+    expect(result.code).toBe(0);
+    const answer = JSON.parse(result.stdout) as {
+      changed: string[];
+      source: Array<{ path: string; predictedBy: string[] }>;
+      tests: unknown[];
+    };
+    expect(answer.changed).toEqual(["a.ts"]);
+    expect(answer.source.some((r) => r.path === "b.ts" && r.predictedBy.includes("a.ts"))).toBe(true);
+  });
+
+  it("renders the human text with the changed count, the section heading, and npmi/support/via", () => {
+    const repo = repoWithCoupledBranch();
+    const result = runCli(["impact", "--diff"], repo, NOW);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("changed: 1 file(s)");
+    expect(result.stdout).toContain("you may also need to change:");
+    expect(result.stdout).toMatch(/b\.ts\s+npmi=\d\.\d{3}\s+support=\d+\s+via a\.ts/);
+  });
+
+  it("--staged and --worktree scope to only uncommitted work, not the whole branch", () => {
+    // repoWithCoupledBranch's feature commit is already committed, so neither
+    // the index nor the worktree holds anything relative to HEAD — a
+    // different answer from the branch-scope test above, which is the point:
+    // an implementation that ignored the scope flag entirely would report
+    // `changed: 1` here too.
+    const repo = repoWithCoupledBranch();
+
+    const staged = runCli(["impact", "--diff", "--staged"], repo, NOW);
+    expect(staged.code).toBe(0);
+    expect(staged.stdout).toContain("changed: 0 file(s)");
+
+    const worktree = runCli(["impact", "--diff", "--worktree"], repo, NOW);
+    expect(worktree.code).toBe(0);
+    expect(worktree.stdout).toContain("changed: 0 file(s)");
+  });
+
+  it("--base overrides which ref the branch is measured against", () => {
+    const root = mkdtempClean("cli-diff-base-");
+    const git = (args: string[]): string =>
+      execFileSync("git", args, { cwd: root, encoding: "utf8" });
+    git(["init", "-q", "-b", "main"]);
+    git(["config", "user.email", "t@example.com"]);
+    git(["config", "user.name", "T"]);
+    write(root, "a.ts", "1\n");
+    write(root, "b.ts", "1\n");
+    git(["add", "-A"]);
+    git(["commit", "-qm", "c1"]);
+    const firstSha = git(["rev-parse", "HEAD"]).trim();
+    write(root, "a.ts", "2\n");
+    write(root, "b.ts", "2\n");
+    git(["add", "-A"]);
+    git(["commit", "-qm", "c2"]);
+    git(["branch", "other-base", firstSha]);
+    git(["checkout", "-qb", "feature"]);
+    write(root, "a.ts", "3\n");
+    git(["add", "-A"]);
+    git(["commit", "-qm", "c3"]);
+
+    // Default base (config.diffBase = "main"): only a.ts changed since c2.
+    const defaultBase = runCli(["impact", "--diff", "--json"], root, NOW);
+    expect((JSON.parse(defaultBase.stdout) as { changed: string[] }).changed).toEqual(["a.ts"]);
+
+    // --base other-base measures back to c1, so b.ts's c2 edit is in scope too.
+    const overridden = runCli(["impact", "--diff", "--base", "other-base", "--json"], root, NOW);
+    expect((JSON.parse(overridden.stdout) as { changed: string[] }).changed).toEqual([
+      "a.ts",
+      "b.ts",
+    ]);
+  });
+
+  it("prints doctor's verdict and the missing-evidence caveat when nothing changed co-changes with anything else", () => {
+    const repo = tinyRepo();
+    execFileSync("git", ["checkout", "-qb", "feature"], { cwd: repo });
+    appendCommits(repo, [{ files: ["c.ts"] }]);
+
+    const result = runCli(["impact", "--diff"], repo, NOW);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("changed: 1 file(s)");
+    expect(result.stdout).toContain("(none)");
+    expect(result.stdout).toContain("history is degraded");
+    expect(result.stdout).toContain("missing evidence, not evidence of absence");
+  });
+
+  it("--since still narrows the history window feeding the co-change graph, not the diff scope", () => {
+    // The regression this guards: routing --since into DiffScope would give
+    // it a second meaning depending on whether --diff is present. Here it
+    // keeps its ONE meaning — narrowing analyze()'s history window — so an
+    // old enough --since drops the a/b co-change pair from the graph
+    // entirely, same as it would for `impact <path>`.
+    const repo = repoWithCoupledBranch();
+    const farFuture = runCli(["impact", "--diff", "--since", "2030-01-01", "--json"], repo, NOW);
+    expect(farFuture.code).toBe(0);
+    const answer = JSON.parse(farFuture.stdout) as { changed: string[]; source: unknown[] };
+    expect(answer.changed).toEqual(["a.ts"]); // diff scope is unaffected
+    expect(answer.source).toEqual([]); // but the co-change graph is now empty
   });
 });

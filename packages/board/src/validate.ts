@@ -1,8 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import type { EntityKind } from "./managed-block.js";
-import { parseWorkflowMeta } from "./workflow-meta.js";
+import { mergeAuthoredPhases, parseWorkflowMeta, serializeMeta } from "./workflow-meta.js";
+import { extractPhases, unclassifiedMessage } from "./extract-meta.js";
 import { loadEntity, KIND_KEYS, KNOWN_KEYS, type EntityFields } from "./entity-schema.js";
+import { readPointer, resolveWithin } from "./board-model.js";
 
 export interface BoardFinding {
   mdPath: string;
@@ -227,9 +229,10 @@ export function validateWorkflow(jsPath: string, folderSlug: string): BoardFindi
     return out;
   }
 
+  const source = readFileSync(jsPath, "utf8");
   let meta;
   try {
-    meta = parseWorkflowMeta(readFileSync(jsPath, "utf8"));
+    meta = parseWorkflowMeta(source);
   } catch (e) {
     err((e as Error).message);
     return out;
@@ -238,49 +241,98 @@ export function validateWorkflow(jsPath: string, folderSlug: string): BoardFindi
   if (meta.name !== folderSlug) {
     err(`meta.name "${meta.name}" does not match its folder "${folderSlug}"`);
   }
+  // The declared graph is GENERATED from the body, so its internal consistency is not a thing to
+  // check — it is a thing that cannot be wrong. What can be wrong is the body: whether it parses,
+  // whether meta was regenerated after the last edit, and whether every agent() call actually
+  // dispatches to the agent the diagram names. Checked ahead of `meta.phases.length` so a body
+  // that fails to parse is reported even when meta happens to declare zero phases.
+  let extracted;
+  try {
+    extracted = extractPhases(source);
+  } catch (e) {
+    err(`body does not parse: ${(e as Error).message}`);
+    return out;
+  }
+
   if (meta.phases.length === 0) {
     err("workflow has no phases");
     return out;
   }
 
-  const stepPhase = new Map<string, number>();     // step id → phase index
-  const parallelPhase = new Map<string, number>(); // parallel group → phase index
-
-  meta.phases.forEach((phase, pi) => {
-    if (phase.steps.length === 0) err(`phase "${phase.title}" has no steps`);
-    for (const step of phase.steps) {
-      if (stepPhase.has(step.id)) err(`duplicate step id "${step.id}"`);
-      else stepPhase.set(step.id, pi);
-
-      if (step.parallel !== undefined) {
-        const seen = parallelPhase.get(step.parallel);
-        if (seen !== undefined && seen !== pi) {
-          err(`parallel group "${step.parallel}" spans more than one phase`);
-        } else if (seen === undefined) {
-          parallelPhase.set(step.parallel, pi);
-        }
-      }
-    }
-  });
-
-  for (const phase of meta.phases) {
-    for (const step of phase.steps) {
-      for (const dep of step.dependsOn ?? []) {
-        if (!stepPhase.has(dep)) err(`step "${step.id}" dependsOn "${dep}", which is not a step`);
-      }
-    }
+  // Compare through the real writer/reader, not the raw extraction — serializeMeta writes each
+  // step with JSON.stringify(step), so key INSERTION order becomes file order, while
+  // parseWorkflowMeta rebuilds steps through coerceStep in its own canonical order. Comparing
+  // extracted.phases against meta.phases directly would flag a perfectly current file as stale
+  // over key order alone; round-tripping through the same writer+reader a real regenerate would
+  // use makes this immune to that. `mergeAuthoredPhases` is part of that same regenerate: a phase's
+  // `detail` is authored, not derived, so a workflow carrying one is current, not stale.
+  const roundTripped = parseWorkflowMeta(
+    `export const meta = ${serializeMeta({
+      name: meta.name,
+      description: meta.description,
+      phases: mergeAuthoredPhases(meta.phases, extracted.phases),
+    })}`,
+  ).phases;
+  if (JSON.stringify(roundTripped) !== JSON.stringify(meta.phases)) {
+    err("meta is out of date — regenerate it with sync-meta.js");
+  }
+  for (const call of extracted.unclassified) {
+    err(`line ${call.line}: ${unclassifiedMessage(call)}`);
+  }
+  // A step with a computed `agentType` (e.g. `agentType: task.role`) dispatches for real at
+  // runtime — it is NOT the "no agentType" defect below, just unreadable by the extractor — so it
+  // is excluded by id rather than folded into the same check.
+  const computedAgentTypeIds = new Set(extracted.computedAgentType.map((c) => c.stepId));
+  for (const step of extracted.phases.flatMap((p) => p.steps)) {
+    if (step.kind === "workflow") continue;
+    if (step.agent || computedAgentTypeIds.has(step.id)) continue;
+    err(`step "${step.id}" (${step.label}) has no agentType — it runs as the default subagent`);
   }
 
   return out;
 }
 
+/** Build the `BoardFinding` shape this file pushes for a workflow-folder problem. */
+function workflowFinding(mdPath: string, message: string): BoardFinding {
+  return { mdPath, kind: "workflow", severity: "error", message };
+}
+
 /** Validate every workflow folder under an entity, returning the count found. */
-function validateWorkflowsUnder(entityDir: string, findings: BoardFinding[]): number {
+function validateWorkflowsUnder(entityDir: string, findings: BoardFinding[], root: string): number {
   const dir = join(entityDir, "workflows");
   let count = 0;
   for (const slug of safeReaddir(dir)) {
     const jsPath = join(dir, slug, "workflow.js");
-    if (!existsSync(jsPath)) continue; // no workflow.js → not a workflow (e.g. a legacy .md-only folder)
+    if (!existsSync(jsPath)) {
+      // A folder may point at a shared pipeline instead of owning a script.
+      const pointerPath = join(dir, slug, "workflow.json");
+      if (!existsSync(pointerPath)) continue; // neither workflow.js nor a pointer → not a workflow folder
+      count++;
+      const pointer = readPointer(pointerPath);
+      if (!pointer.ok) {
+        // The reason is carried out of readPointer verbatim: unreadable, not JSON, and no `uses`
+        // key are three different mistakes and each names its own.
+        findings.push(workflowFinding(pointerPath, pointer.error));
+        continue;
+      }
+      const uses = pointer.uses;
+      if (uses.includes("\\")) {
+        // Named ahead of the generic "resolves outside the board" finding: the author's mistake
+        // here is a stray backslash, not a climb, and Windows would treat it as a real separator.
+        findings.push(
+          workflowFinding(pointerPath, `pointer "${uses}" contains a backslash — pointers are POSIX-style paths (forward slashes only)`),
+        );
+      } else {
+        const from = relative(root, join(dir, slug)).split(sep).join("/");
+        const target = resolveWithin(from, uses);
+        if (target === null) {
+          findings.push(workflowFinding(pointerPath, `pointer "${uses}" resolves outside the board`));
+        } else if (!existsSync(join(root, target, "workflow.js"))) {
+          findings.push(workflowFinding(pointerPath, `pointer "${uses}" names a folder with no workflow.js`));
+        }
+      }
+      continue;
+    }
     count++;
     findings.push(...validateWorkflow(jsPath, slug));
   }
@@ -297,7 +349,7 @@ export function validateBoard(root: string): BoardFinding[] {
 
     // campaign.md
     findings.push(...validateFile(join(campaignDir, "campaign.md"), "campaign"));
-    validateWorkflowsUnder(campaignDir, findings);
+    validateWorkflowsUnder(campaignDir, findings, octobots);
 
     // campaign-level bugs
     const campaignBugs = join(campaignDir, "bugs");
@@ -319,7 +371,7 @@ export function validateBoard(root: string): BoardFinding[] {
       // `board-model.ts` has always been a `string[]`, keyed identically to the
       // campaign case; the cardinality rule that used to live here contradicted
       // the model it was validating. See onetest-ai/octoshell#60.
-      validateWorkflowsUnder(missionDir, findings);
+      validateWorkflowsUnder(missionDir, findings, octobots);
 
       // mission tasks
       const tasksDir = join(missionDir, "tasks");

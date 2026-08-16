@@ -9,7 +9,22 @@
 
 import type { WorkflowPhase } from "@octoshell/board";
 
-export interface DiagramNode { id: string; label: string; agent: string; x: number; y: number; w: number; h: number }
+export interface DiagramNode {
+  id: string;
+  label: string;
+  /**
+   * null when the step's `agentType` is either absent or a computed expression the extractor
+   * could not read as a literal — see `subtitleFor`'s doc comment for why those two cases cannot
+   * be told apart here, and why that is fine.
+   */
+  agent: string | null;
+  kind: "agent" | "workflow" | "command";
+  repeat: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 export interface DiagramEdge { from: string; to: string }
 export interface DiagramBand { title: string; y: number; h: number }
 export interface DiagramLayout {
@@ -66,7 +81,9 @@ export function layoutWorkflow(phases: WorkflowPhase[]): DiagramLayout {
       nodes.push({
         id: step.id,
         label: step.label,
-        agent: step.agent,
+        agent: step.agent ?? null,
+        kind: step.kind ?? "agent",
+        repeat: step.repeat === true,
         x: PAD + BAND_LABEL_W + si * (NODE_W + GAP_X),
         y,
         w: NODE_W,
@@ -89,6 +106,38 @@ export function layoutWorkflow(phases: WorkflowPhase[]): DiagramLayout {
   }
 
   return { nodes, edges, bands, width, height: y - GAP_Y + PAD };
+}
+
+/**
+ * The second line of a node: the agent that will run it, "workflow" for a composed sub-workflow,
+ * or nothing at all when the step names no `agent`.
+ *
+ * That last case used to render "default subagent" — but since `validate` (packages/board) blocks
+ * a board whose `agentType` is genuinely absent, a null `agent` reaching a shipped, validated board
+ * can only mean the call named an `agentType` the extractor could not read (a computed expression
+ * like `agentType: task.role`), which dispatches for real at run time. "Default subagent" was a
+ * false statement about that step on the one surface a reviewer actually reads before a run is
+ * kicked off — the same false-positive class fixed in `validate` one round earlier, just visible
+ * here instead of in a CLI message. Silence is the honest reading: undefined, not a placeholder
+ * string, so the caller renders no subtitle line rather than an empty one.
+ */
+export function subtitleFor(node: Pick<DiagramNode, "kind" | "agent">): string | undefined {
+  if (node.kind === "workflow") return "workflow";
+  if (!node.agent) return undefined;
+  return node.kind === "command" ? `${node.agent} · command` : node.agent;
+}
+
+/**
+ * Full hover-tooltip text for a node: the label, then whatever `subtitleFor` names — an agent, a
+ * command, or "workflow" — then the repeat note, in that order. Routes through `subtitleFor`
+ * rather than re-deriving the same "no agent" fallback a second time: that duplication is exactly
+ * why the tooltip still said "default subagent" one round after the card face stopped. A step with
+ * no `agent` hovers as just its label plus the repeat note — no dash, no invented agent name.
+ */
+export function titleFor(node: Pick<DiagramNode, "label" | "kind" | "agent" | "repeat">): string {
+  const subtitle = subtitleFor(node);
+  const repeatNote = node.repeat ? " (repeats per item)" : "";
+  return (subtitle !== undefined ? `${node.label} — ${subtitle}` : node.label) + repeatNote;
 }
 
 export function WorkflowDiagram({ phases }: { phases: WorkflowPhase[] }): JSX.Element {
@@ -143,26 +192,43 @@ export function WorkflowDiagram({ phases }: { phases: WorkflowPhase[] }): JSX.El
           </text>
         ))}
 
-        {layout.nodes.map((n) => (
-          <g key={n.id}>
-            <title>{`${n.label} — ${n.agent}`}</title>
-            <rect
-              x={n.x}
-              y={n.y}
-              width={n.w}
-              height={n.h}
-              rx={4}
-              fill="var(--vscode-editorWidget-background)"
-              stroke="var(--vscode-widget-border, var(--vscode-editorWidget-border))"
-            />
-            <text x={n.x + TEXT_PAD} y={n.y + 21} fontSize={12} fill="var(--vscode-foreground)">
-              {fitLabel(n.label)}
-            </text>
-            <text x={n.x + TEXT_PAD} y={n.y + 39} fontSize={11} fill="var(--vscode-descriptionForeground)">
-              {fitLabel(n.agent, NODE_W, 6)}
-            </text>
-          </g>
-        ))}
+        {layout.nodes.map((n) => {
+          const subtitle = subtitleFor(n);
+          return (
+            <g key={n.id}>
+              <title>{titleFor(n)}</title>
+              <rect
+                x={n.x}
+                y={n.y}
+                width={n.w}
+                height={n.h}
+                rx={4}
+                fill="var(--vscode-editorWidget-background)"
+                stroke="var(--vscode-widget-border, var(--vscode-editorWidget-border))"
+                strokeDasharray={n.kind === "workflow" ? "4 3" : undefined}
+              />
+              <text x={n.x + TEXT_PAD} y={n.y + 21} fontSize={12} fill="var(--vscode-foreground)">
+                {fitLabel(n.label)}
+              </text>
+              {subtitle !== undefined && (
+                <text x={n.x + TEXT_PAD} y={n.y + 39} fontSize={11} fill="var(--vscode-descriptionForeground)">
+                  {fitLabel(subtitle, NODE_W, 6)}
+                </text>
+              )}
+              {n.repeat && (
+                <text
+                  x={n.x + n.w - TEXT_PAD}
+                  y={n.y + 39}
+                  fontSize={10}
+                  textAnchor="end"
+                  fill="var(--vscode-descriptionForeground)"
+                >
+                  ×N
+                </text>
+              )}
+            </g>
+          );
+        })}
       </svg>
     </div>
   );

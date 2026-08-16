@@ -3,7 +3,7 @@ import { join, dirname, basename } from "node:path";
 import { parseManagedBlock, mapBoardStatus, boardLineEntityName, parseDocumentLinks, type EntityKind, type ManagedFields } from "./managed-block.js";
 import { slugify, uniqueSlug } from "./slug.js";
 import { type BugParent, type BugSeverity, type WorkflowParent } from "./types.js";
-import { findMetaSpan, serializeMeta, type WorkflowMeta } from "./workflow-meta.js";
+import { serializeMeta, type WorkflowMeta } from "./workflow-meta.js";
 import { dumpEntity, loadEntity, type EntityFields, type AcceptanceCriterion, type DocumentLink } from "./entity-schema.js";
 import { BoardModel } from "./board-model.js";
 
@@ -563,14 +563,23 @@ export function setStatus(root: string, kind: EntityKind, id: string, state: str
 
 // ── Workflows ────────────────────────────────────────────────────────────────
 
-/** The scaffold body written beside a new workflow's meta — a valid, runnable single-phase script. */
+/**
+ * The scaffold body written beside a new workflow's meta — a valid, runnable single-phase script.
+ *
+ * Byte-identical to what the pack's `add-workflow.js` scaffolds: the two are the same command from
+ * an author's point of view (the VS Code *new workflow* action and the CLI script), so they must
+ * not hand out different advice. `meta` is GENERATED from this body now, so the comment points at
+ * sync-meta.js rather than asking the author to keep the two in step by hand.
+ * Kept honest by `scripts-cli-scenarios.test.ts`, which scaffolds one of each and diffs the bytes —
+ * keep the two in step.
+ */
 function scaffoldScript(meta: WorkflowMeta): string {
   return [
     `export const meta = ${serializeMeta(meta)}`,
     "",
-    "// Body: use phase() / agent() / parallel() / pipeline().",
-    "// Keep `meta.phases` above in step with the phases this body enters —",
-    "// the Octobots board draws its diagram from meta, not from this code.",
+    "// Body: use phase() / agent() / parallel() / pipeline() / workflow().",
+    "// The board's diagram is GENERATED from this code — after editing, run:",
+    "//   node .claude/skills/mission-planner/scripts/sync-meta.js <this folder>",
     `phase(${JSON.stringify(meta.phases[0]?.title ?? "Run")})`,
     "",
   ].join("\n");
@@ -599,7 +608,10 @@ export function createWorkflow(
     scaffoldScript({
       name: slug,
       description,
-      phases: [{ title: "Run", steps: [{ id: "s1", agent: "claude", label: input.name }] }],
+      // No steps: the body below only calls phase('Run') — validate now checks that meta agrees
+      // with the body it was generated from, so a placeholder step here (with nothing in the body
+      // to back it) would fail that check the moment the file is created.
+      phases: [{ title: "Run", steps: [] }],
     }),
     "utf8",
   );
@@ -613,20 +625,6 @@ function workflowFolder(root: string, id: string): string | null {
   board.rebuild();
   const wf = board.getWorkflow(id);
   return wf ? join(root, wf.folderPath) : null;
-}
-
-export function setWorkflowMeta(root: string, id: string, meta: WorkflowMeta): boolean {
-  const folder = workflowFolder(root, id);
-  if (folder === null) return false;
-  const jsPath = join(folder, "workflow.js");
-  if (!existsSync(jsPath)) return false;
-
-  const source = readFileSync(jsPath, "utf8");
-  const span = findMetaSpan(source);
-  if (!span) return false; // never rewrite a script whose meta we could not locate
-
-  writeFileSync(jsPath, source.slice(0, span.start) + serializeMeta(meta) + source.slice(span.end), "utf8");
-  return true;
 }
 
 export function appendWorkflowRun(

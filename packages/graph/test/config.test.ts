@@ -134,6 +134,60 @@ describe("loadConfig", () => {
     expect(loadConfig(root).out).toBe("graphify-out");
   });
 
+  /**
+   * `vaultPath` carries the identical risk `out` does above, and is
+   * validated through the same `insideRepo` helper for the same reason: it
+   * is repo content (octograph.yaml), and `readVault` joins it onto
+   * `repoRoot` unchecked, so an escaping value must degrade to the default
+   * rather than pointing the vault reader outside the repo.
+   */
+  it("falls back to the default vault path when octograph.yaml's vaultPath escapes the repo root", () => {
+    const root = mkdtempClean("cfg-");
+    writeFileSync(join(root, "octograph.yaml"), "vaultPath: '../../..'\n");
+    expect(loadConfig(root).vaultPath).toBe(DEFAULTS.vaultPath);
+  });
+
+  it("accepts a legitimate in-repo vaultPath from octograph.yaml", () => {
+    const root = mkdtempClean("cfg-");
+    writeFileSync(join(root, "octograph.yaml"), "vaultPath: notes/vault\n");
+    expect(loadConfig(root).vaultPath).toBe("notes/vault");
+  });
+
+  /**
+   * The regression this test exists for: `vaultPath: ""` passed both the old
+   * guards (`typeof === "string"` and `insideRepo`) — `insideRepo(root, "")`
+   * resolves to the repo root itself, a legitimate answer for a caller that
+   * means it — so an empty string silently became "walk the whole repository
+   * tree", `node_modules` included, and `readVault` read every `.md` body it
+   * found as a knowledge note. `diffBase` already carried the sibling
+   * `!== ""` clause in this same file; `vaultPath` did not.
+   */
+  it("falls back to the default vault path when octograph.yaml's vaultPath is the empty string", () => {
+    const root = mkdtempClean("cfg-");
+    writeFileSync(join(root, "octograph.yaml"), "vaultPath: ''\n");
+    expect(loadConfig(root).vaultPath).toBe(DEFAULTS.vaultPath);
+  });
+
+  /**
+   * `diffBase` is a git ref name, not a repo-relative path, so it takes no
+   * `insideRepo` containment check the way `out`/`vaultPath` above do — a ref
+   * like `origin/main` was never going to escape the repo tree. It still
+   * needs the same per-key "bad value degrades to the default" discipline
+   * every other key gets, which this pins directly rather than leaving it
+   * covered only by the blanket "no octograph.yaml -> equals DEFAULTS" case.
+   */
+  it("falls back to the default diffBase when octograph.yaml's diffBase is not a string", () => {
+    const root = mkdtempClean("cfg-");
+    writeFileSync(join(root, "octograph.yaml"), "diffBase: 42\n");
+    expect(loadConfig(root).diffBase).toBe(DEFAULTS.diffBase);
+  });
+
+  it("accepts a legitimate diffBase from octograph.yaml", () => {
+    const root = mkdtempClean("cfg-");
+    writeFileSync(join(root, "octograph.yaml"), "diffBase: trunk\n");
+    expect(loadConfig(root).diffBase).toBe("trunk");
+  });
+
   it("reads values correctly with comments present", () => {
     const root = mkdtempClean("cfg-");
     writeFileSync(

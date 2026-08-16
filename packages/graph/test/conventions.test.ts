@@ -166,10 +166,13 @@ function sourceKeepingStrings(file: string): string {
 }
 
 /** The only modules allowed to import `node:child_process` — `setup-io.ts`,
- *  plus the two git readers that already did before M5. Spelled once, and
- *  read by both the import guard and the call-shape guard below, so the two
- *  can never come to disagree about which files they cover. */
-const CHILD_PROCESS_MODULES = ["setup-io.ts", "harvest.ts", "attribution.ts"];
+ *  the two git readers that already did before M5 (`harvest.ts`,
+ *  `attribution.ts`), and `diff-impact.ts` (T4, a third git reader,
+ *  `execFileSync("git", …)` for a diff range, never a user-facing install).
+ *  Spelled once, and read by both the import guard and the call-shape guard
+ *  below, so the two can never come to disagree about which files they
+ *  cover. */
+const CHILD_PROCESS_MODULES = ["setup-io.ts", "harvest.ts", "attribution.ts", "diff-impact.ts"];
 
 /**
  * Whether `text` compares something against `minCommits` — the thin-history
@@ -728,9 +731,10 @@ describe("package conventions", () => {
   /**
    * An eleventh single-spelling rule, and the safety-critical one this
    * mission exists for: no NEW module may import `node:child_process` —
-   * only `setup-io.ts`, plus the two readers that already did before this
-   * mission (`harvest.ts` and `attribution.ts`, both `execFileSync("git",
-   * …)` for repo history, never a user-facing install). `setup.ts` and
+   * only `setup-io.ts`, the two readers that already did before this
+   * mission (`harvest.ts` and `attribution.ts`), and `diff-impact.ts`
+   * (added after, T4) — the three readers all `execFileSync("git", …)` for
+   * repo history or a diff range, never a user-facing install. `setup.ts` and
    * every other module reach the outside world only through the `SetupIO`
    * port `setup.ts` defines. A second module spawning a process is exactly
    * the surface a reviewer checking "does this ever pipe a remote script to
