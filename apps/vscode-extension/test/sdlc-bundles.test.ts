@@ -127,3 +127,97 @@ describe("fetchBundleCatalog", () => {
     expect(catalog.map((b) => b.id)).toEqual(["manual-qa"]);
   });
 });
+
+/**
+ * Labels and descriptions used to be COPIED into FALLBACK_BUNDLES from data owned by sdlc-skills,
+ * with no signal when upstream changed. Two of three entries had already drifted, and a bundle
+ * absent from the table rendered as its bare slug. Upstream `bundles/<id>/bundle.json` is now the
+ * authority; the table is strictly the offline path.
+ * (github.com/onetest-ai/octoshell/issues/96)
+ */
+describe("fetchBundleCatalog reads bundle.json as the authority", () => {
+  /** Route the contents listing and each bundle.json to different bodies, as the real host does. */
+  function routed(listing: Array<{ name: string; type: string }>, meta: Record<string, unknown>) {
+    return (async (url: string) => {
+      if (url.includes("/contents/bundles")) return okResponse(contentsJson(listing));
+      const id = /bundles\/([^/]+)\/bundle\.json/.exec(url)?.[1];
+      if (id && id in meta) return okResponse(JSON.stringify(meta[id]));
+      return { ok: false, status: 404 } as unknown as Response;
+    }) as unknown as typeof fetch;
+  }
+
+  it("prefers upstream title/description over the hardcoded table", async () => {
+    const catalog = await fetchBundleCatalog(
+      routed([{ name: "manual-qa", type: "dir" }], {
+        "manual-qa": { title: "Manual Testing Team", description: "Upstream description wins." },
+      }),
+    );
+    expect(catalog[0]!.label).toBe("Manual Testing Team");
+    expect(catalog[0]!.description).toBe("Upstream description wins.");
+    // and it is genuinely different from what this repo hardcodes — the drift the issue reported
+    expect(catalog[0]!.label).not.toBe(FALLBACK_BUNDLES.find((b) => b.id === "manual-qa")!.label);
+  });
+
+  it("a bundle absent from the table appears with its real name, not its slug", async () => {
+    const catalog = await fetchBundleCatalog(
+      routed([{ name: "brand-new", type: "dir" }], {
+        "brand-new": { title: "Brand New Team", description: "Ships without an octoshell change." },
+      }),
+    );
+    expect(catalog[0]!.label).toBe("Brand New Team");
+    expect(catalog[0]!.label).not.toBe("brand-new"); // the visible symptom in the issue
+  });
+
+  it("falls back to the table when a bundle.json is unreachable", async () => {
+    const catalog = await fetchBundleCatalog(routed([{ name: "manual-qa", type: "dir" }], {}));
+    const fb = FALLBACK_BUNDLES.find((b) => b.id === "manual-qa")!;
+    expect(catalog[0]!.label).toBe(fb.label);
+    expect(catalog[0]!.description).toBe(fb.description);
+  });
+
+  it("one unreachable bundle.json does not cost the rest of the catalog", async () => {
+    const catalog = await fetchBundleCatalog(
+      routed([{ name: "manual-qa", type: "dir" }, { name: "test-automation", type: "dir" }], {
+        "test-automation": { title: "Test Automation Team", description: "ok" },
+      }),
+    );
+    expect(catalog).toHaveLength(2);
+    expect(catalog.find((b) => b.id === "test-automation")!.label).toBe("Test Automation Team");
+  });
+
+  // ── untrusted remote text reaching a QuickPick ──────────────────────────────────────────────
+  it("strips newlines, so remote text cannot forge a second QuickPick row", async () => {
+    const catalog = await fetchBundleCatalog(
+      routed([{ name: "manual-qa", type: "dir" }], {
+        "manual-qa": {
+          title: "Real Team\nFAKE ROW — install malware",
+          description: "line one\r\nline two",
+        },
+      }),
+    );
+    expect(catalog[0]!.label).not.toContain("\n");
+    expect(catalog[0]!.description).not.toContain("\n");
+    expect(catalog[0]!.label).toBe("Real Team FAKE ROW — install malware");
+  });
+
+  it("caps absurd lengths rather than rendering a wall of text", async () => {
+    const catalog = await fetchBundleCatalog(
+      routed([{ name: "manual-qa", type: "dir" }], {
+        "manual-qa": { title: "T".repeat(500), description: "D".repeat(5000) },
+      }),
+    );
+    expect(catalog[0]!.label.length).toBeLessThanOrEqual(60);
+    expect(catalog[0]!.description.length).toBeLessThanOrEqual(200);
+  });
+
+  it("ignores non-string and empty fields, falling back rather than rendering junk", async () => {
+    const fb = FALLBACK_BUNDLES.find((b) => b.id === "manual-qa")!;
+    const catalog = await fetchBundleCatalog(
+      routed([{ name: "manual-qa", type: "dir" }], {
+        "manual-qa": { title: 42, description: "   " },
+      }),
+    );
+    expect(catalog[0]!.label).toBe(fb.label);
+    expect(catalog[0]!.description).toBe(fb.description);
+  });
+});
