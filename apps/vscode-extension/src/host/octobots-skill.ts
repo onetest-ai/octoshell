@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { installPrimer, registerClaudeHook, claudeHookStatus } from "./octobots-hooks.js";
+import { installPrimer, registerClaudeHook, unregisterClaudeHook, claudeHookStatus } from "./octobots-hooks.js";
 import { installTokenomics, tokenomicsStatus } from "./octobots-tokenomics.js";
 import { installGraph, graphStatus } from "./octograph-install.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
@@ -60,22 +60,31 @@ export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERS
   });
   let primerV: number | null;
   try { primerV = parsePrimerVersion(readFileSync(primer, "utf8")); } catch { primerV = null; }
+  // Hooks being ABSENT is a legitimate choice (they are opt-in). Settings being UNREADABLE is not
+  // the same thing: we cannot tell what is registered, so we must not let "absent" stand in for
+  // "fine" and report the pack up-to-date on a file we failed to parse.
   let claude: { present: boolean; current: boolean };
+  let claudeReadable = true;
   try { claude = claudeHookStatus(repoRoot, currentVersion); }
-  catch { claude = { present: false, current: false }; }
+  catch { claude = { present: false, current: false }; claudeReadable = false; }
   // The tokenomics CLI is pack payload too: the mission gate is told to run it, so a pack without
   // it is incomplete, not merely missing an extra.
   const tokenomics = tokenomicsStatus(repoRoot, currentVersion);
-  if (skillVs.some((v) => v === null) || primerV === null || !claude.present || !tokenomics.present) {
+  if (skillVs.some((v) => v === null) || primerV === null || !tokenomics.present) {
     return { installed: false, currentVersion, upToDate: false };
   }
   // Graph (octograph, M6) is opt-in via its own "Install Graph" command — a workspace that never
   // ran it must not be reported not-installed just because this optional payload is absent. Once
   // installed, though, staleness feeds the same `upToDate` verdict a stale skill/primer/tokenomics
   // already drives: one drift mechanism, not a second one bolted on beside it.
+  // Hooks are opt-in too (see `installPack`), so their ABSENCE is a legitimate choice, not a broken
+  // install — treating it as one would report a workspace that declined them as uninstalled forever
+  // and re-prompt on every open. Once present, staleness feeds `upToDate` exactly as graph's does,
+  // which is what lets an upgrade repair the duplicate entries older versions left behind.
   const graph = graphStatus(repoRoot, currentVersion);
   const upToDate =
-    skillVs.every((v) => v === currentVersion) && primerV === currentVersion && claude.current &&
+    skillVs.every((v) => v === currentVersion) && primerV === currentVersion &&
+    claudeReadable && (!claude.present || claude.current) &&
     tokenomics.current && (!graph.present || graph.current);
   return { installed: true, currentVersion, upToDate };
 }
@@ -103,7 +112,11 @@ function copyTree(from: string, to: string): number {
  * The pack installs **no agents**. Planning and execution run under whatever agent the user is
  * already in, driven by the skills; agent rosters belong to the repo, not to us.
  */
-export function installPack(srcRoot: string, repoRoot: string): { written: number } {
+export function installPack(
+  srcRoot: string,
+  repoRoot: string,
+  opts: { hooks?: boolean } = {},
+): { written: number; hooksRegistered: boolean } {
   let written = 0;
   for (const name of RETIRED_SKILLS) {
     rmSync(join(repoRoot, ".claude", "skills", name), { recursive: true, force: true });
@@ -126,6 +139,19 @@ export function installPack(srcRoot: string, repoRoot: string): { written: numbe
   if (graphStatus(repoRoot, OCTOBOTS_PACK_VERSION).present) {
     written += installGraph(srcRoot, repoRoot);
   }
-  registerClaudeHook(repoRoot, OCTOBOTS_PACK_VERSION);
-  return { written };
+  // Hooks are OPT-IN, on the same doctrine as graph above: they run on every session start and
+  // after every Bash tool call, so installing them into a workspace that never asked for them
+  // changes how that repo's agents behave — and costs a process per tool call. `opts.hooks === true`
+  // is an explicit yes; otherwise we only REFRESH hooks that are already registered, which is what
+  // keeps upgrades (and the duplicate-entry repair in `registerClaudeHook`) working without ever
+  // adding them behind the user's back. `opts.hooks === false` is a deliberate no — it clears ours.
+  const already = claudeHookStatus(repoRoot, OCTOBOTS_PACK_VERSION).present;
+  let hooksRegistered = false;
+  if (opts.hooks === false) {
+    unregisterClaudeHook(repoRoot);
+  } else if (opts.hooks === true || already) {
+    registerClaudeHook(repoRoot, OCTOBOTS_PACK_VERSION);
+    hooksRegistered = true;
+  }
+  return { written, hooksRegistered };
 }
