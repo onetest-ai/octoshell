@@ -10,6 +10,7 @@ import { changedPaths, diffImpact, type DiffImpactRow, type DiffScope } from "./
 import { doctor, exitCode, type Report } from "./doctor.js";
 import { drift as computeDrift, type DriftRow } from "./drift.js";
 import { impact as computeImpact, type ImpactRow } from "./impact.js";
+import { matchedExcludePrefix } from "./noise.js";
 import { own as computeOwn, type OwnAnswer } from "./own.js";
 import { repoRelative } from "./paths.js";
 import { oneLine, renderMap } from "./render.js";
@@ -579,6 +580,28 @@ function runImpactCommand(
   // either way, so falling back to the raw string here just yields the
   // empty result `impact` already returns for an unknown path.
   const path = repoRelative(repoRoot, rawPath) ?? rawPath;
+
+  // THREE causes used to collapse into one string. `(no coupled files)` is only true for the
+  // third; for the other two the question was never asked, and a caller could not tell an answer
+  // from a blind spot. Both are knowable here at zero cost, so both get named.
+  //
+  // The explanation goes to STDERR rather than replacing stdout's JSON: `--json` callers keep a
+  // parseable array (the shape they already had), and still learn the path was not analysed.
+  const excludedBy = matchedExcludePrefix(path, config.excludePaths);
+  if (excludedBy !== null) {
+    const why = `${path} is excluded by octograph.yaml ("${excludedBy}") — not analysed, so this is not a finding about its coupling\n`;
+    return { code: 0, stdout: json ? "[]\n" : "(path excluded — not analysed)\n", stderr: why };
+  }
+  if (!files.includes(path)) {
+    // The graph only ever saw commits that could produce a PAIR: `harvest` drops any commit
+    // touching fewer than two files (or more than `maxCommitFiles`), and `--since` bounds the
+    // window. So a path lands here when it is untracked, brand new, outside the window, or has
+    // only ever been committed alone — in every case never weighed for coupling, which is a
+    // different statement from "weighed and found uncoupled".
+    const why = `${path} never entered the co-change graph — untracked, outside --since, or only ever committed alone (harvest keeps commits touching 2..${config.maxCommitFiles} files). Not analysed, so this is not a finding about its coupling\n`;
+    return { code: 0, stdout: json ? "[]\n" : "(path not in the analysed history — not analysed)\n", stderr: why };
+  }
+
   // `undefined` for `limit` keeps `impact`'s own default (20) — only
   // `minSupport` is overridden here, from the SAME `config.minSupport`
   // `weighEdges` already admitted these edges against (analyze.ts), so the
