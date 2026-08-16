@@ -54,7 +54,13 @@ for (const [k, v] of Object.entries(d.unattributed?.tokens ?? {})) ours[k] += v;
 
 let raw;
 try {
-  raw = execFileSync("npx", ["-y", CCUSAGE, "daily", "--json"], {
+  // Prefer the workspace's installed copy (.octobots/tools), which the pack installs ONCE. `npx`
+  // re-resolves the package on every call — measured at 823ms against 29ms for the local binary,
+  // and this pipeline calls it repeatedly. The npx path stays as the fallback so a workspace that
+  // declined the tools install (or installed offline) still works, just slowly.
+  const localCcusage = join(MAIN_DIR, ".octobots", "tools", "node_modules", ".bin", "ccusage");
+  const [cmd, prefix] = existsSync(localCcusage) ? [localCcusage, []] : ["npx", ["-y", CCUSAGE]];
+  raw = execFileSync(cmd, [...prefix, "daily", "--json"], {
     encoding: "utf8",
     env: { ...process.env, CLAUDE_CONFIG_DIR: join(MAIN_DIR, ".claude") },
     stdio: ["ignore", "pipe", "ignore"],

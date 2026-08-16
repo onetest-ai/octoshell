@@ -9,6 +9,8 @@ import {
   statuslineStatus,
 } from "../src/host/octobots-statusline.js";
 import { resolveDoctorScript } from "../src/host/octobots-doctor-command.js";
+import { installTools, resolveCcusage, toolsStatus } from "../src/host/octobots-tools.js";
+import { installPack } from "../src/host/octobots-skill.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
@@ -60,6 +62,28 @@ describe("status line install + registration", () => {
     writeFileSync(join(repo, ".claude", "settings.json"), JSON.stringify({ statusLine: { command: "theirs.sh" } }));
     expect(unregisterStatusline(repo)).toBe(false);
     expect(settingsOf(repo).statusLine.command).toBe("theirs.sh");
+  });
+
+  it("depends on node, not jq — node is already required by every pack hook", () => {
+    const src = readFileSync(join(PACK_SRC, "statusline", "statusline.sh"), "utf8");
+    // jq was a SECOND system dependency bought for this one script, and when it was missing the
+    // line rendered empty — indistinguishable from a broken status line. It also cost six
+    // subprocesses per render, on something that re-renders constantly.
+    // Forbid INVOKING jq, not mentioning it — the header comment explains why the dependency was
+    // dropped, and that history is worth keeping.
+    const code = src.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
+    expect(code).not.toMatch(/\bjq\b/);
+    expect(code).toContain("node -e");
+  });
+
+  it("degrades without crashing on malformed, empty, or partial payloads", () => {
+    const run = (input: string) =>
+      execFileSync("bash", [join(PACK_SRC, "statusline", "statusline.sh")], {
+        input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+      });
+    expect(run("{ bad json ,,")).toContain("Claude");        // fallback name, no throw
+    expect(run("")).toContain("Claude");
+    expect(run('{"model":{"display_name":"Claude Haiku"}}')).toContain("Haiku"); // no context_window
   });
 
   it("the shipped script runs, needs no TTY, and emits no stderr", () => {
@@ -176,5 +200,60 @@ describe("doctor", () => {
     mkdirSync(join(repo, ".claude", "skills", "mission-planner", "scripts"), { recursive: true });
     writeFileSync(installed, "// installed copy");
     expect(resolveDoctorScript(repo, PACK_SRC)).toBe(installed);
+  });
+});
+
+describe("workspace tools (.octobots/tools)", () => {
+  it("reports ccusage absent before install, and resolves it after", () => {
+    const repo = mkdtempClean("octo-tools-");
+    expect(toolsStatus(repo).ccusage).toBe(false);
+    expect(resolveCcusage(repo)).toBeNull();
+
+    // Simulate what `npm i --prefix` produces, rather than hitting the network in a unit test.
+    const bin = join(repo, ".octobots", "tools", "node_modules", ".bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "ccusage"), "#!/bin/sh\necho ccusage 20.0.18\n");
+
+    expect(toolsStatus(repo).ccusage).toBe(true);
+    expect(resolveCcusage(repo)).toBe(join(bin, "ccusage"));
+  });
+
+  it("installPack does not touch the network unless tools are asked for", () => {
+    const repo = mkdtempClean("octo-tools-");
+    // omitted → skipped entirely (no npm, no network) because nothing is installed yet
+    expect(installPack(PACK_SRC, repo).tools).toBe("skipped");
+    expect(existsSync(join(repo, ".octobots", "tools", "node_modules"))).toBe(false);
+  });
+
+  it("an explicit no removes an existing tools directory", () => {
+    const repo = mkdtempClean("octo-tools-");
+    const bin = join(repo, ".octobots", "tools", "node_modules", ".bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "ccusage"), "#!/bin/sh\n");
+    expect(installPack(PACK_SRC, repo, { tools: false }).tools).toBe("skipped");
+    expect(existsSync(join(repo, ".octobots", "tools"))).toBe(false);
+  });
+
+  it("a failed install is reported, never thrown — the npx fallback still works", () => {
+    // `installTools` must swallow npm failures: this is the only pack step needing the network, and
+    // an offline machine must still get a working pack.
+    const repo = mkdtempClean("octo-tools-");
+    const orig = process.env.PATH;
+    try {
+      process.env.PATH = "/nonexistent"; // no npm on PATH → the install cannot succeed
+      expect(() => installTools(repo)).not.toThrow();
+      expect(installTools(repo)).toBe(false);
+    } finally { process.env.PATH = orig; }
+  });
+
+  it("writes a .gitignore so a committed .octobots never swallows node_modules", () => {
+    const repo = mkdtempClean("octo-tools-");
+    const orig = process.env.PATH;
+    try {
+      process.env.PATH = "/nonexistent";
+      installTools(repo); // fails at the npm step, but the guard must already be on disk
+    } finally { process.env.PATH = orig; }
+    const gi = readFileSync(join(repo, ".octobots", "tools", ".gitignore"), "utf8");
+    expect(gi).toContain("node_modules/");
   });
 });

@@ -4,6 +4,7 @@ import { installPrimer, registerClaudeHook, unregisterClaudeHook, claudeHookStat
 import { installTokenomics, tokenomicsStatus } from "./octobots-tokenomics.js";
 import { installGraph, graphStatus } from "./octograph-install.js";
 import { installStatusline, registerStatusline, unregisterStatusline, statuslineStatus } from "./octobots-statusline.js";
+import { installTools, removeTools, toolsStatus } from "./octobots-tools.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
@@ -116,8 +117,8 @@ function copyTree(from: string, to: string): number {
 export function installPack(
   srcRoot: string,
   repoRoot: string,
-  opts: { hooks?: boolean; statusline?: boolean } = {},
-): { written: number; hooksRegistered: boolean; statusline: "registered" | "foreign" | "skipped" } {
+  opts: { hooks?: boolean; statusline?: boolean; tools?: boolean } = {},
+): { written: number; hooksRegistered: boolean; statusline: "registered" | "foreign" | "skipped"; tools: "installed" | "failed" | "skipped" } {
   let written = 0;
   for (const name of RETIRED_SKILLS) {
     rmSync(join(repoRoot, ".claude", "skills", name), { recursive: true, force: true });
@@ -165,5 +166,14 @@ export function installPack(
     written += installStatusline(srcRoot, repoRoot);
     statusline = registerStatusline(repoRoot);
   }
-  return { written, hooksRegistered, statusline };
+  // `.octobots/tools` follows the same tri-state, with one difference that earns its own note: this
+  // is the ONLY pack step that needs the network, so it is never attempted without an explicit yes,
+  // and a failure is reported rather than raised — tokenomics still works via `npx`, just slowly.
+  let tools: "installed" | "failed" | "skipped" = "skipped";
+  if (opts.tools === false) {
+    removeTools(repoRoot);
+  } else if (opts.tools === true || toolsStatus(repoRoot).ccusage) {
+    tools = installTools(repoRoot) ? "installed" : "failed";
+  }
+  return { written, hooksRegistered, statusline, tools };
 }
