@@ -4,7 +4,8 @@ title: "Behavioural micro-test: a policy conflict on what blocks a merge (xfail)
 mission: M7
 covers: [M7-AC7, M7-AC8]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md}
 priority: critical
 size: M
 ---

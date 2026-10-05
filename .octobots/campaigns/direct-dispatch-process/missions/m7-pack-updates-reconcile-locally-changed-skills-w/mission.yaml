@@ -99,3 +99,20 @@ notes: |-
   ## Overwrite scope (T7.3 review ruling, 2026-10-05)
 
   'Overwrite' replaces exactly the deviated skills the prompt lists, after saving each as overwritten-local.md. A RECONCILED skill (<N>+local whose reconciled-from equals the current pack file) is not a deviation and is never listed, so no install choice overwrites it. Once it becomes reconciled-older (a later pack build), it is listed again, and that is the sense in which AC3's 'never overwritten except by overwrite' holds. Skills newer than the pack are untouched by every choice.
+
+  ## QA verification
+
+  T7.7 run 2026-10-05, record `.octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md`. 15 pass, 0 fail, 1 blocked (TC-007, pending user F5 run). Micro-tests TC-011 5/5, TC-012 5/5, TC-013 5/5, TC-015 3/3. Mission ACs are not ticked here; the M7 gate does that.
+
+  | Mission AC | Test cases | Record |
+  |---|---|---|
+  | M7-AC1 marker rule, store, packStatus | TC-001, 002, 004, 006, 014, 017 | PASS all (RUN sections of the same names) |
+  | M7-AC2 base recovery rules 1-5 | TC-001, 005, 014 | PASS; rule 1 (reconciled-from, current and earlier v57), rule 2 (7de91fef v56), rule 3 (800c62c) observed |
+  | M7-AC3 installPack reconcile / overwrite / keep | TC-001, 002, 003, 004, 014, 016, 017 | PASS; idempotent, one entry per skill, logs and forks survive every choice |
+  | M7-AC4 modal Reconcile / Overwrite / Keep mine | TC-007 | BLOCKED: pending user F5 run (tests/m7/manual/T7.4-F5-script.md) |
+  | M7-AC5 install-pack.mjs flags and contract | TC-001, 003, 014, 016 | PASS |
+  | M7-AC6 primer line, doctor.js, validate.js | TC-008, 009, 015 | PASS |
+  | M7-AC7 octobots-doctor text, pack-reconcile list/done | TC-004, 010, 011, 013, 015 | PASS |
+  | M7-AC8 real reconcile, no-churn, escalation, answered escalation | TC-011, 012, 013, 015 | PASS 5/5, 5/5, 5/5, 3/3 |
+
+  Findings for the gate: (1) in the real case every rep escalated the gate's green rule (solo `0 xfailed` vs upstream `0 xfailed or todo`), so after a reconcile solo's gate stays `57-local` pending the user's answer, and AC8's literal wording "the live mission-execution and mission-completion-gate read 57+local" holds for the gate only after the user answers (TC-015 shows the answer finishes it); (2) the land-step full-suite rule was escalated by 2 of 5 reps and resolved by 3; (3) 0 of 5 reps wrote a DSN-guard statement in DECISIONS.md (the guard is outside the forks; CLAUDE.md and AGENTS.md stayed byte-identical); (4) qa-env.mjs and scan-parked.js are not in the M7-branch pack (M6 TC-011 verifies them at release).

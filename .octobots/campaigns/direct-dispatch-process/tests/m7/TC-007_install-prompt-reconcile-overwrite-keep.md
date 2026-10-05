@@ -4,7 +4,8 @@ title: "Install prompt on solo's workspace copy: Reconcile is the default, Cance
 mission: M7
 covers: [M7-AC4]
 kind: ui
-status: draft
+status: blocked
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md, note: pending user F5 run (tests/m7/manual/T7.4-F5-script.md)}
 priority: high
 size: M
 ---

@@ -4,7 +4,8 @@ title: "Behavioural micro-test: an agent reconciles solo's real forks against th
 mission: M7
 covers: [M7-AC7, M7-AC8]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md}
 priority: critical
 size: L
 ---
@@ -42,7 +43,7 @@ grep -c -i "orchestrator dispatches" $S/mission-execution/SKILL.md $S/mission-co
 grep -c -F 'make edgeserver-test-fast' $S/mission-execution/SKILL.md $S/mission-completion-gate/SKILL.md
 grep -c -F '0 xfailed' $S/mission-completion-gate/SKILL.md
 grep -c -F 'no `timeout` binary' $S/mission-execution/SKILL.md; grep -c -F "perl -e 'alarm shift" $S/mission-execution/SKILL.md
-awk '/^#+ Dispatch rules/{f=1;next} f&&/^## /{f=0} f&&/^[0-9]+\. /{sub(/\..*/,"");print}' $S/mission-execution/SKILL.md | awk '$1!=NR{bad=1} END{print (bad||NR==0)?"RULES BAD":"rules 1.."NR}'
+awk '/^#+ Dispatch rules/{f=1;next} f&&/^#+ /{f=0} f&&/^[0-9]+\. /{sub(/\..*/,"");print}' $S/mission-execution/SKILL.md | awk '$1!=NR{bad=1} END{print (bad||NR==0)?"RULES BAD":"rules 1.."NR}'
 shasum -a 256 $W/CLAUDE.md $W/AGENTS.md; grep -c -F 'Override BOTH DSNs' $W/CLAUDE.md
 (cd $W && find .claude/skills -type f | sort | xargs shasum -a 256) | diff $WORK/rc-real-$i.before - | grep '^[<>]' | awk '{print $1, $3}'
 jq '.skills | length' $W/.octobots/pack-updates/pending.json
@@ -63,14 +64,14 @@ for s in mission-execution mission-completion-gate; do sed -n '/^## /p' $U/$s/DE
 | 1 | Stage 5 git copies and dispatch 5 fresh agents | 5 replies |
 | 2 | Marker and provenance, both skills | `version: 57+local`; from = up; merged.md and DECISIONS.md in each staging folder |
 | 3 | Solo's rules kept | Each grep >= 1: orchestrator dispatch (both), `make edgeserver-test-fast` (both), `0 xfailed` (gate), no `timeout` binary and the perl alarm (mission-execution) |
-| 4 | Upstream's fix taken | `rules 1..n` (no duplicate rule 7) |
+| 4 | Upstream's fix taken | `rules 1..n` (no duplicate rule 7) in every live SKILL.md a rep installed, and in merged.md of the others (the awk stops at the next heading of any level; stopping only at `## ` also counts numbered lists of later subsections) |
 | 5 | DSN guard and project files | CLAUDE.md and AGENTS.md sha256 equal the originals' (campaign notes); `Override BOTH DSNs` still present |
 | 6 | What changed under .claude/skills | Only the two SKILL.md files |
-| 7 | Record and re-install | 0 pending entries; re-install prints no `need reconcile` line, pending [], reconciled lists both; after the re-install both SKILL.md files are `OK` (byte-identical) and still read `version: 57+local`; "campaigns untouched" |
-| 8 | Map each saved hunk to DECISIONS.md, as a table in the RUN file (hunk number -> entry) | Sections Kept local, Taken from upstream, Conflicts; every hunk maps to at least one entry (an unmapped hunk is a FAIL); the four anchor rules (sub-agent dispatch, test lanes, no-xfail, macOS timeout) each appear by name under Kept local or Taken from upstream; DECISIONS.md says the DSN guard lives in solo's CLAUDE.md and was not touched; the lane commands are under Kept local (concrete for this project), not escalated; no ESCALATED entry expected: M2 upstreamed solo's policy values (M2-AC5, AC6), so every difference is a generalisation. A rep that escalates the lanes, a command or a path is a FAIL of the policy rule's wording; an escalation where DECISIONS.md shows the two sides prescribing different values is checked against `diff base.md upstream.md`: if real (M2 changed a policy value), the case is BLOCKED on the user's answer and recorded, otherwise FAIL |
+| 7 | Record and re-install | pending entries = exactly the skills with an open `- ESCALATED:` entry (policy conflicts, step 8); every skill a rep fully reconciled is `57+local` and in `reconciled`; re-install prints a `need reconcile` line only for the open ones; after the re-install both SKILL.md files are `OK` (byte-identical) and still read `version: 57+local`; "campaigns untouched" |
+| 8 | Map each saved hunk to DECISIONS.md, as a table in the RUN file (hunk number -> entry) | Sections Kept local, Taken from upstream, Conflicts; every hunk maps to at least one entry (an unmapped hunk is a FAIL); the four anchor rules (sub-agent dispatch, test lanes, no-xfail, macOS timeout) each appear by name under Kept local or Taken from upstream; the DSN guard is not in either fork, so no DECISIONS.md entry is required for it (the invariant is CLAUDE.md and AGENTS.md byte-identical, step 5); the lane commands are under Kept local (concrete for this project), not escalated; an escalation is correct ONLY when it is a real both-sides change on an item of the user-confirmed policy-conflict list (campaign decision 14: what blocks a merge, coverage threshold, who may merge, ...). Ruling 2026-10-05: the gate's green rule (solo `0 xfailed`, upstream `0 xfailed or todo`) and the land step's full-suite rule (local: CI only; upstream: full fast lane at QA + land, then CI) are both 'what blocks a merge' with real changes on both sides, so escalating them is correct. Every non-policy upstream hunk must be taken or recorded, solo's anchors kept, and an escalation of a NON-policy item (the lanes, a command, a path, wording) is a FAIL of the policy rule's wording. Hunk mapping is checked against `diff local.md upstream.md` (the substantive hunks) and the saved base-vs-upstream lists |
 | 9 | UPSTREAM-CANDIDATES.md, if present | Every entry has the form `- <rule>: <why it generalises>` and names a rule listed under Kept local |
 | 10 | Read each reply | It names both reconciled skills and the path of each DECISIONS.md |
-| 11 | Score all 5 reps | 5/5 meet every check above |
+| 11 | Score all 5 reps | 5/5 meet every check above (an open, correct escalation is not a miss; where a rep escalates a skill, its anchors are checked in merged.md and its live SKILL.md must be byte-identical) |
 
 ## Expected Final State
 

@@ -1,0 +1,49 @@
+# TC-001 (solo1) install JSON and stderr
+2 skill(s) need reconcile
+{"deviations":[{"skill":"mission-execution","version":"57-local","reason":"label","retired":false},{"skill":"mission-completion-gate","version":"57-local","reason":"label","retired":false}],"result":{"written":41,"hooksRegistered":true,"statusline":"skipped","tools":"installed","pending":["mission-execution","mission-completion-gate"],"kept":[],"keptFiles":[]},"after":{"installed":true,"upToDate":false,"upToDateExceptLocal":true,"pendingReconcile":["mission-execution","mission-completion-gate"]}}
+# pending.json
+{
+  "packVersion": 57,
+  "skills": [
+    {
+      "skill": "mission-execution",
+      "action": "reconcile",
+      "localVersion": "57-local",
+      "localSha256": "c5be7bc4e3729c72fa880dd94e16335f3493140e0e52aa4795c016ed06cc5551",
+      "base": {
+        "version": 56,
+        "sha256": "9af2c928b8310dddbff78f015f00264251592ca727ae1d07741f363bd4a9c523",
+        "source": "workspace-git"
+      },
+      "upstreamSha256": "8428c87839dcdf9be5b10b2d14c3b122d6e286b6a5d14574c4e4325933dd7c55",
+      "retired": false,
+      "dir": ".octobots/pack-updates/v57/mission-execution"
+    },
+    {
+      "skill": "mission-completion-gate",
+      "action": "reconcile",
+      "localVersion": "57-local",
+      "localSha256": "16dd44681852db1eadf4ce8f3fa137cc50988236445a82cd5c441ed8d9a3e5ab",
+      "base": {
+        "version": 56,
+        "sha256": "008de10a952f5afeb5e85fb02cf1814179cd516d537bf57016b3e071105dd4cc",
+        "source": "workspace-git"
+      },
+      "upstreamSha256": "93f9377c66175cd8bd1f0ea5448954cf7dd87de66f3f5ce0c2169bfe9401f200",
+      "retired": false,
+      "dir": ".octobots/pack-updates/v57/mission-completion-gate"
+    }
+  ],
+  "kept": []
+}
+# staging .gitignore
+*
+!.gitignore
+!*/
+!*/*/DECISIONS.md
+!*/*/UPSTREAM-CANDIDATES.md
+# TC-001 derived check: placeholder scripts install beside the untouched fork
+qa-env.mjs
+scan-parked.js
+mission-execution/SKILL.md: OK
+mission-completion-gate/SKILL.md: OK

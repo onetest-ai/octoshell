@@ -1,0 +1,13 @@
+# TC-006 store summary
+versions 18..57 (31 keys); bodies 
+137
+70676 bytes
+# TC-008 malformed-record primer (first 3 lines)
+This repository is driven by **Octobots**. Work is organized as campaigns -> missions -> tasks,
+plus bugs - each a `<kind>.yaml` file (campaign.yaml/mission.yaml/task.yaml/bug.yaml) under
+`.octobots/`. Children are folder-derived: a parent NEVER lists its tasks/bugs, and status/role/
+# TC-009 validate
+warning: pack reconcile pending: mission-execution (v57)
+warning: pack reconcile pending: mission-completion-gate (v57)
+---after overwrite
+0

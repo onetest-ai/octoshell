@@ -4,7 +4,8 @@ title: "Install into a copy of octoshell's own .claude: no deviation, no staging
 mission: M7
 covers: [M7-AC1, M7-AC3]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---
