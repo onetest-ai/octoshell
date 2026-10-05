@@ -8,23 +8,30 @@
 // idempotent — segments are keyed by `segment_id` and rewritten in place, so a
 // mission that gets more work later simply updates its segment.
 //
-// Why this layer exists separately: `.claude/projects/` is not in git and is
-// large (~80MB for one session). These segments ARE the durable artifact — they
+// Why this layer exists separately: Claude Code transcripts are not in git and
+// are large (~80MB for one session). These segments ARE the durable artifact — they
 // must be collected while the transcripts still exist, which is why the gate
 // runs this on every mission completion rather than at submission time.
 //
-// Usage: node .octobots/tokenomics/collect.mjs [--project-dir DIR] [--quiet]
+// Where transcripts are read from — roots, in priority order (see README):
+//   1. explicit: `--projects-dir DIR` or env OCTOBOTS_TOKENOMICS_PROJECTS_DIR
+//   2. `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`
+//   3. legacy repo-local `<main checkout>/.claude/projects` (read in ADDITION)
+// Under each root only THIS project's slug directory is read.
+//
+// Usage: node .octobots/tokenomics/collect.mjs [--project-dir DIR] [--projects-dir DIR] [--quiet]
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
+import { homedir } from "node:os";
 
 const args = process.argv.slice(2);
 const quiet = args.includes("--quiet");
 const log = (...a) => { if (!quiet) console.error(...a); };
 
 // ---------------------------------------------------------------------------
-// Locate the main repo. Transcripts live under the MAIN checkout's
-// `.claude/projects/`, never under a worktree copy, so unwind a worktree path.
+// Locate the main repo. Transcripts are keyed by the MAIN checkout's path (the
+// slug), never by a worktree copy's, so unwind a worktree path.
 // ---------------------------------------------------------------------------
 function resolveProjectDir() {
   const i = args.indexOf("--project-dir");
@@ -32,15 +39,30 @@ function resolveProjectDir() {
 }
 
 // Artifacts are written to the CURRENT checkout (so a worktree stays isolated);
-// transcripts are only ever read from the MAIN checkout, since worktrees have
-// no `.claude/projects/` of their own.
+// transcripts are only ever looked up by the MAIN checkout's slug, since a
+// worktree has no transcript directory of its own.
 const PROJECT_DIR = resolveProjectDir();
 const wt = PROJECT_DIR.indexOf("/.claude/worktrees/");
 const MAIN_DIR = wt !== -1 ? PROJECT_DIR.slice(0, wt) : PROJECT_DIR;
 
 const OUT_DIR = join(PROJECT_DIR, ".octobots", "tokenomics");
 const RAW_DIR = join(OUT_DIR, "raw");
-const PROJECTS_DIR = join(MAIN_DIR, ".claude", "projects");
+
+// Claude Code names a project's transcript dir by replacing every character that
+// is not [A-Za-z0-9] in the absolute path with "-" ("/", "_" and "." included:
+// `applied_ai` is stored as `applied-ai`).
+const PROJECT_SLUG = MAIN_DIR.replace(/[^A-Za-z0-9]/g, "-");
+
+function resolveRoots() {
+  const i = args.indexOf("--projects-dir");
+  const explicit = (i !== -1 ? args[i + 1] : null) || process.env.OCTOBOTS_TOKENOMICS_PROJECTS_DIR;
+  const roots = explicit
+    ? [explicit]
+    : [join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects")];
+  roots.push(join(MAIN_DIR, ".claude", "projects")); // legacy snapshot, read in addition
+  return [...new Set(roots)];
+}
+const ROOTS = resolveRoots();
 
 // The 5m/1h cache-creation split is tracked separately because the two bill at
 // different rates (1.25x vs 2x input). Collapsing them loses real money.
@@ -148,20 +170,25 @@ function bucketToSegment(bucket, base) {
 }
 
 // ---------------------------------------------------------------------------
-// Walk every project slug under the repo-local `.claude/projects/`. All of them
-// belong to this repo tree (the directory is repo-local), so no slug matching
-// is needed — and subdirectories of a session hold its subagent transcripts.
+// Read this project's own slug directory under every transcript root. Other
+// projects' slugs are never touched. Subdirectories of a session hold its
+// subagent transcripts. The same session can appear in two roots (e.g. a
+// symlinked or copied snapshot): segments dedupe on segment_id, keeping the
+// copy with more turns (the more complete one), earlier root winning ties.
 // ---------------------------------------------------------------------------
 function collect() {
-  if (!existsSync(PROJECTS_DIR)) {
-    log(`tokenomics: no transcripts at ${PROJECTS_DIR} — nothing to collect`);
-    return [];
-  }
+  const bySegment = new Map();
+  const segments = { push(s) {
+    const prev = bySegment.get(s.segment_id);
+    if (!prev || s.turns > prev.turns) bySegment.set(s.segment_id, s);
+  } };
 
-  const segments = [];
-  for (const slug of readdirSync(PROJECTS_DIR)) {
-    const slugDir = join(PROJECTS_DIR, slug);
-    if (!statSync(slugDir).isDirectory()) continue;
+  let found = 0;
+  for (const root of ROOTS) {
+    const slug = PROJECT_SLUG;
+    const slugDir = join(root, slug);
+    if (!existsSync(slugDir) || !statSync(slugDir).isDirectory()) continue;
+    found++;
 
     for (const entry of readdirSync(slugDir)) {
       if (!entry.endsWith(".jsonl")) continue;
@@ -214,7 +241,8 @@ function collect() {
       }
     }
   }
-  return segments;
+  if (!found) log(`tokenomics: no transcripts for slug ${PROJECT_SLUG} under ${ROOTS.join(", ")} — nothing to collect`);
+  return [...bySegment.values()];
 }
 
 // ---------------------------------------------------------------------------

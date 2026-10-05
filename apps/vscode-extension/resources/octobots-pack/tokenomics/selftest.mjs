@@ -17,6 +17,9 @@
 // missions, and reported the entire board's cost as unattributed. A board-format
 // bug must fail here, not in a $1.6k report nobody re-reads.
 //
+// A separate roots suite covers where transcripts are read from (slug filter, root
+// precedence, dedupe) with HOME and CLAUDE_CONFIG_DIR isolated per child process.
+//
 // Usage: node .octobots/tokenomics/selftest.mjs
 
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, existsSync, rmSync } from "node:fs";
@@ -27,7 +30,13 @@ import { execFileSync } from "node:child_process";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..");
-const VENDOR_YAML = join(REPO, ".claude", "skills", "mission-planner", "scripts", "vendor", "js-yaml.mjs");
+// Installed layout: <repo>/.octobots/tokenomics -> <repo>/.claude/skills/...
+// Pack source layout: <pack>/tokenomics -> <pack>/skill/...
+const VENDOR_YAML_CANDIDATES = [
+  join(REPO, ".claude", "skills", "mission-planner", "scripts", "vendor", "js-yaml.mjs"),
+  join(HERE, "..", "skill", "mission-planner", "scripts", "vendor", "js-yaml.mjs"),
+];
+const VENDOR_YAML = VENDOR_YAML_CANDIDATES.find((p) => existsSync(p)) ?? VENDOR_YAML_CANDIDATES[0];
 
 let failures = 0;
 function check(name, cond, detail = "") {
@@ -49,8 +58,23 @@ function turn({ branch, model = "claude-sonnet-5", requestId, out = 1000, cacheR
 
 const SESSION = "s0000000-0000-0000-0000-000000000001";
 
+// Claude Code's project slug: every non-alphanumeric char of the absolute path
+// becomes "-" (so "/" and "_" and "." all collapse — `applied_ai` is stored as
+// `applied-ai`). Deliberately re-stated here, not imported, so the test checks
+// collect.mjs against the rule instead of against itself.
+const slugOf = (p) => p.replace(/[^A-Za-z0-9]/g, "-");
+
+// Child-process env that can never see the developer's real transcripts: HOME is
+// a temp dir and the transcript-root variables are dropped unless a case sets them.
+function isolatedEnv(home, extra = {}) {
+  const env = { ...process.env, HOME: home, USERPROFILE: home, ...extra };
+  for (const k of ["CLAUDE_CONFIG_DIR", "OCTOBOTS_TOKENOMICS_PROJECTS_DIR"]) if (!(k in extra)) delete env[k];
+  return env;
+}
+
 function writeTranscripts(root) {
-  const projects = join(root, ".claude", "projects", "proj");
+  // Legacy repo-local root, under the project's own slug.
+  const projects = join(root, ".claude", "projects", slugOf(root));
   mkdirSync(projects, { recursive: true });
 
   writeFileSync(join(projects, `${SESSION}.jsonl`), [
@@ -174,8 +198,9 @@ function runSuite(format) {
   }
 
   // --- run the real pipeline -----------------------------------------------
+  const emptyHome = mkdtempSync(join(tmpdir(), "tokenomics-selftest-home-"));
   for (const script of ["collect.mjs", "rollup.mjs", "render.mjs"]) {
-    execFileSync(process.execPath, [join(HERE, script), "--project-dir", root, "--no-gh", "--quiet"], { stdio: ["ignore", "ignore", "inherit"] });
+    execFileSync(process.execPath, [join(HERE, script), "--project-dir", root, "--no-gh", "--quiet"], { stdio: ["ignore", "ignore", "inherit"], env: isolatedEnv(emptyHome) });
   }
 
   const out = JSON.parse(readFileSync(join(tokDir, "runs.json"), "utf8"));
@@ -228,6 +253,105 @@ function runSuite(format) {
   check(tag("report is self-contained"), !/<script\s+src|https?:\/\/[^"']*\.(js|css|woff2?)/i.test(html));
 
   rmSync(root, { recursive: true, force: true });
+  rmSync(emptyHome, { recursive: true, force: true });
+}
+
+// --- transcript root resolution ---------------------------------------------
+function writeSession(projectsRoot, slug, sessionId, turns) {
+  const dir = join(projectsRoot, slug);
+  mkdirSync(dir, { recursive: true });
+  const lines = [];
+  for (let i = 0; i < turns; i++) lines.push(turn({ branch: "feat/roots-m1", requestId: `${sessionId}-r${i}` }));
+  writeFileSync(join(dir, `${sessionId}.jsonl`), lines.join("\n") + "\n");
+}
+
+// `projectDir` is what --project-dir receives (a worktree path in the worktree case); artifacts are
+// written beneath it. Each call starts from an empty raw/ dir unless `keepRaw` (the rerun case).
+function collectRaw(projectDir, env, extraArgs = [], keepRaw = false) {
+  const rawDir = join(projectDir, ".octobots", "tokenomics", "raw");
+  if (!keepRaw) rmSync(rawDir, { recursive: true, force: true });
+  execFileSync(process.execPath, [join(HERE, "collect.mjs"), "--project-dir", projectDir, "--quiet", ...extraArgs], { stdio: ["ignore", "ignore", "inherit"], env });
+  return readFileSync(join(rawDir, "segments.jsonl"), "utf8");
+}
+const parseSegments = (raw) => raw.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+function collectSegments(projectDir, env, extraArgs = []) {
+  return parseSegments(collectRaw(projectDir, env, extraArgs));
+}
+
+function runRootsSuite() {
+  console.log("\ntokenomics selftest — transcript roots:");
+  const base = mkdtempSync(join(tmpdir(), "tokenomics-selftest-roots-"));
+  const mk = (n) => { const d = join(base, n); mkdirSync(d, { recursive: true }); return d; };
+  const ids = (segs) => segs.map((s) => s.session_id).sort();
+
+  // Project path contains `_` and `.` on purpose: both must collapse to "-".
+  const root = mk("my_proj.v2");
+  const slug = slugOf(root);
+  const home = mk("home");
+  const cfg = mk("cfg");
+  const explicit = mk("explicit");
+
+  // AC1. Home default: ~/.claude/projects/<own slug>; other projects' slugs ignored.
+  writeSession(join(home, ".claude", "projects"), slug, "home-session", 2);
+  writeSession(join(home, ".claude", "projects"), slugOf(join(base, "other_project")), "other-session", 3);
+  let segs = collectSegments(root, isolatedEnv(home));
+  check("[roots][AC1] ~/.claude/projects is read by default", ids(segs).join() === "home-session", ids(segs).join());
+  check("[roots][AC1] other projects' slugs are ignored", !ids(segs).includes("other-session"));
+  check("[roots][AC1] slug rule: _ and . become -", segs[0]?.project_slug === slug && !/[._]/.test(slug), segs[0]?.project_slug);
+
+  // AC2. CLAUDE_CONFIG_DIR replaces ~/.claude.
+  writeSession(join(cfg, "projects"), slug, "cfg-session", 1);
+  segs = collectSegments(root, isolatedEnv(home, { CLAUDE_CONFIG_DIR: cfg }));
+  check("[roots][AC2] CLAUDE_CONFIG_DIR/projects wins over ~/.claude", ids(segs).join() === "cfg-session", ids(segs).join());
+
+  // AC2. Explicit override: env var and --projects-dir both replace the config/home root.
+  writeSession(explicit, slug, "explicit-session", 1);
+  segs = collectSegments(root, isolatedEnv(home, { CLAUDE_CONFIG_DIR: cfg, OCTOBOTS_TOKENOMICS_PROJECTS_DIR: explicit }));
+  check("[roots][AC2] env override replaces both", ids(segs).join() === "explicit-session", ids(segs).join());
+  segs = collectSegments(root, isolatedEnv(home, { CLAUDE_CONFIG_DIR: cfg }), ["--projects-dir", explicit]);
+  check("[roots][AC2] --projects-dir replaces both", ids(segs).join() === "explicit-session", ids(segs).join());
+
+  // AC3. Legacy repo-local root merged IN ADDITION; same session in both roots counts once.
+  const legacy = join(root, ".claude", "projects");
+  writeSession(legacy, slug, "legacy-session", 4);
+  writeSession(legacy, slug, "home-session", 5);   // also in the home root, with MORE turns
+  writeSession(legacy, "-stale-other-project", "legacy-other", 1);
+  const raw1 = collectRaw(root, isolatedEnv(home));
+  segs = parseSegments(raw1);
+  check("[roots][AC3] legacy root merged with home root", ids(segs).join() === "home-session,legacy-session", ids(segs).join());
+  const dup = segs.filter((s) => s.session_id === "home-session");
+  check("[roots][AC3] session in both roots is not double-counted, the copy with more turns wins",
+    dup.length === 1 && dup[0].turns === 5, JSON.stringify(dup.map((s) => s.turns)));
+  check("[roots][AC3] legacy: other slugs ignored too", !ids(segs).includes("legacy-other"));
+  const raw2 = collectRaw(root, isolatedEnv(home), [], true);
+  check("[roots][AC3] rerun is byte-identical", raw1 === raw2);
+
+  // A worktree resolves to the main checkout's slug and legacy root, never its own.
+  const wt = join(root, ".claude", "worktrees", "qa-wt");
+  mkdirSync(wt, { recursive: true });
+  segs = collectSegments(wt, isolatedEnv(home));
+  check("[roots] worktree path resolves to the main checkout's slug", ids(segs).join() === "home-session,legacy-session", ids(segs).join());
+
+  // Isolation: the PARENT process env holds a decoy HOME and CLAUDE_CONFIG_DIR, each with a session
+  // under this project's own slug. A child built with isolatedEnv must see neither. If it did, a
+  // developer's real transcripts would leak into this selftest and make it machine-dependent.
+  const decoyHome = mk("decoy-home");
+  const decoyCfg = mk("decoy-cfg");
+  writeSession(join(decoyHome, ".claude", "projects"), slug, "decoy-home-session", 1);
+  writeSession(join(decoyCfg, "projects"), slug, "decoy-cfg-session", 1);
+  const saved = { HOME: process.env.HOME, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR };
+  process.env.HOME = decoyHome;
+  process.env.CLAUDE_CONFIG_DIR = decoyCfg;
+  try {
+    segs = collectSegments(root, isolatedEnv(home));
+  } finally {
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+  check("[roots][isolation] the caller's CLAUDE_CONFIG_DIR does not leak in", !ids(segs).includes("decoy-cfg-session"), ids(segs).join());
+  check("[roots][isolation] the caller's HOME does not leak in", !ids(segs).includes("decoy-home-session"), ids(segs).join());
+  check("[roots][isolation] the isolated child still reads its own HOME", ids(segs).includes("home-session"), ids(segs).join());
+
+  rmSync(base, { recursive: true, force: true });
 }
 
 if (!existsSync(VENDOR_YAML)) {
@@ -236,6 +360,7 @@ if (!existsSync(VENDOR_YAML)) {
 }
 
 for (const format of ["yaml", "md"]) runSuite(format);
+runRootsSuite();
 
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nall checks passed");
 process.exit(failures ? 1 : 0);

@@ -18,7 +18,7 @@ node .octobots/tokenomics/backfill-worklog-sha.mjs   # fill merge SHAs deleted b
 
 ## Why it runs at the mission gate
 
-Session transcripts live in `.claude/projects/` — **not in git**, ~80 MB per
+Session transcripts are **not in git**, ~80 MB per
 session, pruned without warning. Once they're gone a mission's cost is
 unrecoverable. So the `mission-completion-gate` skill runs this at phase 4, and
 `raw/segments.jsonl` is committed as the durable record. Collect early, report
@@ -27,11 +27,33 @@ later — never the other way round.
 It is **non-blocking** by design. The gate is a correctness gate; analytics must
 never fail a correct mission. `run.mjs` exits 0 even when a stage fails.
 
+## Where transcripts come from
+
+Claude Code writes transcripts to `~/.claude/projects/<slug>/<session-id>.jsonl`
+(subagents under `<session-id>/subagents/`), **not** into the repo. `<slug>` is the
+absolute project path with every non-alphanumeric character replaced by `-`
+(`/Users/me/Dev/my_app` -> `-Users-me-Dev-my-app`). The collector computes the
+slug from the main checkout (worktree paths are unwound) and reads **only that
+slug's directory** under each root, so other projects' transcripts are never scanned.
+
+Roots, in priority order:
+
+1. **Explicit override**: `--projects-dir <path>` or env `OCTOBOTS_TOKENOMICS_PROJECTS_DIR`
+   (replaces step 2).
+2. **`$CLAUDE_CONFIG_DIR/projects`** if set (Claude Code honours it), else **`~/.claude/projects`**.
+3. **Legacy repo-local `<repo>/.claude/projects`**: always read *in addition* if it
+   exists, so old snapshots are not lost.
+
+A session found in more than one root is counted once (`segment_id` includes the
+session id; the copy with more turns wins), so collecting is idempotent. `selftest.mjs`
+covers these rules with `HOME` and `CLAUDE_CONFIG_DIR` isolated, and `octobots doctor`
+prints the root it expects.
+
 ## The three stages
 
 | Stage | Script | Input | Output |
 |---|---|---|---|
-| 1. Collect | `collect.mjs` | `.claude/projects/**` transcripts | `raw/segments.jsonl` |
+| 1. Collect | `collect.mjs` | session transcripts (see below) | `raw/segments.jsonl` |
 | 2. Rollup | `rollup.mjs` | segments + board + git + `gh` + `prices.json` | `runs.json` |
 | 3. Render | `render.mjs` | `runs.json` **only** | `report.html` |
 
