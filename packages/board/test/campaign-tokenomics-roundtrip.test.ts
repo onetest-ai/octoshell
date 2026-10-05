@@ -96,7 +96,7 @@ describe("campaign tokenomics.branches", () => {
   });
 
   it("validate.ts and validate.js report no 'not a campaign field' finding", () => {
-    seedBranches(["chore/camp-plan"]);
+    expect(seedBranches(["chore/camp-plan"])).toContain("tokenomics:"); // the key really is on disk
     expect(validateBoard(boardRoot).filter((f) => f.message.includes("not a campaign field"))).toEqual([]);
     const r = spawnSync("node", [join(SCRIPTS, "validate.js"), campaignYaml], { cwd: projectDir, encoding: "utf8" });
     expect(`${r.stdout}${r.stderr}`).not.toContain("not a campaign field");
