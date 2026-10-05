@@ -205,7 +205,7 @@ export function resolveAttribution(branch: string, sessionId: string, ctx: Attri
     const inCampaign = ctx.missions.filter((e) => e.mission.campaignId === top.campaign.id);
     const num = /-m(\d+)\b/i.exec(branch)?.[1];
     if (num) {
-      const hit = inCampaign.find((e) => missionNumber(e.mission) === Number(num));
+      const hit = inCampaign.find((e) => (missionNumber(e.mission) ?? 0) === Number(num));
       if (hit) return { kind: "mission", mission: hit, step: 2 };
     } else if (inCampaign.length === 1 && inCampaign[0]) {
       return { kind: "mission", mission: inCampaign[0], step: 3 };
@@ -225,18 +225,38 @@ export function resolveAttribution(branch: string, sessionId: string, ctx: Attri
   return { kind: "unattributed", step: 7 };
 }
 
+/**
+ * The board id of a mission or task, derived exactly as `rollup.mjs` derives it (`splitTitle` with its
+ * folder fallback), because step 2 matches the mission number and step 4 matches the task id: two
+ * derivations would attribute the same segment differently. The `<id> - <name>` title prefix wins;
+ * otherwise the folder slug (`m3-...` -> `M3`, `t3-1-...` -> `T3.1`). An id that appears later in a
+ * title ("Port the T2.1 follow-up") is prose, not the entity's id.
+ */
+function boardId(title: string, folderPath: string, kind: "mission" | "task"): string | null {
+  const fromTitle = /^\s*([MT]\d+(?:\.\d+)?)\s*[-–—:]\s*(.+)$/.exec(title)?.[1];
+  if (fromTitle) return fromTitle;
+  const folder = folderPath.split("/").filter(Boolean).pop() ?? "";
+  if (kind === "mission") {
+    const n = /^m(\d+)/i.exec(folder)?.[1];
+    return n ? `M${n}` : folder || null;
+  }
+  const t = /^t(\d+)-(\d+)/i.exec(folder);
+  return t ? `T${t[1]}.${t[2]}` : null;
+}
+
+/** `rollup.mjs`'s `missionNum`: the digits of the mission's board id; null when it has none. */
 function missionNumber(m: Mission): number | null {
-  const n = /M(\d+)/i.exec(m.title)?.[1];
-  return n ? Number(n) : null;
+  const digits = (boardId(m.title, m.folderPath, "mission") ?? "").replace(/\D/g, "");
+  return digits ? Number(digits) : null;
 }
 
 function taskNumber(t: Task): number | null {
-  const n = /T\d+\.(\d+)/i.exec(t.name)?.[1];
+  const n = /^T\d+\.(\d+)$/.exec(taskLabel(t) ?? "")?.[1];
   return n ? Number(n) : null;
 }
 
 function taskLabel(t: Task): string | null {
-  return /T(\d+\.\d+)/i.exec(t.name)?.[0] ?? null;
+  return boardId(t.name, t.folderPath, "task");
 }
 
 /** The campaign-level bucket: spend attributed to a campaign that belongs to none of its missions. */

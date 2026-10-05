@@ -96,6 +96,63 @@
           ]
         },
         "missions": []
+      },
+      {
+        "slug": "epsilon",
+        "name": "Epsilon campaign",
+        "missions": [
+          {
+            "dir": "m1-eps-one",
+            "name": "M1 - Eps one",
+            "tasks": []
+          },
+          {
+            "dir": "m3-sweep",
+            "name": "Planning sweep",
+            "tasks": [
+              {
+                "dir": "t3-1-cleanup",
+                "name": "Cleanup leftovers"
+              },
+              {
+                "dir": "t3-2-port",
+                "name": "Port the T2.1 follow-up"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "slug": "theta",
+        "name": "Theta legacy campaign",
+        "file": "md",
+        "tokenomics": {
+          "branches": "chore/theta-legacy-plan"
+        },
+        "missions": [
+          {
+            "dir": "m1-a",
+            "name": "M1 - Theta a",
+            "tasks": []
+          },
+          {
+            "dir": "m2-b",
+            "name": "M2 - Theta b",
+            "tasks": []
+          }
+        ]
+      },
+      {
+        "slug": "zeta",
+        "name": "(bare directory, not a campaign)",
+        "file": "none",
+        "missions": [
+          {
+            "dir": "m1-z",
+            "name": "M1 - Zeta orphan",
+            "tasks": []
+          }
+        ]
       }
     ]
   },
@@ -139,6 +196,13 @@
       "session_id": "s-wl3",
       "task": "T2.1",
       "branch": "chore/gamma-plan-2",
+      "state": "done",
+      "at": "2026-10-01T00:00:00.000Z"
+    },
+    {
+      "session_id": "s-eps",
+      "task": "T3.1",
+      "branch": "chore/eps-off",
       "state": "done",
       "at": "2026-10-01T00:00:00.000Z"
     }
@@ -274,6 +338,41 @@
       "id": "nothing",
       "step": 7,
       "branch": "HEAD",
+      "session": "s0",
+      "expect": "unattributed"
+    },
+    {
+      "id": "slug-m-folder-numbered (title has no M<n> prefix)",
+      "step": 2,
+      "branch": "feat/epsilon-m3",
+      "session": "s0",
+      "expect": "mission:epsilon/M3"
+    },
+    {
+      "id": "worklog-task-id-from-folder (title has no T<m>.<n> prefix)",
+      "step": 4,
+      "branch": "chore/eps-off",
+      "session": "s-eps",
+      "expect": "mission:epsilon/M3"
+    },
+    {
+      "id": "legacy-campaign-md-declares",
+      "step": 5,
+      "branch": "chore/theta-legacy-plan",
+      "session": "s0",
+      "expect": "campaign:theta"
+    },
+    {
+      "id": "bare-dir-is-no-campaign",
+      "step": 7,
+      "branch": "feat/zeta-work",
+      "session": "s0",
+      "expect": "unattributed"
+    },
+    {
+      "id": "bare-dir-mission-is-no-mission",
+      "step": 7,
+      "branch": "feat/zeta-m1",
       "session": "s0",
       "expect": "unattributed"
     }

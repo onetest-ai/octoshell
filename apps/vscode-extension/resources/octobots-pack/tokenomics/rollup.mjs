@@ -212,7 +212,7 @@ function loadTasks(missionPath, END) {
   const tasksDir = join(missionPath, "tasks");
   if (!existsSync(tasksDir)) return { tasks, est };
 
-  for (const dir of readdirSync(tasksDir)) {
+  for (const dir of readdirSync(tasksDir).sort()) {
     const slugId = taskIdFromSlug(dir);
     const y = readYamlEntity(join(tasksDir, dir, "task.yaml"));
     if (y) {
@@ -354,11 +354,15 @@ function loadBoard() {
   for (const campaign of readdirSync(CAMPAIGNS_DIR).sort()) {
     const campaignPath = join(CAMPAIGNS_DIR, campaign);
     if (!statSync(campaignPath).isDirectory()) continue;
-    // Every campaign dir counts - a campaign with no missions still owns its slug.
+    // A directory is a campaign only when it holds campaign.yaml or campaign.md - the rule BoardModel
+    // applies, so the extension's rollup.ts sees the same board. A bare directory (a leftover, an
+    // archive) owns no slug and its missions belong to no campaign. Every real campaign counts, even
+    // one with no missions: it still owns its slug.
+    if (!existsSync(join(campaignPath, "campaign.yaml")) && !existsSync(join(campaignPath, "campaign.md"))) continue;
     campaigns.push(parseCampaign(campaign, campaignPath));
     const mdir = join(campaignPath, "missions");
     if (!existsSync(mdir)) continue;
-    for (const m of readdirSync(mdir)) {
+    for (const m of readdirSync(mdir).sort()) {
       const missionPath = join(mdir, m);
       const yamlPath = join(missionPath, "mission.yaml");
       if (existsSync(yamlPath)) {

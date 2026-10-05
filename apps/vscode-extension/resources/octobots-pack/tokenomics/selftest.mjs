@@ -108,9 +108,17 @@ function writeTranscripts(root) {
 // One mission, same content in both formats, so every assertion below holds
 // identically whichever the rollup had to read.
 function writeBoard(root, format) {
-  const missionDir = join(root, ".octobots", "campaigns", "demo", "missions", "m1-demo-mission");
+  const campaignDir = join(root, ".octobots", "campaigns", "demo");
+  const missionDir = join(campaignDir, "missions", "m1-demo-mission");
   const taskDir = join(missionDir, "tasks", "t1-1-demo-task");
   mkdirSync(taskDir, { recursive: true });
+  // A directory is a campaign only with its own campaign file (BoardModel's rule, which rollup.mjs
+  // follows); without one the mission below would belong to no campaign.
+  if (format === "yaml") {
+    writeFileSync(join(campaignDir, "campaign.yaml"), "name: Demo campaign\nstatus: active\ndescription: The self-test campaign.\nacceptance_criteria: []\n");
+  } else {
+    writeFileSync(join(campaignDir, "campaign.md"), "# Demo campaign\n\n## Description\n\nThe self-test campaign.\n");
+  }
 
   if (format === "yaml") {
     writeFileSync(join(missionDir, "mission.yaml"), `name: M1 - Demo mission

@@ -8,7 +8,7 @@
  *   6 campaign slug in the branch -> campaign row   7 unattributed
  */
 import { describe, it, expect, afterAll } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -28,8 +28,20 @@ const ROLLUP = join(PACK, "tokenomics/rollup.mjs");
 const PACK_YAML = join(PACK, "skill/mission-planner/scripts/vendor/js-yaml.mjs");
 
 interface AuthoredBranches { branches: string[] | string }
-interface FixtureMission { dir: string; name: string; tokenomics?: AuthoredBranches; tasks: string[] }
-interface FixtureCampaign { slug: string; name: string; tokenomics?: AuthoredBranches; missions: FixtureMission[] }
+/** A task is its title (folder `t<m>-<n>-x` derived from a `T<m>.<n>` prefix), or an explicit folder + title. */
+type FixtureTask = string | { dir: string; name: string };
+interface FixtureMission { dir: string; name: string; tokenomics?: AuthoredBranches; tasks: FixtureTask[] }
+/**
+ * `file` picks how the campaign is written: `yaml` (default), `md` (a legacy `campaign.md` whose
+ * `## Tokenomics` block carries `branches:`), or `none` (a bare directory - not a campaign).
+ */
+interface FixtureCampaign {
+  slug: string;
+  name: string;
+  file?: "yaml" | "md" | "none";
+  tokenomics?: AuthoredBranches;
+  missions: FixtureMission[];
+}
 interface Case { id: string; step: number; branch: string; session: string; expect: string }
 const fixture = table as unknown as {
   board: { campaigns: FixtureCampaign[] };
@@ -66,16 +78,25 @@ function materialise(): string {
   const oct = join(dir, ".octobots");
   for (const c of fixture.board.campaigns) {
     const cdir = join(oct, "campaigns", c.slug);
-    write(
-      join(cdir, "campaign.yaml"),
-      dump({
-        name: c.name,
-        status: "draft",
-        description: `${c.name} description`,
-        acceptance_criteria: [],
-        ...(c.tokenomics ? { tokenomics: c.tokenomics } : {}),
-      }),
-    );
+    const file = c.file ?? "yaml";
+    if (file === "yaml") {
+      write(
+        join(cdir, "campaign.yaml"),
+        dump({
+          name: c.name,
+          status: "draft",
+          description: `${c.name} description`,
+          acceptance_criteria: [],
+          ...(c.tokenomics ? { tokenomics: c.tokenomics } : {}),
+        }),
+      );
+    } else if (file === "md") {
+      const b = c.tokenomics?.branches;
+      const branches = Array.isArray(b) ? b.join(", ") : (b ?? "");
+      write(join(cdir, "campaign.md"), `# ${c.name}\n\n## Description\n\n${c.name} description\n\n## Tokenomics\nbranches: ${branches}\n`);
+    } else {
+      mkdirSync(cdir, { recursive: true });
+    }
     for (const m of c.missions) {
       const mdir = join(cdir, "missions", m.dir);
       write(
@@ -89,10 +110,10 @@ function materialise(): string {
         }),
       );
       for (const t of m.tasks) {
-        const id = /^T(\d+)\.(\d+)/.exec(t)!;
+        const [tdir, tname] = typeof t === "string" ? [taskDirOf(t), t] : [t.dir, t.name];
         write(
-          join(mdir, "tasks", `t${id[1]}-${id[2]}-x`, "task.yaml"),
-          dump({ name: t, status: "draft", role: "js-dev", description: "d", acceptance_criteria: [{ text: "ac", done: false }] }),
+          join(mdir, "tasks", tdir, "task.yaml"),
+          dump({ name: tname, status: "draft", role: "js-dev", description: "d", acceptance_criteria: [{ text: "ac", done: false }] }),
         );
       }
     }
@@ -135,6 +156,11 @@ function materialise(): string {
   write(join(tok, "raw/segments.jsonl"), segs.map((s) => JSON.stringify(s)).join("\n") + "\n");
   installPackYaml(dir);
   return dir;
+}
+
+function taskDirOf(title: string): string {
+  const id = /^T(\d+)\.(\d+)/.exec(title)!;
+  return `t${id[1]}-${id[2]}-x`;
 }
 
 /** rollup.mjs finds its YAML parser at <project>/.claude/skills/mission-planner/scripts/vendor/. */
@@ -216,10 +242,15 @@ function runTs(dir: string, prices: PriceTable): Normalised {
     now: () => new Date(0),
   });
   const tot = (t: MissionRun["tokens"]): Totals => ({ input: t.input, output: t.output, cacheRead: t.cacheRead, cacheCreate: t.cacheCreate });
+  // The mission's board id as rollup.mjs reports it: the title's `M<n> -` prefix, else the folder's `m<n>`.
+  const folderOf = new Map(board.listCampaigns().flatMap((c) => board.listMissions(c.id)).map((m) => [m.id, m.folderPath]));
+  const missionLabel = (r: MissionRun): string | undefined =>
+    /^\s*(M\d+)\s*[-–—:]/.exec(r.missionTitle)?.[1] ??
+    /^m(\d+)/i.exec(folderOf.get(r.missionId ?? "")?.split("/").pop() ?? "")?.[1]?.replace(/^/, "M");
   const rows = report.runs.map((r): NRow => ({
     target: isCampaignRun(r)
       ? `campaign:${slugOfCampaignId(r.campaignId)}`
-      : `mission:${slugOfCampaignId(r.campaignId)}/${/^M\d+/i.exec(r.missionTitle)?.[0]}`,
+      : `mission:${slugOfCampaignId(r.campaignId)}/${missionLabel(r)}`,
     branches: [...r.branches].sort(),
     sessions: r.sessions,
     turns: r.turns,
@@ -302,6 +333,40 @@ describe("attribution parity: rollup.mjs and rollup.ts", () => {
     // Not vacuous: per-model cost is compared on the unattributed bucket too, over two models.
     expect(Object.keys(mjs.unattributed.costByModel).sort()).toEqual(["cheap", "dear"]);
     expect(ts).toEqual(mjs);
+  });
+
+  it("rollup.mjs campaign rows carry the AC5 shape (work_item_level, ref, parent, _octobots)", () => {
+    const out = JSON.parse(readFileSync(join(dir, ".octobots/tokenomics/runs.json"), "utf8")) as {
+      runs: Array<Record<string, unknown> & { _octobots: Record<string, unknown> }>;
+      unattributed: { branches: string[] };
+    };
+    const camp = out.runs.filter((r) => r.work_item_level === "campaign");
+    expect(camp.map((r) => r.work_item_ref).sort()).toEqual(["alpha", "alpha-ops", "beta", "delta", "gamma", "theta"]);
+    for (const r of camp) {
+      expect(r.parent_ref, String(r.work_item_ref)).toBeNull();
+      expect(r._octobots.mission_id, String(r.work_item_ref)).toBeNull();
+      expect(r._octobots.campaign, String(r.work_item_ref)).toBe(r.work_item_ref);
+      const absorbed = fixture.cases.filter((c) => c.expect === `campaign:${String(r.work_item_ref)}`).map((c) => c.branch).sort();
+      expect(r._octobots.branches, String(r.work_item_ref)).toEqual(absorbed);
+      // A branch a campaign row absorbed is no longer reported as unattributed.
+      for (const b of absorbed) expect(out.unattributed.branches).not.toContain(b);
+      // Sizing, churn and build/iterate are mission concepts: null, never a guessed zero.
+      for (const k of ["effort_days", "size_tshirt", "net_loc", "build_cost_usd", "iterate_cost_usd"]) expect(r[k], k).toBeNull();
+    }
+    // Every mission row still has a campaign parent.
+    for (const r of out.runs.filter((x) => x.work_item_level !== "campaign")) expect(r.parent_ref).toBeTypeOf("string");
+  });
+
+  it("rollup.mjs's summary counts campaign rows apart and keeps them out of the missing-sizing NOTE", () => {
+    const r = spawnSync("node", [ROLLUP, "--project-dir", dir, "--no-gh"], { encoding: "utf8" });
+    expect(r.status).toBe(0);
+    const missionRows = mjs.rows.filter((x) => x.target.startsWith("mission:")).length;
+    const campaignRows = mjs.rows.length - missionRows;
+    expect(r.stderr).toContain(`${missionRows} mission rows · ${campaignRows} campaign rows`);
+    const note = r.stderr.split("\n").find((l) => l.includes("NOTE no authored sizing")) ?? "";
+    // No fixture mission is sized, so every mission row is named and no campaign row is.
+    expect(note.match(/M\d+/g)?.length).toBe(missionRows);
+    expect(note).not.toContain("null");
   });
 
   it("totals invariant (mjs): sum(runs) + unattributed == segments", () => invariant(mjs, dir));
