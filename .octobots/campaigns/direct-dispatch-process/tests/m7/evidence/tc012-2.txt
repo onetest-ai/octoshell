@@ -1,0 +1,18 @@
+-- mission-execution
+1
+mission-execution: only marker lines differ
+version: 57+local
+'- ' entries (0 expected): 0
+no-upstream-change line (1 expected): 1
+-- mission-completion-gate
+1
+mission-completion-gate: only marker lines differ
+version: 57+local
+'- ' entries (0 expected): 0
+no-upstream-change line (1 expected): 1
+pending entries (0 expected): 0
+== other changes under .claude/skills vs pre-dispatch
+< .claude/skills/mission-completion-gate/SKILL.md
+< .claude/skills/mission-execution/SKILL.md
+> .claude/skills/mission-completion-gate/SKILL.md
+> .claude/skills/mission-execution/SKILL.md

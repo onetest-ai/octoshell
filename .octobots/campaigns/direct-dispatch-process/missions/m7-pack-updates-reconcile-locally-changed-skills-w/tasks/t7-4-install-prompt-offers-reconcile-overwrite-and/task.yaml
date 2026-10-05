@@ -1,9 +1,23 @@
 name: T7.4 - Install prompt offers Reconcile, Overwrite and Keep mine
-status: draft
+status: awaitingApproval
 role: js-dev
 description: 'Depends on T7.3. Scope: apps/vscode-extension/src/host/pack-deviations.ts gains deviationPrompt(deviations, packVersion) -> {message, detail, buttons} (M7 notes § Prompt text) and shouldPromptOnActivation(status, pending, packVersion); extension.ts installOctobotsPack shows the modal before the hooks/tools questions, Cancel returns before any write, maps the button to installPack''s localChanges, and extends the completion message; the activation prompt asks only when shouldPromptOnActivation is true. The extension never starts an agent and never copies a prompt. Out of scope: hooks, statusline and tools prompts (unchanged), Not now (unchanged). Downstream: M7 TC-007.'
 acceptance_criteria:
   - text: 'apps/vscode-extension/test/pack-deviation-prompt.test.ts asserts deviationPrompt''s exact message, detail and buttons for solo''s two forks, a content, an unknown-version, a reconciled-older and a retired deviation, the completion message with and without the SessionStart hook registered, and the shouldPromptOnActivation table: false when the only differences are newer skills and deviations pending or kept for this pack version with the same sha256; true for not installed, stale apart from deviations, a new pack version, a changed sha256 or a new deviation (mission AC4)'
-    done: false
+    done: true
   - text: the extension.ts wiring (modal before any write, Reconcile as the first button, Cancel writes nothing, no agent or clipboard call, the activation prompt gated by shouldPromptOnActivation) is shown in a manual Extension Development Host run on a copy of solo's workspace, recorded in M7 TC-007 with screenshots
     done: false
+  - text: 'A skill the user chose ''Keep my changes'' for stays kept on every later install (default, non-interactive, activation) while its SKILL.md bytes are unchanged: it is not staged, not turned into a pending reconcile and not prompted for; only an explicit Reconcile or Overwrite choice in the prompt, or a changed fork, re-opens it (decision 13(e), ''Keep my changes is remembered''). Proven in apps/vscode-extension/test/pack-install-reconcile.test.ts and with the harness on a solo clone (keep, then a default run: kept unchanged, no staging). Today a later non-keep install converts it to pending (T7.3 QA, 2026-10-05)'
+    done: true
+notes: |-
+  ## QA verification (2026-10-05, qa-engineer)
+
+  Verdict: PASS for AC1 and AC3; AC2 is pending a manual user F5 run. PR #130 (feat/direct-dispatch-process-m7-t4 -> feat/direct-dispatch-process-m7), commit edfbf94. CI build checks green on both runs. Records: pnpm build, typecheck, lint, test, coverage:pack all exit 0 (board 387, tokenomics 102, vscode-extension 786 in 51 files, graph 653; no skips). Findings below are from a blind re-run, not the dev/review reports.
+
+  AC1 - apps/vscode-extension/test/pack-deviation-prompt.test.ts: verbose run, 31 passed, 0 skipped (60 passed with pack-install-reconcile.test.ts). Covers solo's two forks word for word, content / unknown-version / reconciled-older / retired lines, completion message with and without the hook, and the shouldPromptOnActivation table. Observation: an esbuild bundle of the built pure functions run against a git clone --shared of auqanautica produced the exact M7 notes Prompt text character for character (message, 4 detail lines + 4 option lines, buttons Reconcile | Overwrite | Keep mine). shouldPromptOnActivation: false when kept for this version with same sha; true for a new pack version (v58), changed sha (edited fork) and not installed.
+
+  AC3 - apps/vscode-extension/test/pack-install-reconcile.test.ts, "Keep my changes is remembered (T7.4 AC3)": 8 tests passed. Harness observations on solo clones: (b) keep, then default run: both skills stay kept, pending [], no pack-updates staging, SKILL.md bytes identical (cmp), shouldPromptOnActivation false; (c) keep, then --local-changes=reconcile: both staged in pending.json, kept []; (d) keep, one-line edit to mission-execution, default run: only mission-execution re-opened (pending), mission-completion-gate stays kept; (e) keep, then --pack-version 58: shouldPromptOnActivation true, kept entries keep packVersion 57; (f) fresh install of an empty workspace with no deviations: no deviations, decideLocalChanges returns {cancelled:false} with no localChanges flag, and activation prompt false afterwards. Solo's git status --short unchanged.
+
+  AC2 - NOT ticked. Needs a manual Extension Development Host (F5) run on a copy of solo's workspace, to be done by the user; recorded in M7 TC-007 with screenshots. Script: .octobots/campaigns/direct-dispatch-process/tests/m7/manual/T7.4-F5-script.md. Task status is awaiting approval until then.
+
+  Non-blocking items (filed separately): a missing store still shows the modal before the error; install has no try/catch; one test is misnamed; the AC5 harness-default footnote; the TC-007 command title.

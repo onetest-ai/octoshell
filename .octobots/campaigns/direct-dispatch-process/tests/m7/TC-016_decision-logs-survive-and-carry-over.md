@@ -4,7 +4,8 @@ title: "Decision logs survive every install choice, open questions carry over to
 mission: M7
 covers: [M7-AC3, M7-AC5]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md}
 priority: critical
 size: M
 ---

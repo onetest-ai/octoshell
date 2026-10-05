@@ -1,0 +1,58 @@
+== steps 2: marker + provenance
+version: 57+local
+from=8428c87839dcdf9be5b10b2d14c3b122d6e286b6a5d14574c4e4325933dd7c55 up=8428c87839dcdf9be5b10b2d14c3b122d6e286b6a5d14574c4e4325933dd7c55
+DECISIONS.md
+RECONCILE.md
+base.md
+local.md
+merged.md
+upstream.md
+version: 57-local
+from= up=93f9377c66175cd8bd1f0ea5448954cf7dd87de66f3f5ce0c2169bfe9401f200
+DECISIONS.md
+RECONCILE.md
+base.md
+local.md
+merged.md
+upstream.md
+== step 3: solo's rules kept (each >=1; first line per file pair)
+rc-real-1/.claude/skills/mission-execution/SKILL.md:1
+rc-real-1/.claude/skills/mission-completion-gate/SKILL.md:5
+rc-real-1/.claude/skills/mission-execution/SKILL.md:1
+rc-real-1/.claude/skills/mission-completion-gate/SKILL.md:1
+1
+1
+1
+== step 4: rule numbering
+RULES BAD
+== step 5: CLAUDE.md/AGENTS.md vs baseline (hashes must equal)
+CLAUDE/AGENTS identical to baseline
+1
+== step 6: what changed under .claude/skills (expect only the two SKILL.md)
+< .claude/skills/mission-execution/SKILL.md
+> .claude/skills/mission-execution/SKILL.md
+== step 7: record + re-install
+1
+1
+{"pending":["mission-completion-gate"],"reconciled":["mission-execution"]}
+rc-real-1/.claude/skills/mission-execution/SKILL.md: OK
+rc-real-1/.claude/skills/mission-completion-gate/SKILL.md: OK
+version: 57+local
+version: 57-local
+campaigns untouched
+== step 9: UPSTREAM-CANDIDATES
+== step 8: DECISIONS sections / DSN mentions / ESCALATED count (then READ DECISIONS.md and map hunks by hand: work/rc-real-1-<skill>.hunks)
+-- mission-execution
+## Kept local
+## Taken from upstream
+## Conflicts
+DSN|CLAUDE.md mentions: 1
+ESCALATED entries: 0
+entries: 11
+-- mission-completion-gate
+## Kept local
+## Taken from upstream
+## Conflicts
+DSN|CLAUDE.md mentions: 1
+ESCALATED entries: 1
+entries: 9

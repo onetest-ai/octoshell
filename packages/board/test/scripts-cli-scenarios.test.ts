@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
@@ -20,6 +20,16 @@ const SCRIPTS = resolve(
   __dirname,
   "../../../apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts",
 );
+
+/** pending.json text for a case of the shared fixture (the one the extension's readers are tested against). */
+const PENDING_CASES = (JSON.parse(
+  readFileSync(resolve(__dirname, "../../../apps/vscode-extension/test/fixtures/pending-cases.json"), "utf8"),
+) as { cases: { name: string; text: string }[] }).cases;
+function writePending(projectDir: string, caseName: string): void {
+  const file = join(projectDir, ".octobots", "pack-updates", "pending.json");
+  mkdirSync(join(file, ".."), { recursive: true });
+  writeFileSync(file, PENDING_CASES.find((c) => c.name === caseName)!.text);
+}
 
 function runScript(name: string, args: string[], cwd: string): string {
   return execFileSync("node", [join(SCRIPTS, name), ...args], { cwd, encoding: "utf8" });
@@ -435,6 +445,78 @@ describe("validate.js contract checks", () => {
     expect(readFileSync(join(dir, "workflow.js"), "utf8")).toBe("this is not even javascript {{{\n");
   });
 
+  describe("pending pack reconciles", () => {
+    const pendingLines = (out: string) => out.split("\n").filter((l) => l.startsWith("warning: pack reconcile pending"));
+    function seedTask(): string {
+      const c = createCampaign(boardRoot, { name: "Camp" });
+      const m = createMission(boardRoot, c.id, { title: "M1 - Auth", acceptanceCriteria: "- [ ] ships" });
+      const t = createTask(boardRoot, m.id, { name: "T1.1 - Login", acceptanceCriteria: "- [ ] works" });
+      return join(boardRoot, t.folderPath);
+    }
+
+    it("prints one warning line per pending entry and leaves the exit code at 0", () => {
+      const task = seedTask();
+      const baseline = runScript("validate.js", [task], projectDir);
+      expect(pendingLines(baseline)).toHaveLength(0);
+      writePending(projectDir, "valid");
+      const out = runScript("validate.js", [task], projectDir);
+      expect(pendingLines(out)).toEqual([
+        "warning: pack reconcile pending: mission-execution (v57)",
+        "warning: pack reconcile pending: mission-completion-gate (v57)",
+      ]);
+      expect(out).toContain("OK");
+    });
+
+    it("kept-only and empty records print nothing", () => {
+      const task = seedTask();
+      for (const name of ["kept-only", "empty"]) {
+        writePending(projectDir, name);
+        expect(pendingLines(runScript("validate.js", [task], projectDir)), name).toHaveLength(0);
+      }
+    });
+
+    it("keeps the exit code 1 of an invalid entity and still lists the pending entries", () => {
+      const c = createCampaign(boardRoot, { name: "Camp" });
+      const m = createMission(boardRoot, c.id, { title: "M1 - Auth", acceptanceCriteria: "- [ ] ships" });
+      const t = createTask(boardRoot, m.id, { name: "T1", acceptanceCriteria: "- [ ] something" });
+      writePending(projectDir, "valid");
+      const r = runFailing("validate.js", [join(boardRoot, t.folderPath)], projectDir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("is just an id/placeholder");
+      // stdout is not part of runFailing's result: run again capturing it.
+      let stdout = "";
+      try {
+        execFileSync("node", [join(SCRIPTS, "validate.js"), join(boardRoot, t.folderPath)], { cwd: projectDir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      } catch (err: unknown) {
+        stdout = (err as { stdout?: string }).stdout ?? "";
+      }
+      expect(pendingLines(stdout)).toHaveLength(2);
+    });
+
+    it("a malformed pending.json is one warning, not an error", () => {
+      const task = seedTask();
+      writePending(projectDir, "malformed");
+      const out = runScript("validate.js", [task], projectDir);
+      const w = out.split("\n").filter((l) => l.startsWith("warning: .octobots/pack-updates/pending.json"));
+      expect(w).toHaveLength(1);
+      expect(w[0]).toMatch(/malformed/);
+      expect(pendingLines(out)).toHaveLength(0);
+      expect(out).toContain("OK");
+    });
+
+    it("an entity outside any .octobots folder gets no pending lines", () => {
+      const c = createCampaign(boardRoot, { name: "Camp" });
+      writePending(projectDir, "valid");
+      const copy = join(mkdtempSync(join(tmpdir(), "board-copy-")), "board");
+      cpSync(join(boardRoot, c.folderPath), join(copy, "campaigns", "camp"), { recursive: true });
+      try {
+        expect(pendingLines(runScript("validate.js", [join(copy, "campaigns", "camp")], projectDir))).toHaveLength(0);
+      } finally {
+        rmSync(join(copy, ".."), { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("leftover workflows/ folders (the real-data shape: several at mission level, one with runs)", () => {
     const warningLines = (out: string) => out.split("\n").filter((l) => l.startsWith("warning:"));
 
@@ -616,7 +698,7 @@ describe("pack doctor.js", () => {
     }
     const findings = (root: string) =>
       (JSON.parse(run(root).out) as { findings: { level: string; area: string; msg: string }[] }).findings;
-    const SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
+    const SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer", "octobots-doctor"];
     function installSkills(versions: Record<string, number> = {}): void {
       for (const sk of SKILLS) {
         const dir = join(projectDir, ".claude", "skills", sk);
@@ -700,6 +782,158 @@ describe("pack doctor.js", () => {
       const f = findings(projectDir);
       expect(f.find((x) => x.area === "pack" && /disagree/.test(x.msg))?.level).toBe("fail");
       expect(f.find((x) => x.area === "pack" && /primer.mjs is v55/.test(x.msg))?.level).toBe("fail");
+    });
+
+    describe("pack reconcile (pending.json)", () => {
+      type F = { level: string; area: string; msg: string; fix?: string };
+      const packFindings = (root: string) => findings(root).filter((x) => x.area === "pack") as F[];
+      const pendingFindings = (root: string) => packFindings(root).filter((x) => x.msg.startsWith("pack reconcile pending"));
+
+      it("reports exactly one warn naming each pending skill and its pack version, with the fix", () => {
+        installSkills({ "mission-execution": 56, "mission-completion-gate": 56 });
+        installPrimer(57);
+        writePending(projectDir, "valid");
+        const w = packFindings(projectDir).filter((x) => x.level === "warn");
+        expect(w).toEqual([
+          {
+            level: "warn",
+            area: "pack",
+            msg: "pack reconcile pending: mission-execution (v57), mission-completion-gate (v57)",
+            fix: "run the octobots-doctor skill",
+          },
+        ]);
+      });
+
+      it("reports none without entries (no record, kept-only, empty)", () => {
+        installSkills();
+        installPrimer(57);
+        expect(pendingFindings(projectDir)).toHaveLength(0);
+        for (const name of ["kept-only", "empty"]) {
+          writePending(projectDir, name);
+          expect(packFindings(projectDir).filter((x) => x.level === "warn"), name).toHaveLength(0);
+        }
+      });
+
+      it("a malformed pending.json is one warn, and nothing else about pending", () => {
+        installSkills();
+        installPrimer(57);
+        writePending(projectDir, "malformed");
+        const w = packFindings(projectDir).filter((x) => x.level === "warn");
+        expect(w).toHaveLength(1);
+        expect(w[0]!.msg).toMatch(/pending\.json is malformed/);
+        expect(w[0]!.fix).toBeTruthy();
+        expect(packFindings(projectDir).some((x) => x.level === "fail")).toBe(false);
+      });
+
+      it("a kept `version: 56` content fork at pack 57 yields no fail and one line naming it as kept", () => {
+        installSkills({ "mission-execution": 56 });
+        installPrimer(57);
+        writePending(projectDir, "kept-only"); // keeps mission-execution and mission-completion-gate
+        mkdirSync(join(projectDir, ".octobots", "tokenomics"), { recursive: true }); // so nothing else fails
+        const all = findings(projectDir);
+        expect(all.filter((x) => x.level === "fail")).toHaveLength(0);
+        const state = all.filter((x) => x.area === "pack" && /mission-execution/.test(x.msg) && /kept/.test(x.msg));
+        expect(state).toHaveLength(1);
+        expect(state[0]!.level).toBe("note");
+        expect(run(projectDir).status).toBe(0);
+      });
+
+      it("the same fork with no record still fails: the exclusion comes from the record, not from the version", () => {
+        installSkills({ "mission-execution": 56 });
+        installPrimer(57);
+        expect(packFindings(projectDir).find((x) => /disagree/.test(x.msg))?.level).toBe("fail");
+      });
+
+      it("pending, RECONCILED (`57+local`) and newer skills are left out of 'skills disagree' and named by state", () => {
+        const dir = (sk: string, v: string) => {
+          mkdirSync(join(projectDir, ".claude", "skills", sk), { recursive: true });
+          writeFileSync(join(projectDir, ".claude", "skills", sk, "SKILL.md"), `---\nname: ${sk}\nversion: ${v}\n---\n`);
+        };
+        dir("mission-planner", "57");
+        dir("mission-execution", "57-local"); // pending in the record
+        dir("mission-completion-gate", "57+local"); // reconciled
+        dir("knowledge-explorer", "58"); // newer than the record's pack version
+        dir("octobots-doctor", "57");
+        installPrimer(57);
+        writePending(projectDir, "rule-5-base-null");
+        const f = packFindings(projectDir);
+        expect(f.some((x) => x.level === "fail")).toBe(false);
+        const state = f.find((x) => x.level === "note" && /mission-execution/.test(x.msg))!;
+        expect(state.msg).toMatch(/mission-execution.*pending/);
+        expect(state.msg).toMatch(/mission-completion-gate.*reconciled/);
+        expect(state.msg).toMatch(/knowledge-explorer.*newer/);
+        expect(f.find((x) => /installed at v57/.test(x.msg))?.level).toBe("ok");
+      });
+
+      it("a newer skill with NO pending.json is still left out: the installed pack version is primer.mjs's marker", () => {
+        // The installer leaves a skill newer than the pack alone and writes no pending.json for it.
+        installSkills({ "knowledge-explorer": 58 });
+        installPrimer(57);
+        const r = JSON.parse(run(projectDir).out) as { packVersion: number | null; findings: F[] };
+        const f = r.findings.filter((x) => x.area === "pack");
+        expect(f.filter((x) => x.level === "fail")).toEqual([]);
+        expect(f.find((x) => x.level === "note")?.msg).toMatch(/knowledge-explorer \(newer: 58\)/);
+        expect(f.find((x) => /installed at v57/.test(x.msg))?.level).toBe("ok");
+        expect(r.packVersion).toBe(57);
+      });
+
+      it("with no record, a primer behind every skill is the stale file: nothing is called newer", () => {
+        installSkills({ "mission-planner": 58, "mission-execution": 58, "mission-completion-gate": 58, "knowledge-explorer": 58, "octobots-doctor": 58 });
+        installPrimer(57);
+        const f = packFindings(projectDir);
+        expect(f.find((x) => /primer.mjs is v57, skills are v58/.test(x.msg))?.level).toBe("fail");
+        expect(f.some((x) => /newer/.test(x.msg))).toBe(false);
+      });
+
+      it("a version line below the frontmatter is prose, not the skill's version (skill-marker rule)", () => {
+        installSkills();
+        installPrimer(57);
+        writeFileSync(
+          join(projectDir, ".claude", "skills", "mission-execution", "SKILL.md"),
+          "---\nname: mission-execution\nversion: 57\n---\n\nversion: 12\n",
+        );
+        expect(packFindings(projectDir).some((x) => /disagree/.test(x.msg))).toBe(false);
+      });
+
+      it("a BOM-prefixed SKILL.md reads as its version", () => {
+        installSkills();
+        installPrimer(57);
+        writeFileSync(
+          join(projectDir, ".claude", "skills", "mission-execution", "SKILL.md"),
+          "\uFEFF---\nname: mission-execution\nversion: 56\n---\n",
+        );
+        expect(packFindings(projectDir).find((x) => /disagree/.test(x.msg))?.msg).toContain("mission-execution=56");
+      });
+
+      it("with every skill excluded, the primer is still compared against the record's pack version", () => {
+        for (const sk of SKILLS) {
+          mkdirSync(join(projectDir, ".claude", "skills", sk), { recursive: true });
+          writeFileSync(join(projectDir, ".claude", "skills", sk, "SKILL.md"), `---\nname: ${sk}\nversion: 57-local\n---\n`);
+        }
+        installPrimer(55);
+        writePending(projectDir, "rule-5-base-null");
+        expect(packFindings(projectDir).find((x) => /primer.mjs is v55/.test(x.msg))?.level).toBe("fail");
+      });
+
+      it("lists acknowledged findings too: doctor-acks.json does not hide a pending reconcile", () => {
+        installSkills();
+        installPrimer(57);
+        writePending(projectDir, "valid");
+        writeFileSync(
+          join(projectDir, ".octobots", "doctor-acks.json"),
+          JSON.stringify({ acknowledged: [{ finding: "workflows", path: "campaigns/x/workflows", date: "2026-10-05" }] }),
+        );
+        expect(pendingFindings(projectDir)).toHaveLength(1);
+      });
+
+      it("the text report lists the warning with its fix", () => {
+        installSkills();
+        installPrimer(57);
+        writePending(projectDir, "valid");
+        const r = run(projectDir, []);
+        expect(r.out).toContain("pack reconcile pending: mission-execution (v57), mission-completion-gate (v57)");
+        expect(r.out).toContain("fix: run the octobots-doctor skill");
+      });
     });
 
     it("an unparseable settings.json fails", () => {

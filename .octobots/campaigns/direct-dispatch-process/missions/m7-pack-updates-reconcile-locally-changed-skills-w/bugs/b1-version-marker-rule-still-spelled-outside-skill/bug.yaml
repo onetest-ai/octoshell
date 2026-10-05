@@ -1,0 +1,17 @@
+name: B1 - version-marker rule still spelled outside skill-marker (generator frontmatterVersion, dead parseVersion) and isNewInVersion exempts only the current version
+status: done
+severity: minor
+description: |-
+  Leftovers found in the T7.2 review:
+  (1) apps/vscode-extension/scripts/shipped-skills.mjs:81 frontmatterVersion is a second spelling of the version rule. It does not strip a BOM, and it takes the first integer-form version line rather than the first version line. It should use skill-marker.mjs.
+  (2) octobots-skill.ts:42 parseVersion is now dead in src; only tests use it.
+  (3) isNewInVersion exempts only a skill introduced in exactly the current version, so at v58 a v56 workspace missing octobots-doctor (new in 57) reports installed:false.
+  (4) doctor.js:48 still has its own regex; T7.5 replaces it.
+steps_to_reproduce: Read the cited lines. For (3), call packStatus at pack version 58 on a v56 workspace without octobots-doctor.
+expected: One version rule (skill-marker) everywhere. A skill new since the workspace's installed version does not make installed false.
+actual: Two spellings of the rule. installed is false in case (3).
+rca: |-
+  Cause: the version-marker rule was spelled in more than one place (shipped-skills.mjs frontmatterVersion with its own regex, a dead parseVersion in octobots-skill.ts), and the new-skill exemption only covered a skill introduced in exactly the version being checked, so a pack bump after a skill's introduction flagged an old workspace as not installed.
+  Fix (PR #133, commits 7bb84be1 and review dd29954a): frontmatterVersion delegates to skill-marker's parseSkillMarker; parseVersion removed; packStatus uses isNewSince, exempting a missing skill introduced after the primer-marker installed version (or in the version being checked). doctor.js regex (item 4) was left to T7.5 by the bug text.
+  QA evidence (2026-10-05): pnpm build/typecheck/lint/test/coverage:pack all exit 0 (board 412, tokenomics 102, extension 915, graph 653 pass; 0 skips); shipped-skills.mjs --verify green, --write leaves store sha256 unchanged (12af6344...04df1). Probe on a scratch clone of auqanautica with octobots-doctor removed (shipped in 57): marker 56 pack 57 installed:true; marker 56 pack 58 installed:true; marker 57 pack 58 installed:false; (marker 57 pack 57 installed:true, the in-flight exemption). frontmatterVersion/parseVersion grep clean. PR #133 checks pass.
+environment: 'found by the T7.2 review gate (PR #128, 2026-10-05)'

@@ -2,6 +2,7 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { boardRootOf, findLegacyWorkflowFolders, legacyWorkflowsWarning } from "./legacy-workflows.mjs";
+import { readPending, workspaceRootOf, MALFORMED_PENDING_NOTE } from "./pending-io.mjs";
 import { readEntity, resolveEntityFile, KIND_KEYS, KNOWN_KEYS } from "./entity-io.mjs";
 
 const arg = process.argv[2];
@@ -79,8 +80,21 @@ function legacyWorkflowWarnings() {
   return findLegacyWorkflowFolders(dir, boardRootOf(dir)).map(legacyWorkflowsWarning);
 }
 
+/**
+ * Non-fatal: pack skills awaiting an agent's reconcile (.octobots/pack-updates/pending.json of the
+ * workspace this entity sits in), one line each; a pending.json that cannot be read is one line.
+ */
+function packReconcileWarnings() {
+  const root = workspaceRootOf(dirname(path));
+  if (!root) return [];
+  const pending = readPending(root);
+  if (pending.state === "malformed") return [`warning: ${MALFORMED_PENDING_NOTE}`];
+  if (pending.state === "none") return [];
+  return pending.record.skills.map((s) => `warning: pack reconcile pending: ${s.skill} (v${pending.record.packVersion})`);
+}
+
 function report() {
-  const warnings = legacyWorkflowWarnings();
+  const warnings = [...legacyWorkflowWarnings(), ...packReconcileWarnings()];
   if (problems.length) {
     console.error(`INVALID ${path}:`);
     for (const p of problems) console.error(`  - ${p}`);

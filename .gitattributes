@@ -1,0 +1,2 @@
+# The shipped-skills store is brotli-compressed binary: never convert its line endings.
+apps/vscode-extension/resources/shipped-skills.json.br -text

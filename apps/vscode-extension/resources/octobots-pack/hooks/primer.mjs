@@ -2,8 +2,8 @@
 // Shared Octobots session primer. Registered as a SessionStart/compaction hook in each backend
 // (Claude/Copilot/Codex). Emits the routing primer as additionalContext in the calling backend's
 // JSON shape, but ONLY in an Octobots repo. Self-gates on .octobots/ so it is inert elsewhere.
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 const PRIMER = [
   "This repository is driven by **Octobots**. Work is organized as campaigns -> missions -> tasks,",
@@ -148,6 +148,141 @@ function graphBlock(projectDir) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// The health line: ONE sentence group telling the agent to run the octobots-doctor skill while a
+// finding it can act on exists (M7 AC6). File and environment reads only: no git, no network, no
+// child process; it never throws, and it adds nothing when there is nothing to report.
+//
+// Two more HAND-DUPLICATED rules, each with a guard in test/ (see the block above for why):
+//  - `readReconciles` is the primer's twin of `pack-updates.ts` and the pack's `pending-io.mjs`
+//    (`parsePending`, strict about the same fields). `test/pending-io-parity.test.ts` drives every
+//    case of `test/fixtures/pending-cases.json` through this script and asserts the skills it names
+//    are the fixture's `expected.reconcile` and the folder its `packVersion`.
+//  - `listWorkflowDirs` is the primer's twin of `legacy-workflows.mjs`'s `findLegacyWorkflowFolders`,
+//    counted per `workflows/` folder (the unit doctor-acks.json acknowledges). `test/octobots-primer.test.ts`
+//    runs both over the same trees and asserts the same number.
+// ---------------------------------------------------------------------------------------------
+
+const HEALTH_HEAD = "Octobots health: run the octobots-doctor skill before or alongside the user's task.";
+
+const isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+const isStr = (v) => typeof v === "string" && v !== "";
+const isInt = (v) => typeof v === "number" && Number.isInteger(v);
+const SKILL_NAME = /^[a-z0-9][a-z0-9-]*$/;
+const STAGING_DIR = /^\.octobots\/pack-updates\/v(\d+)\/([a-z0-9][a-z0-9-]*)$/;
+const BASE_SOURCES = ["reconciled-from", "workspace-git", "declared", "closest"];
+
+function validReconcileEntry(v) {
+  if (!isObj(v)) return false;
+  const { skill, action, localVersion, localSha256, base, upstreamSha256, retired, dir } = v;
+  if (typeof skill !== "string" || !SKILL_NAME.test(skill) || action !== "reconcile" || !isStr(localVersion) || !isStr(localSha256)) return false;
+  if (!(upstreamSha256 === null || isStr(upstreamSha256)) || typeof retired !== "boolean" || !isStr(dir)) return false;
+  const m = STAGING_DIR.exec(dir);
+  if (m === null || m[2] !== skill) return false;
+  if (base !== null && !(isObj(base) && isInt(base.version) && isStr(base.sha256) && BASE_SOURCES.includes(base.source))) return false;
+  return true;
+}
+
+// pending.json and doctor-acks.json are user-editable and read at EVERY session start: only a regular
+// file (not a symlink, so nothing outside .octobots/ is read through it; not a FIFO, whose read would
+// block the session start) of at most MAX_READ bytes is read.
+const MAX_READ = 256 * 1024;
+function readSmallJson(file) {
+  const st = lstatSync(file); // throws when absent
+  if (!st.isFile() || st.size > MAX_READ) throw new Error(`${file}: not a small regular file`);
+  return JSON.parse(readFileSync(file, "utf8"));
+}
+
+/** `{packVersion, skills}` for the skills pending.json asks to reconcile, or null when it is not a well-formed record. */
+function readReconciles(projectDir) {
+  let raw;
+  try {
+    raw = readSmallJson(join(projectDir, ".octobots", "pack-updates", "pending.json"));
+  } catch {
+    return null; // absent, unreadable, too large, not a regular file or not JSON
+  }
+  if (!isObj(raw) || !isInt(raw.packVersion) || !Array.isArray(raw.skills) || !Array.isArray(raw.kept)) return null;
+  const seen = new Set();
+  for (const s of raw.skills) {
+    if (!validReconcileEntry(s) || seen.has(s.skill)) return null;
+    seen.add(s.skill);
+  }
+  for (const k of raw.kept) {
+    if (!isObj(k) || typeof k.skill !== "string" || !SKILL_NAME.test(k.skill) || !isInt(k.packVersion) || !isStr(k.sha256) || seen.has(k.skill)) return null;
+    seen.add(k.skill);
+  }
+  return { packVersion: raw.packVersion, skills: raw.skills.map((s) => s.skill) };
+}
+
+/**
+ * The acknowledgements in `.octobots/doctor-acks.json`, `{acknowledged: [{finding, path, date}]}` (written
+ * by the octobots-doctor skill when the user declines a finding); empty when it is absent or malformed.
+ * The keys the primer matches (T7.6 writes exactly these):
+ *   {finding: "workflows",  path: "campaigns/<c>/workflows" | "campaigns/<c>/missions/<m>/workflows"}
+ *       one per declined workflows/ folder; `path` is relative to `.octobots/`, `/`-separated
+ *   {finding: "config-dir", path: ".claude"}   any `path` (or none) acknowledges it
+ * A pending reconcile is never acknowledgeable. `path` is compared after dropping a leading `./`,
+ * trailing `/` and turning `\` into `/`; `date` is not read.
+ */
+function readAcks(projectDir) {
+  try {
+    const raw = readSmallJson(join(projectDir, ".octobots", "doctor-acks.json"));
+    if (!isObj(raw) || !Array.isArray(raw.acknowledged)) return [];
+    return raw.acknowledged
+      .filter((a) => isObj(a) && typeof a.finding === "string")
+      .map((a) => ({ finding: a.finding, path: typeof a.path === "string" ? a.path.replace(/\\/g, "/").replace(/^(\.\/)+/, "").replace(/\/+$/, "") : null }));
+  } catch {
+    return [];
+  }
+}
+
+const subdirs = (dir) => {
+  try {
+    return readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return [];
+  }
+};
+
+/** The `workflows/` folders under each campaign and each of its missions, as `campaigns/...` paths relative to `.octobots/`. */
+function listWorkflowDirs(projectDir) {
+  const found = [];
+  const campaigns = join(projectDir, ".octobots", "campaigns");
+  const check = (rel) => {
+    if (subdirs(join(projectDir, ".octobots", ...rel.split("/"))).includes("workflows")) found.push(`${rel}/workflows`);
+  };
+  for (const c of subdirs(campaigns)) {
+    check(`campaigns/${c}`);
+    for (const m of subdirs(join(campaigns, c, "missions"))) check(`campaigns/${c}/missions/${m}`);
+  }
+  return found;
+}
+
+/** The sentence group of the findings that hold and are not acknowledged, or "" when none does. */
+function healthLine(projectDir) {
+  try {
+    const acks = readAcks(projectDir);
+    const acked = (finding, path) => acks.some((a) => a.finding === finding && a.path === path);
+    const sentences = [];
+
+    const rec = readReconciles(projectDir); // a pending reconcile is never acknowledgeable
+    if (rec && rec.skills.length) {
+      sentences.push(`Pending pack reconciles: ${rec.skills.join(", ")} (.octobots/pack-updates/v${rec.packVersion}/).`);
+    }
+    const leftover = listWorkflowDirs(projectDir).filter((p) => !acked("workflows", p));
+    if (leftover.length) sentences.push(`Leftover workflows/ folders: ${leftover.length}.`);
+
+    const ccd = process.env.CLAUDE_CONFIG_DIR;
+    const projectConfig = resolve(projectDir, ".claude");
+    if (ccd && resolve(ccd) === projectConfig && !acks.some((a) => a.finding === "config-dir")) {
+      sentences.push(`CLAUDE_CONFIG_DIR is set to ${projectConfig}.`);
+    }
+    return sentences.length ? [HEALTH_HEAD, ...sentences].join(" ") : "";
+  } catch {
+    return ""; // a health check must never cost the session its primer
+  }
+}
+
 function arg(name) {
   const i = process.argv.indexOf(name);
   const val = i >= 0 ? process.argv[i + 1] : undefined;
@@ -174,7 +309,8 @@ if (!existsSync(join(projectDir, ".octobots"))) {
 const event = eventName();
 // Additive: everything PRIMER carried before this mission is unchanged; the graph block is
 // appended after it, separated by a blank line, never edited in.
-const fullContext = `${PRIMER}\n\n${graphBlock(projectDir)}`;
+const health = healthLine(projectDir);
+const fullContext = `${PRIMER}\n\n${graphBlock(projectDir)}${health ? `\n\n${health}` : ""}`;
 const payload =
   backend === "copilot"
     ? { additionalContext: fullContext }

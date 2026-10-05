@@ -1,0 +1,17 @@
+== solo status vs baseline
+SOLO status == baseline
+== octoshell status vs baseline (board edits made by the QA run itself are expected; nothing else)
+1a2,10
+>  M .octobots/campaigns/direct-dispatch-process/tests/m7/TC-001_install-reconcile-default-on-solo-git-copy.md
+>  M .octobots/campaigns/direct-dispatch-process/tests/m7/TC-004_retired-workflow-designer-deviation.md
+>  M .octobots/campaigns/direct-dispatch-process/tests/m7/TC-005_base-recovery-rules-on-real-forks.md
+>  M .octobots/campaigns/direct-dispatch-process/tests/m7/TC-008_primer-injects-octobots-doctor-on-actionable-findings.md
+>  M .octobots/campaigns/direct-dispatch-process/tests/m7/TC-009_doctor-and-validate-list-pending.md
+>  M .octobots/campaigns/direct-dispatch-process/tests/m7/TC-010_octobots-doctor-text-and-done-gate.md
+>  M .octobots/campaigns/direct-dispatch-process/tests/m7/TC-011_micro-test-real-reconcile-solo-forks.md
+>  M .octobots/campaigns/direct-dispatch-process/tests/m7/TC-014_reconciled-marker-lifecycle.md
+>  M .octobots/campaigns/direct-dispatch-process/tests/m7/TC-015_micro-test-escalation-answered-and-cleared.md
+== octoshell .claude sha list vs baseline
+.claude == baseline
+== solo CLAUDE.md/AGENTS.md
+solo CLAUDE/AGENTS == baseline
