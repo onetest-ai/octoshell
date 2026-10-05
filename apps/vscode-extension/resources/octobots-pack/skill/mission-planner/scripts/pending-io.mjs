@@ -12,7 +12,7 @@
 // malformed, which every reader treats as no record at all. pending.json is user-editable and the
 // installer deletes files in the folder an entry names, so a skill name and `dir` are accepted only
 // in their one safe shape: a lower-case skill name and `.octobots/pack-updates/v<N>/<that skill>`.
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, parse, resolve } from "node:path";
 
 export const PACK_UPDATES_DIR = ".octobots/pack-updates";
@@ -24,6 +24,42 @@ const isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const isStr = (v) => typeof v === "string" && v !== "";
 const isInt = (v) => typeof v === "number" && Number.isInteger(v);
 const isSkillName = (v) => typeof v === "string" && SKILL_NAME.test(v);
+
+/** The most a pending.json may hold; a larger file is malformed (the primer uses the same bound). */
+export const MAX_PENDING_BYTES = 256 * 1024;
+/** The most a SKILL.md or a staging file may hold before a reader refuses it. */
+export const MAX_SKILL_BYTES = 4 * 1024 * 1024;
+
+/**
+ * The text of `file`, read ONLY when it is a regular file of at most `max` bytes; throws otherwise.
+ * Every file these scripts read here is user-editable (pending.json, staging files, a live SKILL.md),
+ * and a FIFO or a symlink to /dev/zero would block the reader forever: the file is opened
+ * non-blocking and checked with fstat on that same descriptor, so nothing can be swapped in between.
+ * `noFollow` also refuses a symlink (pending.json, as the primer does).
+ */
+export function readRegularFile(file, { max = MAX_SKILL_BYTES, noFollow = false } = {}) {
+  if (noFollow && lstatSync(file).isSymbolicLink()) throw new Error(`${file}: a symlink, not read`);
+  const fd = openSync(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) | (noFollow ? (constants.O_NOFOLLOW ?? 0) : 0));
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) throw new Error(`${file}: not a regular file`);
+    if (st.size > max) throw new Error(`${file}: larger than ${max} bytes`);
+    return readFileSync(fd, "utf8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Throws unless `.octobots/pack-updates` under `root` is absent or a real directory: a planted
+ * symlink there would steer every write and delete under it out of the workspace.
+ */
+export function assertRealPackUpdatesDir(root) {
+  const dir = join(root, ".octobots", "pack-updates");
+  let st;
+  try { st = lstatSync(dir); } catch { return; }
+  if (!st.isDirectory()) throw new Error(`${PACK_UPDATES_DIR} is not a directory (a symlink?); refusing to write through it`);
+}
 
 /** pending.json under the workspace `root`. */
 export const pendingFile = (root) => join(root, ".octobots", "pack-updates", "pending.json");
@@ -102,9 +138,9 @@ export function pendingSummary(text) {
  */
 export function readPending(root) {
   const file = pendingFile(root);
-  if (!existsSync(file)) return { state: "none" };
+  try { lstatSync(file); } catch { return { state: "none" }; } // a dangling symlink is present (and malformed)
   let text;
-  try { text = readFileSync(file, "utf8"); } catch { return { state: "malformed" }; }
+  try { text = readRegularFile(file, { max: MAX_PENDING_BYTES, noFollow: true }); } catch { return { state: "malformed" }; }
   const record = parsePending(text);
   return record ? { state: "ok", record } : { state: "malformed" };
 }
@@ -135,13 +171,13 @@ export function serializePending(rec) {
 export function writePending(root, rec) {
   const file = pendingFile(root);
   const text = serializePending(rec);
-  if (existsSync(file)) {
-    try { if (readFileSync(file, "utf8") === text) return false; } catch { /* rewrite below */ }
-  }
+  assertRealPackUpdatesDir(root);
+  try { if (readRegularFile(file, { max: MAX_PENDING_BYTES, noFollow: true }) === text) return false; } catch { /* absent or unusable: rewrite below */ }
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   try {
-    writeFileSync(tmp, text);
+    rmSync(tmp, { force: true }); // a leftover (or planted) tmp; `wx` below never writes through a link
+    writeFileSync(tmp, text, { flag: "wx" });
     renameSync(tmp, file);
   } catch (e) {
     rmSync(tmp, { force: true });

@@ -18,7 +18,7 @@ import { join, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
 import { findLegacyWorkflowFolders, NO_LONGER_READ } from "./legacy-workflows.mjs";
 import { parseSkillMarker } from "./skill-marker.mjs";
-import { readPending, MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX } from "./pending-io.mjs";
+import { readPending, readRegularFile, MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX } from "./pending-io.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
@@ -60,12 +60,16 @@ const keptSkills = new Set(record ? record.kept.map((k) => k.skill) : []);
 // version takes part; pending, kept, reconciled (`<N>+local`) and newer skills are excluded and
 // reported by state in one line instead.
 const primer = join(ROOT, ".octobots", "hooks", "primer.mjs");
-const primerVersion = existsSync(primer) ? markerOf(readFileSync(primer, "utf8")) : null;
+// Read only as small regular files: a FIFO or a symlink to a device must not hang the doctor.
+const readSmall = (p) => { try { return readRegularFile(p); } catch { return null; } };
+const primerVersion = existsSync(primer) ? markerOf(readSmall(primer) ?? "") : null;
 const installed = [];
 for (const s of SKILLS) {
   const p = join(ROOT, ".claude", "skills", s, "SKILL.md");
   if (!existsSync(p)) { fail("pack", `skill missing: ${s}`, 'run "Octobots: Install Workflow Pack"'); continue; }
-  installed.push({ s, m: parseSkillMarker(readFileSync(p, "utf8")) });
+  const text = readSmall(p);
+  if (text === null) { fail("pack", `skill unreadable: ${s} (SKILL.md is not a readable regular file)`, 'run "Octobots: Install Workflow Pack"'); continue; }
+  installed.push({ s, m: parseSkillMarker(text) });
 }
 // "Newer" is newer than the installed pack: the record's version, else primer.mjs's marker, which
 // every install writes (pending.json exists only once a skill was changed locally, and the installer

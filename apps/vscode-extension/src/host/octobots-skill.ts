@@ -8,8 +8,8 @@ import { installTools, removeTools, toolsStatus } from "./octobots-tools.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
 import { OCTOBOTS_SKILLS, RETIRED_SKILLS, RETIRED_SKILL_FILES } from "./pack-skills.js";
 import { detectDeviations, recoverBase, GIT_BUDGET_MS, type Deviation, type ShippedStore } from "./pack-deviations.js";
-import { pendingReconcile, readPending, writePending, pendingFile, type KeptEntry, type PendingEntry, type PendingRecord } from "./pack-updates.js";
-import { carriedFrom, clearInputs, ensureGitignore, saveOverwritten, stageEntry, stagingDirRel, type CarriedBlock } from "./pack-staging.js";
+import { assertRealPackUpdatesDir, pendingReconcile, readPending, readRegularBytes, readRegularText, writePending, pendingFile, type KeptEntry, type PendingEntry, type PendingRecord } from "./pack-updates.js";
+import { carriedFrom, clearInputs, ensureGitignore, saveOverwritten, stageEntry, stagingDirRel, stagingPath, type CarriedBlock } from "./pack-staging.js";
 import { parseSkillMarker, skillSha256 } from "./skill-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
@@ -120,7 +120,7 @@ export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERS
       continue;
     }
     let m: ReturnType<typeof parseSkillMarker> | null;
-    try { m = parseSkillMarker(readFileSync(file, "utf8")); } catch { m = null; }
+    try { m = parseSkillMarker(readRegularText(file)); } catch { m = null; } // a FIFO must not hang activation
     // `57-local` and `57+local` count as present; only a file with no version line is unreadable.
     if (m === null || m.kind === "none") return notInstalled;
     markers.set(s, m);
@@ -286,7 +286,7 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
   const prior = readPending(repoRoot);
   const priorEntry = (skill: string): PendingEntry | undefined => prior?.skills.find((e) => e.skill === skill);
   const priorVersion = (e: PendingEntry): number => Number(e.dir.match(/\/v(\d+)\//)?.[1] ?? prior?.packVersion ?? packVersion);
-  const localBytes = new Map<string, Buffer>(report.deviations.map((d) => [d.skill, readFileSync(join(skillDirOf(repoRoot, d.skill), "SKILL.md"))]));
+  const localBytes = new Map<string, Buffer>(report.deviations.map((d) => [d.skill, readRegularBytes(join(skillDirOf(repoRoot, d.skill), "SKILL.md"))]));
 
   // Decide, before writing anything, what to stage: an entry that is unchanged is reused untouched.
   interface Plan { dev: Deviation; reuse: PendingEntry | null; base: ReturnType<typeof recoverBase>; upstream: Buffer | null; carried: CarriedBlock[]; replacedDir?: string }
@@ -320,6 +320,12 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
       });
     }
   }
+
+  // Before the first write: every staging folder this install may write or delete in must be a real
+  // directory (throws on a planted symlink), so a refusal leaves the workspace untouched.
+  assertRealPackUpdatesDir(repoRoot);
+  for (const dev of report.deviations) stagingPath(repoRoot, stagingDirRel(packVersion, dev.skill));
+  for (const e of prior?.skills ?? []) stagingPath(repoRoot, e.dir);
 
   const deviated = new Set(report.deviations.map((d) => d.skill));
   const replaced = new Set(choice === "overwrite" ? deviated : []);

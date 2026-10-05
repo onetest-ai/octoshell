@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 /**
@@ -50,6 +50,47 @@ export interface PendingSummary {
 }
 
 export const PACK_UPDATES_DIR = ".octobots/pack-updates";
+
+/** The most a pending.json may hold; a larger file is malformed (the primer and pending-io.mjs use the same bound). */
+export const MAX_PENDING_BYTES = 256 * 1024;
+/** The most a SKILL.md or a staging file may hold before the installer refuses to read it. */
+export const MAX_SKILL_BYTES = 4 * 1024 * 1024;
+
+/**
+ * The bytes of `file`, read ONLY when it is a regular file of at most `max` bytes; throws otherwise.
+ * Twin of `readRegularFile` in the pack's pending-io.mjs. pending.json, staging files and a live
+ * SKILL.md are user-editable, and a FIFO or a symlink to /dev/zero would block the extension host
+ * forever: the file is opened non-blocking and checked with fstat on that same descriptor, so
+ * nothing can be swapped in between. `noFollow` also refuses a symlink (pending.json).
+ */
+export function readRegularBytes(file: string, opts: { max?: number; noFollow?: boolean } = {}): Buffer {
+  const max = opts.max ?? MAX_SKILL_BYTES;
+  if (opts.noFollow && lstatSync(file).isSymbolicLink()) throw new Error(`${file}: a symlink, not read`);
+  const flags = constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) | (opts.noFollow ? (constants.O_NOFOLLOW ?? 0) : 0);
+  const fd = openSync(file, flags);
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) throw new Error(`${file}: not a regular file`);
+    if (st.size > max) throw new Error(`${file}: larger than ${max} bytes`);
+    return readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** `readRegularBytes` as UTF-8 text. */
+export const readRegularText = (file: string, opts: { max?: number; noFollow?: boolean } = {}): string =>
+  readRegularBytes(file, opts).toString("utf8");
+
+/**
+ * Throws unless `.octobots/pack-updates` under `repoRoot` is absent or a real directory: a planted
+ * symlink there would steer every write and delete under it out of the workspace.
+ */
+export function assertRealPackUpdatesDir(repoRoot: string): void {
+  let st;
+  try { st = lstatSync(join(repoRoot, ".octobots", "pack-updates")); } catch { return; }
+  if (!st.isDirectory()) throw new Error(`${PACK_UPDATES_DIR} is not a directory (a symlink?); refusing to write through it`);
+}
 
 export const pendingFile = (repoRoot: string): string => join(repoRoot, ".octobots", "pack-updates", "pending.json");
 
@@ -141,7 +182,7 @@ export function serializePending(rec: PendingRecord): string {
 
 /** The record, or null when the file is missing, unreadable or malformed. */
 export function readPending(repoRoot: string): PendingRecord | null {
-  try { return parsePending(readFileSync(pendingFile(repoRoot), "utf8")); } catch { return null; }
+  try { return parsePending(readRegularText(pendingFile(repoRoot), { max: MAX_PENDING_BYTES, noFollow: true })); } catch { return null; }
 }
 
 /**
@@ -152,13 +193,13 @@ export function readPending(repoRoot: string): PendingRecord | null {
 export function writePending(repoRoot: string, rec: PendingRecord): boolean {
   const file = pendingFile(repoRoot);
   const text = serializePending(rec);
-  if (existsSync(file)) {
-    try { if (readFileSync(file, "utf8") === text) return false; } catch { /* rewrite below */ }
-  }
+  assertRealPackUpdatesDir(repoRoot);
+  try { if (readRegularText(file, { max: MAX_PENDING_BYTES, noFollow: true }) === text) return false; } catch { /* absent or unusable: rewrite below */ }
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   try {
-    writeFileSync(tmp, text);
+    rmSync(tmp, { force: true }); // a leftover (or planted) tmp; `wx` below never writes through a link
+    writeFileSync(tmp, text, { flag: "wx" });
     renameSync(tmp, file);
   } catch (e) {
     rmSync(tmp, { force: true });

@@ -10,7 +10,9 @@
 //
 // done <skill> clears the entry when DECISIONS.md exists with no open ESCALATED entry and
 //   - for a pack skill: the live .claude/skills/<skill>/SKILL.md reads `version: <N>+local` (N being
-//     the pack version of the entry's staging folder) and `reconciled-from: <sha256 of upstream.md>`;
+//     the pack version of the entry's staging folder) and `reconciled-from: <sha256 of upstream.md>`,
+//     and holds no `<!-- ESCALATED: ... -->` placeholder line (merged.md's stand-in for an unanswered
+//     rule; a mention of the form inside other text, e.g. in backticks, is not one);
 //   - for a retired skill (`retired` in the entry): .claude/skills/<skill> is gone. A copy the user
 //     kept lives on under another directory name.
 // A skill with no entry exits 0 and changes nothing. Exit codes: 0 done / listed, 2 usage, 3 refused.
@@ -19,7 +21,7 @@
 // --root <dir>; never the current directory. Dependency-free. Its logic names no skill: which skill is
 // retired comes from its pending entry. The shared pack modules are imported from their one fixed
 // home (a fixed path, never a search of .claude/skills, so no other skill's code is ever loaded).
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as io from "../../mission-planner/scripts/pending-io.mjs";
@@ -80,7 +82,7 @@ if (cmd === "list") {
     console.log(`  folder: ${e.dir}/`);
     if (!e.retired) {
       let from = "upstream.md is missing";
-      try { from = `reconciled-from: ${skillSha256(readFileSync(upstreamPath(e), "utf8"))}`; } catch { /* reported as missing */ }
+      try { from = `reconciled-from: ${skillSha256(io.readRegularFile(upstreamPath(e)))}`; } catch { /* reported as missing */ }
       console.log(`  marker: version: ${versionOf(e)}+local; ${from}`);
     }
   }
@@ -97,7 +99,11 @@ if (!e) {
 const folder = join(ROOT, ...e.dir.split("/"));
 const decisionsFile = join(folder, "DECISIONS.md");
 if (!existsSync(decisionsFile)) refuse(`${e.dir}/DECISIONS.md does not exist: write the decision log first`);
-const open = readFileSync(decisionsFile, "utf8").split(/\r?\n/).filter((l) => /^\s*-\s+ESCALATED:/.test(l)).map((l) => l.trim());
+// Every file read here is user-editable: read only as a small regular file (a FIFO would hang).
+const readOrRefuse = (file, rel) => {
+  try { return io.readRegularFile(file); } catch { return refuse(`${rel} is not a readable regular file`); }
+};
+const open = readOrRefuse(decisionsFile, `${e.dir}/DECISIONS.md`).split(/\r?\n/).filter((l) => /^\s*-\s+ESCALATED:/.test(l)).map((l) => l.trim());
 if (open.length) refuse(`${e.dir}/DECISIONS.md has ${open.length} open escalation(s); ask the user and record the answer as \`- RESOLVED (user, <YYYY-MM-DD>): ...\`:\n${open.map((l) => `  ${l}`).join("\n")}`);
 
 const liveDir = join(ROOT, ".claude", "skills", skill);
@@ -108,10 +114,13 @@ if (e.retired) {
   const live = join(liveDir, "SKILL.md");
   if (!existsSync(live)) refuse(`.claude/skills/${skill}/SKILL.md does not exist: install merged.md there first`);
   if (!existsSync(upstreamPath(e))) refuse(`${e.dir}/upstream.md is missing, so reconciled-from cannot be checked`);
-  const m = parseSkillMarker(readFileSync(live, "utf8"));
+  const liveText = readOrRefuse(live, `.claude/skills/${skill}/SKILL.md`);
+  const m = parseSkillMarker(liveText);
   if (m.kind !== "plus-local" || m.n !== n) refuse(`.claude/skills/${skill}/SKILL.md reads version: ${m.label ?? "(none)"}; it must read version: ${n}+local`);
-  const want = skillSha256(readFileSync(upstreamPath(e), "utf8"));
-  if (m.reconciledFrom !== want) refuse(`.claude/skills/${skill}/SKILL.md reads reconciled-from: ${m.reconciledFrom ?? "(none)"}; it must read reconciled-from: ${want} (the sha256 of ${e.dir}/upstream.md)`);
+  const want = skillSha256(readOrRefuse(upstreamPath(e), `${e.dir}/upstream.md`));
+  if (m.reconciledFrom?.toLowerCase() !== want) refuse(`.claude/skills/${skill}/SKILL.md reads reconciled-from: ${m.reconciledFrom ?? "(none)"}; it must read reconciled-from: ${want} (the sha256 of ${e.dir}/upstream.md)`);
+  const placeholders = liveText.split(/\r?\n/).filter((l) => /^\s*<!-- ESCALATED:.*-->\s*$/.test(l)).map((l) => l.trim());
+  if (placeholders.length) refuse(`.claude/skills/${skill}/SKILL.md still holds ${placeholders.length} \`<!-- ESCALATED: ... -->\` placeholder line(s); every escalated rule needs the user's answer applied before the merge is installed:\n${placeholders.map((l) => `  ${l}`).join("\n")}`);
 }
 
 io.writePending(ROOT, { ...record, skills: record.skills.filter((s) => s.skill !== skill) });

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { readRegularText } from "./pack-updates.js";
 import { join } from "node:path";
 import { brotliDecompressSync } from "node:zlib";
 import { OCTOBOTS_SKILLS, RETIRED_SKILLS } from "./pack-skills.js";
@@ -95,7 +96,7 @@ export function detectDeviations(
     if (!existsSync(file)) continue;
     let text: string;
     try {
-      text = readFileSync(file, "utf8");
+      text = readRegularText(file); // not a FIFO or device, at most MAX_SKILL_BYTES
     } catch {
       continue;
     }
