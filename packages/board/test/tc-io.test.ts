@@ -4,7 +4,8 @@
  * it produces text, against the other's output, so the two cannot drift apart.
  */
 import { describe, it, expect } from "vitest";
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as ts from "../src/tc-io.js";
@@ -347,6 +348,41 @@ describe.each(impls)("%s: missionTestsFindings", (_name, io) => {
     mkdirSync(join(c.campaignDir, "tests"), { recursive: true });
     writeFileSync(join(c.campaignDir, "tests", "m1"), "a file");
     expect(run(c, "m1")).toHaveLength(1);
+  });
+
+  // Review of T4.2: a FIFO or a symlink to /dev/zero named README.md blocked readFileSync forever, so
+  // validate.js hung and validateBoard would hang the extension host. Only small regular files are read.
+  it.skipIf(process.platform === "win32")("never blocks on a README or TC that is a FIFO, a symlink to a FIFO or /dev/zero", () => {
+    const c = synthBoard(scratch("tcio-"), [{ title: "M1 - x", acs: 1 }]);
+    const dir = c.testsDir("m1");
+    mkdirSync(dir, { recursive: true });
+    const fifo = join(c.board, "pipe");
+    execFileSync("mkfifo", [fifo]);
+    const missing = `${rel(c, "m1")}/README.md: missing — M1 has no tests README; run add-tests.js to scaffold it`;
+    const acs = [{ text: "a", done: false }];
+    execFileSync("mkfifo", [join(dir, "README.md")]);
+    execFileSync("mkfifo", [join(dir, "TC-001_fifo.md")]);
+    symlinkSync(fifo, join(dir, "TC-002_link.md"));
+    expect(run(c, "m1", { acceptanceCriteria: acs })).toEqual([missing]);
+    rmSync(join(dir, "README.md"));
+    symlinkSync(fifo, join(dir, "README.md"));
+    expect(run(c, "m1", { acceptanceCriteria: acs })).toEqual([missing]);
+    rmSync(join(dir, "README.md"));
+    symlinkSync("/dev/zero", join(dir, "README.md"));
+    expect(run(c, "m1", { acceptanceCriteria: acs })).toEqual([missing]);
+  });
+
+  it("reads a README or TC over MAX_TC_BYTES as unreadable instead of loading it whole", () => {
+    const c = synthBoard(scratch("tcio-"), [{ title: "M1 - x", acs: 1 }]);
+    const big = "x".repeat(io.MAX_TC_BYTES + 1);
+    writeTests(c, "m1", { "README.md": big, "TC-001_a.md": tcText(["id: TC-001", "covers: [M1-AC1]"], `## Steps\n## Expected Final State\n${big}`) });
+    expect(run(c, "m1", { acceptanceCriteria: [{ text: "a", done: false }] })).toEqual([
+      `${rel(c, "m1")}/README.md: missing — M1 has no tests README; run add-tests.js to scaffold it`,
+      `${rel(c, "m1")}: M1-AC1 is not covered by any test case`,
+      `${rel(c, "m1")}/TC-001_a.md: frontmatter is missing or unparseable`,
+      `${rel(c, "m1")}/TC-001_a.md: missing the "## Steps" section`,
+      `${rel(c, "m1")}/TC-001_a.md: missing the "## Expected Final State" section`,
+    ]);
   });
 
   it("does not follow a README or TC symlink that dangles", () => {

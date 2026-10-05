@@ -14,10 +14,11 @@
 // packages/board/test/validate-tests-parity.test.ts runs both over real boards. Keep the two in step.
 // set-test-status.js (M6) builds on this module.
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { load as yamlLoad, dump as yamlDump } from "./vendor/js-yaml.mjs";
 import { mapBoardStatus } from "./entity-io.mjs";
+import { readRegularFile } from "./pending-io.mjs";
 
 export const TC_KINDS = ["api", "ui", "cli", "unit"];
 export const TC_STATUSES = ["draft", "ready", "pass", "fail", "blocked", "unknown"];
@@ -25,6 +26,8 @@ export const TC_ID_RE = /^TC-\d{3,}$/;
 export const MISSION_ID_RE = /^M\d+[a-z]*$/;
 export const AC_ID_RE = /^M\d+[a-z]*-AC\d+$/;
 export const REQUIRED_SECTIONS = ["Steps", "Expected Final State"];
+/** The most a TC file or a tests README may hold (4 MiB); a larger one is read as unreadable. */
+export const MAX_TC_BYTES = 4194304;
 
 // ── frontmatter ──────────────────────────────────────────────────────────────────
 
@@ -177,7 +180,13 @@ export function parseReadmeMap(text) {
 // ── a mission's tests folder ─────────────────────────────────────────────────────
 
 const posix = (p) => p.split(sep).join("/");
-const readTextOrNull = (p) => { try { return readFileSync(p, "utf8"); } catch { return null; } };
+/**
+ * The text of a TC or README, or null. Only a regular file of at most MAX_TC_BYTES is read, opened
+ * non-blocking: tests/ is written by QA and by hand, and a FIFO or a symlink to /dev/zero named
+ * README.md would otherwise block the reader forever (validateBoard runs in the extension host).
+ */
+export const readTestsText = (p) => { try { return readRegularFile(p, { max: MAX_TC_BYTES }); } catch { return null; } };
+const readTextOrNull = readTestsText;
 const isFile = (p) => { try { return statSync(p).isFile(); } catch { return false; } };
 
 /** `{ id: "M3b", folder: "m3b" }` from a mission name starting with its id token, else null. */

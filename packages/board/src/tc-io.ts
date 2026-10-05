@@ -14,7 +14,7 @@
 // dependency-free, so it cannot import this). Text and rules must stay equal;
 // `test/validate-tests-parity.test.ts` runs both over real boards. Keep the two in step.
 
-import { readdirSync, readFileSync, statSync, type Dirent } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readdirSync, readFileSync, statSync, type Dirent } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { load as yamlLoad, dump as yamlDump } from "js-yaml";
 import { mapBoardStatus } from "./managed-block.js";
@@ -26,6 +26,9 @@ export const TC_ID_RE = /^TC-\d{3,}$/;
 export const MISSION_ID_RE = /^M\d+[a-z]*$/;
 export const AC_ID_RE = /^M\d+[a-z]*-AC\d+$/;
 export const REQUIRED_SECTIONS = ["Steps", "Expected Final State"] as const;
+/** The most a TC file or a tests README may hold (4 MiB); a larger one is read as unreadable. A literal, so a
+ * bundle that imports @octoshell/board without validate (the octograph payload) tree-shakes it away. */
+export const MAX_TC_BYTES = 4194304;
 
 // ── frontmatter ──────────────────────────────────────────────────────────────────
 
@@ -194,13 +197,30 @@ export function parseReadmeMap(text: string): ReadmeMapRow[] {
 // ── a mission's tests folder ─────────────────────────────────────────────────────
 
 const posix = (p: string): string => p.split(sep).join("/");
-const readTextOrNull = (p: string): string | null => {
+/**
+ * The text of a TC or README, or null. Only a regular file of at most MAX_TC_BYTES is read, opened
+ * non-blocking and checked with fstat on that same descriptor: tests/ is written by QA and by hand, and
+ * a FIFO or a symlink to /dev/zero named README.md would otherwise block the extension host forever.
+ * Twin of tc-io.mjs `readTestsText` (which uses pending-io.mjs `readRegularFile`).
+ */
+export function readTestsText(p: string): string | null {
+  let fd: number;
   try {
-    return readFileSync(p, "utf8");
+    fd = openSync(p, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
   } catch {
     return null;
   }
-};
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size > MAX_TC_BYTES) return null;
+    return readFileSync(fd, "utf8");
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+const readTextOrNull = readTestsText;
 const isFile = (p: string): boolean => {
   try {
     return statSync(p).isFile();
