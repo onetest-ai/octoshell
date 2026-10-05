@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { validateBoard } from "../src/validate.js";
 import { campaignDirs, scratchDir, trackedBoardCopies } from "./fixtures/real-board.js";
 
@@ -29,32 +29,42 @@ function boardWarnings(root: string): string[] {
 const isEntityCampaign = (dir: string): boolean => existsSync(join(dir, "campaign.yaml")) || existsSync(join(dir, "campaign.md"));
 
 /**
- * Plant leftover workflows/ folders on the board's real campaigns (tracked history holds none on
- * them): `workflows/w1` on each campaign and `workflows/w2` on its first mission. Returns the count.
+ * Plant leftover workflows/ folders on the board's real campaigns: `workflows/w1` on each campaign
+ * and `workflows/w2` on its first mission. Returns the board-relative (posix) path of each folder it
+ * actually created; a folder the board already had is not counted, so the result is only the new ones.
  */
-function plantWorkflows(board: string): number {
-  let n = 0;
+function plantWorkflows(board: string): string[] {
+  const planted: string[] = [];
+  const plant = (dir: string): void => {
+    if (existsSync(dir)) return;
+    mkdirSync(dir, { recursive: true });
+    planted.push(relative(board, dir).split(sep).join("/"));
+  };
   for (const campaign of campaignDirs(board).filter(isEntityCampaign)) {
-    mkdirSync(join(campaign, "workflows", "w1"), { recursive: true });
-    n++;
+    plant(join(campaign, "workflows", "w1"));
     const missions = join(campaign, "missions");
     const first = existsSync(missions) ? readdirSync(missions)[0] : undefined;
-    if (first) {
-      mkdirSync(join(missions, first, "workflows", "w2"), { recursive: true });
-      n++;
-    }
+    if (first) plant(join(missions, first, "workflows", "w2"));
   }
-  return n;
+  return planted;
 }
 
 describe("validateBoard: leftover workflows/ folders", () => {
   it("over every real board copy: one warning per workflows/ folder, no error for them, union equals validate.js", () => {
     for (const board of trackedBoardCopies()) {
+      // A real board copy (OCTOBOTS_BOARD_COPIES) may already hold leftover workflows/ folders, each a
+      // correct warning. Take the baseline first, then expect exactly baseline + planted.
+      const baseline = validateBoard(board).filter((f) => f.severity === "warning");
       const planted = plantWorkflows(board);
-      expect(planted).toBeGreaterThan(0);
+      expect(planted.length).toBeGreaterThan(0);
       const findings = validateBoard(board);
       const warnings = findings.filter((f) => f.severity === "warning");
-      expect(warnings.length).toBe(planted); // exactly the planted folders: none from a dir that is no campaign
+      for (const path of planted) {
+        expect(warnings.map((w) => w.message)).toContain(`${path}: ${SUFFIX}`);
+      }
+      expect(warnings.length).toBe(baseline.length + planted.length); // none from a dir that is no campaign
+      const messages = warnings.map((w) => w.message);
+      for (const b of baseline) expect(messages).toContain(b.message); // nothing pre-existing dropped
       for (const w of warnings) {
         expect(w.message).toMatch(new RegExp(`^campaigns/.+/workflows/.+: ${SUFFIX}$`));
         expect(["campaign", "mission"]).toContain(w.kind);
