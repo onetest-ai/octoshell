@@ -1,0 +1,9 @@
+name: B1 - rollup.mjs crashes with an unnamed SyntaxError on a malformed prices.local.json
+status: draft
+severity: major
+description: rollup.mjs reads the hand-edited workspace tokenomics/prices.local.json with a bare JSON.parse. Meanwhile packages/tokenomics/scripts/update-prices.mjs silently ignores a seed it cannot parse.
+steps_to_reproduce: Copy the pack tokenomics dir; put `{` in prices.local.json; run `node rollup.mjs --project-dir <copy>`.
+expected: A message naming prices.local.json and the parse error, then either a non-zero exit or pricing from prices.json alone (pick one and test it). The build script reports the same malformed seed.
+actual: Uncaught SyntaxError that doesn't name the file; the whole rollup aborts.
+rca: ''
+environment: 'found by the T1.4 review gate (PR #112, 2026-10-05), confirmed by QA'

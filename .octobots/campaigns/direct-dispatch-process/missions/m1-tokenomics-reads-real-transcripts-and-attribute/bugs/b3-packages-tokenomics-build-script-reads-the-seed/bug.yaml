@@ -1,0 +1,9 @@
+name: B3 - packages/tokenomics build script reads the seed from apps/vscode-extension via a relative path
+status: draft
+severity: trivial
+description: packages/tokenomics/scripts/update-prices.mjs reads the seed from apps/vscode-extension/resources/octobots-pack/tokenomics/prices.local.json through a relative path. That makes a library depend on the app at build time, the opposite of the usual direction, and only a code comment documents it.
+steps_to_reproduce: Read the script.
+expected: Either the seed lives in the package, or packages/tokenomics/README.md documents the path as a deliberate build-time input.
+actual: Undocumented app path dependency.
+rca: ''
+environment: 'found by the T1.4 review gate (PR #112, 2026-10-05), confirmed by QA'

@@ -1,0 +1,9 @@
+name: B2 - packages/tokenomics update-prices.mjs upstream-wins merge has no test
+status: draft
+severity: minor
+description: packages/tokenomics/scripts/update-prices.mjs merges the pack's prices.local.json seed under upstream, but no test asserts that upstream wins.
+steps_to_reproduce: Flip the merge order in the script so the local seed wins; run `pnpm test`.
+expected: A test fails.
+actual: Every suite passes.
+rca: ''
+environment: 'found by the T1.4 review gate (PR #112, 2026-10-05), confirmed by QA'
