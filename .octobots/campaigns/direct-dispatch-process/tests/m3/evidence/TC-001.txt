@@ -1,0 +1,54 @@
+$ vitest manifest-no-workflows
+[33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/manifest-no-workflows.test.ts > manifest has no workflow surface > declares no workflow command
+ ✓ test/manifest-no-workflows.test.ts > manifest has no workflow surface > declares no workflow menu entry or context value
+ ✓ test/manifest-no-workflows.test.ts > manifest has no workflow surface > keeps the install command id and retitles it
+ ✓ test/manifest-no-workflows.test.ts > manifest has no workflow surface > the RPC contract has no workflow:* method and BindMessage.kind has no workflow
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  21:38:29
+   Duration  261ms (transform 18ms, setup 42ms, collect 25ms, tests 1ms, environment 0ms, prepare 29ms)
+
+$ jq workflow commands
+     104
+$ install command title
+{"command":"octoshell.installOctobotsWorkflowSkill","title":"Octobots: Install Octobots Pack"}
+$ menu workflow count
+0
+$ activationEvents
+["onWebviewPanel:octoshell.campaign","onWebviewPanel:octoshell.mission","onWebviewPanel:octoshell.task","onWebviewPanel:octoshell.bug","onWebviewPanel:octoshell.workflow"]
+$ all commands
+octoshell.openSettings
+octoshell.newMissionInCampaign
+octoshell.newCampaign
+octoshell.refreshCampaigns
+octoshell.addFileToCampaign
+octoshell.deleteCampaign
+octoshell.deleteMission
+octoshell.deleteTask
+octoshell.deleteBug
+octoshell.installOctobotsWorkflowSkill
+octoshell.doctor
+octoshell.installSdlcBundle
+octoshell.updateSdlcBundle
+octoshell.installGraph
+octoshell.rebuildGraph
+octoshell.openTokenomics
+octoshell.exportTokenomicsReport
+$ literal TC jq (step 1) output:
+{"command":"octoshell.installOctobotsWorkflowSkill","title":"Octobots: Install Octobots Pack"}
+$ re-anchored: only the three named commands
+0
+$ any workflow command other than the retained install id
+0
+$ titles mentioning workflow
+[]
+$ description
+Plan and track AI coding work as markdown boards — campaigns, missions, tasks and bugs — right inside VS Code, and install an Octobots pack that teaches CLI coding agents (Claude Code, Codex, Copilot) to drive them.
+$ views/viewsContainers/other workflow mentions in manifest (case-insens, excluding the retained id and the onWebviewPanel activation event)
+43:    "onWebviewPanel:octoshell.workflow"
+154:        "command": "octoshell.installOctobotsWorkflowSkill",

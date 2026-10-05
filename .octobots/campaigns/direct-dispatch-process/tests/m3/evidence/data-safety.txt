@@ -1,0 +1,28 @@
+== solo .octobots sha256 manifest (all files incl. workflows/):     1209 before,     1209 after
+SOLO_MANIFEST_IDENTICAL
+== solo git status --short
+SOLO_STATUS_IDENTICAL
+?? .agents/memory/js-dev/daily/2026-10-02.md
+?? .agents/memory/js-dev/daily/2026-10-03.md
+?? .agents/memory/python-dev/daily/2026-10-02.md
+?? .agents/memory/python-dev/daily/2026-10-03.md
+?? .agents/memory/qa-engineer/daily/2026-10-02.md
+?? .agents/memory/qa-engineer/daily/2026-10-03.md
+== solo workflows/ files in manifest:
+7
+== octoshell .octobots manifest (excl. tests/m3 and T3.5 task):      415 before,      416 after
+60a61
+> 8f5e73eb4b59d6bad59a755318f2201340aa08fc508b50638b84f4090e2eaee3  ./campaigns/direct-dispatch-process/missions/m3-extension-and-board-library-drop-workflow-entit/bugs/validate-workflows-warning-test-ts-fails-on-any-oc/bug.yaml
+242c243
+< cceb404046f04019003cff8ac496c04ecc5c3d1c7813f77bf748df4154376254  ./campaigns/direct-dispatch-process/tests/m7/manual/T7.4-F5-script.md
+---
+> f667b26cf399cfd79fb0cbd64762c16ef859c69de5961821b0edcffe11d93d31  ./campaigns/direct-dispatch-process/tests/m7/manual/T7.4-F5-script.md
+(diff exit 1; lines above are the ONLY changes)
+== octoshell workflows/ files in manifest, before/after:
+5
+5
+== octoshell git status --short before/after
+ M .octobots/campaigns/direct-dispatch-process/missions/m3-extension-and-board-library-drop-workflow-entit/tasks/t3-5-mission-qa-run-tests-m3-live-on-copies-of-the/task.yaml
+---
+ M .octobots/campaigns/direct-dispatch-process/missions/m3-extension-and-board-library-drop-workflow-entit/tasks/t3-5-mission-qa-run-tests-m3-live-on-copies-of-the/task.yaml
+ M .octobots/campaigns/direct-dispatch-process/tests/m7/manual/T7.4-F5-script.md

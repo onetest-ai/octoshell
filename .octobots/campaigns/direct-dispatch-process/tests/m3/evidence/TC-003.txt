@@ -1,0 +1,38 @@
+before exit 0
+after exit 0
+solo IDS_IDENTICAL
+solo before:      575 lines; workflow lines before 0; after 0
+ 114 bug
+  23 campaign
+ 115 mission
+ 323 task
+before exit 0
+after exit 0
+octo IDS_IDENTICAL
+octo before:      170 lines; workflow lines before 0; after 0
+  48 bug
+   4 campaign
+  18 mission
+ 100 task
+== solo (main lib)
+workflow methods: [ 'listWorkflows', 'getWorkflow', 'workflowIdByFolderPath' ]
+file:///private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/main-build/packages/board/dist/board-model.js:293
+        const ids = "campaignId" in parent
+                                 ^
+
+TypeError: Cannot use 'in' operator to search for 'campaignId' in folder:campaigns/edgeserver-persistence/missions/m1-postgres-migration
+    at BoardModel.listWorkflows (file:///private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/main-build/packages/board/dist/board-model.js:293:34)
+    at file:///private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/probe-wf.mjs:7:104
+
+Node.js v24.15.0
+== octo (main lib)
+workflow methods: [ 'listWorkflows', 'getWorkflow', 'workflowIdByFolderPath' ]
+file:///private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/main-build/packages/board/dist/board-model.js:293
+        const ids = "campaignId" in parent
+                                 ^
+
+TypeError: Cannot use 'in' operator to search for 'campaignId' in folder:campaigns/octobots-pack-ergonomics/missions/m3-board-entities-markdown-to-yaml
+    at BoardModel.listWorkflows (file:///private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/main-build/packages/board/dist/board-model.js:293:34)
+    at file:///private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/probe-wf.mjs:7:104
+
+Node.js v24.15.0

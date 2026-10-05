@@ -1,0 +1,60 @@
+validate: file not found: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-smoke-rrxbd7/.octobots/nonexistent.yaml
+ ✓ test/scripts-data-preservation.test.ts  (23 tests) 959ms
+show: file not found: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-uWQHhT/.octobots/nope.yaml
+show: not an entity file or folder: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-uWQHhT/.octobots/README.md
+ ✓ test/scripts-smoke.test.ts  (17 tests) 1015ms
+set-criterion: index out of range (1..1)
+set-criterion: unknown op 'toggle'
+ ✓ test/validate-workflows-warning.test.ts  (6 tests) 1158ms
+set-criterion add: missing text
+set-criterion: not a campaign/mission/task entity file (bugs have no acceptance criteria)
+usage: set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>
+usage: set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>
+set-status: invalid state "nearly-done" (expected one of: draft, active, executing, awaiting approval, done, failed, cancelled)
+set-status: path not found: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-ju3EFa/.octobots/nope
+usage: set-status.js <parent-dir|entity.yaml> "<entity title>" <state>
+  state: draft | active | executing | awaiting approval | done | failed | cancelled
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-kRyKJb/.octobots/campaigns/camp/missions/m1-auth/tasks/t1/task.yaml:
+  - name "T1" is just an id/placeholder — use the form `<id> - descriptive name` (e.g. "M3 - Skills workspace", "T3.1 - Add JWT validation to /login"); the bare id alone is not a name
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-XNOjd8/.octobots/campaigns/camp/campaign.yaml:
+  - missing a `name`
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-2NPFgt/.octobots/campaigns/camp/missions/m1-auth/tasks/t1/task.yaml:
+  - name "T1" is just an id/placeholder — use the form `<id> - descriptive name` (e.g. "M3 - Skills workspace", "T3.1 - Add JWT validation to /login"); the bare id alone is not a name
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-d7uvrf/.octobots/campaigns/octograph/campaign.yaml:
+  - missing a `name`
+validate: not an entity file (<kind>.yaml): /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-5SS8EF/.octobots/campaigns/octograph/missions/m3-part-m3/workflows/run/workflow.js
+validate: no entity (<kind>.yaml) in /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-yadgJ4/.octobots/campaigns/empty
+validate: not an entity file (<kind>.yaml): /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-buxqHt/.octobots/notes.txt
+ ✓ test/scripts-cli-scenarios.test.ts  (76 tests) 3625ms
+
+ Test Files  25 passed (25)
+      Tests  293 passed (293)
+   Start at  21:40:16
+   Duration  3.96s (transform 701ms, setup 0ms, collect 2.68s, tests 8.99s, environment 2ms, prepare 1.07s)
+
+-------------------------|---------|----------|---------|---------|---------------------------------
+File                     | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s               
+-------------------------|---------|----------|---------|---------|---------------------------------
+All files                |   97.41 |    83.31 |   98.79 |   97.41 |                                 
+ mission-planner/scripts |   97.21 |    82.32 |    98.7 |   97.21 |                                 
+  add-bug.js             |     100 |       90 |     100 |     100 | 11                              
+  add-campaign.js        |     100 |       75 |     100 |     100 | 16-18                           
+  add-doc.js             |   84.21 |     64.7 |     100 |   84.21 | 13-15,27-29                     
+  add-mission.js         |   92.85 |    71.42 |     100 |   92.85 | 28-30                           
+  add-task.js            |   93.02 |    68.42 |     100 |   93.02 | 26-28                           
+  delete-bug.js          |   98.21 |    77.77 |     100 |   98.21 | 55                              
+  delete-task.js         |   92.72 |    46.15 |     100 |   92.72 | 13-15,54                        
+  doctor.js              |   97.79 |     87.7 |     100 |   97.79 | 141-142,165-167                 
+  entity-io.mjs          |   99.07 |     77.3 |   95.83 |   99.07 | 89,197-198                      
+  legacy-workflows.mjs   |     100 |      100 |     100 |     100 |                                 
+  list.js                |     100 |      100 |     100 |     100 |                                 
+  migrate.js             |   91.34 |    73.72 |     100 |   91.34 | ...-155,194-195,211-212,220-221 
+  pending-io.mjs         |     100 |    91.83 |     100 |     100 | 41-42,46,60-61,88,94            
+  set-criterion.js       |     100 |    94.11 |     100 |     100 | 23                              
+  set-status.js          |     100 |      100 |     100 |     100 |                                 
+  show.js                |     100 |    86.66 |     100 |     100 | 9,20                            
+  skill-marker.mjs       |     100 |    95.23 |     100 |     100 | 28                              
+  validate.js            |   98.47 |    81.81 |     100 |   98.47 | 51-52                           
+ octobots-doctor/scripts |     100 |    92.68 |     100 |     100 |                                 
+  pack-reconcile.mjs     |     100 |    92.68 |     100 |     100 | 61,93,104,119,123               
+-------------------------|---------|----------|---------|---------|---------------------------------

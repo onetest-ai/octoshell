@@ -4,7 +4,8 @@ title: "@octoshell/board exports no Workflow API; EntityKind has 4 kinds; acorn 
 mission: M3
 covers: [M3-AC1]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m3/runs/RUN-2026-10-05-001.md}
 priority: critical
 size: S
 ---

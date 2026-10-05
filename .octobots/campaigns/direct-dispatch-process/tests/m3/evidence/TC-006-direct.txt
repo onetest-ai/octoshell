@@ -1,0 +1,24 @@
+=== solo copy
+validateBoard warnings: 6  errors mentioning workflow: 0  total findings: 6
+  warning: campaigns/sensor-assignment-uplift/missions/m2-player-role-on-the-edge-match-roster-read-only/workflows/m2-execution: no longer read since pack v57
+  warning: campaigns/session-replay-track-store-and-read-api/missions/m1-real-analysis-table-and-batch-copy-writer/workflows/m1-analysis-store: no longer read since pack v57
+  warning: campaigns/session-replay-track-store-and-read-api/missions/m2-time-range-read-api-with-bulk-identity-resoluti/workflows/m2-tracks-read-api: no longer read since pack v57
+  warning: campaigns/session-replay-track-store-and-read-api/missions/m3-live-edge-contract-on-sessionrecordingspanrespo/workflows/m3-live-edge: no longer read since pack v57
+  warning: campaigns/session-replay-track-store-and-read-api/missions/m4-verification-red-proofs-and-live-e2e-against-a/workflows/m4-verification: no longer read since pack v57
+  warning: campaigns/session-replay-track-store-and-read-api/missions/m5-pipeline-level-admin-action-lock-closes-the-cyc/workflows/m5-admin-lock: no longer read since pack v57
+validate.js workflow warnings over 23 campaign dirs: 6
+SETS_EQUAL: true
+=== octo copy
+validateBoard warnings: 5  errors mentioning workflow: 0  total findings: 5
+  warning: campaigns/octograph-code-architecture-graph/missions/m3-drift-doctor-and-the-shipped-cli/workflows/build-and-gate: no longer read since pack v57
+  warning: campaigns/octograph-code-architecture-graph/missions/m4-board-overlay-own-and-conflicts/workflows/build-and-gate: no longer read since pack v57
+  warning: campaigns/octograph-code-architecture-graph/missions/m5-interactive-setup-installer/workflows/build-and-gate: no longer read since pack v57
+  warning: campaigns/octograph-code-architecture-graph/missions/m6-extension-bridge/workflows/build-and-gate: no longer read since pack v57
+  warning: campaigns/octograph-code-architecture-graph/missions/m7-working-sets-surface-the-discovered-delta/workflows/build-and-gate: no longer read since pack v57
+validate.js workflow warnings over 4 campaign dirs: 5
+SETS_EQUAL: true
+=== literal TC command 2 (validate.js on sensor-assignment-uplift m2 dir, as written -- campaign dir expected by validate.js?)
+warning: campaigns/sensor-assignment-uplift/missions/m2-player-role-on-the-edge-match-roster-read-only/workflows/m2-execution: no longer read since pack v57
+(literal command exit/grep above)
+=== validate.js on sensor-assignment-uplift campaign dir
+warning: campaigns/sensor-assignment-uplift/missions/m2-player-role-on-the-edge-match-roster-read-only/workflows/m2-execution: no longer read since pack v57

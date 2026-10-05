@@ -4,7 +4,8 @@ title: "Dev host on the octoshell repo: tree shows octograph M6 without a workfl
 mission: M3
 covers: [M3-AC4, M3-AC2]
 kind: ui
-status: draft
+status: blocked
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m3/runs/RUN-2026-10-05-001.md}
 priority: high
 size: M
 ---

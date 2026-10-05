@@ -1,0 +1,38 @@
+$ build ext (verify)
+> node scripts/graph-payload.mjs --verify && node scripts/shipped-skills.mjs --verify && node esbuild.mjs && vite build
+octograph payload is current.
+exit 
+$ graph-payload.test
+ ✓ test/graph-payload.test.ts > the pack version stays honest about the payload's content > meta: the lock is a non-empty map of integer versions, none ahead of the current one
+ ✓ test/graph-payload.test.ts > the pack version stays honest about the payload's content > meta: the guard is not vacuous — a byte-different payload fails against the same version
+ ✓ test/graph-payload.test.ts > isDirectRun — the guard deciding whether the freshness check runs at all > is true when this module IS the entry point — a plain path
+ ✓ test/graph-payload.test.ts > isDirectRun — the guard deciding whether the freshness check runs at all > is true when this module IS the entry point — a path with a space
+ ✓ test/graph-payload.test.ts > isDirectRun — the guard deciding whether the freshness check runs at all > is true when this module IS the entry point — a path with a hash
+ ✓ test/graph-payload.test.ts > isDirectRun — the guard deciding whether the freshness check runs at all > is true when this module IS the entry point — a non-ASCII path
+ ✓ test/graph-payload.test.ts > isDirectRun — the guard deciding whether the freshness check runs at all > is false when some other module is the entry point (imported by a test)
+ ✓ test/graph-payload.test.ts > isDirectRun — the guard deciding whether the freshness check runs at all > is false, not a throw, when there is no argv[1] at all (`node -e`)
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > rejects an unknown mode with exit 2 and names what it expected
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > reports a payload that is current, with exit 0
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > fails with exit 1 and an actionable message when the payload is STALE
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > fails with exit 1 when the payload is missing entirely
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > --write regenerates a payload the very next --verify accepts
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > leaves the real committed payload untouched while doing all of that
+
+ Test Files  1 passed (1)
+      Tests  20 passed (20)
+   Start at  21:39:24
+   Duration  683ms (transform 45ms, setup 44ms, collect 49ms, tests 401ms, environment 0ms, prepare 26ms)
+
+$ git diff origin/main versions json
+diff --git a/apps/vscode-extension/scripts/graph-payload-versions.json b/apps/vscode-extension/scripts/graph-payload-versions.json
+index 37e95a99..5b050171 100644
+--- a/apps/vscode-extension/scripts/graph-payload-versions.json
++++ b/apps/vscode-extension/scripts/graph-payload-versions.json
+@@ -14,5 +14,6 @@
+   "53": "2161e17d4c71e6b798c210d212f99f0b1c551ad335f5b099a9626f1e0c02d90d",
+   "54": "21e9a4b3c11dcaa275fb948d5e284aa39282a5aa02dc8c403167825366a0395f",
+   "55": "68b917080bdc2c6261d1b43af91ea7bc77dfde26ad67ec8d0564d9e2babd7079",
+-  "56": "43f980c75ddfeb07c3cb5f840ea5ff81bca9d0b7aa8211b7f43356465fcf8133"
++  "56": "43f980c75ddfeb07c3cb5f840ea5ff81bca9d0b7aa8211b7f43356465fcf8133",
++  "57": "7cb13ba7edf463937212c2172f9ec564196cd4e7f0ac8898c8c9b082408c1fab"
+ }

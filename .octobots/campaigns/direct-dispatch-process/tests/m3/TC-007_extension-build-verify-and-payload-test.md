@@ -4,7 +4,8 @@ title: "Extension build (--verify) passes; graph-payload.test.ts green on 57"
 mission: M3
 covers: [M3-AC6, M3-AC7]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m3/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---
