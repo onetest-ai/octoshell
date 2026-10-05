@@ -17,7 +17,7 @@
 // Self-gates on .octobots/ so it is inert in non-Octobots repos.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { parseSetStatus, statusNowEquals } from "./status-flip.mjs";
+import { parseSetStatusAll, statusNowEquals } from "./status-flip.mjs";
 
 const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
 if (!existsSync(join(projectDir, ".octobots"))) process.exit(0);
@@ -36,25 +36,30 @@ try {
 } catch {
   process.exit(0);
 }
+if (!evt || typeof evt !== "object") process.exit(0);
 
 if ((evt.tool_name ?? evt.toolName) !== "Bash") process.exit(0);
-const command = (evt.tool_input ?? evt.toolInput ?? {}).command ?? "";
-if (!command.includes("set-status.js")) process.exit(0);
+const command = (evt.tool_input ?? evt.toolInput ?? {})?.command;
+if (typeof command !== "string" || !command.includes("set-status.js")) process.exit(0);
 
-const parsed = parseSetStatus(command);
-if (!parsed) process.exit(0);
-if (parsed.state !== "done") process.exit(0);
-
-// Mission ids are `M<n>`; task ids are `T<m>.<n>`. Only missions gate.
-const isMission = /^M\d+\b/.test(parsed.title);
-const isTask = /^T\d+\.\d+\b/.test(parsed.title);
-if (!isMission || isTask) process.exit(0);
+// Every `… done` call on a MISSION in the command. Mission ids are `M<n>`; task ids are `T<m>.<n>`.
+// Only missions gate. A chain such as `set-status.js <m> "T1.3 - …" done && set-status.js <c> "M1 -
+// …" done` must still gate M1, so all calls are considered, not just the first.
+const candidates = parseSetStatusAll(command).filter(
+  (c) => c.state === "done" && /^M\d+\b/.test(c.title) && !/^T\d+\.\d+\b/.test(c.title),
+);
+if (candidates.length === 0) process.exit(0);
 
 // The command ran; did the board change? (`; echo` can make a failed set-status exit 0.)
-if (!(await statusNowEquals(parsed, evt.cwd ?? projectDir))) process.exit(0);
+const titles = [];
+for (const c of candidates) {
+  if (await statusNowEquals(c, typeof evt.cwd === "string" ? evt.cwd : projectDir, projectDir)) titles.push(c.title);
+}
+if (titles.length === 0) process.exit(0);
+const named = titles.map((t) => `"${t}"`).join(", ");
 
 const directive = [
-  `⛔ MISSION-COMPLETION GATE (blocking) — "${parsed.title}" was just marked \`done\`.`,
+  `⛔ MISSION-COMPLETION GATE (blocking) — ${named} ${titles.length === 1 ? "was" : "were"} just marked \`done\`.`,
   "",
   "A mission is NOT complete until the agent-driven completion gate passes green.",
   "Before you do anything else, invoke the **mission-completion-gate** skill and run it",

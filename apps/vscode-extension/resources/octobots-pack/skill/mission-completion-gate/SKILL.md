@@ -84,9 +84,9 @@ dispatches the addressee with them, and then hands the answers back in a follow-
    actually is, in code or in the test, before the gate goes green, unless the user explicitly signs
    it off.
    Run the full suite on the project's **fast lane** and run coverage **once, on the coverage lane
-   only**. Read both lanes from `AGENTS.md § Test lanes`; where the project has not declared them yet,
-   use the commands documented in its `CLAUDE.md` / `AGENTS.md`. Name those commands in the brief,
-   never a command of your own.
+   only**. Read the project's declared test lanes (`AGENTS.md § Test lanes`; where a project has not
+   declared them yet, use the project's documented commands in its `CLAUDE.md` / `AGENTS.md`). Brief
+   the agents with those commands by name, never with a command of your own.
    Where octograph is installed, `impact --diff`'s `tests that historically move with this` section
    feeds this question directly. A suggested test that the coverage run never exercised is worth a
    look before calling coverage sufficient.

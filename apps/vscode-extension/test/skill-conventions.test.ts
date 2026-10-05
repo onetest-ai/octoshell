@@ -141,6 +141,19 @@ describe("mission-completion-gate: orchestrator-dispatched phases", () => {
     expect(text).not.toMatch(/`make\s|\bmake\s+(ci|coverage|[\w-]*-test[\w-]*)\b|edgeserver|uv run|-n auto/);
   });
 
+  it("words the test lanes exactly as mission-execution does (one phrasing in both skills)", () => {
+    const flat = (t: string): string => t.replace(/\s+/g, " ");
+    const shared = [
+      "Read the project's declared test lanes",
+      "(`AGENTS.md § Test lanes`; where a project has not declared them yet, use the project's documented commands in its `CLAUDE.md` / `AGENTS.md`)",
+      "Brief the agents with those commands by name, never with a command of your own",
+    ];
+    for (const phrase of shared) {
+      expect(flat(skill("mission-execution"))).toContain(phrase);
+      expect(flat(gate())).toContain(phrase);
+    }
+  });
+
   it("is free of the retired Workflow-tool template and its names", () => {
     expect(text).not.toMatch(/Workflow\(|export const meta|workflow-designer|baseBranch|TESTS_SCHEMA|agentType:/);
     expect(text).toMatch(/Do not use the `Workflow` tool/);

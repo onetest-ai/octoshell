@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { execFileSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { SET_STATUS, makeStatusBoard, postToolUse, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
+import { SET_STATUS, createMissionNamed, makeStatusBoard, postToolUse, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
 
 const GATE = join(__dirname, "..", "resources", "octobots-pack", "hooks", "mission-gate.mjs");
 
@@ -107,10 +107,78 @@ describe("mission-gate.mjs", () => {
       expect(directiveOf(pipe(b.repo, runAndPost(b.repo, cmd)))).toContain("M1 - Venue ingest");
     });
 
-    it("stays silent when the script cannot be located to verify against (fail closed)", () => {
+    it("stays silent when the pack's resolver is not installed in the project (fail closed)", () => {
+      const b = makeStatusBoard("octo-gate-", { install: false });
+      const cmd = setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");
+      expect(pipe(b.repo, runAndPost(b.repo, cmd))).toBe("");
+    });
+  });
+
+  describe("security: entity-io.mjs comes from the installed pack only, never from the command", () => {
+    /** A planted `<dir>/entity-io.mjs` that drops a marker file the moment anything imports it. */
+    function plant(repo: string): { dir: string; marker: string } {
+      const dir = join(repo, "evil");
+      mkdirSync(dir);
+      const marker = join(repo, "PWNED");
+      writeFileSync(
+        join(dir, "entity-io.mjs"),
+        `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "x");\n` +
+          "export const mapBoardStatus = () => \"done\";\nexport const resolveStatusTarget = () => ({ dir: '/', kind: 'mission' });\n" +
+          "export const resolveEntityFile = () => ({ file: '/', format: 'yaml' });\nexport const readEntity = () => ({ status: 'done' });\n",
+      );
+      return { dir, marker };
+    }
+
+    it("never imports an entity-io.mjs beside a set-status.js path the command merely names", () => {
       const b = makeStatusBoard("octo-gate-");
-      const cmd = `node scripts/set-status.js "${b.campaignDir}" "M1 - Venue ingest" done`;
+      const { dir, marker } = plant(b.repo);
+      // The shell runs nothing but `echo`; before the fix the hook imported evil/entity-io.mjs.
+      const cmd = `echo ${dir}/set-status.js "${b.campaignDir}" "M1 - Venue ingest" done`;
       expect(pipe(b.repo, postToolUse(b.repo, cmd))).toBe("");
+      expect(existsSync(marker)).toBe(false);
+    });
+
+    it("confirms through the installed resolver even when the command ran a set-status.js elsewhere", () => {
+      const b = makeStatusBoard("octo-gate-");
+      const { dir, marker } = plant(b.repo);
+      spawnSync("sh", ["-c", setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done")], { cwd: b.repo });
+      const cmd = `node ${dir}/set-status.js "${b.campaignDir}" "M1 - Venue ingest" done`;
+      expect(directiveOf(pipe(b.repo, postToolUse(b.repo, cmd)))).toContain("M1 - Venue ingest");
+      expect(existsSync(marker)).toBe(false);
+    });
+  });
+
+  describe("command parsing", () => {
+    it("gates a mission flipped after a task in the same chained command", () => {
+      const b = makeStatusBoard("octo-gate-");
+      const cmd =
+        setStatusCommand(b.missionDir, "T1.1 - Parse ids", "done") + " && " + setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");
+      expect(directiveOf(pipe(b.repo, runAndPost(b.repo, cmd)))).toContain('"M1 - Venue ingest"');
+    });
+
+    it("reads past `2>&1 | tail`, a `--force=…` flag, and a board path containing spaces", () => {
+      const b = makeStatusBoard("octo gate spaced ");
+      const cmd = `node "${SET_STATUS}" --force=reason "${b.campaignDir}" "M1 - Venue ingest" done 2>&1 | tail -1`;
+      // set-status.js does not take --force yet (M5): flip for real, then post the flagged command.
+      spawnSync("sh", ["-c", setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done")], { cwd: b.repo });
+      expect(directiveOf(pipe(b.repo, postToolUse(b.repo, cmd)))).toContain("M1 - Venue ingest");
+    });
+
+    it("keeps a quoted title containing ; && \" and ' as one argument", () => {
+      const b = makeStatusBoard("octo-gate-");
+      const title = `M2 - a; b && say "hi" it's`;
+      createMissionNamed(b, title);
+      const cmd = `node "${SET_STATUS}" "${b.campaignDir}" 'M2 - a; b && say "hi" it'"'"'s' done`;
+      expect(directiveOf(pipe(b.repo, runAndPost(b.repo, cmd)))).toContain(title);
+    });
+
+    it("never throws or prints a stack for a null payload or a non-string command", () => {
+      const b = makeStatusBoard("octo-gate-");
+      for (const input of ["null", "42", JSON.stringify({ tool_name: "Bash", tool_input: { command: 7 } })]) {
+        const r = spawnSync("node", [GATE], { cwd: b.repo, env: { ...process.env, CLAUDE_PROJECT_DIR: b.repo }, input, encoding: "utf8" });
+        expect(r.status).toBe(0);
+        expect(r.stdout + r.stderr).toBe("");
+      }
     });
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { makeStatusBoard, postToolUse, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
@@ -117,10 +117,33 @@ describe("work-log.mjs", () => {
       expect(entries(b.repo)).toHaveLength(0);
     });
 
-    it("writes nothing when the script cannot be located to verify against (fail closed)", () => {
-      const b = makeStatusBoard("octo-worklog-");
-      run(b.repo, postToolUse(b.repo, `node scripts/set-status.js "${b.campaignDir}" "M1 - Venue ingest" done`));
+    it("writes nothing when the pack's resolver is not installed in the project (fail closed)", () => {
+      const b = makeStatusBoard("octo-worklog-", { install: false });
+      run(b.repo, runAndPost(b.repo, setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done")));
       expect(entries(b.repo)).toHaveLength(0);
     });
+  });
+
+  it("logs every confirmed flip in a chained command, not just the first", () => {
+    const b = makeStatusBoard("octo-worklog-");
+    const cmd =
+      setStatusCommand(b.missionDir, "T1.1 - Parse ids", "done") +
+      " && " +
+      setStatusCommand(b.campaignDir, "M9 - no such mission", "done") +
+      "; " +
+      setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");
+    run(b.repo, runAndPost(b.repo, cmd));
+    expect(entries(b.repo).map((e) => `${e.task ?? e.mission}:${e.state}`)).toEqual(["T1.1:done", "M1:done"]);
+  });
+
+  it("never imports an entity-io.mjs beside a set-status.js path the command merely names (security)", () => {
+    const b = makeStatusBoard("octo-worklog-");
+    const evil = join(b.repo, "evil");
+    mkdirSync(evil);
+    const marker = join(b.repo, "PWNED");
+    writeFileSync(join(evil, "entity-io.mjs"), `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "x");\n`);
+    run(b.repo, postToolUse(b.repo, `echo ${evil}/set-status.js "${b.missionDir}" "T1.1 - Parse ids" active`));
+    expect(existsSync(marker)).toBe(false);
+    expect(entries(b.repo)).toHaveLength(0);
   });
 });
