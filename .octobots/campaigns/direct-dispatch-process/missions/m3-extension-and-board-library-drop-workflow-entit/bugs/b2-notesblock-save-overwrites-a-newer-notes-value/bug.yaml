@@ -1,9 +1,20 @@
 name: B2 - NotesBlock Save overwrites a newer notes value that arrived while the editor was open
-status: draft
+status: done
 severity: major
 description: 'apps/vscode-extension/src/webview/notes-block.tsx: while the notes editor is open it ignores incoming notes changes (editingRef), and Save calls onSave(draft) unconditionally. An external edit to notes made while the editor is open (another agent, git pull, board watcher reload) is silently overwritten. Notes are often the only copy of a decision record. Pre-existing; found by the M3 B1 review (PR #141). Sibling of M3 B1 (Field/ChecklistField blur saves).'
 steps_to_reproduce: 'Render <NotesBlock notes=''A'' onSave={spy}/>; click Edit notes; rerender with notes=''B''; click Save. spy is called with ''A''. In the app: open an entity with notes A, click Edit notes, change notes to B on disk, click Save.'
 expected: Save never silently discards a newer value. If the draft is unchanged since the editor opened, Save writes nothing and the view shows B. If the draft was edited and the notes changed underneath, the user sees a conflict (notes changed on disk since you opened the editor) and chooses to overwrite or reload; the newer text is never dropped silently.
 actual: onSave(draft) runs unconditionally, so stale 'A' (or an edit based on 'A') replaces 'B' with no warning.
-rca: ''
+rca: |-
+  Cause: NotesBlock froze its draft while the editor was open (editingRef ignores incoming notes) and Save called onSave(draft) unconditionally, so a notes value that arrived externally while editing (agent, git pull, board watcher) was overwritten by the stale draft with no warning.
+
+  Fix (PR #142): a baseline (baseRef) is captured when the editor opens. At Save the current notes prop is compared by value to the baseline. Unchanged: write as before. Changed and draft untouched: write nothing, close, view shows the newer notes. Changed and draft edited: no write; inline role=alert conflict offering Overwrite (writes the draft) or Reload (discards the draft and closes onto the newer notes). Comparison is by value, so own-save echoes and no-op reloads are not conflicts.
+
+  Evidence (QA, 2026-10-05): temporary probe through real TaskView and BugView with a stateful mocked rpc (update mutates the record, spine event fires on external change). Scenarios a, b-overwrite, b-reload, c and own-save echo all passed for both views (8/8). Mutation: base notes-block.tsx restored -> test/notes-block.test.tsx 5 failed and 6/8 probe tests failed (c/echo stay green, as expected); file restored, git diff clean. Gate: pnpm build, typecheck, lint, test all exit 0 (board 293, tokenomics 102, extension 947, graph 653); PR #142 checks green.
+
+  Known follow-ups (non-blocking, per review):
+  1. Reopening the editor within the save round-trip opens on the old text, and an untouched Save can write it back. Predates the PR; window under 1s.
+  2. A second external change while the conflict alert is up is overwritten by Overwrite without a re-alert.
+  3. The alert buttons inherit red text (text-status-error).
+  4. The alert wording says "on disk", which is inexact for the webview.
 environment: 'found by the PR #141 review gate, 2026-10-05'
