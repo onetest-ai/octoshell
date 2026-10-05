@@ -4,7 +4,8 @@ title: "doctor.js on a copy of solo: one warn for 6 workflows/ folders, overall 
 mission: M2
 covers: [M2-AC4]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m2/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---

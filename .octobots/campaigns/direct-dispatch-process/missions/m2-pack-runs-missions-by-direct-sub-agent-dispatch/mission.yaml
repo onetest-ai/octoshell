@@ -25,7 +25,7 @@ tokenomics:
   effort_days: 2.5
   size_tshirt: L
   complexity_score: 15
-notes: |-
+notes: |
   ## Planning notes (Rio, 2026-10-05)
 
   M2 goes before M3: the pack's scripts are dependency-free .mjs with no import edge to packages/board, so the extension keeps compiling while it still reads workflows; M3 then removes the board types and every consumer together.
@@ -43,3 +43,19 @@ notes: |-
   ## Local-fork protection: moved to M7 (2026-10-05)
 
   The warn-first design that was here (T2.5, AC9/AC10) was superseded the same day by campaign decision 13 (revised): agent-driven reconcile. It is planned as M7, which lands after M2. M2 keeps today's overwrite behaviour; its TCs say so.
+
+  ## QA verification
+
+  T2.5, qa-engineer, 2026-10-05. Run record: `.octobots/campaigns/direct-dispatch-process/tests/m2/runs/RUN-2026-10-05-001.md` (evidence under `tests/m2/evidence/`). 11 of 12 cases pass, 1 fails (TC-012, existing bug B3); no case blocked. TC-009 was executed by the orchestrator (QA agents cannot dispatch sub-agents). All cases ran on copies; baselines of `git status --short` for solo and octoshell compared at the end: solo identical, octoshell shows only the T2.5 board files.
+
+  Mission AC -> test case(s) -> record:
+  - M2-AC1 (workflow skill + 7 scripts gone; 4 skills): TC-001 PASS, TC-002 PASS, TC-008 PASS (deviation noted: a second historical-reference paragraph in mission-planner SKILL.md, no execution instruction).
+  - M2-AC2 (installPack retires them, keeps create-team.js): TC-001 PASS, TC-002 PASS, TC-010 PASS (before upToDate false, after true, all pack skills v57).
+  - M2-AC3 (validate.js warns per workflows/ folder, same exit; workflow.js exits 2): TC-003 PASS, TC-004 PASS (1 mission warning, 5 on the campaign), TC-005 PASS. The workflow.json half is UNREACHABLE on real data (neither board has one); covered only by scripts-cli-scenarios.test.ts.
+  - M2-AC4 (doctor.js one warn with count + fix): TC-006 PASS (1 warn, count 6, 0 fail, fix never suggests deleting).
+  - M2-AC5 (mission-execution = direct dispatch): TC-008 PASS, TC-009 PASS (5/5 plan an Agent dispatch with model:, 0/5 Workflow), TC-011 PASS.
+  - M2-AC6 (gate = 5 dispatched phases + stopping rule): TC-011 PASS.
+  - M2-AC7 (gate hook says relay, not 'directly'; coverage:pack passes): TC-007 PASS; `pnpm coverage:pack` exit 0, 96.53/78.79/98.18/96.53 (evidence/AC7-coverage-pack.md; no TC maps it).
+  - M2-AC8 (hooks act only on a real status change): TC-012 FAIL. The no-such-mission and control cases pass, but the hooks act when the status EQUALS the request: a repeated `done` re-prints the gate directive and a repeated `active` appends a duplicate work-log line. This is bug B3 (already filed, not re-filed). The AC's literal text (acts when status now equals the requested state) is implemented; the case's Expected Final State (a call that changed nothing is silent) is not.
+
+  Mission ACs are not ticked by this task. Open bugs: B1, B2, B3 (B3 decides AC8).
