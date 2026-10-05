@@ -77,7 +77,7 @@ Each entity has a **status**: `draft → executing → awaitingApproval → done
   `apps/vscode-extension` (host + React/Vite webview on VS Code theme tokens).
 - **Octobots pack** (`resources/octobots-pack`): the `mission-planner` skill + command scripts,
   the `mission-execution` / `mission-completion-gate` / `knowledge-explorer` / `octobots-doctor` skills, and
-  session hooks (`hooks/primer.mjs`, work‑log, mission‑gate), installed into `<workspace>/.claude` on demand. No agents — agent
+  session hooks (`hooks/primer.mjs`, work‑log, mission‑gate), installed on demand (skills under `<workspace>/.claude`, hook scripts in `.octobots/hooks`, registration in `.claude/settings.json`). No agents — agent
   rosters belong to the repo.
 - See `docs/tech-stack.md` for the full stack and `CLAUDE.md` for the architecture tour.
 

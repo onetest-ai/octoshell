@@ -83,7 +83,7 @@ closed chat is lost work; attached, it is what makes a mission resumable months 
 | `Refresh Campaigns` | Re-read the tree from disk |
 | `Delete Campaign` / `Mission` / `Task` / `Bug` | Remove an entity and its folder |
 | `Install Octobots Pack` | Install the agent-facing skills and hooks; reconciles skills you changed locally |
-| `Doctor` | Check the pack and the board for health findings |
+| `Doctor` | Check the Claude config dir, the pack, the hooks and leftover `workflows/` folders |
 | `Install SDLC Team Bundle` · `Update SDLC Team Bundle` | Install role agents (tech-lead, QA, devs…) |
 | `Install Graph` · `Rebuild Graph` | Build the architecture map — see [octograph](docs/octograph.md) |
 | `Tokenomics` · `Export Tokenomics Report` | What the work cost |

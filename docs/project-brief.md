@@ -37,7 +37,7 @@ plan a first‑class, in‑repo, markdown artifact that both the editor UI and t
   markdown; the board is rebuilt from disk and a debounced, git‑quiescence‑gated watcher keeps the
   UI honest through `git checkout` / `stash` / `rebase`.
 - **For agents.** Installing the Octobots pack drops the Octobots skills (`mission-planner`, `mission-execution`, `mission-completion-gate`, `knowledge-explorer` and `octobots-doctor`) and session hooks (primer, work‑log, mission‑gate) into
-  `<workspace>/.claude`. Skills the user changed locally are staged for an agent to merge rather than overwritten. It installs **no agents** — planning and execution run under whatever agent
+  the workspace: skills under `.claude`, hook scripts in `.octobots/hooks`, registration in `.claude/settings.json`. Skills the user changed locally are staged for an agent to merge rather than overwritten. It installs **no agents** — planning and execution run under whatever agent
   the user is already in, and agent rosters belong to the repo. Agents create and update board entities through small scripts
   (`add-task.js`, `set-status.js`, `set-criterion.js`, `validate.js`, …) and the same files the
   editor renders.

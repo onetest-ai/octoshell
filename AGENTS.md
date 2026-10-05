@@ -29,13 +29,13 @@ apps/vscode-extension/
 ├── src/host/        ← extension-host (Node): BoardHost, TreeDataProvider, EntityPanelManager,
 │                       board-watcher, rpc-dispatcher, octobots-skill/hooks installer
 ├── src/webview/      ← single Vite bundle (React + Tailwind): CampaignView/MissionView/TaskView/
-│                       BugView/WorkflowView, rpc-client, octoshell-shim
+│                       BugView, rpc-client, octoshell-shim
 ├── src/protocol/     ← shared host↔webview message types
 └── resources/octobots-pack/  ← shipped payload copied into a target workspace's `.claude/`
     └── skill/mission-planner/scripts/entity-io.mjs   ← see "Dual schema" below
 
 packages/board/        ← @octoshell/board — pure functions over the .octobots/ tree
-├── src/entity-schema.ts, write.ts, validate.ts, slug.ts, types.ts, workflow-meta.ts
+├── src/entity-schema.ts, write.ts, validate.ts, slug.ts, types.ts
 └── test/
 
 packages/tokenomics/    ← @octoshell/tokenomics — prices agent transcripts, rolls up cost
