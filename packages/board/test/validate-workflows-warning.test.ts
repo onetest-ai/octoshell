@@ -55,6 +55,20 @@ describe("validateBoard: leftover workflows/ folders", () => {
     expect(lines.sort()).toEqual(campaignDirs(copy).flatMap(packWarnings).sort());
   });
 
+  // Pins the FIRST branch of boardRootOf (nearest `.octobots` wins) on both runtimes. On every
+  // ordinary layout the second branch (parent of the nearest `campaigns`) gives the same answer, so
+  // without a folder literally named `campaigns` inside the board either side could drop the
+  // `.octobots` branch and stay green while the two disagree.
+  it("reports from the .octobots root even when a campaign folder is itself named campaigns", () => {
+    const [board] = realBoardCopies(); // named .octobots
+    const odd = join(board!, "campaigns", "campaigns");
+    cpSync(campaignDirs(board!)[0]!, odd, { recursive: true });
+    mkdirSync(join(odd, "workflows", "w"), { recursive: true });
+    const lines = boardWarnings(board!);
+    expect(lines).toContain(`warning: campaigns/campaigns/workflows/w: ${SUFFIX}`);
+    expect(lines.sort()).toEqual(campaignDirs(board!).flatMap(packWarnings).sort());
+  });
+
   it("emits nothing for a board with no workflows/ folder", () => {
     const root = scratchDir("board-clean-");
     mkdirSync(join(root, "campaigns", "c1"), { recursive: true });
