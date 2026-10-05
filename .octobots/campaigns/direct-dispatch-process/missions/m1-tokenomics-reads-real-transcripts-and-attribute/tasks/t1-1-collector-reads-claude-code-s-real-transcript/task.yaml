@@ -1,0 +1,9 @@
+name: T1.1 - Collector reads Claude Code's real transcript roots
+status: draft
+role: js-dev
+description: 'Scope: port solo''s collect.mjs root resolution, slug rule and dedupe, plus its selftest.mjs roots suite (isolated HOME) and README section, into resources/octobots-pack/tokenomics/. Out of scope: prices.json (T1.4; solo''s copy is older, never copy wholesale) and the TS source (T1.2). Downstream: T1.2 mirrors the rules; T1.3 consumes segments.'
+acceptance_criteria:
+  - text: node tokenomics/selftest.mjs roots suite is green and shows mission AC1-AC3 (slug filter, root precedence, dedupe + byte-identical rerun)
+    done: false
+  - text: a test fails if the developer's real CLAUDE_CONFIG_DIR leaks into the selftest (HOME and CLAUDE_CONFIG_DIR are isolated)
+    done: false

@@ -1,0 +1,13 @@
+name: T3.3 - Board library drops the Workflow entity; validateBoard warns
+status: draft
+role: js-dev
+description: 'Scope: types.ts:73-127, index.ts:14 and managed-block.ts:1,23,106; board-model.ts (the 10 blocks) and write.ts (the 10 blocks); validate.ts:4,218-338,352,367-374 replaced by a warning pass mirroring validate.js text; delete workflow-meta.ts and extract-meta.ts and drop acorn; delete the 16 test and fixture files and modify the 5; regenerate the octograph payload and rewrite the 57 hash. Out of scope: tokenomics workflowId. Downstream: octograph bundle; M4 adds a validate.ts rule on top.'
+acceptance_criteria:
+  - text: no Workflow API exported; EntityKind has 4 kinds; acorn removed (mission AC1)
+    done: false
+  - text: BoardModel loads identical ids on a board with workflows/ and creates no workflow entity (mission AC2)
+    done: false
+  - text: validateBoard emits one warning per workflows/ folder with the same text as validate.js and no error (mission AC3)
+    done: false
+  - text: graph payload regenerated, --verify passes, 57 hash rewritten in a visible diff line (mission AC6)
+    done: false

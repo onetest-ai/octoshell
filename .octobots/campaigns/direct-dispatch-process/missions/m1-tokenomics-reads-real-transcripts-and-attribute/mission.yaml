@@ -1,0 +1,32 @@
+name: M1 - Tokenomics reads real transcripts and attributes campaign branches
+status: draft
+description: Port solo's collector fix into the pack and make the extension's ClaudeTranscriptSource read the same roots. Transcripts are read from $OCTOBOTS_TOKENOMICS_PROJECTS_DIR or --projects-dir, else $CLAUDE_CONFIG_DIR/projects, else ~/.claude/projects. The legacy <repo>/.claude/projects is read in addition, and only the project's own slug directory (/[^A-Za-z0-9]/g -> '-') is scanned. Add a campaign-level attribution bucket (own cost row for campaign-level branches). Keep hand-added model prices across refreshes. Bump the pack to v57 (the single bump for the campaign).
+acceptance_criteria:
+  - text: Given HOME holding ~/.claude/projects/<slug-of-repo>/<s>.jsonl and another project's slug dir, when collect.mjs runs, then raw/segments.jsonl contains only that repo's sessions
+    done: false
+  - text: Given CLAUDE_CONFIG_DIR=X, then X/projects/<slug> replaces ~/.claude/projects. Given --projects-dir Y or OCTOBOTS_TOKENOMICS_PROJECTS_DIR=Y, then Y replaces both
+    done: false
+  - text: Given the same session in the home root and the legacy repo-local root, then it is counted once (the copy with more turns wins), and a second run produces byte-identical segments.jsonl
+    done: false
+  - text: Given the extension opened on a repo whose transcripts exist only under ~/.claude/projects/<slug>, when tokenomics:report is called, then the report has non-zero segments. The pack CLI and ClaudeTranscriptSource return the same segment ids for the same roots, and a workspace path under /.claude/worktrees/ resolves to the main checkout's slug
+    done: false
+  - text: 'Given a segment whose branch contains a campaign slug but resolves to no mission (for example campaign/sensor-assignment-uplift or feat/<slug>), or matches a campaign''s tokenomics.branches (for example chore/uwb-ranging-plan), then runs.json reports it under that campaign''s campaign-level row (mission: null), never spread across missions; rollup.mjs and rollup.ts agree; mission rows are unchanged'
+    done: false
+  - text: Given prices.local.json with claude-opus-5-5 and claude-sonnet-5-5, when update-prices.mjs refreshes prices.json (or packaging runs), then both models are still priced; where upstream has an entry, upstream wins
+    done: false
+  - text: All pack markers, SKILL.md versions and OCTOBOTS_PACK_VERSION read 57, and graph-payload-versions.json has a 57 entry
+    done: false
+documents:
+  - label: M1 functional test cases
+    target: .octobots/campaigns/direct-dispatch-process/tests/m1/README.md
+tokenomics:
+  effort_days: 2.5
+  size_tshirt: M
+  complexity_score: 15
+notes: |-
+  ## Planning notes (Rio, 2026-10-05)
+
+  M1 goes first: it is fully independent and fixes a live defect (the extension's Tokenomics view reads an empty directory today) and it is the first pack-touching mission, so it makes the single 56->57 bump, exactly as ebf5496 did (constant, 5 SKILL.md, 4 markers, regenerated graph payload, versions json).
+  Do NOT copy solo's prices.json wholesale (solo's copy is OLDER: 2026-07-28 vs the pack's 2026-08-16, and lacks claude-mythos-*).
+  Dual implementations that must change together: rollup.mjs / packages/tokenomics/src/rollup.ts; entity-schema.ts / entity-io.mjs (campaign `tokenomics`); render.mjs / render.ts.
+  Keep the recursive wf_ walk in claude-source.ts: old transcripts still nest Workflow agents under subagents/workflows/wf_<id>/.

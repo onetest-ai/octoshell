@@ -1,0 +1,44 @@
+name: M5 - Plan review before build, and generalised agent-ops guards
+status: draft
+description: 'Make the BA + tech-lead plan review a structural step, enforced in the script AND the UI: set-status.js and the extension''s status dropdown (BoardHost.setStatus) refuse to move a mission to `active` until a plan-review sign-off is recorded, with an explicit override (--force; a confirm dialog). Add the agent-ops rules solo learned (no `timeout` binary on macOS, nohup servers with full redirection and bounded readiness polling), a config-driven QA environment guard (qa-env.mjs), a declared test-lanes contract (AGENTS.md § Test lanes) and a parked-test scan. Dogfood in octoshell''s own CLAUDE.md and AGENTS.md.'
+acceptance_criteria:
+  - text: Given a mission whose own and campaign notes contain no `## Plan review` section satisfying the recorded shape (Reviewers naming a BA and a tech-lead + Verdict approved|approved with nits), when `set-status.js <dir> "M<n> - ..." active` runs, then it exits 1 naming the missing review and the file is unchanged; with `--force` it flips and appends `## Plan review overridden (<date>)` to the mission notes; with a satisfying review in the mission or campaign notes it flips normally
+    done: false
+  - text: Given the extension's status dropdown (BoardHost.setStatus), moving a mission to `active` without a satisfying plan review shows a modal confirm dialog naming the missing review and does NOT change the status unless the user confirms; confirming flips it and appends the same `## Plan review overridden (<date>)` note; with a satisfying review it flips without a dialog; the script and the host use the same rule (parity test)
+    done: false
+  - text: 'mission-planner § Plan review says: dispatch ba and tech-lead in parallel (read-only) with explicit model:; each must run the queries, read real rows and grep call sites per AC, and return blocking vs nits; findings are resolved on the board, user decisions go back to the user, and the result is recorded under `## Plan review (<roles>, <date>)` in the recorded shape'
+    done: false
+  - text: 'Given .octobots/qa-env.json declaring DSN env vars with templates and a name pattern, `qa-env.mjs <db> <cmd...>`: exits 3 without executing when <db> fails the pattern; exits 3 when the config declares a var whose template lacks {db}; exports every declared var otherwise; runs the optional probe and exits 4 when it does not print <db>; then execs <cmd> and prints the target DB to stderr'
+    done: false
+  - text: 'mission-execution states: start servers with `nohup ... > log 2>&1 < /dev/null &` and poll readiness with a bounded `curl -m 2` loop; macOS has no `timeout`, so use the Bash tool timeout or `perl -e ''alarm shift; exec @ARGV'' N cmd`; never background a test command (the only exceptions are non-terminating servers/watchers); QA server, migration and seed commands run through qa-env.mjs'
+    done: false
+  - text: Given a repo, scan-parked.js lists pytest xfail/skip markers without reason= and vitest/jest .skip/.todo/.fails/xit/xdescribe; it allows skipIf/runIf and pytest skipif with a reason, and exits 1 on any unsigned hit; `.octobots/parked-signoff.txt` lines (path:line + who + date) exempt a hit; on octoshell it exits 0 and lists vault-calibration.test.ts:10 as allowed
+    done: false
+  - text: 'doctor.js warns when AGENTS.md has no `## Test lanes` section declaring `fast:` and `coverage:` commands; octoshell''s AGENTS.md declares them (fast: pnpm --filter <pkg> test, coverage: pnpm coverage) and its CLAUDE.md carries the generalised rules; gate phase 1 calls scan-parked.js'
+    done: false
+documents:
+  - label: M5 functional test cases
+    target: .octobots/campaigns/direct-dispatch-process/tests/m5/README.md
+tokenomics:
+  effort_days: 3
+  size_tshirt: L
+  complexity_score: 16
+notes: |-
+  ## Plan review record shape (decision)
+
+  A mission may start (move to `active`) when its own notes OR its campaign's notes contain a section whose heading matches `^## Plan review` and whose body has BOTH lines:
+    Reviewers: <comma list that names both a BA and a tech-lead, by role or persona: ba|Alex and tech-lead|Rio>
+    Verdict: approved | approved with nits
+  A section with Verdict: changes requested (or no Verdict line, or only one reviewer role) does NOT satisfy the rule. Example:
+    ## Plan review (Alex + Rio, 2026-10-02)
+    Reviewers: ba (Alex), tech-lead (Rio)
+    Verdict: approved with nits
+  The override (script --force, UI confirm dialog) flips the status and appends `## Plan review overridden (<date>): <who/why>` to the mission notes, so the bypass is itself on the board.
+  Implementation seam: ONE pure function `planReviewStatus(missionNotes, campaignNotes)` implemented in the pack (set-status.js) and mirrored in packages/board (validate.ts/board-model) for BoardHost.setStatus, with a parity vitest (dual implementation hazard). The extension's status dropdown calls BoardHost.setStatus, NOT the script, so the UI check must live in the host; the confirm dialog is a modal vscode.window.showWarningMessage in the host, not in the webview.
+
+  ## Planning notes (Rio, 2026-10-05)
+
+  User decisions 3 and 6 apply (UI enforcement; AGENTS.md § Test lanes; qa-env.mjs config-driven; mission-input.js retired in M2).
+  Solo's .agents/manual-qa/qa-db.sh hard-codes EDGESERVER_* and is the model for qa-env.mjs (exit 3 refused, exit 4 probe mismatch).
+  Octoshell's lanes: fast = `pnpm --filter <pkg> test`, coverage = `pnpm coverage`; parked-test baseline is one allowed skip: packages/graph/test/vault-calibration.test.ts:10 describe.skipIf(!HAS_VAULT).
+  Real plan-review examples: solo uwb-ranging-ingest-vendor-v01 campaign notes carry '## Plan review (Alex + Rio, 2026-10-02)'; solo epic-013 M10 is draft and neither it nor its campaign has one.

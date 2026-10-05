@@ -1,0 +1,9 @@
+name: T1.3 - Campaign-level attribution bucket and declared campaign branches
+status: draft
+role: js-dev
+description: 'Scope: rollup.mjs:350-363 and packages/tokenomics/src/rollup.ts:133-160 return a campaign match when no mission resolves; model `tokenomics` on campaign in BOTH entity-schema.ts:45,59,210 and entity-io.mjs:69,184 (dual-schema hazard, AGENTS.md); render the row in render.mjs, render.ts and the webview tokenomics view. Out of scope: apportioning campaign cost to missions. Downstream: M5 QA reads campaign rows; CLAUDE.md branch rule.'
+acceptance_criteria:
+  - text: 'runs.json carries a campaign-level row (mission: null) for campaign-level branches; rollup.mjs and rollup.ts agree on the same segments (mission AC5)'
+    done: false
+  - text: an entity round-trip test shows campaign tokenomics.branches survives add-doc.js and set-status.js writes
+    done: false

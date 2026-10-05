@@ -1,0 +1,7 @@
+name: T5.1 - set-status.js requires a recorded plan review to start a mission
+status: draft
+role: js-dev
+description: 'Scope: the pack set-status.js mission/active path: planReviewStatus(missionNotes, campaignNotes), exit 1 + unchanged file when missing, --force appends the overridden note; mission-gate.mjs untouched. Out of scope: the extension UI (T5.2) and planner text (T5.3). Downstream: T5.2 mirrors the pure function.'
+acceptance_criteria:
+  - text: 'the refusal, --force and normal-flip cases of mission AC1 are covered by scripts-cli-scenarios, including a section with Verdict: changes requested and one with only one reviewer role being rejected'
+    done: false

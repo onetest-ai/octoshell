@@ -1,0 +1,32 @@
+name: M2 - Pack runs missions by direct sub-agent dispatch
+status: draft
+description: Upstream solo's 57-local mission-execution and mission-completion-gate, with solo-specifics replaced by project-declared test lanes (declaration format lands in M5; until then 'the project's documented commands'). Delete workflow-designer and the 7 workflow scripts (incl. mission-input.js) from the pack, and retire them on install. Replace workflow validation in validate.js with a non-fatal 'no longer read' warning. Fix the gate hook's directive. Board library and extension are untouched (M3).
+acceptance_criteria:
+  - text: Given the v57 pack, skill/workflow-designer/ and scripts/{add-workflow,sync-meta,add-run,mission-input}.js, scripts/{extract-meta,workflow-meta}.mjs and scripts/vendor/acorn.mjs do not exist; OCTOBOTS_SKILLS (octobots-skill.ts:14) and doctor.js:63 list 4 skills
+    done: false
+  - text: Given a workspace with any of those installed, when installPack runs, then they are removed, and files the pack never shipped (e.g. create-team.js) are kept
+    done: false
+  - text: Given a mission or campaign dir holding workflows/<slug>/ (workflow.js or workflow.json), when validate.js <dir> runs, then it prints one `warning:` line per folder naming the path and 'no longer read since pack v57', and the exit code is what the entity alone would produce; validate.js <path>/workflow.js exits 2 with 'not an entity file'
+    done: false
+  - text: Given a board with N workflows/ folders, doctor.js reports one `warn` (not `fail`) with the count and the fix
+    done: false
+  - text: 'mission-execution tells the orchestrator to: dispatch one sub-agent per phase with the Agent tool, in the foreground, with explicit model:; require a fenced JSON verdict and treat a missing one as BLOCKED; relay questions instead of nested spawning; resume from board + git and re-dispatch a dead agent; read the project''s fast and coverage lanes with no make/edgeserver/uv literals. It contains no `Workflow(` or workflow.js execution instruction, and its rules are numbered without duplicates'
+    done: false
+  - text: mission-completion-gate defines its 5 phases as orchestrator dispatches; defines blocking as an AC demonstrably unmet, a reproducible defect, or a security exposure with a PoC; allows one review round plus one fix round with residue filed as board bugs; green means 0 failed, 0 xfailed/todo and no skip without an environmental reason; coverage runs on the coverage lane only
+    done: false
+  - text: Given `set-status.js ... "M1 - ..." done`, hooks/mission-gate.mjs emits a directive that says the orchestrator relays Rio's questions to the devs and does not say 'directly'; `pnpm coverage:pack` still passes (90/90/90/70)
+    done: false
+documents:
+  - label: M2 functional test cases
+    target: .octobots/campaigns/direct-dispatch-process/tests/m2/README.md
+tokenomics:
+  effort_days: 3
+  size_tshirt: L
+  complexity_score: 17
+notes: |-
+  ## Planning notes (Rio, 2026-10-05)
+
+  M2 goes before M3: the pack's scripts are dependency-free .mjs with no import edge to packages/board, so the extension keeps compiling while it still reads workflows; M3 then removes the board types and every consumer together.
+  Solo-specific text to generalise when porting: solo mission-execution :116 (edgeserver/app search scope), :118-121 (uv run pytest, make edgeserver-test-fast, 'This Mac'), :122-123 (make ci). Defect to fix while porting: the fork has two rules numbered 7. Solo gate :85-86 (make edgeserver-test-fast, make coverage). Gap: the fork never tells QA to run the mission's tests/m<n>/ cases (M4 adds it).
+  Retired files must go into RETIRED_SKILLS/RETIRED_FILES (octobots-skill.ts:20,26) or copyTree (:95-105) leaves them forever. mission-planner's create-team.js (solo-only) is not shipped and must survive an upgrade.
+  Solo's `version: 57-local` parses to null (parseVersion regex), so packStatus reports solo not-installed today; accepting the re-install prompt BEFORE v57 ships would roll solo back to v56 workflows (tell the user to decline until 0.1.0).

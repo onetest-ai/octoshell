@@ -1,0 +1,9 @@
+name: 'T1.5 - Mission QA: run tests/m1 live on solo''s real transcripts and board'
+status: draft
+role: qa-engineer
+description: 'Scope: run TC-001..010 from a disposable solo worktree (<solo>/.claude/worktrees/qa-m1), which unwinds to solo''s slug and writes artifacts into the worktree, so solo''s committed .octobots/tokenomics/ is never touched. Name the record per AC, write `## QA verification` into task and mission notes, update each TC''s status, tick only the verified ACs. Out of scope: fixes (file bugs). Downstream: M1 gate.'
+acceptance_criteria:
+  - text: every TC has PASS, FAIL or UNREACHABLE with evidence and a named pre-existing record
+    done: false
+  - text: solo's .octobots/tokenomics/ is byte-identical before and after (git status clean); the qa-m1 worktree is removed
+    done: false

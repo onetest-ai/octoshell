@@ -1,0 +1,9 @@
+name: T1.4 - Local price overrides survive refresh; bump pack to v57
+status: draft
+role: js-dev
+description: 'Scope: a workspace-owned prices.local.json, added to PRESERVED (octobots-tokenomics.ts:21), merged under upstream by both update-prices.mjs scripts and both price lookups (rollup.mjs:76-80, prices.ts:40-43); seed it with the two models from solo prices.json. Do the 56->57 bump exactly as ebf5496 did (constant, 5 SKILL.md, 4 markers, regenerated graph payload, versions json). Out of scope: the release commit. Downstream: every later mission ships under v57.'
+acceptance_criteria:
+  - text: update-prices.mjs refresh keeps claude-opus-5-5 and claude-sonnet-5-5 priced; upstream wins on conflict (mission AC6)
+    done: false
+  - text: all markers, SKILL.md versions and the constant read 57 and graph-payload-versions.json has a 57 entry; graph-payload.test.ts and `pnpm --filter @octoshell/vscode-extension build` (--verify) are green (mission AC7)
+    done: false

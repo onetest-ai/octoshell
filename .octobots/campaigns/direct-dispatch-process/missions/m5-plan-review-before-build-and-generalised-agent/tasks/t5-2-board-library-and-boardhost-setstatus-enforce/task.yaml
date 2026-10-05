@@ -1,0 +1,11 @@
+name: T5.2 - Board library and BoardHost.setStatus enforce plan review with a confirm dialog
+status: draft
+role: js-dev
+description: 'Scope: planReviewStatus mirrored in packages/board (pure, exported); BoardHost.setStatus (the status dropdown''s path) returns/raises ''plan review missing'' for mission->active; the extension host shows a modal showWarningMessage confirm and, on confirm, calls setStatus with force and appends the overridden note; parity vitest against the pack function using the same inputs; regenerate the graph payload and rewrite the 57 hash. Out of scope: the script. Downstream: M6 shares BoardHost.'
+acceptance_criteria:
+  - text: BoardHost.setStatus refuses mission->active without a satisfying review unless forced; the forced path appends the overridden note (mission AC2)
+    done: false
+  - text: the host shows the modal confirm and cancel leaves the status unchanged; confirm flips it (host unit test with a stubbed window)
+    done: false
+  - text: pack and board implementations agree on every case of a shared table (parity test)
+    done: false

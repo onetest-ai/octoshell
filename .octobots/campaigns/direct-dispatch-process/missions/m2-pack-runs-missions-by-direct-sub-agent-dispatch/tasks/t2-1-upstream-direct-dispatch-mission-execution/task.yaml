@@ -1,0 +1,9 @@
+name: T2.1 - Upstream direct-dispatch mission-execution
+status: draft
+role: js-dev
+description: 'Scope: replace pack mission-execution/SKILL.md:61-233,474-536,565 with solo''s text (version: 57). Generalise solo :116-123: lanes come from the project''s declared fast/coverage commands (declaration format: M5 T5.5; until then ''the project''s documented commands''). Fix the duplicate rule 7. Keep the ''legacy workflows/ = historical reference only'' paragraph. Fold the workflow-designer ''three loops'' idea (implementation / testing / fixing) in as prose about when to re-run tests. Out of scope: TC-running details (M4), plan review (M5). Downstream: T2.2 cross-references the dispatch rules.'
+acceptance_criteria:
+  - text: a conventions vitest asserts each dispatch rule's keyword is present (Agent tool, foreground, model:, JSON verdict/BLOCKED, relay questions, resume from board + git, fast/coverage lanes) and the forbidden literals (Workflow(, workflow.js execution, make, edgeserver, uv run) are absent (mission AC5)
+    done: false
+  - text: rules are numbered without duplicates
+    done: false

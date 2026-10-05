@@ -1,0 +1,31 @@
+name: M4 - Functional test cases are a gate-run unit of every mission
+status: draft
+description: 'The planner authors tests/m<n>/ (README with an AC to TC map, shared preconditions, named pre-existing records, TC-NNN_<slug>.md cases driven by API/CLI calls and/or Playwright MCP) for every mission, before build, and links it as a mission document. A new script scaffolds and links it. validate checks it as a WARNING ONLY (never an error, never blocks done). The gate''s QA phase runs the cases live on real pre-existing data, names the record per criterion, writes notes, and ticks only verified ACs. Defines the TC file format whose frontmatter M6 parses: id, title, mission, covers (list of M<n>-AC<k>), kind (api|ui|cli|unit), status (draft|ready|pass|fail|blocked), optional last_run (date + evidence path).'
+acceptance_criteria:
+  - text: Given a mission with k ACs and no tests folder, when add-tests.js <mission-dir> runs, then <campaign>/tests/m<n>/README.md exists with an AC map holding rows M<n>-AC1..ACk and sections 'Shared preconditions', 'Pre-existing records' and 'Assumptions to confirm', a TC template with the format frontmatter is available, and the mission gains the document 'M<n> functional test cases' pointing at that README; a second run changes nothing and exits 0; an existing README is never overwritten
+    done: false
+  - text: Given a mission (any status except cancelled) whose README is missing, unlinked, leaves an AC index unmapped, or maps an AC to no existing TC-NNN_*.md, then validate.js and validateBoard report a `warning` naming the gap (e.g. 'M1-AC11 is not mapped'); the exit code of validate.js is what the entity alone would produce; the finding is never an error; set-status.js <mission> done is never blocked by it
+    done: false
+  - text: 'Given a TC file, validate.js and validateBoard warn when frontmatter id does not match the filename, mission does not match the folder''s m<n>, covers (or the legacy alias requirements) is empty or names an M<n>-AC<k> the mission does not have, or `## Steps` / `## Expected Final State` is missing; a legacy file with requirements: and no status/kind passes these checks'
+    done: false
+  - text: mission-planner documents the TC format (frontmatter fields), the {{base_url}} rule, the API/CLI/Playwright-MCP execution modes, and 'a pre-existing record per case; say UNREACHABLE rather than fabricate'; it says tests are authored with the mission, before build, and runs add-tests.js
+    done: false
+  - text: 'The gate''s QA phase and the mission''s last QA task: run every TC in tests/m<n>/; write runs/RUN-YYYY-MM-DD-NNN.md; name the pre-existing record per criterion (a criterion proved only on QA-created data is not passed); write `## QA verification` into task and mission notes via entity-io.mjs; tick exactly the criteria with evidence; treat ''could not drive the browser / log in'' as BLOCKED'
+    done: false
+  - text: 'BoardModel and the board watcher ignore tests/ under a campaign: no entity, and no reconcile loop from runs/ or evidence/ writes beyond the existing debounce'
+    done: false
+documents:
+  - label: M4 functional test cases
+    target: .octobots/campaigns/direct-dispatch-process/tests/m4/README.md
+tokenomics:
+  effort_days: 2.5
+  size_tshirt: M
+  complexity_score: 15
+notes: |-
+  ## Planning notes (Rio, 2026-10-05)
+
+  User decision 2: tests pairing is a WARNING ONLY. It never fails validate.js (exit code unchanged), never fails validateBoard, never blocks set-status.js done. A board of old missions is therefore noisy but never broken.
+  TC file format (shared with M6): YAML frontmatter id, title, mission, covers (list of M<n>-AC<k>), kind (api|ui|cli|unit), status (draft|ready|pass|fail|blocked), optional last_run (date + evidence path); body sections '## Preconditions', '## Steps', '## Expected Final State'; the README holds the AC -> TC map in a markdown table whose first column is M<n>-AC<k>. Legacy files in solo's uwb campaign use `requirements:` and `type:` and have no status/kind/mission: the parser treats `requirements` as an alias of `covers`, derives mission from the m<n> folder, and reports status unknown (M6 migrates them).
+  Real gaps that prove the rule: uwb m1 has 11 ACs but its README maps M1-AC1..AC10; m2 has 10 ACs and maps 9; m6 has no README and no TCs.
+  Dual implementation: the rule lands in BOTH validate.js (pack) and validate.ts (board) in one task, with a parity vitest. The tests/ folder must be ignored by BoardModel and the watcher (no entity, no reconcile loop from runs/ or evidence/ writes).
+  The documents link is stored verbatim by add-doc.js (it does no resolution); use the repo-relative path .octobots/campaigns/<c>/tests/m<n>/README.md, the convention existing boards use.

@@ -1,0 +1,35 @@
+name: M6 - Test cases are first-class on the board
+status: draft
+description: Test cases become a board concept, not just files. The board library parses .octobots/campaigns/<c>/tests/m<n>/TC-*.md into a TestCase entity (frontmatter id, title, mission, covers, kind, status, optional last_run). The extension shows a Tests node per campaign grouped by mission with status counts, a Tests section and AC coverage view on the mission panel, and a test summary on the campaign panel (uncovered ACs highlighted in warning style). QA writes results back to each TC's status through set-test-status.js, so the board reflects the run. Legacy TC files without the new frontmatter still list, as status `unknown`, with a one-line migrate suggestion. Depends on M3 (workflow removal) and M4 (tests folder convention, add-tests.js, TC format).
+acceptance_criteria:
+  - text: '@octoshell/board parses .octobots/campaigns/<c>/tests/m<n>/TC-*.md into TestCase { id, title, mission, covers, kind, status, lastRun?, path } with frontmatter id, title, mission, covers, kind (api|ui|cli|unit), status (draft|ready|pass|fail|blocked) and optional last_run (date + evidence path); only TC-*.md files are parsed (README.md, runs/, evidence/ are not); exposes listTestCases(campaign[, mission]) and per-mission AC coverage; the YAML entity model and ids are unchanged'
+    done: false
+  - text: A malformed TC (unparseable frontmatter, unknown status or kind, id not matching the filename) is reported by validate (validateBoard and validate.js) as a warning, never an error, and is still listed; a legacy TC with no status/kind/mission frontmatter (solo's uwb campaign) lists with status `unknown`, accepts `requirements` as the alias of `covers`, derives mission from the m<n> folder, and gets a one-line migrate suggestion naming set-test-status.js --migrate
+    done: false
+  - text: The extension sidebar shows a `Tests` node under each campaign (when it has TCs), grouped by mission, each group labelled with counts by status (e.g. `m2 · 32 · 30✓ 1✗ 1 blocked`); expanding lists the TCs with a status icon; clicking a TC opens its file
+    done: false
+  - text: The mission panel has a Tests section listing the mission's TCs with status, and an AC coverage view mapping each mission AC to its covering TCs, with uncovered ACs highlighted in warning style (never error style); a mission with no tests shows an empty state with the add-tests.js hint
+    done: false
+  - text: 'The campaign panel shows a test summary across all missions: totals by status (incl. unknown) and the count of uncovered ACs, with each mission''s row linking to its mission panel'
+    done: false
+  - text: set-test-status.js <tc-file> <status> [--evidence <path>] [--date <YYYY-MM-DD>] updates only the frontmatter status and last_run (body byte-identical), is idempotent, exits 2 on an invalid status or non-TC path, and with --migrate adds missing frontmatter to a legacy file; the gate's QA phase and the last QA task skill text call it for every TC they run, so the board reflects the run; the extension picks the change up through the watcher without a reload loop
+    done: false
+  - text: pnpm lint/build/typecheck/test/coverage are green and coverage:pack passes; graph payload regenerated with the 57 hash rewritten in a visible diff line; pack validate.js and packages/board validate.ts emit identical TC messages (parity test); the extension gains no runtime dependency
+    done: false
+documents:
+  - label: M6 functional test cases
+    target: .octobots/campaigns/direct-dispatch-process/tests/m6/README.md
+tokenomics:
+  effort_days: 3
+  size_tshirt: L
+  complexity_score: 17
+notes: |-
+  ## Planning notes (Rio, 2026-10-05)
+
+  Requested by the user on 2026-10-05 as a first-class concern: test cases are a critical part of every campaign.
+  Depends on M3 (board library workflow removal) and M4 (the TC format and tests/ ignore rule that this mission turns into an entity). Runs last, after M5 (shares BoardHost).
+  TestCase shape: { id (TC-NNN), title, mission (M<n>), covers (M<n>-AC<k>[]), kind api|ui|cli|unit, status draft|ready|pass|fail|blocked (unknown when absent), lastRun?: { date, evidence }, path }. Entity identity = folder-relative file path; it is NOT a fifth EntityKind of the YAML board (it lives in markdown); BoardModel exposes listTestCases(campaignId, missionN?) and getTestCoverage(missionId).
+  Coverage rule: an AC is uncovered when no TC lists it in covers (README map is documentation; frontmatter is the data). Legacy alias: `requirements:` = covers; `type:` ignored; mission derived from the m<n> folder.
+  Malformed TC (bad YAML, unknown status/kind) = validate WARNING, never an error (decision 2's spirit). Performance: solo uwb has 100+ TC files; parse lazily per campaign and cache by mtime.
+  Real data: solo uwb tests/m1..m6 (legacy frontmatter, m1 unmapped AC11, m6 empty) and this campaign's own tests/m1..m6 (new frontmatter) are the awkward records.
+  Write-back: set-test-status.js <tc-file> <status> [--evidence <path>] [--date YYYY-MM-DD] edits ONLY the frontmatter (status, last_run), preserves the body byte-for-byte, exit 2 on an invalid status; --migrate adds the missing frontmatter to a legacy file (id from filename, title from the H1, mission from the folder, covers from requirements or the README map, kind from the 'type'/steps heuristic or left unknown) and never touches the body.

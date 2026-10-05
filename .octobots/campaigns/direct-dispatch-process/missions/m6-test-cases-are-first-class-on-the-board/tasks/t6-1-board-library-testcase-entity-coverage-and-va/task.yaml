@@ -1,0 +1,9 @@
+name: 'T6.1 - Board library: TestCase entity, coverage and validate warnings'
+status: draft
+role: js-dev
+description: 'Scope: packages/board TestCase type, a frontmatter parser (lenient: `requirements` alias, derived mission, `unknown` status), listTestCases and per-mission coverage on BoardModel (lazy per campaign, mtime cache), validate.ts warnings for malformed/legacy TCs and the pack validate.js mirror, parity vitest, graph payload regeneration + 57 hash. Out of scope: UI, write-back. Downstream: T6.3, T6.4.'
+acceptance_criteria:
+  - text: TestCase parsing and listTestCases/coverage behave per mission AC1 on this campaign's own tests and on a copy of solo's uwb tests (legacy)
+    done: false
+  - text: malformed and legacy TCs warn with identical text in validate.ts and validate.js; a legacy file lists as unknown with the migrate suggestion (mission AC2, AC7 parity)
+    done: false

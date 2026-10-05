@@ -1,0 +1,7 @@
+name: 'T5.4 - qa-env.mjs: config-driven QA database guard'
+status: draft
+role: js-dev
+description: 'Scope: a new script in skill/mission-execution/scripts/ generalising solo .agents/manual-qa/qa-db.sh (which hard-codes EDGESERVER_*), a documented example config .octobots/qa-env.example.json and a vitest with a stub probe. Out of scope: DB creation. Downstream: the QA brief in the execution skill.'
+acceptance_criteria:
+  - text: exit 3 on a name that fails the pattern and on a template missing {db}, without executing the command (marker file absent); exit 4 when the probe does not print <db>; exports every declared var and prints the target DB to stderr (mission AC4)
+    done: false

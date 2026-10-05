@@ -1,0 +1,7 @@
+name: T4.1 - add-tests.js scaffolds and links a mission's tests folder
+status: draft
+role: js-dev
+description: 'Scope: a new pack script using entity-io.mjs plus the add-doc.js linking rule (repo-relative target, idempotent on target); a TC template skill/mission-planner/templates/TC-template.md carrying the format frontmatter. Test cases go in scripts-cli-scenarios. Out of scope: writing TCs. Downstream: T4.3 tells the planner to run it.'
+acceptance_criteria:
+  - text: add-tests.js creates README with M<n>-AC1..ACk rows and the three sections, links the document, is idempotent and never overwrites an existing README (mission AC1)
+    done: false

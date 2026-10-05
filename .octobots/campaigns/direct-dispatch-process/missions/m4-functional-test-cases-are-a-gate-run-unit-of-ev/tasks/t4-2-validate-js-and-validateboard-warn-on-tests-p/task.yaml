@@ -1,0 +1,9 @@
+name: T4.2 - validate.js and validateBoard warn on tests pairing and TC format
+status: draft
+role: js-dev
+description: 'Scope: the pairing rule and TC file checks in both validate.js and validate.ts (dual implementation, identical messages), always severity warning; the tests/ ignore in board-model.ts and the watcher. Out of scope: running TCs; errors of any kind. Downstream: M6 builds the TestCase entity on this parse.'
+acceptance_criteria:
+  - text: pairing gaps and TC format problems are warnings with identical text in validate.js and validateBoard; validate.js exit code unchanged; set-status.js done not blocked (mission AC2, AC3)
+    done: false
+  - text: BoardModel and the watcher ignore tests/ (mission AC6); graph payload regenerated and the 57 hash rewritten if packages/board changed
+    done: false

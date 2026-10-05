@@ -1,0 +1,9 @@
+name: 'T4.5 - Mission QA: run tests/m4 live on copies of solo''s uwb campaign and octoshell''s board'
+status: draft
+role: qa-engineer
+description: 'Scope: TC-001..011. Update each TC''s status; write `## QA verification`. Out of scope: fixes. Downstream: M4 gate.'
+acceptance_criteria:
+  - text: every TC has PASS, FAIL or UNREACHABLE with evidence and a named pre-existing record
+    done: false
+  - text: originals untouched (git status clean in solo and octoshell)
+    done: false

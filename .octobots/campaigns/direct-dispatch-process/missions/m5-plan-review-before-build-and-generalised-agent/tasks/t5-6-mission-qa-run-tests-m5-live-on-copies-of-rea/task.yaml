@@ -1,0 +1,7 @@
+name: 'T5.6 - Mission QA: run tests/m5 live on copies of real boards and repos'
+status: draft
+role: qa-engineer
+description: 'Scope: TC-001..012; the TC-004 UI half is manual (Extension Development Host). Update each TC''s status; write `## QA verification`. Out of scope: fixes. Downstream: M5 gate.'
+acceptance_criteria:
+  - text: every TC has PASS, FAIL or UNREACHABLE (manual recorded as manual) with evidence and a named pre-existing record; the Postgres probe half is UNREACHABLE if no local Postgres, never stubbed
+    done: false

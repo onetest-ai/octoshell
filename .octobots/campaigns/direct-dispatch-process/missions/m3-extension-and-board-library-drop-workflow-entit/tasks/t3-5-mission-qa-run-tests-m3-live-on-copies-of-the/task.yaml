@@ -1,0 +1,9 @@
+name: 'T3.5 - Mission QA: run tests/m3 live on copies of the real octoshell and solo boards'
+status: draft
+role: qa-engineer
+description: 'Scope: TC-001..010. TC-005 and TC-009 need the Extension Development Host: a manual F5 session with screenshots in tests/m3/evidence/, recorded as manual. Update each TC''s status; write `## QA verification`. Out of scope: fixes. Downstream: M3 gate.'
+acceptance_criteria:
+  - text: every TC has PASS, FAIL or UNREACHABLE (manual recorded as manual) with evidence and a named pre-existing record
+    done: false
+  - text: no original board file changed (sha256/git status)
+    done: false

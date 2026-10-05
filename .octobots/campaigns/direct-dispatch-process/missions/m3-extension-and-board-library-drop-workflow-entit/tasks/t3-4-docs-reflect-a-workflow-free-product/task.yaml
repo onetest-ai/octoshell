@@ -1,0 +1,7 @@
+name: T3.4 - Docs reflect a workflow-free product
+status: draft
+role: js-dev
+description: 'Scope: README.md:18-21,54-55; octoshell CLAUDE.md § Architecture (''workflow-meta.ts...'', ''WorkflowView...'', ''The Octobots workflow pack'' paragraph); AGENTS.md structure block. Out of scope: historical specs under docs/. Downstream: none.'
+acceptance_criteria:
+  - text: '`grep -n "workflow.js\|WorkflowView\|workflow-designer"` on README.md, CLAUDE.md and AGENTS.md returns nothing (mission AC7 docs part)'
+    done: false

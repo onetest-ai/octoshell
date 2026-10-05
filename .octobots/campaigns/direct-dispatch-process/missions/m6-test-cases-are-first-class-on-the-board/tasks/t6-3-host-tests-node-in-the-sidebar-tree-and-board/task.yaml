@@ -1,0 +1,9 @@
+name: 'T6.3 - Host: Tests node in the sidebar tree and BoardHost API'
+status: draft
+role: js-dev
+description: 'Scope: BoardHost test API (list/coverage/summary) over BoardModel; CampaignsTree `Tests` node grouped by mission with status counts and TC leaf items (status icon, click opens the file via the existing openFile path); RPC methods tests:list / tests:coverage; watcher refresh without a reload loop. Out of scope: webview panels (T6.4). Downstream: T6.4 consumes the RPC.'
+acceptance_criteria:
+  - text: Tests node, per-mission count labels and TC leaves behave per mission AC3 on a copy of this campaign's tests and solo's uwb tests (unit tests with real copies)
+    done: false
+  - text: tests:* RPC contract schemas added and covered; no reload loop from runs/ or evidence/ writes
+    done: false

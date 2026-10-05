@@ -1,0 +1,52 @@
+name: Direct dispatch process
+status: draft
+target: apps/vscode-extension/resources/octobots-pack v57 + extension 0.1.0
+description: Ship the process solo proved on the uwb-ranging campaign as the product default. Missions run by orchestrator-dispatched sub-agents; workflow support is removed entirely (pack, board library, extension); two declared test lanes and no parked tests; every mission paired with functional test cases that the gate runs live against pre-existing data, and those test cases are first-class on the board; a BA + tech-lead plan review is enforced before build (script and UI); generalised agent-ops guards; a tokenomics collector that reads where Claude Code actually writes transcripts and gives campaign-level branches their own cost row.
+acceptance_criteria:
+  - text: 'Given a copy of solo''s .claude + .octobots (5 skills incl. two `version: 57-local` forks and workflow-designer), when the 0.1.0 extension installs the pack, then .claude/skills/workflow-designer/ and the 7 retired scripts are gone, every remaining SKILL.md reads `version: 57`, create-team.js is still present, and packStatus reports upToDate: true'
+    done: false
+  - text: Given the shipped VSIX, when its extension/ tree and pack are grepped for `Workflow(`, workflow.js, add-workflow, sync-meta, add-run, mission-input, workflow-designer and octoshell.newWorkflow, then the only hits are the validate/doctor 'no longer read' warning text, the legacy-folder paragraph in the skills, and tokenomics' wf_ transcript reader
+    done: false
+  - text: Given solo's real transcripts and board, when `node .octobots/tokenomics/run.mjs` runs from a solo worktree with the v57 pack, then segments are collected from ~/.claude/projects/<slug>, and the campaign/sensor-assignment-uplift and chore/uwb-ranging-plan segments appear under their campaigns' campaign-level rows (chore/uwb-ranging-plan via a declared tokenomics.branches); every mission row is unchanged
+    done: false
+  - text: Given this campaign's own six missions, each has tests/m<n>/README.md mapping every mission AC and at least one TC-NNN_*.md, linked as a mission document, and validate.js reports no tests-pairing warning on any of them
+    done: false
+  - text: Given a mission with no recorded BA + tech-lead plan review, when it is moved to `active` by set-status.js or by the extension's status dropdown, then both refuse unless overridden (--force on the script, a confirm dialog in the UI)
+    done: false
+  - text: Given a campaign with TC files, then the extension shows its test cases, per-mission status counts and per-AC coverage on the board, and gate QA results are written back to each TC's status
+    done: false
+  - text: Given octoshell main after the last mission, `pnpm lint && pnpm build && pnpm typecheck && pnpm test` and `pnpm coverage` are green, and the parked-test scan reports 0 unsigned-off skips/todos
+    done: false
+documents: []
+notes: |
+  ## User decisions (2026-10-05)
+
+  1. **Workflow support is removed from octoshell ENTIRELY**: pack, board library and extension. Old `workflows/` folders are ignored by the model; validate.js, validateBoard and doctor.js give a non-fatal warning. Files are never touched (no activation-time migration, no auto-delete).
+  2. **Tests pairing is a WARNING ONLY.** validate warns when a mission has no linked tests/m<n>/ or has ACs not mapped to test cases. It is never an error and never blocks `set-status.js ... done`.
+  3. **Plan review is ENFORCED in both the script and the UI.** set-status.js AND the extension's status dropdown (BoardHost.setStatus) refuse to move a mission to `active` until a BA + tech-lead plan-review sign-off is recorded (shape defined in M5 AC1). Override: `--force` on the script, a confirm dialog in the UI.
+  4. **Campaign-level branches get their own campaign-level cost row** in tokenomics, not split across missions. A branch containing the campaign slug without -m<n> (feat/<slug>, chore/<slug>-plan, campaign/<slug>) belongs to the campaign row; an explicit `branches:` declaration on the campaign also counts.
+  5. **Release is 0.1.0** (extension) with workflow pack v57.
+  6. **Defaults for the remaining questions:** rename the "Install Workflow Pack" command title to "Install Octobots Pack" (command id kept); test lanes are declared in an `AGENTS.md § Test lanes` section; qa-env.mjs ships as a config-driven DB guard script; mission-input.js is retired.
+  7. **2026-10-05: test cases get first-class board representation (M6)**: parsed into a TestCase entity by the board library, shown in the sidebar tree, the mission panel (with AC coverage) and the campaign panel, with QA results written back to each TC's status.
+
+  ## Branching
+
+  - Campaign branch: `feat/direct-dispatch-process`. Missions merge into it, never straight to main; one campaign -> main PR at the end.
+  - Mission branches: `feat/direct-dispatch-process-m<n>`. Task branches: `feat/direct-dispatch-process-m<n>-t<k>`.
+  - Branch names drive tokenomics attribution. After M1 ships, the campaign-level branches (`feat/direct-dispatch-process`) are attributed to this campaign's own campaign-level row; this campaign dogfoods that.
+
+  ## Order and landing
+
+  M1 (tokenomics + the single 56->57 pack bump) -> M2 (pack direct dispatch, workflow pack removal) -> M3 (extension + board library drop workflows) -> M4 (tests folder convention, warning-only pairing) -> M5 (plan review enforcement, agent-ops guards, lanes) -> M6 (test cases first-class on the board; needs M3 and M4). No VSIX is cut until M6 is done (package-vsix.yml is workflow_dispatch only). Release: a standalone commit `chore(ext): release 0.1.0 with workflow pack v57` touching only apps/vscode-extension/package.json, body listing the changes since 0.0.51 and per-package verification counts. Removed commands (octoshell.newWorkflow, deleteWorkflow) are noted in the release body. Verify inside the VSIX before publishing: campaign AC2 grep, the 57 markers, absence of workflow-designer, presence of qa-env.mjs, scan-parked.js, add-tests.js, set-test-status.js.
+
+  ## Plan review
+
+  Rio (tech-lead) produced the plan on 2026-10-05 from the real code (octoshell main d1c83cc, solo chore/tokenomics-collector-home-projects f3a0a8f4). **Alex (ba) review: pending.** Not yet recorded as a `## Plan review` section (M5 AC1 defines the shape); this campaign's missions should not be set active until it is.
+
+  ## Real-data notes for QA
+
+  - Workflow folders: 5 in octoshell (octograph m3..m7 workflows/build-and-gate), 6 in solo (sensor-assignment-uplift m2 workflows/m2-execution has runs.jsonl; five session-replay-track-store-and-read-api missions). 0 documents entries point into a workflows/ folder in either board.
+  - solo .octobots/tokenomics/runs.json has 490 unattributed segments; incl. chore/uwb-ranging-plan (5, slug NOT contained, needs declared branches) and campaign/sensor-assignment-uplift (7).
+  - Transcripts live in ~/.claude/projects/-Users-arozumenko-Development-auqanautica, not <repo>/.claude/projects.
+  - solo uwb: m1 has 11 ACs but its README maps M1-AC1..AC10; m2 has 10 ACs and maps 9; m6 has no README and no TCs. These are the awkward records for tests-pairing and board TC representation. uwb TC files use legacy frontmatter (`requirements:`, `type:`, no `status`/`kind`/`mission`).
+  - UI cases cannot be driven by Playwright MCP (VS Code is Electron; no @vscode/test-electron harness): they are unit tests over the real board copies plus manual Extension Development Host (F5) sessions with screenshots, recorded as manual.

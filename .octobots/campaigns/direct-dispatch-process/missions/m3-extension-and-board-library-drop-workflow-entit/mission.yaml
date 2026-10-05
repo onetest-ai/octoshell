@@ -1,0 +1,32 @@
+name: M3 - Extension and board library drop Workflow entities
+status: draft
+description: 'Delete the Workflow entity from packages/board and every consumer in the extension: tree nodes, commands, panel, diagram, RPC, BoardHost API, the activation-time migrateLegacyWorkflows. Existing workflows/ folders are ignored by the model and left untouched on disk. validateBoard mirrors the pack''s warning. The octograph payload is regenerated because it inlines @octoshell/board. The ''Install Workflow Pack'' command is retitled ''Install Octobots Pack'' (id unchanged).'
+acceptance_criteria:
+  - text: '@octoshell/board exports no Workflow* type, parseWorkflowMeta, extractPhases, createWorkflow, deleteWorkflow, appendWorkflowRun or migrateLegacyWorkflows; EntityKind is campaign | mission | task | bug; acorn is no longer a dependency'
+    done: false
+  - text: Given a board containing workflows/ folders, BoardModel loads every campaign, mission, task and bug it loaded before with identical ids and creates no workflow entity; activation modifies no file under any workflows/ (sha256 of every file equal before and after)
+    done: false
+  - text: 'validateBoard returns a severity: "warning" finding per workflows/ folder (the finding severity type widens to "error" | "warning") with the same message text as validate.js, and no error findings for them'
+    done: false
+  - text: package.json contributes no octoshell.newWorkflow, octoshell.deleteWorkflow or octoshell.openWorkflowById command or menu; CampaignsTree yields no workflow node; the RPC contract has no workflow:* method; BindMessage.kind has no "workflow"
+    done: false
+  - text: Given VS Code restoring a panel serialized as octoshell.workflow from a previous session, the panel is disposed without an error notification (one release of back-compat; remove in 0.1.1)
+    done: false
+  - text: graph/octograph.mjs is regenerated, graph-payload.mjs --verify passes, and the 57 hash in graph-payload-versions.json is updated in a visible diff line; `octograph map` and `own` still run on the octoshell repo
+    done: false
+  - text: 'pnpm lint/build/typecheck/test/coverage are green; README, CLAUDE.md and AGENTS.md no longer describe workflows; the command `octoshell.installOctobotsWorkflowSkill` keeps its id and is titled ''Octobots: Install Octobots Pack'' (and doctor.js quotes the new title)'
+    done: false
+documents:
+  - label: M3 functional test cases
+    target: .octobots/campaigns/direct-dispatch-process/tests/m3/README.md
+tokenomics:
+  effort_days: 3
+  size_tshirt: L
+  complexity_score: 16
+notes: |-
+  ## Planning notes (Rio, 2026-10-05)
+
+  Footprint (counted 2026-10-05 on octoshell main d1c83cc): 32 locations in 9 files in packages/board (types.ts, index.ts, managed-block.ts, workflow-meta.ts, extract-meta.ts [imports acorn], board-model.ts, write.ts, validate.ts, package.json) and 40 locations in 14 files in apps/vscode-extension (board-host.ts, extension.ts, rpc-contract.ts, host-events.ts, rpc-dispatcher.ts, campaigns-tree.ts, entity-panel-manager.ts, octoshell-shim.ts, chat-entry.tsx, workflow-view.tsx, workflow-diagram.tsx, octobots-skill.ts, package.json, README.md); 27 test files (delete 20, modify 7).
+  Kept ON PURPOSE: packages/tokenomics claude-source.ts / types.ts workflowId (old transcripts nest Workflow agents under subagents/workflows/wf_<id>/).
+  graph-payload.test.ts goes red whenever packages/board changes: rewrite the 57 hash in graph-payload-versions.json in the same PR, as a visible diff line (allowed by that file's _why).
+  Back-compat: a stub serializer for the old octoshell.workflow panel type disposes silently for one release; remove in 0.1.1. Keybindings to the removed commands report 'command not found' (noted in the release body).

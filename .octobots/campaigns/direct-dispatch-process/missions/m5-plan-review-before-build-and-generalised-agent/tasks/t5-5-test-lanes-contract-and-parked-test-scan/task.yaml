@@ -1,0 +1,9 @@
+name: T5.5 - Test-lanes contract and parked-test scan
+status: draft
+role: js-dev
+description: 'Scope: a new pack script scan-parked.js; the doctor.js lanes check; gate phase 1 calling scan-parked.js; octoshell AGENTS.md § Test lanes and CLAUDE.md generalised rules (dogfood). Out of scope: making pnpm test parallel (already via turbo). Downstream: campaign AC7.'
+acceptance_criteria:
+  - text: scan-parked.js behaves per mission AC6 and exits 0 on octoshell listing vault-calibration.test.ts:10 as allowed
+    done: false
+  - text: 'doctor.js warns on a repo with no `## Test lanes` and not on octoshell; octoshell AGENTS.md declares fast: and coverage: (mission AC7)'
+    done: false

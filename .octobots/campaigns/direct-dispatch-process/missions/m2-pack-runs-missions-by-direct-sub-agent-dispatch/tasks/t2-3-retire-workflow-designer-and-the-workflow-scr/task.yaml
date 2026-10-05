@@ -1,0 +1,9 @@
+name: T2.3 - Retire workflow-designer and the workflow scripts from the pack and the installer
+status: draft
+role: js-dev
+description: 'Scope: delete the 8 pack paths (workflow-designer skill, add-workflow/sync-meta/add-run/mission-input .js, extract-meta/workflow-meta .mjs, vendor/acorn.mjs); octobots-skill.ts:14,20,26 add to OCTOBOTS_SKILLS/RETIRED_SKILLS/RETIRED_FILES; doctor.js:63; rewrite mission-planner/SKILL.md:3,240-242,440-461,473-486,561-568 (role field stays, the workflow comparison goes); knowledge-explorer/SKILL.md:3; fix the octobots-skill.test.ts:69, octobots-scripts.test.ts:29-33,416-425, scripts-cli-scenarios and scripts-smoke cases that exercise the deleted scripts. Out of scope: packages/board source (M3). Downstream: M3 can delete the TS mirror without a pack mirror left.'
+acceptance_criteria:
+  - text: the 8 paths do not exist and OCTOBOTS_SKILLS/doctor.js list 4 skills (mission AC1)
+    done: false
+  - text: installPack on a workspace containing them removes them and keeps create-team.js (mission AC2)
+    done: false

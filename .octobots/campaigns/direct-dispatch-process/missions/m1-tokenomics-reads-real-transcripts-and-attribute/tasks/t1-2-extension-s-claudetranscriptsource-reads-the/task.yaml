@@ -1,0 +1,9 @@
+name: T1.2 - Extension's ClaudeTranscriptSource reads the same roots
+status: draft
+role: js-dev
+description: 'Scope: packages/tokenomics/src/claude-source.ts:20-75 takes a roots resolver (home / config-dir / legacy, injectable for tests) plus worktree unwinding; update the doc comment :5-6; keep the recursive wf_ walk. Out of scope: rollup. Downstream: the extension''s Tokenomics view (rpc-dispatcher.ts:47).'
+acceptance_criteria:
+  - text: tokenomics:report on a repo whose transcripts exist only under the home root has non-zero segments (mission AC4)
+    done: false
+  - text: a parity vitest feeds one fixture root to both collect.mjs (spawned) and the TS source and compares segment ids; a /.claude/worktrees/ path resolves to the main checkout's slug
+    done: false

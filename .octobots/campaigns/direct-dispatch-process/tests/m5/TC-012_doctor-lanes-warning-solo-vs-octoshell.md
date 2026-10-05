@@ -1,0 +1,46 @@
+---
+id: TC-012
+title: "doctor.js lanes warning on solo's AGENTS.md copy and none on octoshell's"
+mission: M5
+covers: [M5-AC7]
+kind: cli
+status: draft
+priority: high
+size: S
+---
+
+# TC-012: doctor.js lanes warning on solo's AGENTS.md copy and none on octoshell's
+
+**Mission:** M5 | **Priority:** high | **Kind:** cli | **Covers:** M5-AC7
+
+## Objective
+
+doctor.js lanes warning on solo's AGENTS.md copy and none on octoshell's. Verifies M5-AC7 of M5 - Plan review before build, and generalised agent-ops guards.
+
+## Preconditions
+
+- Suite prerequisites in `README.md` are met (variables SOLO, OCTO, PACK, WORK; copies made in $WORK; mission branch built).
+- Originals under $SOLO and $OCTO are untouched; this case works on copies.
+
+## Real data (pre-existing record)
+
+copies of the real AGENTS.md of solo (no `## Test lanes` section) and of octoshell (declares fast:/coverage:)
+
+## Commands
+
+```bash
+for r in solo octo; do mkdir -p $WORK/d-$r; cp $( [ $r = solo ] && echo $SOLO || echo $OCTO )/AGENTS.md $WORK/d-$r/; cp -R $WORK/$( [ $r = solo ] && echo solo-octobots || echo octo-octobots ) $WORK/d-$r/.octobots; (cd $WORK/d-$r && node $PACK/skill/mission-planner/scripts/doctor.js --json | jq '.checks[]|select(.name|test("lanes";"i"))'); done
+grep -n -A6 "^## Test lanes" $OCTO/AGENTS.md
+```
+
+## Steps
+
+| # | Action | Expected Result |
+|---|--------|----------------|
+| 1 | doctor.js on the solo copy | A `warn` about the missing `## Test lanes` (fast:/coverage:) |
+| 2 | doctor.js on the octoshell copy | No lanes warning; section declares fast: `pnpm --filter <pkg> test` and coverage: `pnpm coverage` |
+| 3 | Check octoshell CLAUDE.md | Carries the generalised agent-ops rules (no timeout, nohup, qa-env) |
+
+## Expected Final State
+
+Warning only where lanes are undeclared.
