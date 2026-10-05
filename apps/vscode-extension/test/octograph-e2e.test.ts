@@ -18,6 +18,7 @@ import { artifactPath, graphCommand } from "../src/host/octograph.js";
 import { OCTOBOTS_PACK_VERSION, installPack, packStatus } from "../src/host/octobots-skill.js";
 import { TERMINAL_EVENTS } from "./fixtures/terminal-events.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
+import { store } from "./fixtures/pack-store.js";
 
 /** The extension's own shipped pack resources — the real payload these tests install and run. */
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
@@ -81,7 +82,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("T6.5/Step 1 — Install Graph on a workspace with the pack but no octograph", () => {
   it("lands the bundle at the documented path and it runs under bare node with no node_modules", () => {
     const repo = gitRepo("octograph-e2e-install-");
-    installPack(PACK_SRC, repo);
+    installPack(PACK_SRC, repo, { store });
     expect(packStatus(repo).installed).toBe(true);
     expect(graphStatus(repo, OCTOBOTS_PACK_VERSION).present).toBe(false); // no octograph yet
 
@@ -118,7 +119,7 @@ describe("T6.5/Step 1 — Install Graph on a workspace with the pack but no octo
 describe("T6.5/Step 2 — a stale installed bundle: the drift prompt fires, re-install is byte-identical", () => {
   it("packStatus flips to not-up-to-date, and re-installing via the real launcher reproduces the shipped payload exactly", () => {
     const repo = gitRepo("octograph-e2e-stale-");
-    installPack(PACK_SRC, repo);
+    installPack(PACK_SRC, repo, { store });
     installGraph(PACK_SRC, repo); // workspace already has graph installed, at the current version
 
     // Simulate what a stale installed copy looks like after an extension upgrade: the marker names

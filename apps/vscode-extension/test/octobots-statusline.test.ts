@@ -12,6 +12,7 @@ import { resolveDoctorScript } from "../src/host/octobots-doctor-command.js";
 import { installTools, resolveCcusage, toolsStatus } from "../src/host/octobots-tools.js";
 import { installPack } from "../src/host/octobots-skill.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
+import { store } from "./fixtures/pack-store.js";
 
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
 const DOCTOR = join(PACK_SRC, "skill", "mission-planner", "scripts", "doctor.js");
@@ -215,7 +216,7 @@ describe("workspace tools (.octobots/tools)", () => {
   it("installPack does not touch the network unless tools are asked for", () => {
     const repo = mkdtempClean("octo-tools-");
     // omitted → skipped entirely (no npm, no network) because nothing is installed yet
-    expect(installPack(PACK_SRC, repo).tools).toBe("skipped");
+    expect(installPack(PACK_SRC, repo, { store }).tools).toBe("skipped");
     expect(existsSync(join(repo, ".octobots", "tools", "node_modules"))).toBe(false);
   });
 
@@ -224,7 +225,7 @@ describe("workspace tools (.octobots/tools)", () => {
     const bin = join(repo, ".octobots", "tools", "node_modules", ".bin");
     mkdirSync(bin, { recursive: true });
     writeFileSync(join(bin, "ccusage"), "#!/bin/sh\n");
-    expect(installPack(PACK_SRC, repo, { tools: false }).tools).toBe("skipped");
+    expect(installPack(PACK_SRC, repo, { store, tools: false }).tools).toBe("skipped");
     expect(existsSync(join(repo, ".octobots", "tools"))).toBe(false);
   });
 

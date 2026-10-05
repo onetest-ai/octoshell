@@ -1,0 +1,116 @@
+{
+  "description": "pending.json cases. Every reader (src/host/pack-updates.ts, the pack's pending-io.mjs, the primer twin) parses `text` to exactly `expected`; a malformed file is {packVersion: null, reconcile: [], kept: []}.",
+  "cases": [
+    {
+      "name": "valid",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [\n    {\n      \"skill\": \"mission-execution\",\n      \"action\": \"reconcile\",\n      \"localVersion\": \"57-local\",\n      \"localSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"base\": {\n        \"version\": 56,\n        \"sha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n        \"source\": \"workspace-git\"\n      },\n      \"upstreamSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n      \"retired\": false,\n      \"dir\": \".octobots/pack-updates/v57/mission-execution\"\n    },\n    {\n      \"skill\": \"mission-completion-gate\",\n      \"action\": \"reconcile\",\n      \"localVersion\": \"57-local\",\n      \"localSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\n      \"base\": {\n        \"version\": 56,\n        \"sha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n        \"source\": \"workspace-git\"\n      },\n      \"upstreamSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n      \"retired\": false,\n      \"dir\": \".octobots/pack-updates/v57/mission-completion-gate\"\n    }\n  ],\n  \"kept\": [\n    {\n      \"skill\": \"mission-planner\",\n      \"packVersion\": 57,\n      \"sha256\": \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"\n    }\n  ]\n}\n",
+      "expected": {
+        "packVersion": 57,
+        "reconcile": [
+          "mission-execution",
+          "mission-completion-gate"
+        ],
+        "kept": [
+          "mission-planner"
+        ]
+      }
+    },
+    {
+      "name": "kept-only",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [],\n  \"kept\": [\n    {\n      \"skill\": \"mission-execution\",\n      \"packVersion\": 57,\n      \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    {\n      \"skill\": \"mission-completion-gate\",\n      \"packVersion\": 57,\n      \"sha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\n    }\n  ]\n}\n",
+      "expected": {
+        "packVersion": 57,
+        "reconcile": [],
+        "kept": [
+          "mission-execution",
+          "mission-completion-gate"
+        ]
+      }
+    },
+    {
+      "name": "empty",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [],\n  \"kept\": []\n}\n",
+      "expected": {
+        "packVersion": 57,
+        "reconcile": [],
+        "kept": []
+      }
+    },
+    {
+      "name": "rule-5-base-null",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [\n    {\n      \"skill\": \"mission-execution\",\n      \"action\": \"reconcile\",\n      \"localVersion\": \"57-local\",\n      \"localSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"base\": null,\n      \"upstreamSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n      \"retired\": false,\n      \"dir\": \".octobots/pack-updates/v57/mission-execution\"\n    }\n  ],\n  \"kept\": []\n}\n",
+      "expected": {
+        "packVersion": 57,
+        "reconcile": [
+          "mission-execution"
+        ],
+        "kept": []
+      }
+    },
+    {
+      "name": "retired-no-upstream",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [\n    {\n      \"skill\": \"workflow-designer\",\n      \"action\": \"reconcile\",\n      \"localVersion\": \"56\",\n      \"localSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"base\": {\n        \"version\": 56,\n        \"sha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n        \"source\": \"workspace-git\"\n      },\n      \"upstreamSha256\": null,\n      \"retired\": true,\n      \"dir\": \".octobots/pack-updates/v57/workflow-designer\"\n    }\n  ],\n  \"kept\": []\n}\n",
+      "expected": {
+        "packVersion": 57,
+        "reconcile": [
+          "workflow-designer"
+        ],
+        "kept": []
+      }
+    },
+    {
+      "name": "malformed",
+      "text": "{\"packVersion\": 57, \"skills\": [",
+      "expected": {
+        "packVersion": null,
+        "reconcile": [],
+        "kept": []
+      }
+    },
+    {
+      "name": "malformed-wrong-shape",
+      "text": "{\n  \"packVersion\": \"57\",\n  \"skills\": {},\n  \"kept\": []\n}\n",
+      "expected": {
+        "packVersion": null,
+        "reconcile": [],
+        "kept": []
+      }
+    },
+    {
+      "name": "malformed-duplicate-skill",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [\n    {\n      \"skill\": \"mission-execution\",\n      \"action\": \"reconcile\",\n      \"localVersion\": \"57-local\",\n      \"localSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"base\": {\n        \"version\": 56,\n        \"sha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n        \"source\": \"workspace-git\"\n      },\n      \"upstreamSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n      \"retired\": false,\n      \"dir\": \".octobots/pack-updates/v57/mission-execution\"\n    },\n    {\n      \"skill\": \"mission-execution\",\n      \"action\": \"reconcile\",\n      \"localVersion\": \"57-local\",\n      \"localSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"base\": {\n        \"version\": 56,\n        \"sha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n        \"source\": \"workspace-git\"\n      },\n      \"upstreamSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n      \"retired\": false,\n      \"dir\": \".octobots/pack-updates/v57/mission-execution\"\n    }\n  ],\n  \"kept\": []\n}\n",
+      "expected": {
+        "packVersion": null,
+        "reconcile": [],
+        "kept": []
+      }
+    },
+    {
+      "name": "malformed-skill-both-pending-and-kept",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [\n    {\n      \"skill\": \"mission-execution\",\n      \"action\": \"reconcile\",\n      \"localVersion\": \"57-local\",\n      \"localSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"base\": {\n        \"version\": 56,\n        \"sha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n        \"source\": \"workspace-git\"\n      },\n      \"upstreamSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n      \"retired\": false,\n      \"dir\": \".octobots/pack-updates/v57/mission-execution\"\n    }\n  ],\n  \"kept\": [\n    {\n      \"skill\": \"mission-execution\",\n      \"packVersion\": 57,\n      \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    }\n  ]\n}\n",
+      "expected": {
+        "packVersion": null,
+        "reconcile": [],
+        "kept": []
+      }
+    },
+    {
+      "name": "not-json-object",
+      "text": "[]\n",
+      "expected": {
+        "packVersion": null,
+        "reconcile": [],
+        "kept": []
+      }
+    },
+    {
+      "name": "empty-file",
+      "text": "",
+      "expected": {
+        "packVersion": null,
+        "reconcile": [],
+        "kept": []
+      }
+    }
+  ]
+}

@@ -65,10 +65,16 @@ async function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: s
     if (answer !== undefined) tools = answer === "Install";
   }
 
+  const store = loadShippedStore(vscode.Uri.joinPath(context.extensionUri, "resources", "shipped-skills.json.br").fsPath);
   const res = installPack(src, repoRoot, {
+    store,
     ...(hooks === undefined ? {} : { hooks }),
     ...(tools === undefined ? {} : { tools }),
   });
+  if (res.error) {
+    void vscode.window.showErrorMessage(`Octobots: nothing was installed (${res.error}).`);
+    return;
+  }
   const parts = [
     res.hooksRegistered ? "session hooks" : null,
     res.tools === "installed" ? "tokenomics CLI" : null,
