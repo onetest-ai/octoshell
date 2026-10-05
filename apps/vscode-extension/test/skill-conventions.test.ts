@@ -358,3 +358,93 @@ describe("mission-planner: the legacy-folder paragraph (decision 13(d))", () => 
     expect(legacy).not.toMatch(/never edit, move or delete those folders/);
   });
 });
+
+describe("mission-planner: tests are authored with the mission (M4-AC4)", () => {
+  const planner = skill("mission-planner");
+  const chat = sectionUnder(planner, /^### Mission chat — planner/m).replace(/\s+/g, " ");
+
+  it("says tests are authored with the mission, before build, by running add-tests.js", () => {
+    expect(chat).toMatch(/Author the tests with the mission, before build/);
+    expect(chat).toMatch(/add-tests\.js <mission-dir>/);
+  });
+
+  it("documents the README and its sections, and one or more TC files per AC", () => {
+    for (const s of ["AC map", "Shared preconditions", "Pre-existing records", "Assumptions to confirm"]) {
+      expect(chat).toContain(s);
+    }
+    expect(chat).toMatch(/TC-NNN_<slug>\.md/);
+    expect(chat).toMatch(/templates\/TC-template\.md/);
+    expect(chat).toMatch(/one or more per (acceptance criterion|AC)/);
+  });
+
+  it("documents the TC frontmatter fields and their allowed values", () => {
+    for (const f of ["`id`", "`title`", "`mission`", "`covers`", "`kind`", "`status`", "`last_run`"]) {
+      expect(chat).toContain(f);
+    }
+    expect(chat).toContain("api | ui | cli | unit");
+    expect(chat).toContain("draft | ready | pass | fail | blocked | unknown");
+    expect(chat).toMatch(/\^TC-\\d\{3,\}\$/);
+  });
+
+  it("requires the Steps and Expected Final State sections", () => {
+    expect(chat).toContain("## Steps");
+    expect(chat).toContain("## Expected Final State");
+  });
+
+  it("maps PASS/FAIL/BLOCKED/UNREACHABLE to a status, UNREACHABLE being blocked with the reason in the RUN file", () => {
+    expect(chat).toMatch(/PASS (->|→) pass/);
+    expect(chat).toMatch(/FAIL (->|→) fail/);
+    expect(chat).toMatch(/BLOCKED (->|→) blocked/);
+    expect(chat).toMatch(/UNREACHABLE (->|→) blocked[^.]*reason in the RUN file/);
+  });
+
+  it("forbids a hard-coded host or port: {{base_url}}, a variable named in the README", () => {
+    expect(chat).toContain("{{base_url}}");
+    expect(chat).toMatch(/never hard-code a host or port/i);
+    expect(chat).toMatch(/variable named in the README/);
+  });
+
+  it("names the execution modes: API/CLI calls, and Playwright MCP for UI", () => {
+    expect(chat).toMatch(/API\/CLI calls/);
+    expect(chat).toMatch(/Playwright MCP/);
+  });
+
+  it("requires a pre-existing record per case and says UNREACHABLE rather than fabricate", () => {
+    expect(chat).toMatch(/a pre-existing record per case/i);
+    expect(chat).toMatch(/say UNREACHABLE rather than fabricate/i);
+  });
+
+  it("lists add-tests.js among the scripts and says validate.js warns on pairing gaps (warning only)", () => {
+    const scripts = planner.split("\n").filter((l) => l.startsWith("- `node .claude/skills/mission-planner/scripts/add-tests.js"));
+    expect(scripts).toHaveLength(1);
+    expect(chat).toMatch(/`validate\.js` warns \(warning only[^)]*\) on a missing README[^.]*an AC no TC covers/);
+  });
+});
+
+describe("octobots-doctor: the tests-pairing paragraph (M4-AC4)", () => {
+  const doctor = skill("octobots-doctor");
+  const para = sectionUnder(doctor, /^## \d+\. Tests pairing/m).replace(/\s+/g, " ");
+
+  it("acts on validate.js output and says a tests-pairing warning is not a primer finding", () => {
+    expect(para).toMatch(/validate\.js/);
+    expect(para).toMatch(/not a primer finding/);
+  });
+
+  it("resolves it by running add-tests.js and authoring the missing TCs with the mission's owner", () => {
+    expect(para).toMatch(/add-tests\.js/);
+    expect(para).toMatch(/author(ing)? the missing TCs with the mission's owner/);
+  });
+
+  it("never resolves it by deleting an AC, a TC or a README row", () => {
+    expect(para).toMatch(/never[^.]*deleting an AC, a TC or a README row/i);
+  });
+
+  it("is reachable: §1 routes tests-pairing warnings to it, and it comes before the closing reply", () => {
+    const n = /^## (\d+)\. Tests pairing/m.exec(doctor)?.[1];
+    const reply = /^## (\d+)\. Your reply/m.exec(doctor)?.[1];
+    expect(n).toBeDefined();
+    expect(Number(n)).toBeLessThan(Number(reply));
+    const find = sectionUnder(doctor, /^## 1\. Find what to act on/m).replace(/\s+/g, " ");
+    expect(find).toContain(`tests-pairing warnings (§${n})`);
+  });
+});

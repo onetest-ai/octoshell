@@ -20,8 +20,9 @@ node .claude/skills/mission-planner/scripts/validate.js .octobots/campaigns/<any
 node .claude/skills/octobots-doctor/scripts/pack-reconcile.mjs list
 ```
 
-Act on their findings: `pack reconcile pending` (§2-§3), leftover `workflows/` folders (§4) and the
-`config-dir` finding (§5). Skip a finding that `.octobots/doctor-acks.json` already acknowledges (§6).
+Act on their findings: `pack reconcile pending` (§2-§3), leftover `workflows/` folders (§4), the
+`config-dir` finding (§5) and validate.js's tests-pairing warnings (§7). Skip a finding that
+`.octobots/doctor-acks.json` already acknowledges (§6).
 
 ## 2. Pending pack reconciles
 
@@ -78,7 +79,7 @@ For each named folder `.octobots/pack-updates/v<N>/<skill>/`:
    UPSTREAM-CANDIDATES.md.
 10. If any `- ESCALATED:` entry is open, stop work on this skill: the whole live SKILL.md stays
     untouched (no line, no non-conflicting change, no marker) until every escalation of this skill
-    is answered. Do not run done. Ask in your reply (§7).
+    is answered. Do not run done. Ask in your reply (§8).
 11. Otherwise install. In merged.md's frontmatter replace the `version:` line with
     `version: <N>+local` and add the line `reconciled-from: <sha256>` below it, both values exactly
     as `pack-reconcile.mjs list` prints them for this skill under `marker:`. Then copy merged.md byte for byte to `.claude/skills/<skill>/SKILL.md` and run:
@@ -189,7 +190,16 @@ One `workflows` entry per declined folder. Its path is relative to `.octobots/`,
 names the `workflows/` folder itself, never a `workflows/<slug>` path as doctor.js prints them: cut
 doctor's path after `workflows`.
 
-## 7. Your reply
+## 7. Tests pairing
+
+`validate.js` also warns when a mission has no linked `tests/m<n>/README.md`, an AC that no TC
+covers, or a TC that breaks the format. You act on that `validate.js` output; a tests-pairing
+warning is not a primer finding, and the SessionStart notice never names it. Resolve it by running
+`add-tests.js <mission-dir>` and authoring the missing TCs with the mission's owner (see the
+mission-planner skill). Never resolve it by deleting an AC, a TC or a README row; that hides the gap
+instead of closing it.
+
+## 8. Your reply
 
 End your reply with this block, filled in:
 
