@@ -1,5 +1,5 @@
 name: B2 - installOctobotsPack shows the modal before a missing-store error, and a thrown install surfaces no message
-status: draft
+status: done
 severity: minor
 description: |-
   From the T7.4 review:
@@ -8,5 +8,8 @@ description: |-
 steps_to_reproduce: (1) Run the extension with resources/shipped-skills.json.br removed, on a solo copy, then run Install. (2) Make .claude read-only, then run Install.
 expected: (1) The store check happens at the top of installOctobotsPack and shows the error before any prompt. (2) Any throw is caught and shown as an error message naming the failure. Both are covered by tests (pure-function seam or source scan).
 actual: (1) The modal is shown first. (2) The failure is silent.
-rca: ''
+rca: |-
+  Cause: installOctobotsPack ran deviation detection and the modal/hook/tool questions before installPack discovered the store was missing, and invoked it with void and no try/catch, so thrown installs were silent.
+  Fix (PR #133, commits eabaa60c and review dd29954a): pure prepareInstall(store) in pack-install-guard.ts returns an error for a null store, called first in installOctobotsPack and in the activation prompt (before the Install question); the whole install is wrapped in try/catch showing installFailureMessage.
+  QA evidence (2026-10-05): prepareInstall(null) returned {error:'Octobots: nothing was installed (shipped-skill store missing).'}; extension.ts read: store check precedes every prompt in both paths, catch wraps the install body. pack-install-guard.test.ts, shipped-skills.test.ts, octobots-skill.test.ts: 117 tests pass, 0 skipped, incl. source-scan tests for store-before-modal, activation, and catch. Full pipeline green, PR #133 checks pass.
 environment: 'found by the T7.4 review gate (PR #130, 2026-10-05)'
