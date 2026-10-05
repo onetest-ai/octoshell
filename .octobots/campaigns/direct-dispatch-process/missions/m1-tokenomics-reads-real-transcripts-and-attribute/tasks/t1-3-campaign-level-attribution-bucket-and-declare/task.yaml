@@ -1,5 +1,5 @@
 name: T1.3 - Campaign-level attribution bucket and declared campaign branches
-status: executing
+status: done
 role: js-dev
 description: 'Scope: implement mission AC5''s precedence (steps 1-7) in BOTH rollup.mjs:350-363,513-519 (adding the worklog step 4) and packages/tokenomics/src/rollup.ts:79-82,133-160 (the campaign match must not shadow the worklog); emit the campaign row inside runs[] with the AC5 shape; model `tokenomics` on campaign in BOTH entity-schema.ts:45,59,210 and entity-io.mjs:69,184 (dual-schema hazard, AGENTS.md); render.mjs, render.ts and the webview tokenomics view (tokenomics-view.tsx:105,132) show campaign rows separately and leave them out of ''Missions measured'' and the missing-sizing note (rollup.mjs:834, render.mjs:226). Touches packages/board, so campaign notes § Test conventions rule 8 applies (payload regen after a root build; T1.4 has landed first). Out of scope: apportioning campaign cost to missions. Downstream: M1 TC-005..007, TC-009; campaign AC3; this campaign''s own feat/direct-dispatch-process row.'
 acceptance_criteria:
@@ -12,8 +12,8 @@ acceptance_criteria:
   - text: after a root `pnpm build`, `pnpm --filter @octoshell/vscode-extension graph:payload:write` leaves graph-payload.mjs --verify green, and the 57 hash in graph-payload-versions.json is rewritten in a visible diff line if the bytes changed
     done: true
   - text: verify.mjs's ccusage cross-check reads the same transcript population as collect.mjs (the own-slug dirs of the configured root plus the legacy root; e.g. ccusage session --json rows filtered to the session ids found in those dirs, or a comma-separated CLAUDE_CONFIG_DIR plus a session filter). Given one session only in the home root and an empty legacy root, verify reports PASS; given no legacy root at all, verify reports PASS and never 'needs network access'. mission-completion-gate/SKILL.md and tokenomics/README.md describe the real roots and no longer advise CLAUDE_CONFIG_DIR=<repo>/.claude. Covered by apps/vscode-extension/test/tokenomics-verify-roots.test.ts
-    done: false
-notes: |-
+    done: true
+notes: |
   ## QA verification (part A, PR #115)
 
   Verdict: PASS for ACs 1-4 (part A). Part B (AC5, verify.mjs) is PENDING in a later PR; T1.3 stays executing and AC5 is not ticked. Branch feat/direct-dispatch-process-m1-t3a @ 920296b. QA 2026-10-05, black-box on the built pack first, then tests.
@@ -39,3 +39,27 @@ notes: |-
   Known, not a T1.3 failure: the M2a/M2b row-keying defect (two missions sharing a mission id) predates this work and is filed as bug B4; the parity test merges rows sharing a mission id to account for it.
 
   Side note: running render.mjs with --help (no such flag) wrote a report.html into this repo's gitignored .octobots/tokenomics; harmless.
+
+  ## QA verification (part B, PR #116)
+
+  Verdict: PASS. AC5 (verify.mjs) verified; T1.3 done. Head d6f7d91, CI green.
+
+  Blind probe (built pack copied to scratch, real ccusage 20.0.18 from .octobots/tools, temp HOME, nothing written under auqanautica or ~/.claude/projects):
+  - Case (a) one real-shaped session only under ~/.claude/projects/<slug> + EMPTY legacy root: PASS exit 0 (cost 0.32%, total/cache_read/cache_create 0.00%).
+  - Case (b) same, NO legacy root: PASS exit 0, output never mentions network.
+  - Using an opus-5-5 session the cost line FAILs in both cases (ccusage cannot price it) while all token lines match exactly: this is B5, not a population fault.
+  - Real record (solo = auqanautica, 1637 segments; 3 home + 6 legacy sessions matched 9/9, 416 Workflow-agent wf_ transcript files on disk):
+    - Pack verify.mjs --project-dir on the real project (read-only; no staging dir left): PASS. total 0.90%, cache_read 0.65%, cache_create 0.72%, input 0.44%; output (info) 68%; cost info (23 collected sessions pruned from disk).
+    - Same on a scratch COPY, as-is segments: identical PASS.
+    - Fresh collect on the copy (3 new segments): PASS. total 0.24%, cache_read 0.00%, cache_create 0.00%, input 0.00%. No ~2x cache_read gap, so wf_ rows are counted.
+    - Pure fresh collect (segments.jsonl removed so nothing is pruned): tokens exact, cost FAIL $1388.33 vs $503.81 = B5, reproduced.
+  - Docs: no CLAUDE_CONFIG_DIR=<repo>/.claude advice in mission-completion-gate/SKILL.md or tokenomics/README.md; README says not to do it.
+  - Cleanup: no octobots-verify-* temp dir left. (Stale tokenomics-selftest-* dirs in $TMPDIR predate this run, from selftest.)
+
+  Gates (root, foreground): pnpm build, typecheck, lint, test, coverage:pack all exit 0 (extension 388 tests, tokenomics 92, graph 653). tokenomics-verify-roots.test.ts verbose: 22 passed, 0 skipped, including 4 against the real ccusage binary. fake-ccusage.mjs keys rows by transcript path like the real binary, so wf_<id> rows are keyed separately. gh pr checks 116: all pass.
+
+  Reviewer fixes (d6f7d91): roots rule extracted to tokenomics/roots.mjs, imported by collect.mjs and verify.mjs (a test asserts neither re-spells it); verify no longer drops Workflow-agent wf_<id> rows (was a false FAIL at 2.17x on solo).
+
+  Filed, not a T1.3 failure: B5 (verify cost gate FAILs when ccusage cannot price opus-5/5-5; $0 from ccusage).
+
+  Reviewer non-blocking items: carried as noted by the review; none affects the AC. Observation: verify's "investigate the COLLECTOR first" hint is misleading when the only failing line is cost from unpriced models (B5).

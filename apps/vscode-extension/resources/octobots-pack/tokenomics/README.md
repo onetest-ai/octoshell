@@ -238,13 +238,22 @@ falls back to the documented 2× rather than importing a number known to be wron
 
 ## Cross-checking against ccusage
 
-`ccusage` is a useful independent read on the same transcripts. Scope it to this
-repo before comparing (it defaults to the global `~/.claude`, which covers every
-project on the machine):
+`ccusage` is a useful independent read on the same transcripts. `verify.mjs` runs it for you:
 
 ```
-CLAUDE_CONFIG_DIR=<repo>/.claude npx ccusage@latest daily
+node .octobots/tokenomics/verify.mjs
 ```
+
+It reads the collector's own transcript roots: `$CLAUDE_CONFIG_DIR/projects` (else
+`~/.claude/projects`) plus the legacy repo-local `.claude/projects`, and under each only this
+repo's slug directory. ccusage has no project filter, so `verify.mjs` stages each root that holds
+this repo's slug directory for it (ccusage reads every project in that root) and keeps only the
+sessions found in this repo's slug directories. It runs `ccusage session --json --offline` from the
+workspace's installed copy (`.octobots/tools`), so no network is needed; `npx` is only the fallback
+when that copy is absent. A missing or empty legacy root is fine. The cost line is compared only
+while every collected session is still on disk; once Claude Code prunes a transcript, cost is shown
+as `info` and the token lines stay gated. Do not point `CLAUDE_CONFIG_DIR` at `<repo>/.claude`
+yourself: that is only the legacy root, and ccusage would then compare against a partial history.
 
 Measured agreement on this repo's history:
 
