@@ -28,7 +28,8 @@ Act on their findings: `pack reconcile pending` (§2-§3), leftover `workflows/`
 Act only on the staging folders that `pending.json` names (`pack-reconcile.mjs list` prints them).
 An `- ESCALATED:` entry in a folder no pending entry names is history and is never asked again. A
 question still open from an older pack version reaches you in the named folder's RECONCILE.md, under
-`Carried over from v<old>:`; treat it as an open escalation of this reconcile.
+`Carried over from v<old>:`; copy each one, verbatim, as an open `- ESCALATED:` entry under Conflicts
+in this folder's DECISIONS.md (unless the user answers it in this conversation).
 
 For each named folder `.octobots/pack-updates/v<N>/<skill>/`:
 
@@ -71,15 +72,16 @@ For each named folder `.octobots/pack-updates/v<N>/<skill>/`:
    silently produces contradictory paragraphs. In the place of each escalated rule, merged.md holds
    exactly this one line and neither side's text:
    `<!-- ESCALATED: <rule>: awaiting the user's answer, see DECISIONS.md -->`
-   merged.md keeps local.md's frontmatter until step 11.
+   Here and in DECISIONS.md, `<rule>` is a short name for the rule (e.g. `what counts as green`),
+   never its wording. merged.md keeps local.md's frontmatter until step 11.
 9. Write DECISIONS.md (form below) and, if a kept local rule would serve every project,
    UPSTREAM-CANDIDATES.md.
 10. If any `- ESCALATED:` entry is open, stop work on this skill: the whole live SKILL.md stays
     untouched (no line, no non-conflicting change, no marker) until every escalation of this skill
     is answered. Do not run done. Ask in your reply (§7).
-11. Otherwise install. In merged.md's frontmatter set `version: <N>+local` and add
-    `reconciled-from: <sha256>`, both exactly as `pack-reconcile.mjs list` prints them for this skill
-    under `marker:`. Then copy merged.md byte for byte to `.claude/skills/<skill>/SKILL.md` and run:
+11. Otherwise install. In merged.md's frontmatter replace the `version:` line with
+    `version: <N>+local` and add the line `reconciled-from: <sha256>` below it, both values exactly
+    as `pack-reconcile.mjs list` prints them for this skill under `marker:`. Then copy merged.md byte for byte to `.claude/skills/<skill>/SKILL.md` and run:
 
     ```bash
     node .claude/skills/octobots-doctor/scripts/pack-reconcile.mjs done <skill>
@@ -126,8 +128,8 @@ UPSTREAM-CANDIDATES.md is optional and lists only rules from Kept local, one lin
 
 RECONCILE.md says upstream deleted it, so there is nothing to merge. Always escalate a retired skill:
 DECISIONS.md gets `- ESCALATED: <skill> is retired: local <what it does here>; upstream deleted it; question keep it as a project skill under a new directory name (which name?), or delete it?`
-Once the user answers, move `.claude/skills/<skill>` to `.claude/skills/<their name>` or delete it,
-then run done.
+Once the user answers, record the answer (§3), then move `.claude/skills/<skill>` to
+`.claude/skills/<their name>` (a name no pack skill uses) or delete it, and run done.
 
 ### What you may write
 
@@ -143,13 +145,14 @@ another skill, `.octobots/campaigns/` or pending.json.
 - When the user answers, rewrite that entry in place as
   `- RESOLVED (user, <YYYY-MM-DD>): <rule>: <answer>`, replace the rule's
   `<!-- ESCALATED: ... -->` line in merged.md with the answer applied, and when no `- ESCALATED:`
-  entry is left, finish with step 11 of §2.
+  entry is left, finish with step 11 of §2 (a retired skill: as "A retired skill" says).
 
 ## 4. Leftover `workflows/` folders
 
 Pack v57 no longer reads `.octobots/campaigns/<c>/workflows/` or
 `.octobots/campaigns/<c>/missions/<m>/workflows/`. They are the user's files: the installer and the
-scripts never change them. Report each one and ask about each folder separately; delete a folder
+scripts never change them. Report each `workflows/` folder (not each `workflows/<slug>` inside it)
+and ask about each folder separately; delete a folder
 only after the user says yes to that folder. A yes for one folder is not a yes for another, and no
 answer is a no. If the user declines, record it (§6).
 

@@ -16,12 +16,14 @@
 // A skill with no entry exits 0 and changes nothing. Exit codes: 0 done / listed, 2 usage, 3 refused.
 //
 // The workspace is the one this script is installed in (<root>/.claude/skills/<skill>/scripts/), or
-// --root <dir>; never the current directory. Dependency-free; it names no skill: which skill is
-// retired comes from its pending entry, and the shared pack modules (pending-io.mjs, skill-marker.mjs)
-// are found in the sibling skill whose scripts/ folder holds them.
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+// --root <dir>; never the current directory. Dependency-free. Its logic names no skill: which skill is
+// retired comes from its pending entry. The shared pack modules are imported from their one fixed
+// home (a fixed path, never a search of .claude/skills, so no other skill's code is ever loaded).
+import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import * as io from "../../mission-planner/scripts/pending-io.mjs";
+import { parseSkillMarker, skillSha256 } from "../../mission-planner/scripts/skill-marker.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SKILLS_DIR = resolve(HERE, "..", "..");
@@ -35,21 +37,6 @@ const refuse = (msg) => {
   console.error(`pack-reconcile: ${msg}`);
   process.exit(3);
 };
-
-// ── The shared pack modules ──────────────────────────────────────────────────────────────────
-const SHARED = ["pending-io.mjs", "skill-marker.mjs"];
-const libs = readdirSync(SKILLS_DIR, { withFileTypes: true })
-  .filter((e) => e.isDirectory())
-  .map((e) => join(SKILLS_DIR, e.name, "scripts"))
-  .filter((d) => SHARED.every((f) => existsSync(join(d, f))))
-  .sort();
-if (libs.length !== 1) {
-  console.error(`pack-reconcile: expected one skill under ${SKILLS_DIR} whose scripts/ holds ${SHARED.join(" and ")}, found ${libs.length}${libs.length ? `: ${libs.join(", ")}` : ""}`);
-  console.error('reinstall the pack ("Octobots: Install Workflow Pack")');
-  process.exit(2);
-}
-const io = await import(pathToFileURL(join(libs[0], "pending-io.mjs")).href);
-const { parseSkillMarker, skillSha256 } = await import(pathToFileURL(join(libs[0], "skill-marker.mjs")).href);
 
 // ── Arguments ────────────────────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);

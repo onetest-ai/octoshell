@@ -113,6 +113,13 @@ describe("pack-reconcile.mjs done: refuses an unfinished reconcile with exit 3",
     refused(ws, [SKILL], /57\+local/);
   });
 
+  it("when the live marker is `+local` of another pack version (`56+local` for a v57 entry)", () => {
+    const ws = workspace();
+    decisions(ws, SKILL, CLOSED);
+    reconciled(ws, "56+local");
+    refused(ws, [SKILL], /56\+local[\s\S]*57\+local/);
+  });
+
   it("when reconciled-from is not upstream.md's sha256", () => {
     const ws = workspace();
     decisions(ws, SKILL, CLOSED);
@@ -226,10 +233,34 @@ describe("pack-reconcile.mjs workspace resolution and source", () => {
     expect(run(ws, "frobnicate").code).toBe(2);
   });
 
-  it("the script source names no skill", () => {
-    const src = readFileSync(join(PACK_SRC, "skill", "octobots-doctor", "scripts", "pack-reconcile.mjs"), "utf8");
+  it("the script's logic names no skill (its two shared-module import lines aside)", () => {
+    const full = readFileSync(join(PACK_SRC, "skill", "octobots-doctor", "scripts", "pack-reconcile.mjs"), "utf8");
+    const imports = full.split("\n").filter((l) => /^import .* from "\.\.\/\.\.\//.test(l));
+    expect(imports).toEqual([
+      'import * as io from "../../mission-planner/scripts/pending-io.mjs";',
+      'import { parseSkillMarker, skillSha256 } from "../../mission-planner/scripts/skill-marker.mjs";',
+    ]);
+    const src = full.split("\n").filter((l) => !/^import /.test(l)).join("\n");
     for (const s of [...OCTOBOTS_SKILLS, ...RETIRED_SKILLS.filter((r) => r !== "octobots")]) expect(src, s).not.toContain(s);
     expect(src).not.toMatch(/(?<![.\w-])octobots(?![\w-])/); // the retired v18 skill; `.octobots/` is the board
+  });
+
+  it("loads the shared modules from mission-planner only: another skill holding copies of them neither breaks it nor runs", () => {
+    // Regression (T7.6 review): a scan of .claude/skills for the shared modules exited 2 once a user
+    // kept a copy of mission-planner under another name, so no pending entry could ever be cleared, and
+    // it imported whichever single copy it found.
+    const ws = workspace();
+    cpSync(join(ws, ".claude", "skills", "mission-planner"), join(ws, ".claude", "skills", "my-planner"), { recursive: true });
+    mk(join(ws, ".claude", "skills", "aaa", "scripts", "pending-io.mjs"), 'console.log("FOREIGN MODULE RAN");\n');
+    mk(join(ws, ".claude", "skills", "aaa", "scripts", "skill-marker.mjs"), 'console.log("FOREIGN MODULE RAN");\n');
+    const r = run(ws, "list");
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toContain(SKILL);
+    expect(r.out).not.toContain("FOREIGN MODULE RAN");
+    reconciled(ws);
+    decisions(ws, SKILL, CLOSED);
+    expect(run(ws, "done", SKILL).code).toBe(0);
+    expect(pendingSkills(ws)).toEqual([RETIRED]);
   });
 
   it("ships a sibling package.json marking the scripts as ES modules", () => {

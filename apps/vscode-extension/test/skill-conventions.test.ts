@@ -204,6 +204,9 @@ describe("octobots-doctor: the rules of M7-AC7", () => {
     expect(flat).toContain("Carried over from v<old>:");
     expect(flat).toMatch(/RECONCILE\.md/);
     expect(flat).toMatch(/folder no pending entry names is history[^.]*never asked again/);
+    // T7.6 review: a carried-over question must become an open entry of THIS DECISIONS.md, or done
+    // would clear the reconcile without the user ever answering it.
+    expect(flat).toMatch(/Carried over from v<old>:`; copy each one, verbatim, as an open `- ESCALATED:` entry under Conflicts in this folder's DECISIONS\.md/);
   });
 
   it("classifies every change four ways", () => {
@@ -238,6 +241,8 @@ describe("octobots-doctor: the rules of M7-AC7", () => {
     expect(flat).toMatch(/whole live SKILL\.md stays untouched[^.]*until every escalation of this skill is answered/);
     expect(body).toContain("<!-- ESCALATED: <rule>: awaiting the user's answer, see DECISIONS.md -->");
     expect(flat).toMatch(/neither side's text/);
+    // T7.6 review: `<rule>` in the placeholder is a name, so a side's wording cannot ride in on it.
+    expect(flat).toMatch(/`<rule>` is a short name for the rule \(e\.g\. `what counts as green`\), never its wording/);
   });
 
   it("never merges by lines", () => {
@@ -265,6 +270,7 @@ describe("octobots-doctor: the rules of M7-AC7", () => {
     expect(flat).toMatch(/copy merged\.md byte for byte to `\.claude\/skills\/<skill>\/SKILL\.md`/);
     expect(body).toMatch(/node \.claude\/skills\/octobots-doctor\/scripts\/pack-reconcile\.mjs done <skill>/);
     expect(flat).toMatch(/plain `<N>`[^.]*overwrite/);
+    expect(flat).toMatch(/replace the `version:` line with `version: <N>\+local` and add the line `reconciled-from: <sha256>` below it/);
   });
 
   it("writes nothing outside the skill, its staging folder and doctor-acks.json", () => {
