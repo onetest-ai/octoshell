@@ -10,6 +10,7 @@ import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
 import { packStatus, installPack, OCTOBOTS_PACK_VERSION } from "./host/octobots-skill.js";
 import { loadShippedStore, decideLocalChanges, installCompletionMessage, shouldPromptOnActivation } from "./host/pack-deviations.js";
+import { prepareInstall, installFailureMessage } from "./host/pack-install-guard.js";
 import { readPending } from "./host/pack-updates.js";
 import { claudeHookStatus } from "./host/octobots-hooks.js";
 import { toolsStatus } from "./host/octobots-tools.js";
@@ -34,59 +35,71 @@ function packSrcRoot(context: vscode.ExtensionContext): string {
  * refreshes them (and repairs any duplicates an older version left).
  */
 async function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: string): Promise<void> {
-  const src = packSrcRoot(context);
-  const store = loadShippedStore(vscode.Uri.joinPath(context.extensionUri, "resources", "shipped-skills.json.br").fsPath);
-
-  // First, before any other question and before any write: what to do with pack skills this
-  // workspace changed. Cancel or Escape installs nothing. The extension never starts an agent; the
-  // pack's SessionStart hook tells the next session to run octobots-doctor.
-  const decision = await decideLocalChanges(packStatus(repoRoot, OCTOBOTS_PACK_VERSION, store), OCTOBOTS_PACK_VERSION, (message, detail, buttons) =>
-    vscode.window.showWarningMessage(message, { modal: true, detail }, ...buttons),
-  );
-  if (decision.cancelled) return;
-
-  const alreadyHooked = claudeHookStatus(repoRoot, OCTOBOTS_PACK_VERSION).present;
-
-  let hooks: boolean | undefined;
-  if (!alreadyHooked) {
-    const answer = await vscode.window.showInformationMessage(
-      "Octobots: also install the session hooks? They run the primer at session start and a " +
-        "work-log + mission-gate hook after every Bash tool call. The pack works without them.",
-      { modal: false },
-      "Install hooks",
-      "Skip hooks",
+  try {
+    const src = packSrcRoot(context);
+    const prepared = prepareInstall(
+      loadShippedStore(vscode.Uri.joinPath(context.extensionUri, "resources", "shipped-skills.json.br").fsPath),
     );
-    if (answer === undefined) return; // dismissed — install nothing rather than guess
-    hooks = answer === "Install hooks";
-  }
+    // Before any modal or question: with no store the install cannot act on an answer.
+    if ("error" in prepared) {
+      void vscode.window.showErrorMessage(prepared.error);
+      return;
+    }
+    const { store } = prepared;
 
-  // The tools step is asked separately because it is the only one that needs the NETWORK: it
-  // installs the pinned `ccusage` into `.octobots/tools` once, so tokenomics stops paying an `npx`
-  // re-resolution on every call (measured 823ms vs 29ms). Declining is a real choice — everything
-  // still works through the npx fallback, just slowly, and the doctor says so.
-  let tools: boolean | undefined;
-  if (!toolsStatus(repoRoot).ccusage) {
-    const answer = await vscode.window.showInformationMessage(
-      "Octobots: install the tokenomics CLI (ccusage) into this workspace? One ~340ms download, " +
-        "reused after that. Without it every usage call re-resolves it through npx (~823ms each).",
-      { modal: false },
-      "Install",
-      "Skip",
+    // First, before any other question and before any write: what to do with pack skills this
+    // workspace changed. Cancel or Escape installs nothing. The extension never starts an agent; the
+    // pack's SessionStart hook tells the next session to run octobots-doctor.
+    const decision = await decideLocalChanges(packStatus(repoRoot, OCTOBOTS_PACK_VERSION, store), OCTOBOTS_PACK_VERSION, (message, detail, buttons) =>
+      vscode.window.showWarningMessage(message, { modal: true, detail }, ...buttons),
     );
-    if (answer !== undefined) tools = answer === "Install";
-  }
+    if (decision.cancelled) return;
 
-  const res = installPack(src, repoRoot, {
-    store,
-    ...(decision.localChanges === undefined ? {} : { localChanges: decision.localChanges }),
-    ...(hooks === undefined ? {} : { hooks }),
-    ...(tools === undefined ? {} : { tools }),
-  });
-  if (res.error) {
-    void vscode.window.showErrorMessage(`Octobots: nothing was installed (${res.error}).`);
-    return;
+    const alreadyHooked = claudeHookStatus(repoRoot, OCTOBOTS_PACK_VERSION).present;
+
+    let hooks: boolean | undefined;
+    if (!alreadyHooked) {
+      const answer = await vscode.window.showInformationMessage(
+        "Octobots: also install the session hooks? They run the primer at session start and a " +
+          "work-log + mission-gate hook after every Bash tool call. The pack works without them.",
+        { modal: false },
+        "Install hooks",
+        "Skip hooks",
+      );
+      if (answer === undefined) return; // dismissed — install nothing rather than guess
+      hooks = answer === "Install hooks";
+    }
+
+    // The tools step is asked separately because it is the only one that needs the NETWORK: it
+    // installs the pinned `ccusage` into `.octobots/tools` once, so tokenomics stops paying an `npx`
+    // re-resolution on every call (measured 823ms vs 29ms). Declining is a real choice — everything
+    // still works through the npx fallback, just slowly, and the doctor says so.
+    let tools: boolean | undefined;
+    if (!toolsStatus(repoRoot).ccusage) {
+      const answer = await vscode.window.showInformationMessage(
+        "Octobots: install the tokenomics CLI (ccusage) into this workspace? One ~340ms download, " +
+          "reused after that. Without it every usage call re-resolves it through npx (~823ms each).",
+        { modal: false },
+        "Install",
+        "Skip",
+      );
+      if (answer !== undefined) tools = answer === "Install";
+    }
+
+    const res = installPack(src, repoRoot, {
+      store,
+      ...(decision.localChanges === undefined ? {} : { localChanges: decision.localChanges }),
+      ...(hooks === undefined ? {} : { hooks }),
+      ...(tools === undefined ? {} : { tools }),
+    });
+    if (res.error) {
+      void vscode.window.showErrorMessage(`Octobots: nothing was installed (${res.error}).`);
+      return;
+    }
+    void vscode.window.showInformationMessage(installCompletionMessage(res, OCTOBOTS_PACK_VERSION));
+  } catch (err) {
+    void vscode.window.showErrorMessage(installFailureMessage(err));
   }
-  void vscode.window.showInformationMessage(installCompletionMessage(res, OCTOBOTS_PACK_VERSION));
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
