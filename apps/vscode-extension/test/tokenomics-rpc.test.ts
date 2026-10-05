@@ -20,7 +20,7 @@ function writeBrief(kind: "campaign" | "mission", dir: string, fields: Record<st
 }
 
 function transcript(branch: string): void {
-  const proj = join(root, ".claude", "projects", "p");
+  const proj = join(root, ".claude", "projects", root.replace(/[^A-Za-z0-9]/g, "-"));
   mkdirSync(proj, { recursive: true });
   writeFileSync(
     join(proj, "sess-1.jsonl"),

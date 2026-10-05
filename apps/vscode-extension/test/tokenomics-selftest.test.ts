@@ -60,6 +60,8 @@ describe("tokenomics selftest.mjs", () => {
     ["M1 AC3 dedupe: more turns wins regardless of root order", /\[roots\]\[AC3\].*more turns wins even when the richer copy is in the earlier root/],
     ["M1 AC3 dedupe: rerun is byte-identical", /\[roots\]\[AC3\].*byte-identical/],
     ["worktree path unwinds to the main checkout's slug", /\[roots\].*worktree/],
+    ["a trailing slash on --project-dir does not change the slug", /\[roots\].*trailing slash/],
+    ["a relative --project-dir resolves against the cwd", /\[roots\].*relative --project-dir/],
   ])("covers %s", (_name, pattern) => {
     expect(rootsOkLines().some((l) => pattern.test(l))).toBe(true);
   });
