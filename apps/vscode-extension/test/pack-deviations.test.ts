@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   changedLines,
+  GIT_BUDGET_MS,
   detectDeviations,
   loadShippedStore,
   recoverBase,
@@ -280,6 +281,28 @@ describe("recoverBase", () => {
       process.env.PATH = saved;
     }
     expect(Date.now() - t0).toBeLessThan(4000);
+  });
+
+  it("rule 2 shares one git budget across the skills of one install, so a hanging git blocks the host about 2 s in all", () => {
+    // Regression (T7.2 review): each call used to get its own 2 s, so solo's two forks blocked the
+    // extension host for 4 s on a hanging git (execFileSync is synchronous).
+    const ws = mkdtempClean("shared-budget-");
+    const bin = mkdtempClean("slow-git-");
+    writeFileSync(join(bin, "git"), "#!/bin/sh\nexec sleep 30\n");
+    chmodSync(join(bin, "git"), 0o755);
+    const saved = process.env.PATH;
+    process.env.PATH = `${bin}:${saved}`;
+    const t0 = Date.now();
+    const gitDeadline = t0 + GIT_BUDGET_MS;
+    try {
+      for (const s of ["mission-execution", "mission-completion-gate"]) {
+        const local = versionLine(body(store.versions["56"]![s]![0]!), "57-local");
+        expect(recoverBase(ws, s, local, PACK, store, { gitDeadline })!.source).toBe("declared");
+      }
+    } finally {
+      process.env.PATH = saved;
+    }
+    expect(Date.now() - t0).toBeLessThan(GIT_BUDGET_MS + 1000);
   });
 
   it("rule 3: with no history, the EARLIEST stored body for the declared version", () => {

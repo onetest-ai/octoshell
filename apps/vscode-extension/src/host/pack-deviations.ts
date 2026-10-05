@@ -135,7 +135,17 @@ export interface RecoveredBase {
 }
 
 /** The longest time git may spend, across all of rule 2's calls. Each call gets what is left of it. */
-const GIT_BUDGET_MS = 2000;
+export const GIT_BUDGET_MS = 2000;
+
+export interface RecoverOptions {
+  /**
+   * Absolute deadline (`Date.now()` ms) for rule 2's git calls. Rule 2 runs git synchronously, so the
+   * extension host is blocked while it runs: a caller recovering several skills in one install takes
+   * ONE deadline (`Date.now() + GIT_BUDGET_MS`) and passes it to every call, so the whole install
+   * blocks on git for at most 2 s, not 2 s per deviated skill. Default: 2 s from this call.
+   */
+  gitDeadline?: number;
+}
 
 /** The lowest version whose list for `skill` holds `hash`, else the lowest holding it for any skill. */
 function versionOfBody(store: ShippedStore, hash: string, skill: string): number | null {
@@ -156,11 +166,10 @@ function versionOfBody(store: ShippedStore, hash: string, skill: string): number
  * shipped one. Skipped (null) when git is absent, `repoRoot` is not a repository, `.claude` is
  * ignored, or git runs past its time budget.
  */
-function baseFromWorkspaceGit(repoRoot: string, skill: string, store: ShippedStore): RecoveredBase | null {
+function baseFromWorkspaceGit(repoRoot: string, skill: string, store: ShippedStore, deadline: number): RecoveredBase | null {
   const rel = `.claude/skills/${skill}/SKILL.md`;
   const env = { ...process.env };
   for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"]) delete env[k];
-  const deadline = Date.now() + GIT_BUDGET_MS;
   const git = (args: string[]): Buffer => {
     const left = deadline - Date.now();
     if (left <= 0) throw new Error("git budget spent");
@@ -239,8 +248,9 @@ export function changedLines(a: string, b: string): number {
  * The base of a three-way merge for a deviated skill: the first of
  *  1. the stored body its `reconciled-from:` names (`reconciled-from`);
  *  2. the newest commit of the workspace's own git history of the SKILL.md whose body is a shipped
- *     one (`workspace-git`; git runs under a 2 s budget and the rule is skipped when git is absent,
- *     the directory is no repository or `.claude` is ignored);
+ *     one (`workspace-git`; git runs under a 2 s budget, shared across calls through
+ *     `opts.gitDeadline`, and the rule is skipped when git is absent, the directory is no
+ *     repository, `.claude` is ignored or the budget is spent);
  *  3. the EARLIEST stored body for (skill, N), N the leading integer of the version label (`declared`);
  *  4. the stored body with the fewest changed lines against the local file among those with version
  *     <= N, or all of them when the label has no leading integer (`closest`; approximate);
@@ -253,6 +263,7 @@ export function recoverBase(
   localBytes: Buffer | string,
   packVersion: number,
   store: ShippedStore,
+  opts: RecoverOptions = {},
 ): RecoveredBase | null {
   const local = typeof localBytes === "string" ? localBytes : localBytes.toString("utf8");
   const m = parseSkillMarker(local);
@@ -263,7 +274,7 @@ export function recoverBase(
     if (version !== null) return { version, sha256: named, source: "reconciled-from", body: store.bodies[named]! };
   }
 
-  const fromGit = baseFromWorkspaceGit(repoRoot, skill, store);
+  const fromGit = baseFromWorkspaceGit(repoRoot, skill, store, opts.gitDeadline ?? Date.now() + GIT_BUDGET_MS);
   if (fromGit) return fromGit;
 
   if (m.n !== null) {
