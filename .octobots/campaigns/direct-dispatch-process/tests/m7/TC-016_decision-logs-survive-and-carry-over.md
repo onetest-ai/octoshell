@@ -15,7 +15,7 @@ size: M
 
 ## Objective
 
-The installer never deletes a decision log, a superseded escalation is carried into the new brief instead of being lost or asked forever, and a mis-clicked Overwrite is recoverable (decision-13 recheck Q4, provisional). Verifies M7-AC3 and M7-AC5 of M7 - Pack updates reconcile locally changed skills with an agent.
+The installer never deletes a decision log, a superseded escalation is carried into the new brief instead of being lost or asked forever, and a mis-clicked Overwrite is recoverable (decision-13 recheck Q4, user-confirmed 2026-10-05). Verifies M7-AC3 and M7-AC5 of M7 - Pack updates reconcile locally changed skills with an agent.
 
 ## Preconditions
 
