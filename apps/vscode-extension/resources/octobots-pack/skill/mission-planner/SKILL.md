@@ -276,8 +276,8 @@ task. Title it `Mission QA: run tests/m<n> live…`: it runs the whole `tests/m<
 **Name it after the specific things that can break, not "write tests"** — name the regressions the
 mission actually put at risk:
 
-- `T6.6 - End-to-end: custom path, vendor-down fallback, and old-match regression`
-- `T7.6 - End-to-end: local-team editing preserved, vendor rows read-only, no names in logs`
+- `T6.6 - Mission QA: run tests/m6 live: custom path, vendor-down fallback, old-match regression`
+- `T7.6 - Mission QA: run tests/m7 live: local-team edits kept, vendor rows read-only, no names in logs`
 
 Each clause is a real hazard the mission introduced — a fallback that only matters when the vendor
 is down, existing behaviour that must survive, a privacy boundary that must hold. A task called

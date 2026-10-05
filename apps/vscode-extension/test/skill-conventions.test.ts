@@ -506,3 +506,32 @@ describe("T4.3 reviewer nits", () => {
     expect(fm).toMatch(/description:[^\n]*tests-pairing/);
   });
 });
+
+describe("T4.4 review: the last-task live run does not contradict the rest of the pack", () => {
+  const exec = skill("mission-execution").replace(/\s+/g, " ");
+  const gate = skill("mission-completion-gate").replace(/\s+/g, " ");
+  const planner = skill("mission-planner").replace(/\s+/g, " ");
+  it("mission-execution: live E2E is never per BUILD task, and the last task is named as the other live run", () => {
+    expect(exec).not.toMatch(/Live E2E at the mission gate\*\* \(e\.g\. Playwright\), never per task\b/);
+    expect(exec).toMatch(/never per build task[^.]*\. The one other live run is the mission's last task/);
+    expect(exec).toMatch(/only live run outside the gate: build tasks still gate statically/);
+  });
+  it("gate: ticking happens at phase 5, Sage's verdict only marks the evidenced criteria", () => {
+    expect(gate).toMatch(/In the gate, Sage's verdict marks which criteria have evidence and the ticking itself is phase 5's/);
+  });
+  it("mission-planner: the hazard-named examples use the Mission QA title", () => {
+    expect(planner).not.toMatch(/`T\d+\.\d+ - End-to-end:/);
+    expect(planner).toMatch(/`T6\.6 - Mission QA: run tests\/m6 live: /);
+  });
+  it("both QA blocks carry last_run with the by-hand status edit", () => {
+    expect(exec).toMatch(/frontmatter `status` \(and `last_run`\) by hand/);
+    expect(gate).toMatch(/frontmatter `status` \(and `last_run`:/);
+  });
+});
+
+describe("T4.4 review: who writes which notes", () => {
+  it("gate: the last task writes task and mission notes; the gate writes the mission's", () => {
+    const gate = skill("mission-completion-gate").replace(/\s+/g, " ");
+    expect(gate).toMatch(/\(the last task writes both; the gate writes the mission's\)/);
+  });
+});

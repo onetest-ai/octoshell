@@ -216,7 +216,8 @@ unfinished task, telling the agent what already exists.
 
 **The last-task convention.** A mission's final task is `Mission QA: run tests/m<n> live…`, owned by
 QA (`role: qa-engineer`), and it runs the whole suite in `tests/m<n>/`, not a slice. Its acceptance
-criteria are the mission's. The canonical rules are in `mission-completion-gate` § *QA on the test
+criteria are the mission's. It is the only live run outside the gate: build tasks still gate
+statically. The canonical rules are in `mission-completion-gate` § *QA on the test
 cases*; this task and gate phase 2 apply the same ones, and they must stay in step:
 
 - Run every TC in `tests/m<n>/` against the real system, by the mode each TC names.
@@ -227,7 +228,7 @@ cases*; this task and gate phase 2 apply the same ones, and they must stay in st
 - Name the pre-existing record per criterion; a criterion proved only on QA-created data is not passed.
 - Write `## QA verification` into the task and mission `notes` through `entity-io.mjs`.
 - Tick exactly the criteria that have evidence, and nothing else.
-- Until a status script exists, edit each TC's frontmatter `status` by hand.
+- Until a status script exists, edit each TC's frontmatter `status` (and `last_run`) by hand.
 
 ## Three loops: when the tests run again
 
@@ -536,7 +537,9 @@ merged** — that is the middle of the job, not the end of it.
   often a mission's first task) settles storage/migration/contract decisions before the build.
 - **Scope review before building.** Have the `ba` + `tech-lead` review the mission's scope + criteria;
   surface gaps as a prioritized list and fix the plan before coding.
-- **Live E2E at the mission gate** (e.g. Playwright), never per task — see § *The mission gate*. It
+- **Live E2E at the mission gate** (e.g. Playwright), never per build task — see § *The mission gate*. The
+  one other live run is the mission's last task (§ *Mission QA: run the test cases live*), after every
+  build task has landed; the gate still runs the suite again. It
   catches prod-breaking bugs (case-sensitivity, install failures, UX defects) that green unit suites do
   not. When it finds defects, **file them as octobots bugs and fix them**; the mission isn't done until
   it's green.

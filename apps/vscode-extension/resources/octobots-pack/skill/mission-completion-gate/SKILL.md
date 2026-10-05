@@ -149,11 +149,13 @@ it on a fresh tree and is not satisfied by an earlier RUN file alone.
   the RUN file; its status is still `pass`, `fail` or `blocked`.
 - **Name the pre-existing record per criterion**: the real record each criterion was proved on. A
   criterion proved only on QA-created data is not passed.
-- **Write `## QA verification` into the task and mission `notes`** through `entity-io.mjs`
+- **Write `## QA verification` into the task and mission `notes`** (the last task writes both; the gate
+  writes the mission's) through `entity-io.mjs`
   (`loadEntity`/`dumpEntity`, never raw appended text): the verdict, the RUN file, per criterion the
   pre-existing record and the observed value, and every TC that is not `pass` with its reason.
 - **Tick exactly the criteria that have evidence.** A ticked criterion with no matching line in
-  `## QA verification` is a defect; a criterion with a BLOCKED or UNREACHABLE case behind it stays unticked.
+  `## QA verification` is a defect; a criterion with a BLOCKED or UNREACHABLE case behind it stays unticked. In the gate, Sage's verdict
+  marks which criteria have evidence and the ticking itself is phase 5's, once phases 1-3 are green.
 - **Statuses are written by hand for now.** Edit each TC's frontmatter `status` (and `last_run`:
   `{date, evidence: <RUN file>}`) by hand, per the TC format contract in `mission-planner`. This is the
   single seam a status-writing script will replace; nothing else in this block changes.
