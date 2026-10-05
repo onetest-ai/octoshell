@@ -1,0 +1,70 @@
+$ add-tests.js m6
+created .octobots/campaigns/octograph-code-architecture-graph/tests/m6/README.md (5 AC rows)
+added document: M6 functional test cases -> .octobots/campaigns/octograph-code-architecture-graph/tests/m6/README.md
+exit=0
+$ cat README | head -40
+# Suite: octograph-code-architecture-graph-m6
+
+Functional test cases for **M6 - Extension bridge**, campaign `octograph-code-architecture-graph`. One case per file, `TC-NNN_<slug>.md`, authored with the mission before it is built. Start each case from `.claude/skills/mission-planner/templates/TC-template.md` (the TC format contract is in the mission-planner skill).
+
+## AC to test case map
+
+| AC | Summary | Test cases |
+|----|---------|------------|
+| M6-AC1 | Octobots Install Graph and Rebuild Graph open a terminal and capture no output |  |
+| M6-AC2 | path arguments use a path validator, not the slug validator sdlc-bundles uses for ids |  |
+| M6-AC3 | primer.mjs injects map.md when it exists and is under a size cap, otherwise a one-line pointer |  |
+| M6-AC4 | the extension gains no runtime dependency on @octoshell/graph |  |
+| M6-AC5 | the octograph bundle reaches the workspace at all: it ships as pack payload, installs alongside the… |  |
+
+## Shared preconditions
+
+- 
+
+## Pre-existing records
+
+- 
+
+## Assumptions to confirm
+
+- 
+$ grep M6-AC
+9:| M6-AC1 | Octobots Install Graph and Rebuild Graph open a terminal and capture no output |  |
+10:| M6-AC2 | path arguments use a path validator, not the slug validator sdlc-bundles uses for ids |  |
+11:| M6-AC3 | primer.mjs injects map.md when it exists and is under a size cap, otherwise a one-line pointer |  |
+12:| M6-AC4 | the extension gains no runtime dependency on @octoshell/graph |  |
+13:| M6-AC5 | the octograph bundle reaches the workspace at all: it ships as pack payload, installs alongside the… |  |
+$ grep doc
+18:  - label: M6 functional test cases
+19-    target: .octobots/campaigns/octograph-code-architecture-graph/tests/m6/README.md
+/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/skill/mission-planner/templates/TC-template.md
+---
+id: TC-001
+title: "<one line: what this case proves>"
+mission: M1
+covers: [M1-AC1]
+kind: cli
+status: draft
+---
+
+# TC-001: <one line: what this case proves>
+
+<!--
+Copy this file to .octobots/campaigns/<campaign>/tests/m<n>/TC-NNN_<slug>.md (the id must equal the
+filename prefix before the first "_"; mission must be the folder token upper-cased, m3b -> M3b).
+Delete this comment. Frontmatter contract:
+$ AC count
+5
+$ documents
+documents:
+  - label: M6 plan
+    target: docs/superpowers/plans/2026-08-11-octograph-extension-bridge.md
+  - label: M6 functional test cases
+    target: .octobots/campaigns/octograph-code-architecture-graph/tests/m6/README.md
+tokenomics:
+$ diff vs original
+diff -r /Users/arozumenko/Development/octoshell/.octobots/campaigns/octograph-code-architecture-graph/missions/m6-extension-bridge/mission.yaml /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4qa/work/octo-octobots/campaigns/octograph-code-architecture-graph/missions/m6-extension-bridge/mission.yaml
+17a18,19
+>   - label: M6 functional test cases
+>     target: .octobots/campaigns/octograph-code-architecture-graph/tests/m6/README.md
+Only in /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4qa/work/octo-octobots/campaigns/octograph-code-architecture-graph: tests

@@ -1,0 +1,21 @@
+status: done
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4qa/work/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/missions/m1-venue-ingest-mode-and-vendor-integer-ids/mission.yaml
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1: M1-AC11 is not covered by any test case
+exit=0
+set status of "M1 - Venue ingest mode and vendor integer ids" to draft
+octobots: status mission "M1 - Venue ingest mode and vendor integer ids" done -> draft
+set-status draft exit=0
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1: M1-AC11 is not covered by any test case
+validate exit=
+set status of "M1 - Venue ingest mode and vendor integer ids" to executing
+octobots: status mission "M1 - Venue ingest mode and vendor integer ids" draft -> executing
+set-status active exit=0
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1: M1-AC11 is not covered by any test case
+validate exit=
+set status of "M1 - Venue ingest mode and vendor integer ids" to done
+octobots: status mission "M1 - Venue ingest mode and vendor integer ids" executing -> done
+set-status done exit=0
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1: M1-AC11 is not covered by any test case
+validate exit=
+status: done
+validate exit=0 warnings=1 errors=0

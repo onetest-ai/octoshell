@@ -1,0 +1,35 @@
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/board
+
+ ✓ test/tests-folder-ignored.test.ts > BoardModel and a campaign's tests/ folder > over every real board copy: entity ids are identical with and without tests/ 359ms
+ ✓ test/tests-folder-ignored.test.ts > BoardModel and a campaign's tests/ folder > over every real board copy: entity-shaped files planted inside tests/ create no entity 385ms
+ ✓ test/tests-folder-ignored.test.ts > BoardModel and a campaign's tests/ folder > a directory holding only tests/ is no campaign, and a campaign's TC files are no entities
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  01:45:49
+   Duration  922ms (transform 40ms, setup 0ms, collect 48ms, tests 748ms, environment 0ms, prepare 28ms)
+
+exit=
+[33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > coalesces a burst of triggers into ONE settle after the debounce window
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > defers the settle while git is non-quiescent, then runs exactly once after it settles
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > dispose cancels a pending settle
+ ✓ test/board-watcher.test.ts > isTestsRunOrEvidencePath > is true for anything under tests/**/runs/ or tests/**/evidence/
+ ✓ test/board-watcher.test.ts > isTestsRunOrEvidencePath > is false for a TC file, a README, an entity file and a runs/ or evidence/ folder outside tests/
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > watches the whole campaigns tree, so TC and README writes reach the handler
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > triggers no rebuild for a write under tests/**/runs/** or tests/**/evidence/**, on any event
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a write to a TC file triggers exactly one debounced rebuild, however many events it raises
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a README write triggers exactly one rebuild, and so does a TC delete
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a run report written in the same window as a TC write still costs exactly one rebuild
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > entity files outside tests/ rebuild as before
+
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+   Start at  01:45:50
+   Duration  278ms (transform 23ms, setup 51ms, collect 14ms, tests 3ms, environment 0ms, prepare 29ms)
+
+exit=

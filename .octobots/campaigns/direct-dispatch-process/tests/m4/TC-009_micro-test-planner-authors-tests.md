@@ -4,7 +4,8 @@ title: "Planner micro-test: 5 fresh sub-agents plan a mission on octoshell's boa
 mission: M4
 covers: [M4-AC4]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m4/runs/RUN-2026-10-06-001.md}
 priority: high
 size: L
 ---

@@ -4,7 +4,8 @@ title: "validate.js on uwb m1: warning that M1-AC11 is not covered by any test c
 mission: M4
 covers: [M4-AC2]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m4/runs/RUN-2026-10-06-001.md}
 priority: critical
 size: S
 ---

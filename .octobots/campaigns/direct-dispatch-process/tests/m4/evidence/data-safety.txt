@@ -1,0 +1,25 @@
+# Data safety evidence (T4.5, 2026-10-06)
+
+solo git status --short before:
+?? .agents/memory/js-dev/daily/2026-10-02.md
+?? .agents/memory/js-dev/daily/2026-10-03.md
+?? .agents/memory/python-dev/daily/2026-10-02.md
+?? .agents/memory/python-dev/daily/2026-10-03.md
+?? .agents/memory/qa-engineer/daily/2026-10-02.md
+?? .agents/memory/qa-engineer/daily/2026-10-03.md
+after:
+?? .agents/memory/js-dev/daily/2026-10-02.md
+?? .agents/memory/js-dev/daily/2026-10-03.md
+?? .agents/memory/python-dev/daily/2026-10-02.md
+?? .agents/memory/python-dev/daily/2026-10-03.md
+?? .agents/memory/qa-engineer/daily/2026-10-02.md
+?? .agents/memory/qa-engineer/daily/2026-10-03.md
+cmp status: identical
+
+solo .octobots sha256 manifest:     1209 files before,     1209 after; cmp: identical
+manifest digest before: e2c8d9b0af29babe3f04ce470a0f300ec83a5d860ba8484af5ea12541baac924
+manifest digest after:  e2c8d9b0af29babe3f04ce470a0f300ec83a5d860ba8484af5ea12541baac924
+
+octoshell .octobots sha256 manifest outside campaigns/direct-dispatch-process:      209 files before,      209 after; cmp: identical
+octoshell git status --short before:
+ M .octobots/campaigns/direct-dispatch-process/missions/m4-functional-test-cases-are-a-gate-run-unit-of-ev/tasks/t4-5-mission-qa-run-tests-m4-live-on-copies-of-sol/task.yaml
