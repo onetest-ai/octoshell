@@ -1,13 +1,34 @@
 name: T3.2 - Host drops workflow commands, tree nodes, panel type, RPC and activation migration
-status: draft
+status: done
 role: js-dev
 description: 'Scope: extension.ts:5,125,197-200,255,343-372 with the :197 serializer replaced by a disposing one; entity-panel-manager.ts:11,13,45-46,74-76,98-99,195; campaigns-tree.ts:3,10,79-86,103,110; rpc-contract.ts:3,140-155,211-217; rpc-dispatcher.ts:90-103; host-events.ts:10; board-host.ts:26-29,41-42,378-418; package.json:182-189,256-264; retitle the install command (package.json:149) and say ''Octobots pack'' in package.json:4 and src/extension.ts:78,117; replace every ''Install Workflow Pack'' quote in the pack''s doctor.js (:70-167) with ''Install Octobots Pack''; delete board-host-workflow.test.ts and campaigns-tree-workflow.test.ts. New vitests read real boards per campaign notes § Test conventions rule 2 (OCTOBOTS_BOARD_COPIES, else a temp copy of the repo''s own .octobots/). Out of scope: board library. Downstream: T3.3 can remove the types.'
 acceptance_criteria:
   - text: apps/vscode-extension/test/manifest-no-workflows.test.ts asserts package.json has no workflow command or menu; apps/vscode-extension/test/campaigns-tree-real-board.test.ts builds the CampaignsTree over a real board copy and asserts every mission/task/bug node and 0 workflow nodes; the RPC contract has no workflow:* method and BindMessage.kind has no "workflow" (mission AC4)
-    done: false
+    done: true
   - text: apps/vscode-extension/test/panel-serializer.test.ts proves a restored octoshell.workflow panel is disposed without an error notification (mission AC5)
-    done: false
+    done: true
   - text: apps/vscode-extension/test/activation-workflows-untouched.test.ts activates BoardHost over real board copies and asserts the sha256 of every file under any workflows/ is equal before and after (mission AC2)
-    done: false
+    done: true
   - text: 'the command id octoshell.installOctobotsWorkflowSkill is unchanged and its title reads ''Octobots: Install Octobots Pack''; `grep -c ''Install Workflow Pack''` on the pack''s doctor.js prints 0; src/extension.ts and package.json:4 say ''Octobots pack'' (mission AC7)'
-    done: false
+    done: true
+notes: |-
+  ## QA verification
+
+  Verdict: PASS (qa-engineer, 2026-10-05). PR #137, head 1fb92bff (records: 438292da dev, 1fb92bff review fix). Verified black-box on the built artifact and real board copies, not on prior reports.
+
+  Per AC:
+  1. manifest-no-workflows + campaigns-tree-real-board (+ rpc-contract assertion). package.json contributes has no workflow command or menu; the only "workflow" string is the unchanged command id. Tree over copies of octoshell's and solo's .octobots (probe bundles the real CampaignsTree, vscode stubbed): octoshell campaign 4 / mission 18 / task 100 / bug 46; solo campaign 23 / mission 115 / task 323 / bug 114; 0 workflow nodes. Tests: 4 + 1 passed.
+  2. panel-serializer (+ panel-restore-activation). The serializer was called with arbitrary state (object, undefined, null): disposed 3/3, no throw, no notification. activationEvents include onWebviewPanel:octoshell.{campaign,mission,task,bug,workflow}. Tests: 3 + 2 passed.
+  3. activation-workflows-untouched. The real built openBoard() path (migrateEntitiesToYaml + reconcile) ran on copies of octoshell's .octobots (5 workflow files + planted x/workflow.md with a Runs section) and solo's (7 + planted). sha256 of every file under workflows/ was identical before and after, and the planted workflow.md still existed, in both. Test: 3 passed.
+  4. Install command id octoshell.installOctobotsWorkflowSkill unchanged, title "Octobots: Install Octobots Pack"; the pack's doctor.js has 0 'Install Workflow Pack' and 10 'Install Octobots Pack'; grep -i "workflow pack" over src, package.json and resources/octobots-pack gives 0 hits. package.json description says "Octobots pack".
+
+  Positive control: the OLD migrateLegacyWorkflows from feat/direct-dispatch-process (git archive of packages/board, bundled) run on fresh copies of octoshell's and solo's boards with the same planted workflows/x/workflow.md: retired 1, planted file existed before and was DELETED after, in both. So the probe can detect deletion, and the new path does not delete.
+
+  0.0.51 finding: released 0.0.51's activation migration deleted legacy workflow.md files (confirmed by the control above). The new code does not. This is a deliberate change from 0.0.51 and belongs in the T6.6 release note (already recorded there per the T3.2 review follow-ups).
+
+  Gates: pnpm build, typecheck, lint, test (board 412, tokenomics 102, extension 921, graph 653; 0 skips) and coverage:pack all exit 0, run in the foreground. gh pr checks 137: build passes. solo's git status --short unchanged (6 lines, same sha256) after all probes; solo was only read and copied.
+
+  Non-blocking items:
+  - DispatchCtx.editor is now unused (dead field; harmless, can go in a cleanup).
+  - docs/ wording that still says "workflow pack" or describes the workflow editor goes to T3.4.
+  - The install notification reads "Octobots: pack installed" (lowercase p after the colon); cosmetic.
