@@ -1,11 +1,36 @@
 name: T1.2 - Extension's ClaudeTranscriptSource reads the same roots
-status: draft
+status: done
 role: js-dev
 description: 'Scope: packages/tokenomics/src/claude-source.ts:20-75 takes a roots resolver (home / config-dir / legacy main-checkout root, injectable for tests) plus worktree unwinding; update the doc comment :5-6; keep the recursive wf_ walk. Add the QA harness apps/vscode-extension/scripts/qa/tokenomics-report.mjs <workspace>: plain node, imports @octoshell/tokenomics from packages/tokenomics/dist, makes the same ClaudeTranscriptSource + rollup calls the tokenomics:report RPC makes (rpc-dispatcher.ts:42-47), writes nothing, and prints JSON {workspace, slug, roots[], segments, sessions[], slugs[]} (slugs = the project slug dirs that contributed). Out of scope: rollup. Downstream: the extension''s Tokenomics view; M1 TC-004 and TC-009.'
 acceptance_criteria:
   - text: tokenomics:report includes sessions that exist only under the home root, and a repo-local root holding other projects' slug dirs contributes only the repo's own slug (mission AC4), covered by packages/tokenomics/test/claude-source.test.ts with injected roots
-    done: false
+    done: true
   - text: packages/tokenomics/test/claude-source-parity.test.ts feeds one root set to both collect.mjs (spawned) and the TS source and asserts identical segment ids; a /.claude/worktrees/ path resolves to the main checkout's slug
-    done: false
+    done: true
   - text: apps/vscode-extension/scripts/qa/tokenomics-report.mjs exists with the JSON contract above, and apps/vscode-extension/test/qa-tokenomics-report.test.ts runs it on a temp workspace with an injected home root and asserts the JSON shape and session ids
-    done: false
+    done: true
+notes: |-
+  ## QA verification
+
+  Verdict: PASS. PR #114 (feat/direct-dispatch-process-m1-t2 -> feat/direct-dispatch-process-m1), CI build checks pass (2/2). Date 2026-10-05.
+
+  Gate (root, fresh): pnpm build && typecheck && lint && test && coverage:pack all exit 0. tokenomics 58 tests, board 383, vscode-extension 467 (39 files), graph 653.
+
+  Real records (blind probe of built dist, harness tokenomics-report.mjs, scratch HOME with frozen copies of solo sessions 011deac1/138ca3b0/39d8025a + octodeck slug):
+  - (a) Solo, workspace /Users/arozumenko/Development/auqanautica: roots = [scratch home, solo repo-local]; 9 sessions, 662 segments; the 3 home-only sessions (011deac1, 138ca3b0, 39d8025a) are present (comm vs repo-local = exactly those 3); slugs = both own slug dirs, octodeck slug not read. git status --short of solo identical before and after (6 lines, unchanged).
+  - (b) Octoshell, real repo-local .claude/projects (holds -analysta, -private-tmp, -private-var-folders-...): 468 segments, 10 sessions, slugs = only .../.claude/projects/-Users-arozumenko-Development-octoshell. No other project's slug contributed.
+  - (c) Parity: scratch workspace + pack collect.mjs (--project-dir, --projects-dir, empty segments.jsonl) vs TS source over the same roots (solo data, home 3 + local 6 sessions): 662 vs 662 segment ids, sorted diff empty.
+  - (d) Worktree: workspace <octoshell>/.claude/worktrees/x -> slug -Users-arozumenko-Development-octoshell, legacy root <octoshell>/.claude/projects, 468 segments (same as main).
+
+  Per AC:
+  1. claude-source.test.ts "reads sessions that exist only under the home root" (observed: ids == [home-only:main:feat/x], turns 2) and "a repo-local root holding other projects' slug dirs contributes only the repo's own slug" (observed: ids == [mine]); claude-source.test.ts 15 passed (21 across it and the parity file). Matches real records (a),(b).
+  2. claude-source-parity.test.ts, 6 tests passed incl. "a /.claude/worktrees/ path resolves to the main checkout's slug" and "a duplicate with EQUAL turns keeps the earlier root's copy, on both sides". Matches real records (c),(d).
+  3. qa-tokenomics-report.test.ts, 2 passed: "prints the JSON contract ... writes nothing" (observed keys workspace/slug/roots/segments/sessions/slugs, segments 3, sessions [home-only-1, home-only-2, legacy-1], foreign slugs excluded, dir snapshot unchanged) and the usage exit-2 test. Harness itself run against real data above.
+
+  Reviewer fix verified: 170bef0 added the equal-turns tie-break parity case (earlier root wins); it is present and green.
+
+  Non-blocking findings (not fixed here):
+  - The TS "relative path" unit test passes an absolute path (resolves "relative workspace path" only nominally; parity test covers relative on both sides).
+  - tokenomics-rpc.test.ts does not inject HOME, so it reads the runner's real ~/.claude.
+  - The harness calls source.collect() twice (once via rollup, once for output); correct but wasteful.
+  Note: 011deac1 is a live session; frozen copy was used so counts are reproducible.
