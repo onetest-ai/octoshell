@@ -7,3 +7,5 @@ acceptance_criteria:
     done: false
   - text: pack-version-is-one-unit.md lists the 5 SKILL.md files (mission-planner, mission-execution, mission-completion-gate, knowledge-explorer, octobots-doctor) and statusline.sh among the hand-edited markers, and says every SKILL.md change is followed by `node apps/vscode-extension/scripts/shipped-skills.mjs --write` with the new store committed
     done: false
+  - text: docs/ (prd-v1.md, project-brief.md, tech-stack.md and any other file) carries no 'workflow pack', 'Install Workflow Pack', New/Delete Workflow command or WorkflowView reference except an explicitly historical note; the T3.2 review found these uncovered by any task
+    done: false
