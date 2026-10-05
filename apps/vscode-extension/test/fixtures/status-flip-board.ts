@@ -51,13 +51,21 @@ export function setStatusCommand(parentDir: string, title: string, state: string
   return `node "${SET_STATUS}" "${parentDir}" "${title}" ${state}${suffix}`;
 }
 
-/** The PostToolUse JSON Claude Code pipes into a hook for that Bash command. */
+/** The PostToolUse JSON Claude Code pipes into a hook for that Bash command (no tool_response). */
 export function postToolUse(repo: string, command: string, sessionId = "sess-abc"): Record<string, unknown> {
   return { tool_name: "Bash", session_id: sessionId, cwd: repo, tool_input: { command } };
 }
 
-/** Actually run the command (as the shell would) so the board changes, and return its payload. */
+/** The same payload as a harness sends it after the command ran: `tool_response` carries stdout/stderr. */
+export function postToolUseWithOutput(repo: string, command: string, stdout: string, sessionId = "sess-abc"): Record<string, unknown> {
+  return { ...postToolUse(repo, command, sessionId), tool_response: { stdout, stderr: "", interrupted: false, isImage: false } };
+}
+
+/** Actually run the command (as the shell would) so the board changes, and return its real payload incl. stdout. */
 export function runAndPost(repo: string, command: string): Record<string, unknown> {
-  spawnSync("sh", ["-c", command], { cwd: repo, encoding: "utf8" });
-  return postToolUse(repo, command);
+  const r = spawnSync("sh", ["-c", command], { cwd: repo, encoding: "utf8" });
+  return {
+    ...postToolUse(repo, command),
+    tool_response: { stdout: r.stdout, stderr: r.stderr, interrupted: false, isImage: false },
+  };
 }

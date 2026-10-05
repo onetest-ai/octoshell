@@ -11,13 +11,13 @@
 // gate. The project's own mechanical gate (linters, type-checks, suites) is
 // the project's business; this handles the agent pipeline + critical review.
 //
-// It fires on the COMMAND, so it re-reads the board first (status-flip.mjs):
-// the directive is injected only when the mission's YAML now says `done`.
+// It fires on the COMMAND, so it checks the effect first (status-flip.mjs): the directive is injected
+// only when set-status.js reported a real transition to `done` AND the mission's YAML now says `done`.
 //
 // Self-gates on .octobots/ so it is inert in non-Octobots repos.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { parseSetStatusAll, statusNowEquals } from "./status-flip.mjs";
+import { confirmedTransitions, parseSetStatusAll } from "./status-flip.mjs";
 
 const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
 if (!existsSync(join(projectDir, ".octobots"))) process.exit(0);
@@ -50,11 +50,10 @@ const candidates = parseSetStatusAll(command).filter(
 );
 if (candidates.length === 0) process.exit(0);
 
-// The command ran; did the board change? (`; echo` can make a failed set-status exit 0.)
-const titles = [];
-for (const c of candidates) {
-  if (await statusNowEquals(c, typeof evt.cwd === "string" ? evt.cwd : projectDir, projectDir)) titles.push(c.title);
-}
+// Did the board really change? set-status.js prints a transition line only when the status moved;
+// the YAML must agree (`; echo` can make a failed set-status exit 0, and an `echo` can forge the line).
+// Re-running `done` on a done mission prints `unchanged`, so it does not re-fire the gate.
+const titles = (await confirmedTransitions(candidates, evt, projectDir)).map((c) => c.title);
 if (titles.length === 0) process.exit(0);
 const named = titles.map((t) => `"${t}"`).join(", ");
 
