@@ -7,3 +7,5 @@ acceptance_criteria:
     done: false
   - text: the extension.ts wiring (modal before any write, Reconcile as the first button, Cancel writes nothing, no agent or clipboard call, the activation prompt gated by shouldPromptOnActivation) is shown in a manual Extension Development Host run on a copy of solo's workspace, recorded in M7 TC-007 with screenshots
     done: false
+  - text: 'A skill the user chose ''Keep my changes'' for stays kept on every later install (default, non-interactive, activation) while its SKILL.md bytes are unchanged: it is not staged, not turned into a pending reconcile and not prompted for; only an explicit Reconcile or Overwrite choice in the prompt, or a changed fork, re-opens it (decision 13(e), ''Keep my changes is remembered''). Proven in apps/vscode-extension/test/pack-install-reconcile.test.ts and with the harness on a solo clone (keep, then a default run: kept unchanged, no staging). Today a later non-keep install converts it to pending (T7.3 QA, 2026-10-05)'
+    done: false
