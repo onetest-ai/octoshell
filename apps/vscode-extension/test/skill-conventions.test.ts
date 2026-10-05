@@ -532,6 +532,32 @@ describe("T4.4 review: the last-task live run does not contradict the rest of th
 describe("T4.4 review: who writes which notes", () => {
   it("gate: the last task writes task and mission notes; the gate writes the mission's", () => {
     const gate = skill("mission-completion-gate").replace(/\s+/g, " ");
-    expect(gate).toMatch(/\(the last task writes both; the gate writes the mission's\)/);
+    expect(gate).toMatch(/The last task writes `## QA verification` into the task and mission `notes`/);
+  });
+});
+
+describe("M4 B2: mission-execution and the gate tell one story about the last-task live run", () => {
+  const exec = skill("mission-execution").replace(/\s+/g, " ");
+  const gate = skill("mission-completion-gate").replace(/\s+/g, " ");
+  it("1. the summary lines name both live runs", () => {
+    expect(exec).not.toMatch(/then the whole mission gated once/);
+    expect(exec).toMatch(/the mission's last Mission QA task runs the test cases live, and the gate runs them again/);
+    expect(exec).toMatch(/ONE dynamic gate per mission[^>]*last Mission QA task[^>]*the gate re-runs it/);
+  });
+  it("2. the never-write-another-entity rule names the last task's mission-notes exception", () => {
+    expect(exec).toMatch(/Never let a task write board state for a \*different\* task, with one exception: the last Mission QA task writes `## QA verification` into the mission `notes`/);
+  });
+  it("3. mission criteria are ticked only by gate phase 5; the last task ticks its own and records evidence", () => {
+    expect(exec).not.toMatch(/the mission's acceptance criteria are checked off:/);
+    expect(exec).toMatch(/`done` once the last task is green \(the gate then ticks the mission's criteria in phase 5\)/);
+    expect(exec).toMatch(/Tick exactly the criteria that have evidence: the task's own\. Do not tick the mission's; record which mission criteria have evidence in the `## QA verification` block, and the gate ticks them in phase 5/);
+    expect(gate).toMatch(/Only phase 5 ticks the mission's criteria/);
+    expect(gate).toMatch(/The last task does not tick mission criteria/);
+  });
+  it("4. the last task writes ## QA verification; the gate writes its own dated section that references it", () => {
+    expect(gate).toMatch(/The gate writes its own `## Completion gate \(<date>\): GREEN\|RED` section into the mission `notes`/);
+    expect(gate).toMatch(/refers to the last task's `## QA verification` block instead of repeating it/);
+    expect(gate).not.toMatch(/the gate writes the mission's\)/);
+    expect(exec).toMatch(/gate writes its own `## Completion gate \(<date>\)` section/);
   });
 });
