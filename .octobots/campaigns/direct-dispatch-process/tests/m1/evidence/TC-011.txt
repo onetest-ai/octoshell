@@ -1,0 +1,25 @@
+# TC-011 (octoshell = real checkout + real HOME; solo = scratch COPY with stub HOME, per the no-write-to-solo deviation)
+## octoshell, CLAUDE_CONFIG_DIR unset
+{"level":"ok","area":"config-dir","msg":"CLAUDE_CONFIG_DIR is not set — transcripts are read from ~/.claude/projects/-Users-arozumenko-Development-octoshell"}
+## solo copy, CLAUDE_CONFIG_DIR unset (HOME=stub)
+{"level":"ok","area":"config-dir","msg":"CLAUDE_CONFIG_DIR is not set — transcripts are read from ~/.claude/projects/<COPY_SLUG>"}
+## occurrences of the old advice (repo-local .claude) in solo-copy and octoshell config-dir findings (expect 0 0)
+0
+0
+0
+## CLAUDE_CONFIG_DIR=$WORK/cfg set
+{"level":"ok","area":"config-dir","msg":"CLAUDE_CONFIG_DIR is set — transcripts are read from $WORK/cfg/projects/<COPY_SLUG>"}
+## unit scenarios
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/board
+
+ ✓ test/scripts-cli-scenarios.test.ts > workflow script guards > doctor.js config-dir > config-dir unset is ok and names ~/.claude/projects/<slug>, with no per-repo CLAUDE_CONFIG_DIR advice
+ ✓ test/scripts-cli-scenarios.test.ts > workflow script guards > doctor.js config-dir > config-dir set names $CLAUDE_CONFIG_DIR/projects/<slug> as the root, wherever it points
+ ✓ test/scripts-cli-scenarios.test.ts > workflow script guards > doctor.js config-dir > config-dir set to a project-local dir is still ok and names its projects/<slug>
+ ✓ test/scripts-cli-scenarios.test.ts > workflow script guards > doctor.js config-dir > config-dir from a worktree names the main checkout's slug
+
+ Test Files  1 passed (1)
+      Tests  4 passed | 55 skipped (59)
+   Start at  11:34:44
+   Duration  307ms (transform 51ms, setup 0ms, collect 61ms, tests 105ms, environment 0ms, prepare 26ms)
+

@@ -42,7 +42,7 @@ export interface EntityFields {
   actual?: string; // bug
   rca?: string; // bug
   environment?: string; // bug
-  tokenomics?: Tokenomics; // mission / task
+  tokenomics?: Tokenomics; // campaign / mission / task
   /** Free-form appended prose — recorded decisions, rationale, sign-offs. Preserved verbatim. */
   notes?: string;
   /**
@@ -55,7 +55,7 @@ export interface EntityFields {
 
 /** Which top-level keys each kind emits. A known key outside its kind's list is misplaced. */
 export const KIND_KEYS: Record<EntityKind, readonly string[]> = {
-  campaign: ["name", "status", "target", "description", "acceptance_criteria", "documents", "notes"],
+  campaign: ["name", "status", "target", "description", "acceptance_criteria", "documents", "tokenomics", "notes"],
   mission: ["name", "status", "description", "acceptance_criteria", "documents", "tokenomics", "notes"],
   task: ["name", "status", "role", "description", "acceptance_criteria", "tokenomics", "notes"],
   bug: ["name", "status", "severity", "description", "steps_to_reproduce", "expected", "actual", "rca", "environment", "notes"],
@@ -207,7 +207,7 @@ export function dumpEntity(kind: EntityKind, f: EntityFields): string {
   if (kind === "campaign" || kind === "mission") {
     o.documents = f.documents.map((d) => ({ label: d.label, target: d.target, ...restOf(d, ["label", "target"]) }));
   }
-  if ((kind === "mission" || kind === "task") && f.tokenomics && Object.keys(f.tokenomics).length) {
+  if ((kind === "campaign" || kind === "mission" || kind === "task") && f.tokenomics && Object.keys(f.tokenomics).length) {
     o.tokenomics = f.tokenomics;
   }
   // Free-form appended prose (decisions/rationale/sign-offs) — emitted for every kind when present.

@@ -118,20 +118,21 @@ describe("doctor", () => {
     }
   }
 
-  it("FAILS when CLAUDE_CONFIG_DIR points outside the project", () => {
+  it("a CLAUDE_CONFIG_DIR outside the project is fine: the collector reads $CLAUDE_CONFIG_DIR/projects/<slug>", () => {
     const repo = mkdtempClean("octo-doc-");
-    const { code, out } = doctor(repo, { CLAUDE_CONFIG_DIR: "/Users/somebody/.claude" });
-    const report = JSON.parse(out);
-    const f = report.findings.find((x: any) => x.area === "config-dir");
-    expect(f.level).toBe("fail");
-    expect(code).toBe(1);
+    const { out } = doctor(repo, { CLAUDE_CONFIG_DIR: "/Users/somebody/.claude" });
+    const f = JSON.parse(out).findings.find((x: any) => x.area === "config-dir");
+    expect(f.level).toBe("ok");
+    expect(f.msg).toContain("/Users/somebody/.claude/projects/");
   });
 
-  it("WARNS when CLAUDE_CONFIG_DIR is unset — the ~/.claude default is shared by every project", () => {
+  it("an unset CLAUDE_CONFIG_DIR is ok and never recommends a per-repo config dir", () => {
     const repo = mkdtempClean("octo-doc-");
     const { out } = doctor(repo, { CLAUDE_CONFIG_DIR: undefined });
     const f = JSON.parse(out).findings.find((x: any) => x.area === "config-dir");
-    expect(f.level).toBe("warn");
+    expect(f.level).toBe("ok");
+    expect(f.msg).toContain("~/.claude/projects/");
+    expect(f.fix).toBeUndefined();
   });
 
   it("accepts a project-local CLAUDE_CONFIG_DIR", () => {
@@ -139,13 +140,6 @@ describe("doctor", () => {
     const { out } = doctor(repo, { CLAUDE_CONFIG_DIR: join(repo, ".claude") });
     const f = JSON.parse(out).findings.find((x: any) => x.area === "config-dir");
     expect(f.level).toBe("ok");
-  });
-
-  it("a sibling directory sharing the project's name prefix does not pass containment", () => {
-    const repo = mkdtempClean("octo-doc-");
-    const { out } = doctor(repo, { CLAUDE_CONFIG_DIR: `${repo}-evil/.claude` });
-    const f = JSON.parse(out).findings.find((x: any) => x.area === "config-dir");
-    expect(f.level).toBe("fail");
   });
 
   it("reports duplicate hook registrations, naming each one", () => {

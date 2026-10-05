@@ -1,0 +1,9 @@
+name: B4 - rollup.mjs merges letter-suffixed missions (M2a/M2b) into one row
+status: draft
+severity: minor
+description: rollup.mjs's splitTitle (rollup.mjs:186, regex [MT]\d+(?:\.\d+)?\s*[-–—:]) fails on 'M2a - …' and 'M2b - …' and falls back to the dir-derived 'M2'. groups is keyed by `${campaign}/${id}`, so letter-suffixed missions collapse into one row, which takes the first-seen mission's metadata. rollup.ts keys rows by mission folder and keeps them apart, so the TS and pack rollups disagree per row on real data (rollup-parity.test.ts mergeSharedIds works around this). Step 2's /-m(\d+)\b/ also does not match -m2a/-m4b branches; the behaviour is the same on both sides.
+steps_to_reproduce: 'On a COPY of solo: node rollup.mjs --project-dir <copy> --no-gh --quiet; jq ''.runs[]|select(.work_item_ref|test("epic-005.*/M(2|4)$"))|{ref:.work_item_ref,name:._octobots.mission_name,br:._octobots.branches}'''
+expected: One row per mission folder, M2a and M2b separate, matching rollup.ts.
+actual: The epic-005/M2 row is named 'M2b - Run control' but carries feat/...-m2a and its spend ($189.16 combined). The epic-005/M4 row is named 'M4b', has feat/...-m4 merged in, and lists tasks [T4.3,T0..T8]. epic-013 M3a/M3b share a key too (no spend yet).
+rca: 'Mission identity is derived from the title regex rather than the mission dir. Fix direction: key groups by mission dir and accept an M\d+[a-z]? id. This changes work_item_ref values (gate lookups, historical runs.json), so it needs a deliberate AC superseding M1 AC5''s ''mission rows unchanged'' baseline. Predates T1.3; no spend is lost and totals are intact.'
+environment: 'found by the T1.3a review gate (PR #115, 2026-10-05) on a copy of solo''s tokenomics'

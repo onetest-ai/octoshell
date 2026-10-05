@@ -1,13 +1,65 @@
 name: T1.3 - Campaign-level attribution bucket and declared campaign branches
-status: draft
+status: done
 role: js-dev
 description: 'Scope: implement mission AC5''s precedence (steps 1-7) in BOTH rollup.mjs:350-363,513-519 (adding the worklog step 4) and packages/tokenomics/src/rollup.ts:79-82,133-160 (the campaign match must not shadow the worklog); emit the campaign row inside runs[] with the AC5 shape; model `tokenomics` on campaign in BOTH entity-schema.ts:45,59,210 and entity-io.mjs:69,184 (dual-schema hazard, AGENTS.md); render.mjs, render.ts and the webview tokenomics view (tokenomics-view.tsx:105,132) show campaign rows separately and leave them out of ''Missions measured'' and the missing-sizing note (rollup.mjs:834, render.mjs:226). Touches packages/board, so campaign notes § Test conventions rule 8 applies (payload regen after a root build; T1.4 has landed first). Out of scope: apportioning campaign cost to missions. Downstream: M1 TC-005..007, TC-009; campaign AC3; this campaign''s own feat/direct-dispatch-process row.'
 acceptance_criteria:
   - text: packages/tokenomics/test/rollup-parity.test.ts is table-driven over all 7 precedence steps, runs rollup.mjs (spawned) and rollup.ts on the same segments and board, and asserts identical runs[] (campaign and mission rows) and unattributed; it also asserts sum(runs[] cost and tokens) + unattributed equals the segments' total (verify.mjs invariant), and, when OCTOBOTS_TOKENOMICS_COPY=<dir> names a copy of a project's .octobots (raw/segments.jsonl + campaigns/), it runs the same comparison over that copy (mission AC5)
-    done: false
+    done: true
   - text: packages/board/test/campaign-tokenomics-roundtrip.test.ts shows a campaign's tokenomics.branches (list and comma-string forms) survives add-doc.js and set-status.js writes and round-trips through entity-schema.ts
-    done: false
+    done: true
   - text: packages/tokenomics/test/render.test.ts and apps/vscode-extension/test/tokenomics-view-campaign-rows.test.tsx assert that campaign rows are rendered under their own heading and are excluded from 'Missions measured' and the missing-sizing note
-    done: false
+    done: true
   - text: after a root `pnpm build`, `pnpm --filter @octoshell/vscode-extension graph:payload:write` leaves graph-payload.mjs --verify green, and the 57 hash in graph-payload-versions.json is rewritten in a visible diff line if the bytes changed
-    done: false
+    done: true
+  - text: verify.mjs's ccusage cross-check reads the same transcript population as collect.mjs (the own-slug dirs of the configured root plus the legacy root; e.g. ccusage session --json rows filtered to the session ids found in those dirs, or a comma-separated CLAUDE_CONFIG_DIR plus a session filter). Given one session only in the home root and an empty legacy root, verify reports PASS; given no legacy root at all, verify reports PASS and never 'needs network access'. mission-completion-gate/SKILL.md and tokenomics/README.md describe the real roots and no longer advise CLAUDE_CONFIG_DIR=<repo>/.claude. Covered by apps/vscode-extension/test/tokenomics-verify-roots.test.ts
+    done: true
+notes: |
+  ## QA verification (part A, PR #115)
+
+  Verdict: PASS for ACs 1-4 (part A). Part B (AC5, verify.mjs) is PENDING in a later PR; T1.3 stays executing and AC5 is not ticked. Branch feat/direct-dispatch-process-m1-t3a @ 920296b. QA 2026-10-05, black-box on the built pack first, then tests.
+
+  Real-data probe (copy of solo .octobots/tokenomics + campaigns; nothing written under solo). Baseline = pre-T1.3 rollup.mjs from dbc17e9; new = this branch's rollup.mjs, both --no-gh on identical copies, 1637 segments.
+  - Campaign rows (work_item_level=campaign, parent_ref null, _octobots.mission_id null): edge-ops-ui [chore/close-edge-ops-ui-campaign, feat/edge-ops-ui]; emulator-arena-loop [campaign/emulator-arena-loop]; edgeserver-auth [fix/edgeserver-auth-coach-gating-gaps]. Last two are findings beyond campaign Real-data notes (1 segment each, slug in the branch, campaign has >1 mission).
+  - campaign/sensor-assignment-uplift stays on sensor-assignment-uplift/M1 (story, M1).
+  - unattributed.segments 490 -> 459 (-31 = 29+1+1). After declaring tokenomics.branches [chore/uwb-ranging-plan] on the uwb campaign IN THE COPY (via entity-io): 454, and a 4th row uwb-ranging-ingest-vendor-v01 [chore/uwb-ranging-plan]; unattributed.branches 31 -> 27 -> gone for feat/edge-ops-ui, campaign/emulator-arena-loop, chore/uwb-ranging-plan.
+  - All 51 mission rows identical baseline vs new (diff of ref, sorted branches, sessions, turns, tokens, cost): empty, with and without the uwb declaration.
+  - Totals invariant: sum(runs[].tokens)+unattributed.tokens = 8,759,714,164 in baseline, new, and new+uwb; matches an independent sum over segments.jsonl tokens_by_model (762,516 in + 11,652,851 out + 8,507,708,514 cache read + 239,590,283 cache create).
+  - render.mjs on the new output: HTML has <h2>Campaign-level work</h2> table listing the 4 campaign rows; "Missions measured" tile = 51 (campaign rows excluded; header said 51 missions, 4 campaign rows).
+
+  Gates (root, foreground): pnpm build, typecheck, lint, test, coverage:pack all exit 0. Tests: board 388, extension 476, tokenomics 92, graph 653 passed; no skipped tests in tokenomics. CI on PR #115: build pass (both runs).
+
+  Per-AC evidence:
+  1. packages/tokenomics/test/rollup-parity.test.ts: 25/25 passed (verbose). 19 table cases cover steps 1-7 (incl. D2 bad -m falls through to worklog; D1 bare-session worklog ignored, ambiguous label -> unattributed), plus "exercises every one of the 7 steps", runs[] + unattributed identical (mjs spawned vs rollup.ts), totals invariant for both, cost invariant, and a real-board test. That test also passes with OCTOBOTS_TOKENOMICS_COPY=<solo copy> (6.1s) and asserts non-vacuity (mission row, campaign row, unattributed > 0).
+  2. packages/board/test/campaign-tokenomics-roundtrip.test.ts 5/5: list form survives add-doc.js, comma-string survives set-status.js, TS dump byte-stable with tokenomics before notes, pack entity-io dump equals TS dump, validate reports no "not a campaign field".
+  3. packages/tokenomics/test/render.test.ts 15/15 (campaign-level rows: Missions measured counts mission rows only, own heading, omitted when none, no-sizing finding excludes campaigns, cost-by-size excludes, total includes) and apps/vscode-extension/test/tokenomics-view-campaign-rows.test.tsx 6/6; also tokenomics-render-mjs.test.ts 3/3 for the pack renderer.
+  4. After the root build, graph:payload:write left git tree unchanged (octograph.mjs bytes identical) and graph-payload.mjs --verify prints "octograph payload is current"; no versions.json line needed rewriting.
+
+  Reviewer fix: 920296b made the real-board parity test always run (previously permanently skipped); it falls back to this repo's own .octobots. Reviewer's 24 one-sided mutation checks not re-run by QA; I read the parity test adversarially instead (non-vacuity asserts, board-derived synthetic segments, exact token equality).
+
+  Known, not a T1.3 failure: the M2a/M2b row-keying defect (two missions sharing a mission id) predates this work and is filed as bug B4; the parity test merges rows sharing a mission id to account for it.
+
+  Side note: running render.mjs with --help (no such flag) wrote a report.html into this repo's gitignored .octobots/tokenomics; harmless.
+
+  ## QA verification (part B, PR #116)
+
+  Verdict: PASS. AC5 (verify.mjs) verified; T1.3 done. Head d6f7d91, CI green.
+
+  Blind probe (built pack copied to scratch, real ccusage 20.0.18 from .octobots/tools, temp HOME, nothing written under auqanautica or ~/.claude/projects):
+  - Case (a) one real-shaped session only under ~/.claude/projects/<slug> + EMPTY legacy root: PASS exit 0 (cost 0.32%, total/cache_read/cache_create 0.00%).
+  - Case (b) same, NO legacy root: PASS exit 0, output never mentions network.
+  - Using an opus-5-5 session the cost line FAILs in both cases (ccusage cannot price it) while all token lines match exactly: this is B5, not a population fault.
+  - Real record (solo = auqanautica, 1637 segments; 3 home + 6 legacy sessions matched 9/9, 416 Workflow-agent wf_ transcript files on disk):
+    - Pack verify.mjs --project-dir on the real project (read-only; no staging dir left): PASS. total 0.90%, cache_read 0.65%, cache_create 0.72%, input 0.44%; output (info) 68%; cost info (23 collected sessions pruned from disk).
+    - Same on a scratch COPY, as-is segments: identical PASS.
+    - Fresh collect on the copy (3 new segments): PASS. total 0.24%, cache_read 0.00%, cache_create 0.00%, input 0.00%. No ~2x cache_read gap, so wf_ rows are counted.
+    - Pure fresh collect (segments.jsonl removed so nothing is pruned): tokens exact, cost FAIL $1388.33 vs $503.81 = B5, reproduced.
+  - Docs: no CLAUDE_CONFIG_DIR=<repo>/.claude advice in mission-completion-gate/SKILL.md or tokenomics/README.md; README says not to do it.
+  - Cleanup: no octobots-verify-* temp dir left. (Stale tokenomics-selftest-* dirs in $TMPDIR predate this run, from selftest.)
+
+  Gates (root, foreground): pnpm build, typecheck, lint, test, coverage:pack all exit 0 (extension 388 tests, tokenomics 92, graph 653). tokenomics-verify-roots.test.ts verbose: 22 passed, 0 skipped, including 4 against the real ccusage binary. fake-ccusage.mjs keys rows by transcript path like the real binary, so wf_<id> rows are keyed separately. gh pr checks 116: all pass.
+
+  Reviewer fixes (d6f7d91): roots rule extracted to tokenomics/roots.mjs, imported by collect.mjs and verify.mjs (a test asserts neither re-spells it); verify no longer drops Workflow-agent wf_<id> rows (was a false FAIL at 2.17x on solo).
+
+  Filed, not a T1.3 failure: B5 (verify cost gate FAILs when ccusage cannot price opus-5/5-5; $0 from ccusage).
+
+  Reviewer non-blocking items: carried as noted by the review; none affects the AC. Observation: verify's "investigate the COLLECTOR first" hint is misleading when the only failing line is cost from unpriced models (B5).

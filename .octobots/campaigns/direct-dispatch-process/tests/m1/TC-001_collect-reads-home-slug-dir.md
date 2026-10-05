@@ -4,7 +4,8 @@ title: "Collect from a solo worktree reads ~/.claude/projects/<slug>, and only s
 mission: M1
 covers: [M1-AC1]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m1/runs/RUN-2026-10-05-001.md}
 priority: critical
 size: M
 ---

@@ -134,14 +134,14 @@ describe("validateBoard flags a known field on the wrong kind", () => {
     expect(messages[0]).toContain("campaign/mission");
   });
 
-  it("reports tokenomics on a campaign, role on a mission and acceptance_criteria on a bug", () => {
+  it("reports severity on a campaign, role on a mission and acceptance_criteria on a bug", () => {
     const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
     const m = createMission(boardRoot, c.id, { title: "M1 - Auth", acceptanceCriteria: "- [ ] ships" });
     const b = createBug(boardRoot, { campaignId: c.id }, { title: "B1 - Broken" });
     rawYaml(
       c.folderPath,
       "campaign",
-      "name: Q3 Rollout\nstatus: draft\ntarget: ''\ndescription: d\nacceptance_criteria: []\ndocuments: []\ntokenomics:\n  effort_days: 5\n",
+      "name: Q3 Rollout\nstatus: draft\ntarget: ''\ndescription: d\nacceptance_criteria: []\ndocuments: []\nseverity: major\n",
     );
     rawYaml(
       m.folderPath,
@@ -156,7 +156,7 @@ describe("validateBoard flags a known field on the wrong kind", () => {
 
     const messages = misplacedFindings();
     expect(messages).toHaveLength(3);
-    expect(messages.join("\n")).toContain("tokenomics");
+    expect(messages.join("\n")).toContain("severity");
     expect(messages.join("\n")).toContain("role");
     expect(messages.join("\n")).toContain("acceptance_criteria");
   });

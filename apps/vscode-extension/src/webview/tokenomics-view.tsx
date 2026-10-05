@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import type { RpcClient } from "./rpc-client.js";
+// Types only: the package root pulls node:fs/node:path into the browser bundle.
 import type { MissionRun, Report, TaskRun } from "@octoshell/tokenomics";
+
+const isCampaignRun = (r: MissionRun): boolean => r.scope === "campaign";
 
 const usd = (n: number): string => `$${n.toFixed(2)}`;
 const int = (n: number): string => n.toLocaleString("en-US");
@@ -102,8 +105,13 @@ export function TokenomicsView({ rpc }: { rpc: RpcClient }): JSX.Element {
   const turns = report.runs.reduce((n, r) => n + r.turns, 0);
   const dispatches = report.runs.reduce((n, r) => n + r.subagentDispatches, 0);
   const unattrPct = total > 0 ? Math.round((100 * report.unattributed.costUsd) / total) : 0;
-  const noEstimate = report.runs.filter((r) => r.estimate.effortDays === null);
-  const retrospective = report.runs.filter((r) => r.estimate.estimatedRetrospectively);
+  // Every row is attributed spend, so the cost/token/turn/dispatch totals cover them all. Only the
+  // mission-shaped parts (tile, table, size and sizing findings) use `missions`: a campaign row has
+  // no estimate, tasks or PR, and counting it as a mission would skew all of them.
+  const missions = report.runs.filter((r) => !isCampaignRun(r));
+  const campaignRows = report.runs.filter(isCampaignRun);
+  const noEstimate = missions.filter((r) => r.estimate.effortDays === null);
+  const retrospective = missions.filter((r) => r.estimate.estimatedRetrospectively);
 
   if (report.runs.length === 0) {
     return (
@@ -129,7 +137,7 @@ export function TokenomicsView({ rpc }: { rpc: RpcClient }): JSX.Element {
 
       <div className="tok-tiles">
         <Tile value={usd(total)} label="Total metered cost" />
-        <Tile value={String(report.runs.length)} label="Missions measured" />
+        <Tile value={String(missions.length)} label="Missions measured" />
         <Tile value={mtok(tokens)} label="Tokens (attributed)" />
         <Tile value={int(turns)} label="Turns" />
         <Tile value={String(dispatches)} label="Subagent dispatches" />
@@ -150,13 +158,14 @@ export function TokenomicsView({ rpc }: { rpc: RpcClient }): JSX.Element {
           </tr>
         </thead>
         <tbody>
-          {report.runs.map((r) => {
-            const isOpen = open === r.missionId;
+          {missions.map((r) => {
+            const id = r.missionId ?? r.campaignId;
+            const isOpen = open === id;
             return [
               <tr
-                key={r.missionId}
+                key={id}
                 className="tok-clickable"
-                onClick={() => setOpen(isOpen ? null : r.missionId)}
+                onClick={() => setOpen(isOpen ? null : id)}
               >
                 <td className="l">
                   {isOpen ? "▾" : "▸"} <strong>{r.missionTitle}</strong>
@@ -170,7 +179,7 @@ export function TokenomicsView({ rpc }: { rpc: RpcClient }): JSX.Element {
                 <td>{r.subagentDispatches}</td>
               </tr>,
               isOpen ? (
-                <tr key={`${r.missionId}:tasks`}>
+                <tr key={`${id}:tasks`}>
                   <td colSpan={8} className="tok-nested">
                     <TaskRows tasks={r.tasks} missionCost={r.costUsd} />
                   </td>
@@ -180,6 +189,43 @@ export function TokenomicsView({ rpc }: { rpc: RpcClient }): JSX.Element {
           })}
         </tbody>
       </table>
+
+      {campaignRows.length > 0 && (
+        <>
+          <h2>Campaign-level work</h2>
+          <p className="tok-sub">
+            Work attributed to a campaign rather than to one of its missions — the campaign’s own
+            planning or hand-off branches. Included in the totals above; it is not a mission, so it
+            carries no sizing.
+          </p>
+          <table className="tok-table">
+            <thead>
+              <tr>
+                <th className="l">Campaign</th>
+                <th className="l">Branches</th>
+                <th className="l">Cost</th>
+                <th>Sessions</th>
+                <th>Turns</th>
+                <th>Tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {campaignRows.map((r) => (
+                <tr key={`campaign:${r.campaignId}`}>
+                  <td className="l">
+                    <strong>{r.missionTitle}</strong>
+                  </td>
+                  <td className="l">{r.branches.join(", ")}</td>
+                  <td className="l">{usd(r.costUsd)}</td>
+                  <td>{r.sessions}</td>
+                  <td>{int(r.turns)}</td>
+                  <td>{mtok(tokenTotal(r.tokens))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
 
       <h2>Cost by size</h2>
       <p className="tok-sub">
@@ -197,7 +243,7 @@ export function TokenomicsView({ rpc }: { rpc: RpcClient }): JSX.Element {
           </tr>
         </thead>
         <tbody>
-          {bySize(report.runs).map((row) => (
+          {bySize(missions).map((row) => (
             <tr key={row.size}>
               <td className="l">
                 <strong>{row.size}</strong>
@@ -215,7 +261,7 @@ export function TokenomicsView({ rpc }: { rpc: RpcClient }): JSX.Element {
       <ul className="tok-findings">
         {noEstimate.length > 0 && (
           <li>
-            <strong>{noEstimate.length} of {report.runs.length} missions have no authored effort.</strong>{" "}
+            <strong>{noEstimate.length} of {missions.length} missions have no authored effort.</strong>{" "}
             Effort is the sizing key and cannot be derived from transcripts — add a{" "}
             <code>## Tokenomics</code> block at planning time.
           </li>

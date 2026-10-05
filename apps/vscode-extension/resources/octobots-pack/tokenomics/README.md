@@ -18,7 +18,7 @@ node .octobots/tokenomics/backfill-worklog-sha.mjs   # fill merge SHAs deleted b
 
 ## Why it runs at the mission gate
 
-Session transcripts live in `.claude/projects/` — **not in git**, ~80 MB per
+Session transcripts are **not in git**, ~80 MB per
 session, pruned without warning. Once they're gone a mission's cost is
 unrecoverable. So the `mission-completion-gate` skill runs this at phase 4, and
 `raw/segments.jsonl` is committed as the durable record. Collect early, report
@@ -27,11 +27,33 @@ later — never the other way round.
 It is **non-blocking** by design. The gate is a correctness gate; analytics must
 never fail a correct mission. `run.mjs` exits 0 even when a stage fails.
 
+## Where transcripts come from
+
+Claude Code writes transcripts to `~/.claude/projects/<slug>/<session-id>.jsonl`
+(subagents under `<session-id>/subagents/`), **not** into the repo. `<slug>` is the
+absolute project path with every non-alphanumeric character replaced by `-`
+(`/Users/me/Dev/my_app` -> `-Users-me-Dev-my-app`). The collector computes the
+slug from the main checkout (worktree paths are unwound) and reads **only that
+slug's directory** under each root, so other projects' transcripts are never scanned.
+
+Roots, in priority order:
+
+1. **Explicit override**: `--projects-dir <path>` or env `OCTOBOTS_TOKENOMICS_PROJECTS_DIR`
+   (replaces step 2).
+2. **`$CLAUDE_CONFIG_DIR/projects`** if set (Claude Code honours it), else **`~/.claude/projects`**.
+3. **Legacy repo-local `<repo>/.claude/projects`**: always read *in addition* if it
+   exists, so old snapshots are not lost.
+
+A session found in more than one root is counted once (`segment_id` includes the
+session id; the copy with more turns wins), so collecting is idempotent. `selftest.mjs`
+covers these rules with `HOME` and `CLAUDE_CONFIG_DIR` isolated, and `octobots doctor`
+prints the root it expects.
+
 ## The three stages
 
 | Stage | Script | Input | Output |
 |---|---|---|---|
-| 1. Collect | `collect.mjs` | `.claude/projects/**` transcripts | `raw/segments.jsonl` |
+| 1. Collect | `collect.mjs` | session transcripts (see below) | `raw/segments.jsonl` |
 | 2. Rollup | `rollup.mjs` | segments + board + git + `gh` + `prices.json` | `runs.json` |
 | 3. Render | `render.mjs` | `runs.json` **only** | `report.html` |
 
@@ -48,16 +70,29 @@ They are decoupled on purpose:
 
 ## How missions get their numbers
 
-**Attribution is by branch name.** Every transcript record carries `gitBranch`,
-and our branches already encode the work (`feat/edgeserver-auth-t4`,
-`feat/edge-ops-ui-m9-t3`). The rollup matches the longest campaign slug in the
-branch, then disambiguates by an `m<n>` token — or takes the single mission if the
-campaign has only one. **Branch discipline is what makes this work**; a mission
-can override it explicitly with a `branches:` line.
+**Attribution is by branch name, then by what was recorded.** Every transcript record carries
+`gitBranch`, and our branches already encode the work (`feat/edgeserver-auth-t4`,
+`feat/edge-ops-ui-m9-t3`). The first step that hits wins:
 
-Work that maps to no mission (planning on `main`, detached `HEAD`,
-campaign-wide branches) goes to the `unattributed` bucket — reported, never
-dropped, and flagged in the report when it exceeds 10% of spend.
+1. A mission declares the branch (`tokenomics: branches:` in its `mission.yaml`).
+2. The longest campaign slug in the branch plus an `-m<n>` token: that campaign's mission *n*. An
+   `-m<n>` naming no mission falls through to the later steps.
+3. That slug alone, when the campaign has exactly one mission.
+4. The work log recorded this exact session on this exact branch against a task id that belongs to
+   one mission. (The session alone never attributes a mission - it follows a session across
+   branches.)
+5. A campaign declares the branch (`tokenomics: branches:` in its `campaign.yaml`, a list or a
+   comma string).
+6. The longest campaign slug in the branch: a **campaign-level row**.
+7. Otherwise it is unattributed.
+
+**Branch discipline is what makes this work**; steps 1, 4 and 5 are the explicit overrides. A
+campaign-level row (`work_item_level: "campaign"`) is spend that belongs to a campaign but to none
+of its missions - its planning or hand-off branches. It sits in `runs.json` beside the mission rows,
+so every total still adds up, and it is reported apart from them.
+
+Work that maps to nothing (planning on `main`, detached `HEAD`) goes to the `unattributed` bucket -
+reported, never dropped, and flagged in the report when it exceeds 10% of spend.
 
 ### Collect AFTER the mission PR exists
 
@@ -168,6 +203,24 @@ fetches** — that keeps collect/rollup/render offline, deterministic, and
 reproducible: a run from six months ago re-prices identically unless someone
 deliberately updates the table.
 
+### Local additions: `prices.local.json`
+
+A model upstream has not listed yet (a new release, a preview) would price at $0 and show up as
+unpriced. Add it to **`prices.local.json`**, next to `prices.json`, in the same schema:
+
+```json
+{ "models": { "claude-opus-5-5": { "input_cost_per_token": 0.000004, "output_cost_per_token": 0.00002 } } }
+```
+
+- `rollup.mjs` reads both files from its own directory. **`prices.json` wins** where both name the
+  same model, so a later upstream listing supersedes your hand-typed number.
+- `update-prices.mjs` rewrites only `prices.json`; `prices.local.json` survives every refresh.
+- Re-installing the pack never overwrites your `prices.local.json` (the pack ships a seed holding
+  `claude-opus-5-5` and `claude-sonnet-5-5`, written once).
+- The extension's own Tokenomics view does not read this file at runtime: it uses a table compiled in
+  at build time, to which the build merges the pack's seed (`packages/tokenomics/scripts/update-prices.mjs`).
+  A model you add only to a workspace is priced by `rollup.mjs`, not by the extension view.
+
 Two things this gets right that a hand-maintained table did not:
 
 - **Cache writes are priced per TTL.** A 5-minute cache write bills at 1.25× input,
@@ -185,13 +238,22 @@ falls back to the documented 2× rather than importing a number known to be wron
 
 ## Cross-checking against ccusage
 
-`ccusage` is a useful independent read on the same transcripts. Scope it to this
-repo before comparing (it defaults to the global `~/.claude`, which covers every
-project on the machine):
+`ccusage` is a useful independent read on the same transcripts. `verify.mjs` runs it for you:
 
 ```
-CLAUDE_CONFIG_DIR=<repo>/.claude npx ccusage@latest daily
+node .octobots/tokenomics/verify.mjs
 ```
+
+It reads the collector's own transcript roots: `$CLAUDE_CONFIG_DIR/projects` (else
+`~/.claude/projects`) plus the legacy repo-local `.claude/projects`, and under each only this
+repo's slug directory. ccusage has no project filter, so `verify.mjs` stages each root that holds
+this repo's slug directory for it (ccusage reads every project in that root) and keeps only the
+sessions found in this repo's slug directories. It runs `ccusage session --json --offline` from the
+workspace's installed copy (`.octobots/tools`), so no network is needed; `npx` is only the fallback
+when that copy is absent. A missing or empty legacy root is fine. The cost line is compared only
+while every collected session is still on disk; once Claude Code prunes a transcript, cost is shown
+as `info` and the token lines stay gated. Do not point `CLAUDE_CONFIG_DIR` at `<repo>/.claude`
+yourself: that is only the legacy root, and ccusage would then compare against a partial history.
 
 Measured agreement on this repo's history:
 

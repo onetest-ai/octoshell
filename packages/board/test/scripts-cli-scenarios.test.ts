@@ -609,4 +609,191 @@ describe("workflow script guards", () => {
     expect(fromApp).toContain("sync-meta.js");
     expect(fromApp).not.toContain("Keep `meta.phases`");
   });
+
+  // doctor.js config-dir check (M1 AC8). Claude Code writes transcripts to
+  // $CLAUDE_CONFIG_DIR/projects/<slug> (default ~/.claude/projects/<slug>) and the tokenomics
+  // collector reads exactly that, so the default is healthy and a per-repo config dir is not advice.
+  describe("doctor.js config-dir", () => {
+    // The slug rule is restated here on purpose: the check must agree with the rule, not with doctor.js.
+    const slugOf = (p: string) => p.replace(/[^A-Za-z0-9]/g, "-");
+
+    function doctor(root: string, env: Record<string, string | undefined>): { findings: { level: string; area: string; msg: string; fix?: string }[] } {
+      // HOME is a temp dir so the real ~/.claude is never consulted; CLAUDE_CONFIG_DIR is removed
+      // unless the case sets it.
+      const home = mkdtempSync(join(tmpdir(), "doctor-home-"));
+      const childEnv: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home, ...env };
+      delete childEnv.CLAUDE_CONFIG_DIR;
+      if (env.CLAUDE_CONFIG_DIR !== undefined) childEnv.CLAUDE_CONFIG_DIR = env.CLAUDE_CONFIG_DIR;
+      try {
+        let out: string;
+        try {
+          out = execFileSync("node", [join(SCRIPTS, "doctor.js"), "--root", root, "--json"], { encoding: "utf8", env: childEnv });
+        } catch (err: unknown) {
+          out = (err as { stdout?: string }).stdout ?? "";
+        }
+        return JSON.parse(out);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    }
+    const configDir = (r: ReturnType<typeof doctor>) => r.findings.find((f) => f.area === "config-dir")!;
+
+    it("config-dir unset is ok and names ~/.claude/projects/<slug>, with no per-repo CLAUDE_CONFIG_DIR advice", () => {
+      const f = configDir(doctor(projectDir, {}));
+      expect(f.level).toBe("ok");
+      expect(f.msg).toContain(`~/.claude/projects/${slugOf(projectDir)}`);
+      expect(`${f.msg} ${f.fix ?? ""}`).not.toMatch(/export CLAUDE_CONFIG_DIR/);
+      expect(`${f.msg} ${f.fix ?? ""}`).not.toContain(`${projectDir}/.claude`);
+    });
+
+    it("config-dir set names $CLAUDE_CONFIG_DIR/projects/<slug> as the root, wherever it points", () => {
+      const cfg = join(tmpdir(), "somewhere-else", ".claude-alt");
+      const f = configDir(doctor(projectDir, { CLAUDE_CONFIG_DIR: cfg }));
+      expect(f.level).toBe("ok");
+      expect(f.msg).toContain(`${cfg}/projects/${slugOf(projectDir)}`);
+    });
+
+    it("config-dir set to a project-local dir is still ok and names its projects/<slug>", () => {
+      const cfg = join(projectDir, ".claude");
+      const f = configDir(doctor(projectDir, { CLAUDE_CONFIG_DIR: cfg }));
+      expect(f.level).toBe("ok");
+      expect(f.msg).toContain(`${cfg}/projects/${slugOf(projectDir)}`);
+    });
+
+    it("config-dir from a worktree names the main checkout's slug", () => {
+      const wt = join(projectDir, ".claude", "worktrees", "qa-m1");
+      mkdirSync(wt, { recursive: true });
+      const f = configDir(doctor(wt, {}));
+      expect(f.msg).toContain(`~/.claude/projects/${slugOf(projectDir)}`);
+      expect(f.msg).not.toContain(slugOf(wt));
+    });
+  });
+
+  // The rest of doctor.js: pack payload, hooks, status line, tokenomics, board. Kept next to the
+  // config-dir cases because the script is one process and `pnpm coverage:pack` measures it as one.
+  describe("doctor.js pack, hooks and board checks", () => {
+    function run(root: string, args: string[] = ["--json"]): { status: number; out: string } {
+      const home = mkdtempSync(join(tmpdir(), "doctor-home-"));
+      const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
+      delete env.CLAUDE_CONFIG_DIR;
+      try {
+        return { status: 0, out: execFileSync("node", [join(SCRIPTS, "doctor.js"), "--root", root, ...args], { encoding: "utf8", env }) };
+      } catch (err: unknown) {
+        const e = err as { status?: number; stdout?: string };
+        return { status: e.status ?? -1, out: e.stdout ?? "" };
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    }
+    const findings = (root: string) =>
+      (JSON.parse(run(root).out) as { findings: { level: string; area: string; msg: string }[] }).findings;
+    const SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
+    function installSkills(versions: Record<string, number> = {}): void {
+      for (const sk of SKILLS) {
+        const dir = join(projectDir, ".claude", "skills", sk);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "SKILL.md"), `---\nname: ${sk}\nversion: ${versions[sk] ?? 57}\n---\n`);
+      }
+    }
+    function installPrimer(v: number): void {
+      mkdirSync(join(projectDir, ".octobots", "hooks"), { recursive: true });
+      writeFileSync(join(projectDir, ".octobots", "hooks", "primer.mjs"), `// octobots-pack-version: ${v}\n`);
+    }
+    const settings = (obj: unknown) => {
+      mkdirSync(join(projectDir, ".claude"), { recursive: true });
+      writeFileSync(join(projectDir, ".claude", "settings.json"), typeof obj === "string" ? obj : JSON.stringify(obj));
+    };
+
+    it("an empty workspace fails on the missing pack and tokenomics, and exits 1 with readable text output", () => {
+      const r = run(projectDir, []);
+      expect(r.status).toBe(1);
+      expect(r.out).toContain("skill missing: mission-planner");
+      expect(r.out).toContain("failing");
+      const f = findings(projectDir);
+      expect(f.some((x) => x.area === "tokenomics" && x.level === "fail")).toBe(true);
+      expect(f.some((x) => x.area === "hooks" && x.level === "note")).toBe(true);
+      expect(f.some((x) => x.area === "statusline" && x.level === "note")).toBe(true);
+      expect(f.some((x) => x.area === "board" && x.level === "note")).toBe(true);
+    });
+
+    it("a consistent install reports ok for the pack, primer, hooks, tokenomics and board", () => {
+      installSkills();
+      installPrimer(57);
+      mkdirSync(join(projectDir, ".octobots", "tokenomics"), { recursive: true });
+      mkdirSync(join(projectDir, ".octobots", "campaigns", "c1"), { recursive: true });
+      mkdirSync(join(projectDir, ".octobots", "tools", "node_modules", ".bin"), { recursive: true });
+      writeFileSync(join(projectDir, ".octobots", "tools", "node_modules", ".bin", "ccusage"), "");
+      settings({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: ".octobots/hooks/primer.mjs" }] }], Other: "nope" } });
+      const f = findings(projectDir);
+      expect(f.find((x) => x.area === "pack" && /skills installed at v57/.test(x.msg))?.level).toBe("ok");
+      expect(f.find((x) => x.area === "pack" && /primer.mjs v57/.test(x.msg))?.level).toBe("ok");
+      expect(f.find((x) => x.area === "hooks")?.level).toBe("ok");
+      expect(f.filter((x) => x.area === "tokenomics").every((x) => x.level === "ok")).toBe(true);
+      expect(f.find((x) => x.area === "board")?.msg).toContain("1 campaign(s)");
+    });
+
+    it("skills that disagree on version, or a primer behind the skills, fail", () => {
+      installSkills({ "mission-execution": 56 });
+      installPrimer(55);
+      const f = findings(projectDir);
+      expect(f.find((x) => x.area === "pack" && /disagree/.test(x.msg))?.level).toBe("fail");
+      expect(f.find((x) => x.area === "pack" && /primer.mjs is v55/.test(x.msg))?.level).toBe("fail");
+    });
+
+    it("an unparseable settings.json fails", () => {
+      settings("{ not json");
+      expect(findings(projectDir).find((x) => x.area === "settings")?.level).toBe("fail");
+    });
+
+    it("status line: a foreign one is left alone, ours without its script fails, ours with it is checked", () => {
+      installSkills();
+      settings({ statusLine: { type: "command", command: "echo hi" } });
+      expect(findings(projectDir).find((x) => x.area === "statusline")?.msg).toContain("non-Octobots");
+
+      settings({ statusLine: { type: "command", command: "bash ${CLAUDE_PROJECT_DIR}/.octobots/statusline.sh" } });
+      expect(findings(projectDir).find((x) => x.area === "statusline")?.level).toBe("fail");
+
+      mkdirSync(join(projectDir, ".octobots"), { recursive: true });
+      writeFileSync(join(projectDir, ".octobots", "statusline.sh"), "# octobots-pack-version: 50\n");
+      const sl = findings(projectDir).filter((x) => x.area === "statusline");
+      expect(sl.some((x) => x.level === "warn" && /statusline.sh is v50/.test(x.msg))).toBe(true);
+
+      writeFileSync(join(projectDir, ".octobots", "statusline.sh"), "# octobots-pack-version: 57\n");
+      expect(findings(projectDir).find((x) => x.area === "statusline")?.level).toBe("ok");
+    });
+  });
+
+  // mission-input.js hands a pipeline everything about one mission as JSON.
+  describe("mission-input.js", () => {
+    function seedBoard(): void {
+      const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
+      const m = createMission(boardRoot, c.id, { title: "M1 - Auth", acceptanceCriteria: "- [ ] login works\n- [ ] logout works" });
+      createTask(boardRoot, m.id, { name: "T1.10 - Late", acceptanceCriteria: "- [ ] late" });
+      createTask(boardRoot, m.id, { name: "T1.2 - Early", acceptanceCriteria: "- [ ] early" });
+      createTask(boardRoot, m.id, { name: "T1.3 - QA verification", acceptanceCriteria: "- [ ] verified" });
+    }
+
+    it("emits the mission, its criteria, tasks in numeric order and the QA task", () => {
+      seedBoard();
+      const out = JSON.parse(runScript("mission-input.js", ["m1"], projectDir));
+      expect(out.mission).toBe("M1");
+      expect(out.criteria).toEqual(["login works", "logout works"]);
+      expect(out.tasks.map((t: { id: string }) => t.id)).toEqual(["T1.2", "T1.3", "T1.10"]);
+      expect(out.qaTask.id).toBe("T1.3");
+      expect(runScript("mission-input.js", ["M1", "--pretty"], projectDir)).toContain("\n  ");
+    });
+
+    it("refuses a malformed id, an unknown mission, and an ambiguous one", () => {
+      seedBoard();
+      expect(runFailing("mission-input.js", ["nope"], projectDir).status).toBe(2);
+      expect(runFailing("mission-input.js", ["M9"], projectDir).stderr).toContain("not on the board");
+      expect(runFailing("mission-input.js", ["M1", "--campaign", "other"], projectDir).stderr).toContain('under campaign "other"');
+      const c2 = createCampaign(boardRoot, { name: "Q4 Rollout" });
+      createMission(boardRoot, c2.id, { title: "M1 - Billing" });
+      expect(runFailing("mission-input.js", ["M1"], projectDir).stderr).toContain("ambiguous");
+      const slug = (n: string) => n.toLowerCase().replace(/\s+/g, "-");
+      const picked = JSON.parse(runScript("mission-input.js", ["M1", "--campaign", slug("Q4 Rollout")], projectDir));
+      expect(picked.missionName).toContain("Billing");
+    });
+  });
 });

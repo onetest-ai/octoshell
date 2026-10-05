@@ -1,0 +1,380 @@
+{
+  "board": {
+    "campaigns": [
+      {
+        "slug": "alpha",
+        "name": "Alpha campaign",
+        "missions": [
+          {
+            "dir": "m1-first",
+            "name": "M1 - First",
+            "tasks": [
+              "T1.1 - Alpha one"
+            ],
+            "tokenomics": {
+              "branches": [
+                "spike/alpha-odd",
+                "feat/beta-borrowed"
+              ]
+            }
+          },
+          {
+            "dir": "m2-second",
+            "name": "M2 - Second",
+            "tasks": [
+              "T2.1 - Alpha two"
+            ]
+          }
+        ]
+      },
+      {
+        "slug": "alpha-ops",
+        "name": "Alpha ops campaign",
+        "missions": [
+          {
+            "dir": "m1-first",
+            "name": "M1 - Ops first",
+            "tasks": []
+          },
+          {
+            "dir": "m2-second",
+            "name": "M2 - Ops second",
+            "tasks": []
+          }
+        ]
+      },
+      {
+        "slug": "beta",
+        "name": "Beta campaign",
+        "tokenomics": {
+          "branches": "chore/b-plan , chore/b-retro"
+        },
+        "missions": [
+          {
+            "dir": "m1-only",
+            "name": "M1 - Only",
+            "tasks": [
+              "T1.1 - Beta one"
+            ]
+          }
+        ]
+      },
+      {
+        "slug": "gamma",
+        "name": "Gamma campaign",
+        "tokenomics": {
+          "branches": [
+            "chore/shared-decl",
+            "chore/gamma-plan",
+            "chore/gamma-plan-2"
+          ]
+        },
+        "missions": [
+          {
+            "dir": "m1-first",
+            "name": "M1 - Gamma first",
+            "tasks": []
+          },
+          {
+            "dir": "m2-second",
+            "name": "M2 - Gamma second",
+            "tasks": [],
+            "tokenomics": {
+              "branches": [
+                "chore/shared-decl"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "slug": "delta",
+        "name": "Delta campaign",
+        "tokenomics": {
+          "branches": [
+            "feat/alpha-ops-handoff"
+          ]
+        },
+        "missions": []
+      },
+      {
+        "slug": "epsilon",
+        "name": "Epsilon campaign",
+        "missions": [
+          {
+            "dir": "m1-eps-one",
+            "name": "M1 - Eps one",
+            "tasks": []
+          },
+          {
+            "dir": "m3-sweep",
+            "name": "Planning sweep",
+            "tasks": [
+              {
+                "dir": "t3-1-cleanup",
+                "name": "Cleanup leftovers"
+              },
+              {
+                "dir": "t3-2-port",
+                "name": "Port the T2.1 follow-up"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "slug": "theta",
+        "name": "Theta legacy campaign",
+        "file": "md",
+        "tokenomics": {
+          "branches": "chore/theta-legacy-plan"
+        },
+        "missions": [
+          {
+            "dir": "m1-a",
+            "name": "M1 - Theta a",
+            "tasks": []
+          },
+          {
+            "dir": "m2-b",
+            "name": "M2 - Theta b",
+            "tasks": []
+          }
+        ]
+      },
+      {
+        "slug": "zeta",
+        "name": "(bare directory, not a campaign)",
+        "file": "none",
+        "missions": [
+          {
+            "dir": "m1-z",
+            "name": "M1 - Zeta orphan",
+            "tasks": []
+          }
+        ]
+      }
+    ]
+  },
+  "worklog": [
+    {
+      "session_id": "s-wl",
+      "task": "T2.1",
+      "branch": "feat/alpha-planning",
+      "state": "done",
+      "at": "2026-10-01T00:00:00.000Z"
+    },
+    {
+      "session_id": "s-wl2",
+      "task": "T2.1",
+      "branch": "chore/offconv",
+      "state": "done",
+      "at": "2026-10-01T00:00:00.000Z"
+    },
+    {
+      "session_id": "s-amb",
+      "task": "T1.1",
+      "branch": "chore/ambig",
+      "state": "done",
+      "at": "2026-10-01T00:00:00.000Z"
+    },
+    {
+      "session_id": "s-bare",
+      "task": "T2.1",
+      "branch": "some/other",
+      "state": "done",
+      "at": "2026-10-01T00:00:00.000Z"
+    },
+    {
+      "session_id": "s-m9",
+      "task": "T2.1",
+      "branch": "feat/alpha-m9-x",
+      "state": "done",
+      "at": "2026-10-01T00:00:00.000Z"
+    },
+    {
+      "session_id": "s-wl3",
+      "task": "T2.1",
+      "branch": "chore/gamma-plan-2",
+      "state": "done",
+      "at": "2026-10-01T00:00:00.000Z"
+    },
+    {
+      "session_id": "s-eps",
+      "task": "T3.1",
+      "branch": "chore/eps-off",
+      "state": "done",
+      "at": "2026-10-01T00:00:00.000Z"
+    }
+  ],
+  "cases": [
+    {
+      "id": "decl-mission",
+      "step": 1,
+      "branch": "spike/alpha-odd",
+      "session": "s0",
+      "expect": "mission:alpha/M1"
+    },
+    {
+      "id": "decl-mission-beats-slug",
+      "step": 1,
+      "branch": "feat/beta-borrowed",
+      "session": "s0",
+      "expect": "mission:alpha/M1"
+    },
+    {
+      "id": "mission-decl-beats-campaign-decl",
+      "step": 1,
+      "branch": "chore/shared-decl",
+      "session": "s0",
+      "expect": "mission:gamma/M2"
+    },
+    {
+      "id": "slug-m",
+      "step": 2,
+      "branch": "feat/alpha-m2-t1",
+      "session": "s0",
+      "expect": "mission:alpha/M2"
+    },
+    {
+      "id": "longest-slug-m",
+      "step": 2,
+      "branch": "feat/alpha-ops-m2",
+      "session": "s0",
+      "expect": "mission:alpha-ops/M2"
+    },
+    {
+      "id": "bad-m-no-worklog (2 falls through to 6)",
+      "step": 6,
+      "branch": "feat/alpha-m9",
+      "session": "s0",
+      "expect": "campaign:alpha"
+    },
+    {
+      "id": "bad-m-worklog (2 falls through to 4)",
+      "step": 4,
+      "branch": "feat/alpha-m9-x",
+      "session": "s-m9",
+      "expect": "mission:alpha/M2"
+    },
+    {
+      "id": "single-mission",
+      "step": 3,
+      "branch": "feat/beta-thing",
+      "session": "s0",
+      "expect": "mission:beta/M1"
+    },
+    {
+      "id": "worklog-beats-campaign-row",
+      "step": 4,
+      "branch": "feat/alpha-planning",
+      "session": "s-wl",
+      "expect": "mission:alpha/M2"
+    },
+    {
+      "id": "worklog-off-convention",
+      "step": 4,
+      "branch": "chore/offconv",
+      "session": "s-wl2",
+      "expect": "mission:alpha/M2"
+    },
+    {
+      "id": "worklog-beats-campaign-decl",
+      "step": 4,
+      "branch": "chore/gamma-plan-2",
+      "session": "s-wl3",
+      "expect": "mission:alpha/M2"
+    },
+    {
+      "id": "worklog-ambiguous-label (falls to 7)",
+      "step": 7,
+      "branch": "chore/ambig",
+      "session": "s-amb",
+      "expect": "unattributed"
+    },
+    {
+      "id": "worklog-bare-session-ignored (falls to 7)",
+      "step": 7,
+      "branch": "main",
+      "session": "s-bare",
+      "expect": "unattributed"
+    },
+    {
+      "id": "campaign-decl-list",
+      "step": 5,
+      "branch": "chore/gamma-plan",
+      "session": "s0",
+      "expect": "campaign:gamma"
+    },
+    {
+      "id": "campaign-decl-comma-string",
+      "step": 5,
+      "branch": "chore/b-retro",
+      "session": "s0",
+      "expect": "campaign:beta"
+    },
+    {
+      "id": "campaign-decl-beats-slug",
+      "step": 5,
+      "branch": "feat/alpha-ops-handoff",
+      "session": "s0",
+      "expect": "campaign:delta"
+    },
+    {
+      "id": "slug-no-mission-longest",
+      "step": 6,
+      "branch": "feat/alpha-ops-cleanup",
+      "session": "s0",
+      "expect": "campaign:alpha-ops"
+    },
+    {
+      "id": "zero-mission-campaign",
+      "step": 6,
+      "branch": "feat/delta-x",
+      "session": "s0",
+      "expect": "campaign:delta"
+    },
+    {
+      "id": "nothing",
+      "step": 7,
+      "branch": "HEAD",
+      "session": "s0",
+      "expect": "unattributed"
+    },
+    {
+      "id": "slug-m-folder-numbered (title has no M<n> prefix)",
+      "step": 2,
+      "branch": "feat/epsilon-m3",
+      "session": "s0",
+      "expect": "mission:epsilon/M3"
+    },
+    {
+      "id": "worklog-task-id-from-folder (title has no T<m>.<n> prefix)",
+      "step": 4,
+      "branch": "chore/eps-off",
+      "session": "s-eps",
+      "expect": "mission:epsilon/M3"
+    },
+    {
+      "id": "legacy-campaign-md-declares",
+      "step": 5,
+      "branch": "chore/theta-legacy-plan",
+      "session": "s0",
+      "expect": "campaign:theta"
+    },
+    {
+      "id": "bare-dir-is-no-campaign",
+      "step": 7,
+      "branch": "feat/zeta-work",
+      "session": "s0",
+      "expect": "unattributed"
+    },
+    {
+      "id": "bare-dir-mission-is-no-mission",
+      "step": 7,
+      "branch": "feat/zeta-m1",
+      "session": "s0",
+      "expect": "unattributed"
+    }
+  ]
+}

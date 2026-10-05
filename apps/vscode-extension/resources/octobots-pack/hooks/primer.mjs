@@ -1,4 +1,4 @@
-// octobots-pack-version: 56
+// octobots-pack-version: 57
 // Shared Octobots session primer. Registered as a SessionStart/compaction hook in each backend
 // (Claude/Copilot/Codex). Emits the routing primer as additionalContext in the calling backend's
 // JSON shape, but ONLY in an Octobots repo. Self-gates on .octobots/ so it is inert elsewhere.

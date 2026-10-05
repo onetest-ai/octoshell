@@ -6,11 +6,12 @@
 // Exits 0 when everything is fine or only NOTEs remain, 1 when any FAIL is reported. Warnings do
 // not fail the run: a workspace that deliberately declined hooks or the status line is healthy.
 //
-// The headline check is CLAUDE_CONFIG_DIR. Claude Code defaults it to ~/.claude, which is SHARED by
-// every project on the machine: sessions, transcripts, history and the usage data tokenomics reads
-// all land in one pile. Octobots attributes cost and run history per board, so a system-wide config
-// dir silently mixes one repo's numbers into another's. This must be run from a real shell — the
-// value is an environment variable, so a check made anywhere else is guessing.
+// The config-dir check reports where Claude Code writes this project's transcripts, which is the
+// root the tokenomics collector reads: $CLAUDE_CONFIG_DIR/projects/<slug>, else ~/.claude/projects/<slug>
+// (<slug> is the main checkout's absolute path with every non-alphanumeric character as "-"). The
+// default is healthy: the collector reads only this project's own slug directory, so a shared
+// ~/.claude does not mix repos. This must be run from a real shell, because CLAUDE_CONFIG_DIR is an
+// environment variable.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
@@ -29,34 +30,16 @@ const note = (area, msg) => findings.push({ level: "note", area, msg });
 
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; } };
 
-/** Is `child` inside `parent`? Compared on resolved paths with a trailing separator, so a sibling
- *  directory whose name merely starts with the parent's (…/repo-evil) can never pass. */
-const within = (parent, child) => {
-  const p = resolve(parent) + sep;
-  const c = resolve(child) + sep;
-  return c.startsWith(p);
-};
-
-// ── 1. CLAUDE_CONFIG_DIR ─────────────────────────────────────────────────────────────────────
+// ── 1. Transcript root (CLAUDE_CONFIG_DIR) ──────────────────────────────────────────────────
+// Transcripts live under the MAIN checkout's slug, so a worktree path is unwound first.
+const wtAt = ROOT.indexOf(`${sep}.claude${sep}worktrees${sep}`);
+const MAIN_ROOT = wtAt !== -1 ? ROOT.slice(0, wtAt) : ROOT;
+const SLUG = MAIN_ROOT.replace(/[^A-Za-z0-9]/g, "-");
 const ccd = process.env.CLAUDE_CONFIG_DIR;
 if (!ccd) {
-  warn(
-    "config-dir",
-    "CLAUDE_CONFIG_DIR is not set — Claude Code will use ~/.claude, which every project on this " +
-      "machine shares. Sessions, transcripts and the usage data tokenomics reads all land in one " +
-      "pile, so this board's cost and run history mix with other repos'.",
-    `export CLAUDE_CONFIG_DIR="${join(ROOT, ".claude")}"  (per project, e.g. from your launcher or .envrc)`,
-  );
-} else if (!within(ROOT, ccd)) {
-  fail(
-    "config-dir",
-    `CLAUDE_CONFIG_DIR points OUTSIDE this project: ${ccd}\n` +
-      `    Expected somewhere under ${ROOT}. Cost attribution and run history for this board are ` +
-      "being written to, and read from, a config dir shared with other work.",
-    `export CLAUDE_CONFIG_DIR="${join(ROOT, ".claude")}"`,
-  );
+  ok("config-dir", `CLAUDE_CONFIG_DIR is not set — transcripts are read from ~/.claude/projects/${SLUG}`);
 } else {
-  ok("config-dir", `CLAUDE_CONFIG_DIR is project-local (${ccd.replace(ROOT, ".")})`);
+  ok("config-dir", `CLAUDE_CONFIG_DIR is set — transcripts are read from ${join(ccd, "projects", SLUG)}`);
 }
 
 // ── 2. Pack payload ──────────────────────────────────────────────────────────────────────────

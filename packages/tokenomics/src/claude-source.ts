@@ -1,11 +1,57 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { addTotals, emptyTotals, type Segment, type TokenTotals, type TranscriptSource } from "./types.js";
 
+/** Where a Claude Code workspace's transcripts can be read from. Everything is injectable for tests. */
+export interface TranscriptRootsOptions {
+  /** Explicit projects dir; replaces both the config dir and the home default. */
+  projectsDir?: string;
+  /** Stands in for `os.homedir()`. */
+  homeDir?: string;
+  /** Stands in for `process.env`; only CLAUDE_CONFIG_DIR and OCTOBOTS_TOKENOMICS_PROJECTS_DIR are read. */
+  env?: Partial<Record<"CLAUDE_CONFIG_DIR" | "OCTOBOTS_TOKENOMICS_PROJECTS_DIR", string | undefined>>;
+}
+
 /**
- * Reads Claude Code session transcripts from `<repo>/.claude/projects/`.
+ * The main checkout for a workspace path. Transcripts are keyed by the MAIN checkout's path, never a
+ * worktree's, so a `<main>/.claude/worktrees/<name>` path unwinds to `<main>`. The path is resolved
+ * first, so a relative path or a trailing slash cannot yield a different slug.
+ */
+export function mainCheckoutDir(workspace: string): string {
+  const dir = resolve(workspace);
+  const wt = dir.indexOf("/.claude/worktrees/");
+  return wt !== -1 ? dir.slice(0, wt) : dir;
+}
+
+/** Claude Code names a project's transcript dir by replacing every non-[A-Za-z0-9] character with "-". */
+export function projectSlug(workspace: string): string {
+  return mainCheckoutDir(workspace).replace(/[^A-Za-z0-9]/g, "-");
+}
+
+/**
+ * Transcript roots in priority order. Mirrors `tokenomics/collect.mjs` in the Octobots pack:
+ *   1. an explicit projects dir (option, else OCTOBOTS_TOKENOMICS_PROJECTS_DIR), else
+ *      `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`
+ *   2. the legacy repo-local `<main checkout>/.claude/projects`, read in addition
+ */
+export function resolveTranscriptRoots(workspace: string, opts: TranscriptRootsOptions = {}): string[] {
+  const env = opts.env ?? process.env;
+  const explicit = opts.projectsDir || env.OCTOBOTS_TOKENOMICS_PROJECTS_DIR;
+  const roots = explicit
+    ? [explicit]
+    : [join(env.CLAUDE_CONFIG_DIR || join(opts.homeDir ?? homedir(), ".claude"), "projects")];
+  roots.push(join(mainCheckoutDir(workspace), ".claude", "projects"));
+  return [...new Set(roots)];
+}
+
+/**
+ * Reads Claude Code session transcripts for one workspace: only the workspace's own slug directory,
+ * under every root from {@link resolveTranscriptRoots}. The pack CLI (`collect.mjs`) follows the same
+ * rules, so both return the same segment ids for the same roots. A session present in two roots
+ * counts once: the copy with more turns wins, the earlier root winning ties.
  *
- * Two details dominate correctness here, and both are easy to get silently
+ * Three details dominate correctness here, and all are easy to get silently
  * wrong — see the tests:
  *
  *  1. **Deduplicate on `requestId`.** Streaming re-emits the same `usage`
@@ -16,24 +62,33 @@ import { addTotals, emptyTotals, type Segment, type TokenTotals, type Transcript
  *     `<session>/subagents/workflows/wf_<id>/`. A flat read finds a small
  *     fraction of subagent work and silently reports the orchestrator as
  *     having spent 100% of the cost.
+ *  3. **Read only the own slug.** A root such as `~/.claude/projects` holds every project's sessions.
  */
 export class ClaudeTranscriptSource implements TranscriptSource {
   readonly agentTool = "claude-code";
+  /** The project slug this source reads under each root. */
+  readonly slug: string;
+  /** The transcript roots, in priority order. */
+  readonly roots: string[];
 
-  constructor(private readonly repoRoot: string) {}
+  constructor(repoRoot: string, opts: TranscriptRootsOptions = {}) {
+    this.slug = projectSlug(repoRoot);
+    this.roots = resolveTranscriptRoots(repoRoot, opts);
+  }
 
-  private get projectsDir(): string {
-    return join(this.repoRoot, ".claude", "projects");
+  /** The slug directories that exist, i.e. the ones that can contribute. */
+  slugDirs(): string[] {
+    return this.roots.map((r) => join(r, this.slug)).filter((d) => isDir(d));
   }
 
   collect(): Segment[] {
-    if (!existsSync(this.projectsDir)) return [];
-    const segments: Segment[] = [];
+    const bySegment = new Map<string, Segment>();
+    const add = (s: Segment): void => {
+      const prev = bySegment.get(s.segmentId);
+      if (!prev || s.turns > prev.turns) bySegment.set(s.segmentId, s);
+    };
 
-    for (const slug of readdirSync(this.projectsDir)) {
-      const slugDir = join(this.projectsDir, slug);
-      if (!statSync(slugDir).isDirectory()) continue;
-
+    for (const slugDir of this.slugDirs()) {
       for (const entry of readdirSync(slugDir)) {
         if (!entry.endsWith(".jsonl")) continue;
         const sessionId = entry.slice(0, -6);
@@ -41,7 +96,7 @@ export class ClaudeTranscriptSource implements TranscriptSource {
         // Main thread (the orchestrator).
         for (const bucket of aggregate(join(slugDir, entry)).values()) {
           if (bucket.turns === 0) continue;
-          segments.push(toSegment(bucket, {
+          add(toSegment(bucket, {
             segmentId: `${sessionId}:main:${bucket.branch}`,
             sessionId,
             kind: "orchestrator",
@@ -60,7 +115,7 @@ export class ClaudeTranscriptSource implements TranscriptSource {
           const workflowId = dir.split("/").find((p) => p.startsWith("wf_")) ?? null;
           for (const bucket of aggregate(join(dir, file)).values()) {
             if (bucket.turns === 0) continue;
-            segments.push(toSegment(bucket, {
+            add(toSegment(bucket, {
               segmentId: `${sessionId}:${agentId}:${bucket.branch}`,
               sessionId,
               kind: "subagent",
@@ -71,7 +126,15 @@ export class ClaudeTranscriptSource implements TranscriptSource {
         }
       }
     }
-    return segments;
+    return [...bySegment.values()];
+  }
+}
+
+function isDir(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
   }
 }
 

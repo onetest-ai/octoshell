@@ -1,0 +1,12 @@
+name: B2 - packages/tokenomics update-prices.mjs upstream-wins merge has no test
+status: done
+severity: minor
+description: packages/tokenomics/scripts/update-prices.mjs merges the pack's prices.local.json seed under upstream, but no test asserts that upstream wins.
+steps_to_reproduce: Flip the merge order in the script so the local seed wins; run `pnpm test`.
+expected: A test fails.
+actual: Every suite passes.
+rca: |-
+  update-prices.mjs merged the pack's prices.local.json seed under upstream ({...local, ...upstream}) but no test pinned the order, so flipping it left every suite green. Fix (2c80a0b): packages/tokenomics/test/prices.test.ts 'update-prices.mjs seed merge' runs the script with OCTOSHELL_PRICES_OUT/LOCAL redirected to a temp dir and asserts upstream wins on a shared model while seed-only models are kept.
+
+  QA evidence: QA 2026-10-05, PR #117 (onetest-ai/octoshell), head 9bd6184 (0979dc4 B5, 2c80a0b B1+B2, 9bd6184 review fix). Real record: solo (auqanautica) transcripts, frozen copies in a scratch project/HOME, real ccusage 20.0.18 from .octobots/tools, fresh collect then rollup then verify with --project-dir. Full gate green (pnpm build, typecheck, lint, test, coverage:pack); PR checks: build pass x2. B2 verified by mutation. Flipping the merge to {...upstream, ...local} fails 'upstream wins when the seed lists the same model, and seed-only models are kept' (1 failed | 11 passed); dropping the seed from the merge fails the same test; both reverted. The tests redirect output to a temp dir; prices.data.ts diff vs feat/direct-dispatch-process-m1 is empty.
+environment: 'found by the T1.4 review gate (PR #112, 2026-10-05), confirmed by QA'

@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 56
+version: 57
 ---
 
 # mission-completion-gate
@@ -180,7 +180,8 @@ findings, drive the fix loop, and re-run — do not leave the mission `done`.
 ## Tokenomics capture (phase 4)
 
 The gate is the **only** reliable moment to measure a mission's cost. Session
-transcripts live in `.claude/projects/` — not in git, ~80MB per session, and
+transcripts live in `~/.claude/projects/<slug>` (or `$CLAUDE_CONFIG_DIR/projects/<slug>`), plus the
+legacy repo-local `.claude/projects/<slug>` — not in git, ~80MB per session, and
 pruned without warning. Once they are gone the mission's cost is unrecoverable,
 so the gate captures it at completion rather than at reporting time.
 
@@ -199,7 +200,7 @@ Produces, under `.octobots/tokenomics/` (all committed):
 | Artifact | What it is |
 |---|---|
 | `raw/segments.jsonl` | Durable per-(session × agent × branch) token records. The thing that survives transcript pruning — append-only, idempotent. |
-| `runs.json` | One schema-conformant row per mission + the segment header. Costs re-priced from raw tokens on every run. |
+| `runs.json` | One schema-conformant row per mission, plus one `work_item_level: "campaign"` row per campaign with campaign-level work (its own planning or declared branches), + the segment header. Costs re-priced from raw tokens on every run. |
 | `prices.json` | Cached LiteLLM price table (verbatim). Refresh occasionally with the pack's price-refresh command; the pipeline itself never fetches. |
 | `report.html` | Self-contained analytics report, rendered from `runs.json` alone. |
 

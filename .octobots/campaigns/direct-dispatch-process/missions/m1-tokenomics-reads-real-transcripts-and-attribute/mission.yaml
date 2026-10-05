@@ -1,23 +1,23 @@
 name: M1 - Tokenomics reads real transcripts and attributes campaign branches
-status: draft
+status: done
 description: Port solo's collector fix into the pack and make the extension's ClaudeTranscriptSource read the same roots. Transcripts are read from $OCTOBOTS_TOKENOMICS_PROJECTS_DIR or --projects-dir, else $CLAUDE_CONFIG_DIR/projects, else ~/.claude/projects. The legacy <main checkout>/.claude/projects is read in addition, and only the project's own slug directory (/[^A-Za-z0-9]/g -> '-') is scanned. Add a campaign-level attribution row with one precedence order shared by rollup.mjs and rollup.ts. Keep hand-added model prices across refreshes. doctor.js stops recommending CLAUDE_CONFIG_DIR=<repo>/.claude. Bump the pack to v57 (the single bump for the campaign; T1.4 lands first).
 acceptance_criteria:
   - text: Given HOME holding ~/.claude/projects/<slug-of-repo>/<s>.jsonl and another project's slug dir, when collect.mjs runs, then raw/segments.jsonl contains only that repo's sessions
-    done: false
+    done: true
   - text: Given CLAUDE_CONFIG_DIR=X, then X/projects/<slug> replaces ~/.claude/projects. Given --projects-dir Y or OCTOBOTS_TOKENOMICS_PROJECTS_DIR=Y, then Y replaces both
-    done: false
+    done: true
   - text: Given the same session in the home root and the legacy repo-local root, then it is counted once (the copy with more turns wins), and a second run produces byte-identical segments.jsonl
-    done: false
+    done: true
   - text: Given the extension opened on solo, whose sessions 011deac1, 138ca3b0 and 39d8025a exist only under ~/.claude/projects/<slug>, when tokenomics:report is called, then the report includes those three sessions; given octoshell, whose <repo>/.claude/projects also holds other projects' slug dirs (-Users-arozumenko-Development-analysta, -private-tmp, ...), then only octoshell's own slug dir contributes segments. The pack CLI and ClaudeTranscriptSource return the same segment ids for the same roots, and a workspace path under /.claude/worktrees/ resolves to the main checkout's slug
-    done: false
-  - text: 'Attribution order is identical in rollup.mjs and rollup.ts, proven by one table-driven parity test: (1) a mission''s declared tokenomics.branches -> that mission; (2) the longest contained campaign slug plus -m<n> -> mission M<n>, and if that campaign has no M<n>, go to step 6; (3) slug contained, no -m<n>, and the campaign has exactly one mission -> that mission (unchanged); (4) worklog session -> task -> that task''s mission (added to rollup.mjs); (5) a campaign''s declared tokenomics.branches (list or comma string) -> campaign row; (6) slug contained and no mission resolved -> campaign row; (7) otherwise -> unattributed. A campaign row is a runs[] entry with work_item_level "campaign", work_item_ref <campaign slug>, parent_ref null and _octobots {mission_id: null, campaign: <slug>, branches: [the branches it absorbed]}; in TS it is missionId null, scope "campaign". Its branches no longer appear in unattributed.branches. verify.mjs totals still match (sum of runs[] plus unattributed equals the segments'' total). render.mjs, render.ts and the webview count campaign rows separately from missions and leave them out of ''Missions measured'' and the missing-sizing note. On solo''s real segments: feat/edge-ops-ui and campaign/emulator-arena-loop land on the edge-ops-ui and emulator-arena-loop campaign rows; chore/uwb-ranging-plan lands on the uwb-ranging-ingest-vendor-v01 campaign row once the campaign declares it; campaign/sensor-assignment-uplift stays on sensor-assignment-uplift M1 (step 1); and no segment leaves the mission row it was attributed to before the change'
-    done: false
-  - text: Given the pack's tokenomics/prices.local.json seeded with claude-opus-5-5 and claude-sonnet-5-5 (solo's prices.json values), when the pack's update-prices.mjs refreshes prices.json, then rollup.mjs still prices both models (cost_by_model > 0 for their segments) and uses prices.json's value wherever it has the same model; installTokenomics keeps a workspace's prices.local.json byte-identical on re-install (PRESERVED); after packages/tokenomics/scripts/update-prices.mjs runs, src/prices.data.ts prices both models. The extension does not read a workspace's prices.local.json at runtime
-    done: false
-  - text: All pack markers, SKILL.md versions and OCTOBOTS_PACK_VERSION read 57, and graph-payload-versions.json has a 57 entry
-    done: false
+    done: true
+  - text: 'Attribution order is identical in rollup.mjs and rollup.ts, proven by one table-driven parity test: (1) a mission''s declared tokenomics.branches -> that mission; (2) the longest contained campaign slug plus -m<n> -> mission M<n>, and if that campaign has no M<n>, continue at step 4; (3) slug contained, no -m<n>, and the campaign has exactly one mission -> that mission (unchanged); (4) a worklog `session|branch` entry whose task id belongs to exactly one mission -> that mission (a session-only entry never picks the mission, only the task inside an already-attributed mission; added to rollup.mjs); (5) a campaign''s declared tokenomics.branches (list or comma string) -> campaign row; (6) slug contained and no mission resolved -> campaign row; (7) otherwise -> unattributed. A campaign row is a runs[] entry with work_item_level "campaign", work_item_ref <campaign slug>, parent_ref null and _octobots {mission_id: null, campaign: <slug>, branches: [the branches it absorbed]}; in TS it is missionId null, scope "campaign". Its branches no longer appear in unattributed.branches. verify.mjs totals still match (sum of runs[] plus unattributed equals the segments'' total). render.mjs, render.ts and the webview count campaign rows separately from missions and leave them out of ''Missions measured'' and the missing-sizing note. On solo''s real segments, before any campaign declares branches, exactly three campaign rows exist: edge-ops-ui with branches [chore/close-edge-ops-ui-campaign, feat/edge-ops-ui], emulator-arena-loop with [campaign/emulator-arena-loop], and edgeserver-auth with [fix/edgeserver-auth-coach-gating-gaps] (all step 6); once uwb-ranging-ingest-vendor-v01 declares chore/uwb-ranging-plan in tokenomics.branches, a fourth row uwb-ranging-ingest-vendor-v01 with [chore/uwb-ranging-plan] appears (step 5); campaign/sensor-assignment-uplift stays on sensor-assignment-uplift M1 (step 1); and no segment leaves the mission row it was attributed to before the change'
+    done: true
+  - text: 'Given the pack''s tokenomics/prices.local.json seeded with claude-opus-5-5 and claude-sonnet-5-5 (solo''s prices.json values): (a) when the pack''s update-prices.mjs refreshes prices.json from upstream, then it exits 0, prices.local.json is byte-identical afterwards, and rollup.mjs prices both models (cost_by_model > 0 for their segments); (b) given a prices.json from which both models are absent (removed by hand, standing in for an upstream that does not list them), then rollup.mjs still prices both models from prices.local.json (cost_by_model > 0); (c) given a prices.json that lists a model at a rate different from prices.local.json''s, then rollup.mjs prices that model at prices.json''s rate. installTokenomics keeps a workspace''s prices.local.json byte-identical on re-install (PRESERVED); after packages/tokenomics/scripts/update-prices.mjs runs, src/prices.data.ts prices both models. The extension does not read a workspace''s prices.local.json at runtime'
+    done: true
+  - text: 'In the shipped pack (apps/vscode-extension/resources/octobots-pack), every octobots-pack-version marker (including statusline.sh), every SKILL.md `version:` and OCTOBOTS_PACK_VERSION read 57, and apps/vscode-extension/scripts/graph-payload-versions.json has a 57 entry. A workspace''s installed .claude/ copy, octoshell''s own included, is out of scope: it is re-installed after the 0.1.0 release (campaign notes § Release)'
+    done: true
   - text: Given CLAUDE_CONFIG_DIR unset, doctor.js reports the config-dir check as ok, naming ~/.claude/projects/<slug> as the transcript root the collector reads, and never recommends `export CLAUDE_CONFIG_DIR=<repo>/.claude`; given CLAUDE_CONFIG_DIR set, it names $CLAUDE_CONFIG_DIR/projects/<slug> as the root
-    done: false
+    done: true
 documents:
   - label: M1 functional test cases
     target: .octobots/campaigns/direct-dispatch-process/tests/m1/README.md
@@ -39,3 +39,44 @@ notes: |-
   - Attribution precedence (AC5) exists because `rollup.ts:79-82` is `matchMission ?? worklog`: a campaign match returned from matchMission would shadow the worklog and move segments out of mission rows. `rollup.mjs:513-519` never used the worklog, so step 4 is added there, and the parity test is table-driven over both. Campaign rows live inside runs[] (not a separate array) so verify.mjs:42-53 still sums to ccusage; the renderers (rollup.mjs:834, render.mjs:226, tokenomics-view.tsx:105,132) must skip them when counting missions.
   - Real records: see campaign notes § Real-data notes (edge-ops-ui, emulator-arena-loop, uwb-ranging-plan; sensor-assignment-uplift stays on M1).
   - doctor.js's config-dir check (AC8) is T1.1: today it tells every user to `export CLAUDE_CONFIG_DIR=<repo>/.claude`, the root this mission demotes to legacy.
+
+  ## T1.3 plan refinement (Rio, 2026-10-05)
+
+  AC5 steps 2 and 4 were tightened by the T1.3 plan (scratchpad t1-3-plan.md) so that AC5's own real-data checks hold. Step 4 uses only the `session|branch` worklog entry, and only when the task id belongs to exactly one mission. On solo, the session-only entry would otherwise send campaign/emulator-arena-loop to edgeserver-auth/M12 and move 115 `main` segments there. A `-m<n>` naming no mission continues at step 4, then 5, then 6, so a campaign row never overrides a recorded worklog fact. Consequence: the extension's rollup.ts mission totals on solo drop to match the pack CLI (the parity fix). T1.3 ships as two sequential PRs: (a) ACs 1-4 (precedence, campaign row, the campaign tokenomics schema key, renderers, payload regen); (b) the verify.mjs AC (verify reads the same population; doc fixes).
+
+  ## QA verification
+
+  Run record: .octobots/campaigns/direct-dispatch-process/tests/m1/runs/RUN-2026-10-05-001.md. Evidence excerpts: .octobots/campaigns/direct-dispatch-process/tests/m1/evidence/. Executed 2026-10-05 on feat/direct-dispatch-process-m1 at fb79bfd. 11 of 11 TCs PASS, 0 FAIL, 0 UNREACHABLE; no bug filed.
+
+  Deviation (recorded in the RUN file and every TC evidence file): nothing was written to solo. The README's `git worktree add` into solo was replaced by a scratch `git clone --shared` copy with the copy's slug on the transcript roots (frozen copy of the real home slug dir plus a read-only symlink to solo's legacy slug dir). Solo's git status, HEAD, and the checksums of .octobots/tokenomics were identical before and after; no file under ~/.claude/projects/-Users-arozumenko-Development-auqanautica changed (not even the live session 011deac1).
+
+  Findings worth knowing: solo's committed raw/segments.jsonl holds 23 sessions that exist on no local disk, and the 28/1/7 segments on the edge-ops-ui, emulator-arena-loop and sensor-assignment-uplift branches live only there, so a run that starts from an empty segments.jsonl sees none of them (TC-001 does that on purpose; TC-005..TC-007 merge into the committed file). verify.mjs: all gated fields within 10% of ccusage (the brief's 8.49% priced-subset figure was not reproduced as a printed number on the scratch copy). TC-004's webview half (F5, empty-folder state, screenshots) is unverified.
+
+  Mission ACs are NOT ticked here; the gate does that.
+
+  | Mission AC | TC | Result | Pre-existing record it was verified on |
+  |---|---|---|---|
+  | M1-AC1 | TC-001 | PASS | real home slug dir (011deac1, 138ca3b0, 39d8025a) + solo's real legacy root, other projects' real slug dirs as decoys |
+  | M1-AC2 | TC-002 | PASS | copies of the real home slug dir as override roots (CLAUDE_CONFIG_DIR, env, --projects-dir) |
+  | M1-AC3 | TC-003 | PASS | the largest real session (011deac1, 3738 lines) in both roots |
+  | M1-AC4 | TC-004 (CLI half; F5 half BLOCKED: needs a manual F5 session by the user), TC-009 | PASS | solo's three home-only sessions via tokenomics-report; the real octoshell workspace with other projects' slug dirs in its legacy root; the claude-source parity vitest |
+  | M1-AC5 | TC-005, TC-006, TC-007, TC-009 | PASS | solo's real committed segments (1640): feat/edge-ops-ui 28, campaign/emulator-arena-loop 1, chore/uwb-ranging-plan 5, campaign/sensor-assignment-uplift 7; the real uwb campaign.yaml; v56 (d1c83cc) vs v57 rollup of the same segments (51 mission rows, lost 0, grew none) |
+  | M1-AC6 | TC-008 | PASS | solo's real prices.json lines for claude-opus-5-5 / claude-sonnet-5-5 and solo's real segments (live LiteLLM refresh: both priced, opus-5-5 $117.87, sonnet-5-5 $80.08) |
+  | M1-AC7 | TC-010 | PASS | the shipped pack, graph-payload-versions.json, extension build |
+  | M1-AC8 | TC-011 | PASS | the real octoshell checkout and the solo board copy (doctor.js --json) |
+
+  Verified by T1.5 (qa-engineer, 2026-10-05).
+
+
+  ## Gate clarifications (Alex, 2026-10-05)
+
+  The M1 gate's black-box QA asked three questions, and Alex (ba) answered yes to all of them. AC5's real-data clause now lists the exact campaign rows the T1.3 plan predicted. AC6 is split into (a) refresh, (b) local fallback and (c) prices.json wins on a differing rate. AC7 is scoped to the shipped pack; the installed .claude copy is re-installed after 0.1.0.
+
+  ## Completion gate (2026-10-05): GREEN
+
+  Base: feat/direct-dispatch-process. Mission branch: feat/direct-dispatch-process-m1. PRs into it: #112 (T1.4), #113 (T1.1), #114 (T1.2), #115 + #116 (T1.3), #117 (B5/B1/B2), #118 (T1.5 functional QA, 11/11 TCs).
+  1. Tests + coverage (js-dev): lint/build/typecheck/test/coverage green. 0 failed, 0 skipped. board 388, tokenomics 95, extension 504, graph 653. New-code coverage on changed lines vs base: 89.65% (threshold 80%). The pack rollup.mjs campaign-row gap was a measurement artifact (subprocess); see 3.
+  2. Black-box QA (Sage, criteria + spec only): AC1-AC8 all pass on real records: solo's 9 sessions (3 home-only), its 1637 committed segments and runs.json (51 mission rows identical, $4199.53 and 8,759,714,164 tokens unchanged), octoshell's real slug dirs, the shipped pack and the built dist. Solo untouched. Three questions to BA (Alex), all answered yes; AC5-AC7 wording clarified.
+  3. Critical review (Rio): one blocking class, fixed (54b65bc, 07ad768, ea03152). rollup.ts read mission and task ids from anywhere in the title with no folder fallback; rollup.mjs treated bare dirs under campaigns/ as campaigns; directory reads were unsorted; the mission-planner SKILL.md said campaigns carry no tokenomics. Regression parity rows and a campaign-row shape assertion were added. Gutting buildCampaignRow fails 10 parity tests, so its 0% was a measurement artifact. Every real-data-unreachable clause maps to a named test. No security exposure (slug sanitised, execFile with argv arrays, mkdtemp 0700 with cleanup on failure). Sage re-verified AC4 and AC5 black-box after the fixes: pass.
+  4. Tokenomics (non-blocking): M1 $58.65 API-equivalent, 1131 turns, orchestrator 16%. The campaign-level row (feat/direct-dispatch-process) is $16.49. Octoshell's installed v56 tokenomics needed the pack's prices.local.json seeded locally to price opus-5-5/sonnet-5-5.
+  Open, not blocking: B3 (trivial), B4 (rollup.mjs merges M2a/M2b rows; predates M1 and needs its own AC). AC4's visual webview half needs a manual F5 screenshot by the user; its data path (tokenomics:report) is covered by apps/vscode-extension/test/tokenomics-rpc.test.ts.

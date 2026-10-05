@@ -4,7 +4,7 @@ import { BoardHost } from "./host/board-host.js";
 import { AppearanceStore } from "./host/appearance-store.js";
 import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE, WORKFLOW_VIEW_TYPE } from "./host/entity-panel-manager.js";
 import { TokenomicsPanel } from "./host/tokenomics-panel.js";
-import { renderReportHtml, type Report as TokenomicsReport } from "@octoshell/tokenomics";
+import { isCampaignRun, renderReportHtml, type Report as TokenomicsReport } from "@octoshell/tokenomics";
 import { CampaignsTree } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
@@ -237,8 +237,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       });
       if (!target) return;
       await vscode.workspace.fs.writeFile(target, Buffer.from(renderReportHtml(report), "utf8"));
+      const campaignRows = report.runs.filter(isCampaignRun).length;
+      const missionRows = report.runs.length - campaignRows;
       const open = await vscode.window.showInformationMessage(
-        `Octobots: wrote ${report.runs.length} missions to ${basename(target.fsPath)}.`,
+        `Octobots: wrote ${missionRows} missions${campaignRows ? ` + ${campaignRows} campaign rows` : ""} to ${basename(target.fsPath)}.`,
         "Open",
       );
       if (open === "Open") await vscode.env.openExternal(target);
