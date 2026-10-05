@@ -964,6 +964,8 @@ const unattributedBucket = {
     cache_create: unattrTotals.cache_creation_input_tokens,
   },
   cost_api_equivalent_usd: round2(costOf(unattrByModel)),
+  // Per model, like the run rows, so `verify.mjs` can leave out models ccusage cannot price.
+  cost_by_model: Object.fromEntries(Object.entries(unattrByModel).map(([m, t]) => [m, round2(costOf({ [m]: t }))])),
 };
 
 const submission = {

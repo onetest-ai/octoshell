@@ -44,12 +44,12 @@ function fixture(): Fixture {
 }
 
 /** Writes one session of `turns` assistant records into `<slugDir>/<id>.jsonl`. */
-function session(slugDir: string, id: string, turns: number, opts: { subagent?: boolean; workflow?: number } = {}): void {
+function session(slugDir: string, id: string, turns: number, opts: { subagent?: boolean; workflow?: number; model?: string } = {}): void {
   mkdirSync(slugDir, { recursive: true });
   const rec = (n: number, tag: string) => JSON.stringify({
     type: "assistant", sessionId: id, gitBranch: "main", timestamp: `2026-10-01T00:00:${String(n).padStart(2, "0")}Z`,
     requestId: `req-${tag}-${n}`,
-    message: { model: MODEL, content: [], usage: { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 10_000, cache_creation_input_tokens: 2_000 } },
+    message: { model: opts.model ?? MODEL, content: [], usage: { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 10_000, cache_creation_input_tokens: 2_000 } },
   });
   const lines = Array.from({ length: turns }, (_, n) => rec(n, id));
   writeFileSync(join(slugDir, `${id}.jsonl`), lines.join("\n") + "\n");
@@ -229,6 +229,66 @@ describe("tokenomics verify.mjs reads the collector's transcript roots", () => {
     expect(r.status, out(r)).toBe(1);
   });
 
+  describe("models ccusage cannot price (B5)", () => {
+    // Turn counts are large: cost_by_model is rounded to cents, so tiny sessions would be all rounding.
+    const UNPRICED = "claude-opus-5-5"; // priced by our prices.local.json, $0 in ccusage 20.0.18
+    const ZERO = { FAKE_CCUSAGE_ZERO_COST_MODELS: UNPRICED };
+
+    it("only unpriced models -> tokens gate, cost is info naming the model -> PASS", () => {
+      const f = fixture();
+      session(f.homeSlugDir, "s-opus", 300, { model: UNPRICED });
+      const r = verify(f, ZERO);
+      expect(out(r)).toContain(`cost: info (ccusage has no price for ${UNPRICED})`);
+      expect(out(r)).toMatch(/info\s+cost/);
+      expect(out(r)).toMatch(/ok\s+total tokens/);
+      expect(out(r)).not.toMatch(/investigate the COLLECTOR/);
+      expect(r.status, out(r)).toBe(0);
+    });
+
+    it("unpriced + priced, priced part matches -> cost gated over priced models only -> PASS", () => {
+      const f = fixture();
+      session(f.homeSlugDir, "s-opus", 300, { model: UNPRICED });
+      session(f.homeSlugDir, "s-sonnet", 300);
+      const r = verify(f, ZERO);
+      expect(out(r)).toMatch(/ok\s+cost/);
+      expect(out(r)).toContain(`ccusage has no price for ${UNPRICED}`);
+      expect(r.status, out(r)).toBe(0);
+    });
+
+    it("unpriced + priced, priced part off by more than the threshold -> FAIL on cost", () => {
+      const f = fixture();
+      session(f.homeSlugDir, "s-opus", 300, { model: UNPRICED });
+      session(f.homeSlugDir, "s-sonnet", 300);
+      const env = baseEnv(f, { OCTOBOTS_CCUSAGE_BIN: FAKE, ...ZERO });
+      pipeline(f, env);
+      const runsFile = join(f.tok, "runs.json");
+      const runs = JSON.parse(readFileSync(runsFile, "utf8"));
+      for (const r of runs.runs) r.cost_api_equivalent_usd *= 3; // by-model untouched: the unpriced part stays right
+      runs.unattributed.cost_api_equivalent_usd *= 3;
+      writeFileSync(runsFile, JSON.stringify(runs));
+      const r = node(join(f.tok, "verify.mjs"), ["--project-dir", f.repo], env);
+      expect(out(r)).toMatch(/FAIL cost/);
+      expect(out(r)).toMatch(/investigate the COLLECTOR/);
+      expect(r.status, out(r)).toBe(1);
+    });
+
+    it("fully priced and mismatched -> still FAIL, no unpriced note", () => {
+      const f = fixture();
+      session(f.homeSlugDir, "s-sonnet", 5);
+      const env = baseEnv(f, { OCTOBOTS_CCUSAGE_BIN: FAKE });
+      pipeline(f, env);
+      const runsFile = join(f.tok, "runs.json");
+      const runs = JSON.parse(readFileSync(runsFile, "utf8"));
+      for (const r of runs.runs) r.cost_api_equivalent_usd *= 2;
+      runs.unattributed.cost_api_equivalent_usd *= 2;
+      writeFileSync(runsFile, JSON.stringify(runs));
+      const r = node(join(f.tok, "verify.mjs"), ["--project-dir", f.repo], env);
+      expect(out(r)).toMatch(/FAIL cost/);
+      expect(out(r)).not.toMatch(/no price for/);
+      expect(r.status, out(r)).toBe(1);
+    });
+  });
+
   it("run from a worktree -> reads the MAIN checkout's slug -> PASS", () => {
     const f = fixture();
     session(f.homeSlugDir, "s-home", 5);
@@ -283,6 +343,15 @@ describe("tokenomics verify.mjs reads the collector's transcript roots", () => {
       const f = fixture();
       session(f.homeSlugDir, "s-wf", 3, { subagent: true, workflow: 20 });
       const r = verify(f, {}, REAL!);
+      expect(r.status, out(r)).toBe(0);
+    });
+
+    it("an opus-5-5 session (real ccusage prices it at $0) -> PASS on tokens, cost info naming the model (B5)", () => {
+      const f = fixture();
+      session(f.homeSlugDir, "s-opus", 5, { model: "claude-opus-5-5" });
+      const r = verify(f, {}, REAL!);
+      expect(out(r)).toMatch(/ok\s+total tokens/);
+      expect(out(r)).toMatch(/cost: info \(ccusage has no price for claude-opus-5-5\)/);
       expect(r.status, out(r)).toBe(0);
     });
 
