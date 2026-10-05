@@ -1,0 +1,9 @@
+name: B5 - verify.mjs cost gate fails whenever ccusage cannot price the models (opus-5/5-5 at $0)
+status: draft
+severity: major
+description: ccusage 20.0.18 has no prices for claude-opus-5 / claude-opus-5-5 and reports $0 cost for those rows offline. The verify.mjs cost comparison then FAILs on any repo that uses current models, even when the token counts match exactly. This predates T1.3; it was exposed once verify read the right population.
+steps_to_reproduce: On a COPY of solo with a fresh collect.mjs run on the T1.3b branch, run verify.mjs --project-dir <copy> using the real ccusage at .octobots/tools.
+expected: When token totals match, verify passes. Cost is compared only for models ccusage can price; otherwise it is shown as info, naming the unpriced models.
+actual: 'Tokens match (cache_read 0.00%, cache_create 0.00%, total 0.24%) but the cost check FAILs: $1388.34 ours vs $503.81 ccusage.'
+rca: ccusage's bundled price table predates the opus-5 family; verify gates on cost unconditionally.
+environment: 'found by the T1.3b review gate (PR #116, 2026-10-05) on a copy of solo with real ccusage 20.0.18 offline'
