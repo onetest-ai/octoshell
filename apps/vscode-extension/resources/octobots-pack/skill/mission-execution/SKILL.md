@@ -212,6 +212,23 @@ they are gone the mission's cost is unrecoverable.
 mission branch (`git log`, open PRs). Then dispatch the phase that did not finish for the first
 unfinished task, telling the agent what already exists.
 
+### Mission QA: run the test cases live
+
+**The last-task convention.** A mission's final task is `Mission QA: run tests/m<n> live…`, owned by
+QA (`role: qa-engineer`), and it runs the whole suite in `tests/m<n>/`, not a slice. Its acceptance
+criteria are the mission's. The canonical rules are in `mission-completion-gate` § *QA on the test
+cases*; this task and gate phase 2 apply the same ones, and they must stay in step:
+
+- Run every TC in `tests/m<n>/` against the real system, by the mode each TC names.
+- Write `runs/RUN-YYYY-MM-DD-NNN.md`, one section per TC with the steps run and the observed values.
+- Record each TC as PASS, FAIL, BLOCKED or UNREACHABLE. UNREACHABLE is written as status `blocked`, with the reason in the RUN file.
+- Could not drive the browser or log in is BLOCKED, not a pass.
+- A manual execution (F5 or a human) is noted as manual in the RUN file.
+- Name the pre-existing record per criterion; a criterion proved only on QA-created data is not passed.
+- Write `## QA verification` into the task and mission `notes` through `entity-io.mjs`.
+- Tick exactly the criteria that have evidence, and nothing else.
+- Until a status script exists, edit each TC's frontmatter `status` by hand.
+
 ## Three loops: when the tests run again
 
 A mission is not executed once. The same dispatch machinery runs three different loops, and the

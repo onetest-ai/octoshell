@@ -243,8 +243,8 @@ are `T<missionNumber>.<taskNumber>` within their mission (`T3.1`, `T3.2`, …). 
    fill `.octobots/campaigns/<c>/tests/m<n>/README.md`: the AC map (one row per `M<n>-AC<k>` -> its
    TCs), `Shared preconditions`, `Pre-existing records` and `Assumptions to confirm`, and write
    `TC-NNN_<slug>.md` cases from `templates/TC-template.md`, one or more per acceptance criterion.
-   - **Frontmatter.** `id` (`^TC-\d{3,}$`, equal to the filename prefix before `_`), `title`,
-     `mission` (`M<n>`, the folder token upper-cased), `covers` (non-empty list of this mission's
+   - **Frontmatter.** `id` (`^TC-\d{3,}$`, equal to the filename prefix before the first `_`), `title`,
+     `mission` (`^M\d+[a-z]*$`, the folder token upper-cased: folder `m3b` -> `M3b`; `M<n>` otherwise), `covers` (non-empty list of this mission's
      `M<n>-AC<k>` ids), `kind` (api | ui | cli | unit), `status` (draft | ready | pass | fail |
      blocked | unknown), optional `last_run` (`{date: YYYY-MM-DD, evidence: <repo-relative RUN file>}`).
      Other keys are allowed and ignored. Required sections: `## Steps` and `## Expected Final State`.
@@ -270,7 +270,8 @@ task whose deliverable is *proof the mission works*, with `role: qa-engineer` �
 task, and not left implicit in the completion gate. It earns its place because it is the only task
 whose acceptance criteria describe the mission's behaviour **as a whole**: the build tasks each verify
 their own slice, and nothing else ever exercises them together. Give it real criteria like any other
-task.
+task. Title it `Mission QA: run tests/m<n> live…`: it runs the whole `tests/m<n>/` suite on real data
+(`mission-execution` § *Mission QA: run the test cases live*).
 
 **Name it after the specific things that can break, not "write tests"** — name the regressions the
 mission actually put at risk:

@@ -1,6 +1,6 @@
 ---
 name: octobots-doctor
-description: Use when the session context says "Octobots health: run the octobots-doctor skill", when .octobots/pack-updates/pending.json lists a pending pack reconcile (a pack skill this workspace changed locally, staged by a pack update), or when doctor.js or validate.js report a pack or board health finding (pack reconcile pending, leftover workflows/ folders, CLAUDE_CONFIG_DIR) in a repo with an .octobots/ directory. Not for planning or recording board work (that is mission-planner) and not for building a planned task (that is mission-execution).
+description: Use when the session context says "Octobots health: run the octobots-doctor skill", when .octobots/pack-updates/pending.json lists a pending pack reconcile (a pack skill this workspace changed locally, staged by a pack update), or when doctor.js or validate.js report a pack or board health finding (pack reconcile pending, leftover workflows/ folders, CLAUDE_CONFIG_DIR, tests-pairing warnings) in a repo with an .octobots/ directory. Not for planning or recording board work (that is mission-planner) and not for building a planned task (that is mission-execution).
 version: 57
 ---
 
