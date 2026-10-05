@@ -13,7 +13,7 @@
 // installer deletes files in the folder an entry names, so a skill name and `dir` are accepted only
 // in their one safe shape: a lower-case skill name and `.octobots/pack-updates/v<N>/<that skill>`.
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, parse, resolve } from "node:path";
 
 export const PACK_UPDATES_DIR = ".octobots/pack-updates";
 const BASE_SOURCES = ["reconciled-from", "workspace-git", "declared", "closest"];
@@ -27,6 +27,20 @@ const isSkillName = (v) => typeof v === "string" && SKILL_NAME.test(v);
 
 /** pending.json under the workspace `root`. */
 export const pendingFile = (root) => join(root, ".octobots", "pack-updates", "pending.json");
+
+/**
+ * The workspace root for a path inside its board: the parent of the nearest `.octobots` ancestor of
+ * `path`, or null when `path` is not under one (a board copied to a folder with another name).
+ */
+export function workspaceRootOf(path) {
+  for (let d = resolve(path); d !== parse(d).root; d = dirname(d)) if (basename(d) === ".octobots") return dirname(d);
+  return null;
+}
+
+/** The `warning:` text for a pending.json that cannot be read as a record. */
+export const MALFORMED_PENDING_NOTE = `${PACK_UPDATES_DIR}/pending.json is malformed, so no pack reconcile can be listed`;
+/** What to do about it: the installer replaces the file from its own results. */
+export const MALFORMED_PENDING_FIX = 'run "Octobots: Install Workflow Pack" (it rewrites pending.json), or delete the file';
 
 /** True when `dir` is the staging folder `.octobots/pack-updates/v<N>/<skill>` (of `skill`, when given). */
 export function isStagingDir(dir, skill) {

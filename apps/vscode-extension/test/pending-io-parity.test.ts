@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { forks, PACK_SRC, store } from "./fixtures/pack-store.js";
 import { installPack } from "../src/host/octobots-skill.js";
@@ -13,8 +14,9 @@ const cases = (JSON.parse(readFileSync(join(__dirname, "fixtures", "pending-case
 
 /**
  * Every reader of pending.json must agree on `test/fixtures/pending-cases.json`: pack-updates.ts and
- * the pack's `pending-io.mjs` (imported by doctor.js, validate.js and pack-reconcile.mjs). T7.5 adds
- * the primer's twin to this list.
+ * the pack's `pending-io.mjs` (imported by doctor.js, validate.js and pack-reconcile.mjs). The
+ * primer's twin (`hooks/primer.mjs`, which cannot import either) is driven through the script itself
+ * in its own describe below: it surfaces only the pending skills and the record's pack version.
  */
 const readers: Array<{ name: string; summary: (text: string) => Case["expected"] }> = [
   { name: "pack-updates.ts", summary: pendingSummary },
@@ -30,6 +32,33 @@ describe("pending.json fixture cases", () => {
   describe.each(readers)("$name", ({ summary }) => {
     it.each(cases)("parses $name to its expected {packVersion, reconcile, kept}", (c) => {
       expect(summary(c.text)).toEqual(c.expected);
+    });
+  });
+
+  describe("primer.mjs twin (hooks/primer.mjs reads the same fixture cases through the script)", () => {
+    const PRIMER = join(__dirname, "..", "resources", "octobots-pack", "hooks", "primer.mjs");
+
+    /** The primer's reading of `text`: the skills and pack version of its "Pending pack reconciles" sentence. */
+    function primerReads(text: string): { packVersion: number | null; reconcile: string[] } {
+      const ws = mkdtempClean("primer-twin-");
+      mkdirSync(join(ws, ".octobots", "pack-updates"), { recursive: true });
+      writeFileSync(join(ws, ".octobots", "pack-updates", "pending.json"), text);
+      const out = execFileSync("node", [PRIMER, "--backend", "claude"], {
+        cwd: ws,
+        env: { ...process.env, CLAUDE_PROJECT_DIR: ws, CLAUDE_CONFIG_DIR: "" },
+        input: JSON.stringify({ hook_event_name: "SessionStart" }),
+        encoding: "utf8",
+      });
+      const ctx = (JSON.parse(out) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+      const m = /Pending pack reconciles: (.+) \(\.octobots\/pack-updates\/v(\d+)\/\)\./.exec(ctx);
+      return m ? { packVersion: Number(m[2]), reconcile: m[1]!.split(", ") } : { packVersion: null, reconcile: [] };
+    }
+
+    it.each(cases)("reads $name to the fixture's pending skills", (c) => {
+      const read = primerReads(c.text);
+      expect(read.reconcile).toEqual(c.expected.reconcile);
+      // The pack version only shows when there is a sentence to carry it.
+      expect(read.packVersion).toBe(c.expected.reconcile.length ? c.expected.packVersion : null);
     });
   });
 
