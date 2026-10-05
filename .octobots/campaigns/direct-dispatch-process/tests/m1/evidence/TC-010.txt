@@ -1,0 +1,42 @@
+# TC-010
+11:export const OCTOBOTS_PACK_VERSION = 57;
+/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/skill/knowledge-explorer/SKILL.md:4:version: 57
+/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/skill/mission-planner/SKILL.md:4:version: 57
+/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/skill/mission-completion-gate/SKILL.md:4:version: 57
+/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/skill/mission-execution/SKILL.md:4:version: 57
+/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/skill/workflow-designer/SKILL.md:4:version: 57
+/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/hooks/primer.mjs:1:// octobots-pack-version: 57
+/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/tokenomics/backfill-worklog-sha.mjs:2:// octobots-pack-version: 57
+/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/statusline/statusline.sh:2:# octobots-pack-version: 57
+/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/tokenomics/run.mjs:2:// octobots-pack-version: 57
+#!/usr/bin/env node
+// octobots-pack-version: 57
+true
+-- any 56 / 57-local left?
+(eval):8: no matches found: --include=*.mjs
+(none above = clean)
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > rejects an unknown mode with exit 2 and names what it expected
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > reports a payload that is current, with exit 0
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > fails with exit 1 and an actionable message when the payload is STALE
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > fails with exit 1 when the payload is missing entirely
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > --write regenerates a payload the very next --verify accepts
+ ✓ test/graph-payload.test.ts > graph-payload.mjs — the failure branches the build depends on > leaves the real committed payload untouched while doing all of that
+
+ Test Files  1 passed (1)
+      Tests  20 passed (20)
+   Start at  11:34:27
+   Duration  734ms (transform 31ms, setup 43ms, collect 32ms, tests 464ms, environment 0ms, prepare 28ms)
+
+../../media/assets/index-CvIPpcx3.css     39.38 kB │ gzip:   9.16 kB
+../../media/assets/index-CAZcNmj4.js     611.24 kB │ gzip: 165.78 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 795ms
+build exit=
+-- leftovers of 56 / 57-local in the shipped pack (expect none)
+grep exit=1 (1 = none found)
+extension build exit=0
+> node scripts/graph-payload.mjs --verify && node esbuild.mjs && vite build

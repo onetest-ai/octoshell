@@ -1,0 +1,20 @@
+# TC-005 (qa-m1 dir: committed board reset, v57 mission-planner skill copied in; committed raw/segments.jsonl kept (collect.mjs MERGES fresh transcripts into it, as in the README command); HOME=stub)
+committed segments before collect:     1637
+collect exit=0
+rollup exit=0
+total segments 1640
+feat/edge-ops-ui segments: 28
+  row: {"work_item_level":"campaign","parent_ref":null,"mission_id":null,"campaign":"edge-ops-ui","branches":["chore/close-edge-ops-ui-campaign","feat/edge-ops-ui"],"turns":324}
+  row turns == turns of its branches: true
+  still in unattributed.branches: false
+  on a mission row: false
+campaign/emulator-arena-loop segments: 1
+  row: {"work_item_level":"campaign","parent_ref":null,"mission_id":null,"campaign":"emulator-arena-loop","branches":["campaign/emulator-arena-loop"],"turns":41}
+  row turns == turns of its branches: true
+  still in unattributed.branches: false
+  on a mission row: false
+campaign/sensor-assignment-uplift segments: 7
+campaign/sensor-assignment-uplift on sensor-assignment-uplift M1: true
+on any campaign row: false
+campaign rows: edgeserver-auth(194), edge-ops-ui(324), emulator-arena-loop(41)
+chore/uwb-ranging-plan segments: 5 | in unattributed.branches: true

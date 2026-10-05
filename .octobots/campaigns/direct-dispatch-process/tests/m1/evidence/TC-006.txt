@@ -1,0 +1,17 @@
+# TC-006 (qa-m1 dir; state after TC-005: collected + rolled up)
+before: in unattributed.branches: true | uwb campaign row present: false
+declare exit=0
+--- campaign.yaml diff (declaration only)
+24a25,27
+> tokenomics:
+>   branches:
+>     - chore/uwb-ranging-plan
+rollup exit=0
+{"work_item_level":"campaign","parent_ref":null,"mission_id":null,"campaign":"uwb-ranging-ingest-vendor-v01","branches":["chore/uwb-ranging-plan"],"turns":124}
+still in unattributed.branches: false
+uwb mission rows still: M1 M2 M3 M4 M6
+added document: QA probe -> docs/qa-probe.md
+add-doc exit=0
+27:tokenomics:
+28-  branches:
+29-    - chore/uwb-ranging-plan

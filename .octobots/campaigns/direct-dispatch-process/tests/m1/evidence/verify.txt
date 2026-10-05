@@ -1,0 +1,18 @@
+# verify.mjs (extra, AC5 'verify.mjs totals still match'), qa-m1-tc007 board, HOME=stub
+exit=0
+tokenomics: cross-check vs ccusage@20.0.18 (tolerance 10%)
+  roots: $WORK/home/.claude/projects (3); $WORK/copy/.claude/projects (6); ccusage sessions matched: 9/9
+
+  field                       ours           ccusage      dev
+  info cost (USD)          $2389.63           $503.81  374.31%
+  ok   total tokens     3,267,504,895     3,275,374,949    0.24%
+  ok   cache_read     3,175,700,455     3,175,700,455    0.00%
+  ok   cache_create        88,049,697        88,049,697    0.00%
+  info input                63,099            63,099    0.00%
+  info output            3,691,644        11,561,698   68.07%
+
+  cost: gated over priced models only (ccusage has no price for claude-opus-5, claude-opus-5-5, claude-sonnet-5-5)
+
+23 session(s) in segments.jsonl are no longer on disk - cost not comparable (shown as info).
+
+all gated fields within 10% of ccusage

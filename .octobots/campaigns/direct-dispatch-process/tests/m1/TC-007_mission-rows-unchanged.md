@@ -4,7 +4,8 @@ title: "No mission row loses a segment: v56 vs v57 rollup over the same real seg
 mission: M1
 covers: [M1-AC5]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m1/runs/RUN-2026-10-05-001.md}
 priority: critical
 size: S
 ---
