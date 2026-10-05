@@ -1,5 +1,5 @@
 /** The skills the pack ships, by directory name under `skill/` and `.claude/skills/`. */
-export const OCTOBOTS_SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"] as const;
+export const OCTOBOTS_SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer", "octobots-doctor"] as const;
 
 /**
  * Skill dirs earlier pack versions installed that no longer exist. Removed on install so an

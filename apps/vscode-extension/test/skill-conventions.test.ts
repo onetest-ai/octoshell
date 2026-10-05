@@ -170,3 +170,171 @@ describe("mission-completion-gate: orchestrator-dispatched phases", () => {
     expect(text).toMatch(/^version: 57$/m);
   });
 });
+
+/** The paragraph(s) of `text` under the heading matching `heading`, up to the next heading of any level. */
+function sectionUnder(text: string, heading: RegExp): string {
+  const start = text.search(heading);
+  if (start === -1) return "";
+  const rest = text.slice(start).split("\n").slice(1).join("\n");
+  const next = rest.search(/^#{1,6}\s/m);
+  return next === -1 ? rest : rest.slice(0, next);
+}
+
+describe("octobots-doctor: the rules of M7-AC7", () => {
+  const text = skill("octobots-doctor");
+  const body = text.replace(/^---\n[\s\S]*?\n---\n/, "");
+  const flat = body.replace(/\s+/g, " ");
+
+  it("is a v57 pack skill whose description says when to use it", () => {
+    expect(text).toMatch(/^name: octobots-doctor$/m);
+    expect(text).toMatch(/^version: 57$/m);
+    const description = /^description: (.+)$/m.exec(text)?.[1] ?? "";
+    expect(description).toMatch(/^Use when /);
+    for (const trigger of [/pending pack reconcile|pack reconcile/i, /SessionStart|Octobots health/, /doctor\.js/, /validate\.js/]) expect(description).toMatch(trigger);
+  });
+
+  it("runs doctor.js --json and validate.js and acts on their findings", () => {
+    expect(body).toMatch(/node \.claude\/skills\/mission-planner\/scripts\/doctor\.js --json/);
+    expect(body).toMatch(/node \.claude\/skills\/mission-planner\/scripts\/validate\.js /);
+    expect(flat).toMatch(/[Aa]ct on their findings/);
+  });
+
+  it("acts only on the folders pending.json names; carried-over questions come from RECONCILE.md; other ESCALATED entries are history", () => {
+    expect(flat).toMatch(/[Aa]ct only on the staging folders (that )?`?pending\.json`? names/);
+    expect(flat).toContain("Carried over from v<old>:");
+    expect(flat).toMatch(/RECONCILE\.md/);
+    expect(flat).toMatch(/folder no pending entry names is history[^.]*never asked again/);
+  });
+
+  it("classifies every change four ways", () => {
+    const rows = [...body.matchAll(/^\s*\|\s*(local only|upstream only|both, the same|both, different)\s*\|\s*(\w+)/gm)].map((m) => `${m[1]}=${m[2]}`);
+    expect(rows).toEqual(["local only=keep", "upstream only=take", "both, the same=take", "both, different=conflict"]);
+  });
+
+  it("making an upstream generic rule concrete for this project is not a conflict, and keeps both", () => {
+    expect(flat).toMatch(/concrete for this project[^.]*is not a conflict/);
+    expect(flat).toMatch(/[Tt]ake upstream's generic rule and keep local's concrete [^.]*as this project's instance/);
+  });
+
+  it("states the full policy-conflict list and 'when unsure, escalate'", () => {
+    for (const item of [
+      "model or role",
+      "review or fix round limits",
+      "coverage threshold",
+      "what blocks a merge",
+      "who may merge or approve, and into which branch",
+      "actions that need the user's OK first (deleting, pushing, migrating or seeding a database, anything with an external effect)",
+      "a safety guard",
+    ]) expect(flat, item).toContain(item);
+    expect(flat).toMatch(/When unsure whether a difference is policy, escalate\./);
+  });
+
+  it("a local restatement of a base value is local's position", () => {
+    expect(flat).toMatch(/local restates a base value and upstream changes that value, the restatement is local's position/);
+  });
+
+  it("escalates a policy conflict with the WHOLE live file untouched, and encodes no side in merged.md", () => {
+    expect(flat).toMatch(/ESCALATE every policy conflict/);
+    expect(flat).toMatch(/whole live SKILL\.md stays untouched[^.]*until every escalation of this skill is answered/);
+    expect(body).toContain("<!-- ESCALATED: <rule>: awaiting the user's answer, see DECISIONS.md -->");
+    expect(flat).toMatch(/neither side's text/);
+  });
+
+  it("never merges by lines", () => {
+    expect(flat).toMatch(/Never merge by lines/);
+    expect(flat).toMatch(/git merge-file/);
+  });
+
+  it("defines merged.md, DECISIONS.md's three sections, both entry forms and the no-upstream-change line", () => {
+    expect(flat).toMatch(/merged\.md/);
+    const template = body.match(/```markdown\n(# <skill>[\s\S]*?)```/)?.[1] ?? "";
+    expect([...template.matchAll(/^## (.+)$/gm)].map((m) => m[1])).toEqual(["Kept local", "Taken from upstream", "Conflicts"]);
+    expect(template).toContain("- RESOLVED: <rule>: <reason>");
+    expect(template).toContain("- ESCALATED: <rule>: local <...>; upstream <...>; question <...>");
+    expect(body).toContain("No upstream change since the base apart from the version marker; local kept as is.");
+  });
+
+  it("UPSTREAM-CANDIDATES.md lists `- <rule>: <why it generalises>`, Kept local rules only", () => {
+    expect(body).toContain("- <rule>: <why it generalises>");
+    expect(flat).toMatch(/UPSTREAM-CANDIDATES\.md[^.]*only rules from Kept local/);
+  });
+
+  it("installs with `version: <N>+local` and `reconciled-from:`, only when nothing is escalated, then runs done", () => {
+    expect(flat).toContain("`version: <N>+local`");
+    expect(flat).toContain("`reconciled-from: <sha256>`");
+    expect(flat).toMatch(/copy merged\.md byte for byte to `\.claude\/skills\/<skill>\/SKILL\.md`/);
+    expect(body).toMatch(/node \.claude\/skills\/octobots-doctor\/scripts\/pack-reconcile\.mjs done <skill>/);
+    expect(flat).toMatch(/plain `<N>`[^.]*overwrite/);
+  });
+
+  it("writes nothing outside the skill, its staging folder and doctor-acks.json", () => {
+    expect(flat).toMatch(/[Ww]rite nothing outside `\.claude\/skills\/<skill>\/`, its staging folder and `\.octobots\/doctor-acks\.json`/);
+    expect(flat).toMatch(/CLAUDE\.md, AGENTS\.md/);
+  });
+
+  it("always escalates a retired skill", () => {
+    expect(flat).toMatch(/[Aa]lways escalate a retired skill/);
+  });
+
+  it("an answer is recorded as `- RESOLVED (user, <YYYY-MM-DD>)`; an unanswered escalation is asked again without re-merging", () => {
+    expect(body).toContain("- RESOLVED (user, <YYYY-MM-DD>): <rule>: <answer>");
+    expect(flat).toMatch(/ask its question again, verbatim, and change nothing[^.]*do not merge again/);
+  });
+
+  it("the reply names the reconciled skills, each DECISIONS.md path and every ESCALATED question verbatim", () => {
+    const reply = sectionUnder(body, /^## \d+\. Your reply/m);
+    expect(reply).toMatch(/Reconciled:/);
+    expect(reply).toMatch(/DECISIONS\.md/);
+    expect(reply.replace(/\s+/g, " ")).toMatch(/every open ESCALATED entry, verbatim/);
+  });
+
+  it("deletes a workflows/ folder only on a per-folder yes", () => {
+    const legacy = sectionUnder(body, /^## \d+\. Leftover `workflows\/` folders/m).replace(/\s+/g, " ");
+    expect(legacy).toMatch(/only after the user says yes to that folder/);
+    expect(legacy).toMatch(/A yes for one folder is not a yes for another/);
+  });
+
+  it("gives the config-dir advice: ~/.claude/projects is the default, never CLAUDE_CONFIG_DIR=<repo>/.claude", () => {
+    const cfg = sectionUnder(body, /^## \d+\. `CLAUDE_CONFIG_DIR`/m).replace(/\s+/g, " ");
+    expect(cfg).toContain("~/.claude/projects/<slug>");
+    expect(cfg).toMatch(/[Nn]ever set (or recommend )?`CLAUDE_CONFIG_DIR=<repo>\/\.claude`/);
+  });
+
+  it("records declined findings in .octobots/doctor-acks.json exactly as T7.5's primer reads them", () => {
+    const acks = sectionUnder(body, /^## \d+\. Declined findings/m);
+    const json = acks.match(/```json\n([\s\S]*?)```/)?.[1] ?? "";
+    expect(JSON.parse(json)).toEqual({
+      acknowledged: [
+        { finding: "workflows", path: "campaigns/<c>/workflows", date: "<YYYY-MM-DD>" },
+        { finding: "workflows", path: "campaigns/<c>/missions/<m>/workflows", date: "<YYYY-MM-DD>" },
+        { finding: "config-dir", path: ".claude", date: "<YYYY-MM-DD>" },
+      ],
+    });
+    const prose = acks.replace(/\s+/g, " ");
+    expect(prose).toMatch(/relative to `\.octobots\/`/);
+    expect(prose).toMatch(/`\/`-separated/);
+    expect(prose).toMatch(/the `workflows\/` folder itself, never a `workflows\/<slug>` path/);
+    expect(prose).toMatch(/pending reconcile is never acknowledged/);
+  });
+
+  it("names no retired skill outside its legacy-folder paragraph", () => {
+    const legacy = sectionUnder(body, /^## \d+\. Leftover `workflows\/` folders/m);
+    const outside = body.replace(legacy, "");
+    expect(outside).not.toMatch(/workflow-designer/);
+    expect(outside).not.toMatch(/(?<![.\w/-])octobots(?![\w-])/); // the retired v18 skill; `.octobots/` is the board
+    expect(outside).not.toMatch(/skills\/octobots\//);
+  });
+});
+
+describe("mission-planner: the legacy-folder paragraph (decision 13(d))", () => {
+  const legacy = sectionUnder(skill("mission-planner"), /^## Legacy `workflows\/` folders/m).replace(/\s+/g, " ");
+
+  it("says the installer and tooling never change a legacy workflows/ folder", () => {
+    expect(legacy).toMatch(/never changed by the installer or any tooling/);
+  });
+
+  it("says only octobots-doctor may delete one, with the user's explicit OK per folder", () => {
+    expect(legacy).toMatch(/only \*\*octobots-doctor\*\* may delete one, with the user's explicit OK for that folder/);
+    expect(legacy).not.toMatch(/never edit, move or delete those folders/);
+  });
+});
