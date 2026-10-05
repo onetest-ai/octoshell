@@ -1,0 +1,9 @@
+name: B1 - A focused Field saves its stale text over a newer value that arrived while it was focused
+status: draft
+severity: major
+description: 'apps/vscode-extension/src/webview/field.tsx: while a Field is focused it ignores incoming value changes (to protect typing). If the user focuses a field WITHOUT typing, an external change arrives (another agent or a git pull edits the entity file; the board watcher reloads), and the user then blurs, the Field saves its stale local text over the newer value. The external edit is silently lost. Pre-existing (identical on base); found by the M2 B1 fix review (PR #140).'
+steps_to_reproduce: Render a Field with value 'a'; focus it; the parent re-renders with value 'b'; blur without typing. onSave is called with 'a'.
+expected: Blur saves only when the user changed the text since focus (compare with the value captured at focus). An untouched field adopts the newer value and saves nothing. A field the user did edit keeps the user's text (current behaviour).
+actual: onSave('a') overwrites the newer 'b'.
+rca: ''
+environment: 'found by the PR #140 review gate, 2026-10-05; reproduced on base and on the fix'
