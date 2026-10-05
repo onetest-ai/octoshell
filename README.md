@@ -4,7 +4,7 @@
 > the same board you're looking at.
 
 Octobots is a VS Code extension that turns a folder's `.octobots/` directory into a project board:
-**campaigns → missions → tasks**, plus **bugs** and **workflows**. Every entity is a plain YAML
+**campaigns → missions → tasks**, plus **bugs**. Every entity is a plain YAML
 file on disk.
 
 There is no database and no server. **The files are the board.** That is what makes it diffable,
@@ -48,10 +48,9 @@ detail panel where you can edit its status, acceptance criteria, notes and attac
                               /missions/<mission>/mission.yaml
                                                 /tasks/<task>/task.yaml
                                                 /bugs/<bug>/bug.yaml
-                                                /workflows/<name>/workflow.js
 ```
 
-Four levels, each a folder with one YAML file:
+Four kinds of entity, each a folder with one YAML file:
 
 - **Campaign** — an outcome. "Ship a code architecture graph."
 - **Mission** — an independently shippable slice of it, with its own acceptance criteria.
@@ -81,14 +80,19 @@ closed chat is lost work; attached, it is what makes a mission resumable months 
 |---|---|
 | `New Campaign` · `New Mission in this Campaign` | Create board entities |
 | `Add File to Campaign` | Attach a document |
-| `New Workflow` · `Delete Workflow` | Author an execution graph for a mission or campaign |
 | `Refresh Campaigns` | Re-read the tree from disk |
 | `Delete Campaign` / `Mission` / `Task` / `Bug` | Remove an entity and its folder |
-| `Install Octobots Pack` | Install the agent-facing skills and hooks |
+| `Install Octobots Pack` | Install the agent-facing skills and hooks; reconciles skills you changed locally |
+| `Doctor` | Check the Claude config dir, the pack, the hooks and leftover `workflows/` folders |
 | `Install SDLC Team Bundle` · `Update SDLC Team Bundle` | Install role agents (tech-lead, QA, devs…) |
 | `Install Graph` · `Rebuild Graph` | Build the architecture map — see [octograph](docs/octograph.md) |
 | `Tokenomics` · `Export Tokenomics Report` | What the work cost |
 | `Open Settings` | Extension settings |
+
+When the pack ships a new version and a skill in your workspace differs from the pack's, the
+install prompt lets you reconcile, overwrite or keep your version. Reconcile stages the three
+versions under `.octobots/pack-updates/` and the session primer asks an agent to run the
+**octobots-doctor** skill to merge them.
 
 Edits made on disk — by you, by an agent, by `git checkout` — are picked up automatically. The
 watcher waits for git to go quiet first, so a rebase or a branch switch does not produce a storm of
@@ -99,14 +103,15 @@ half-read states.
 ## Driving it from a CLI agent
 
 `Octobots: Install Octobots Pack` copies a set of skills and hooks into `.claude/`, teaching an
-agent how to read and drive the board. Four skills, each for a different moment:
+agent how to read and drive the board. Five skills, each for a different moment:
 
 | Skill | When |
 |---|---|
 | **mission-planner** | Turning an intent into campaigns, missions and tasks with real acceptance criteria |
-| **workflow-designer** | Deciding *how* a mission runs — phases, which agents, what is parallel |
 | **mission-execution** | Driving a planned task to a merged, verified PR |
 | **mission-completion-gate** | The blocking gate a mission must pass before it is done |
+| **knowledge-explorer** | Reading what the repository already knows before acting on it |
+| **octobots-doctor** | Acting on pack and board health findings, including a pending pack reconcile |
 
 And three hooks:
 
@@ -130,6 +135,10 @@ Each task, in order, in one working tree on one branch:
 Then, once per mission, a **completion gate** that a per-task loop structurally cannot replace:
 black-box QA against the *mission's* criteria by someone who never saw the diff, a live end-to-end
 pass, and a review of the whole branch at once.
+
+The orchestrator runs each phase by dispatching a sub-agent directly (the `Agent` tool); there is no
+workflow script and no Workflow tool involved. A `workflows/` folder left over from an older
+Octobots is ignored by the extension and flagged by `Octobots: Doctor`.
 
 > Tasks are sequenced, never parallel. They share one working tree and one branch — and isolation
 > comes from branches, not from a second checkout. A git worktree would carry none of the

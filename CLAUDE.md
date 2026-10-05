@@ -5,12 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 Octoshell is the **Octobots VS Code extension**: a markdown **board editor** for AI coding work.
-A workspace's `.octobots/` directory holds **campaigns → missions → tasks** (plus **bugs** and
-**workflows**), each
+A workspace's `.octobots/` directory holds **campaigns → missions → tasks** (plus **bugs**), each
 a human‑readable markdown file. There is **no database and no server** — the files on disk are the
 single source of truth, which is what makes the board diffable and safe for multiple agents to edit
-concurrently. The extension also installs an **Octobots workflow pack** (skill + planning agents +
-a session hook) into a workspace so CLI coding agents (Claude Code, Codex, Copilot) can drive the
+concurrently. The extension also installs an **Octobots pack** (skills +
+session hooks) into a workspace so CLI coding agents (Claude Code, Codex, Copilot) can drive the
 same board.
 
 It is a **pnpm + turborepo** monorepo: one app (`apps/vscode-extension`) and two small libraries
@@ -71,9 +70,6 @@ dependents, or they'll see stale `.d.ts`. Dependency order: `board`/`tokenomics`
   creates/edits/deletes entities and writes status markers; `validate.ts` enforces the board rules
   (every task needs an acceptance criterion, id/name shape, etc.); `slug.ts` and `types.ts` round
   out the model. **Disk is authoritative**: reads are a pure rebuild, never a cascade‑mutate.
-  `workflow-meta.ts` reads a workflow script's `export const meta` **without executing the script** —
-  it brace‑matches the literal and evaluates only that, in an empty `node:vm` context — and
-  `BoardModel` parses `workflows/` under every campaign and mission into `Workflow` entities.
 - **`tokenomics`** — prices agent transcripts and rolls the cost up per mission and task.
 
 ### VS Code extension (`apps/vscode-extension`) — host + webview
@@ -88,16 +84,14 @@ Two sides, talking over the webview `postMessage` channel:
   single debounced, git‑quiescence‑gated `board-watcher` that re‑parses the whole `.octobots` tree
   after it settles. `rpc-dispatcher.ts` is the canonical RPC table — each webview `rpc` call routes
   to a `BoardHost` / `AppearanceStore` method.
-  `octobots-skill.ts` / `octobots-hooks.ts` install the bundled `resources/octobots-pack` (skill +
-  planning agents + session hook) into `<workspace>/.claude`.
+  `octobots-skill.ts` / `octobots-hooks.ts` install the bundled `resources/octobots-pack`: skills
+  and the graph payload under `<workspace>/.claude`, hook scripts into `.octobots/hooks`, and
+  tokenomics into `.octobots/tokenomics`.
 - **`src/webview`** — a **single vite bundle** (React + Tailwind on CSS‑variable VS Code theme
   tokens; never hardcode colors — use tokens like `bg-list-active`, `text-fg-muted`).
   `chat-entry.tsx` is the entry (a legacy name — there is no chat); it routes on the host's `bind`
-  message (`{kind, id}`) to `CampaignView`, `MissionView`, `TaskView`, `BugView`, or `WorkflowView` —
+  message (`{kind, id}`) to `CampaignView`, `MissionView`, `TaskView`, or `BugView` —
   the entity detail editors with status dropdowns, acceptance‑criteria checklists, and document links.
-  `WorkflowView` is read‑only: it renders `workflow-diagram.tsx` (hand‑rolled SVG, no layout library)
-  over the `meta` the host parsed, since `meta` is **generated from the script body** by the pack's
-  `sync-meta.js` — there is no step editor and no `workflow:setMeta` RPC.
   `rpc-client.ts` wraps `postMessage` as request/response (`rpc` → `rpc:result`);
   `octoshell-shim.ts` exposes the `window.octoshell` API the views consume.
 
@@ -112,23 +106,39 @@ and emits `entities:changed` → host re‑binds/refreshes the affected webview 
 external `board-watcher` catches edits made on disk outside the extension (including bulk git
 operations) and triggers the same reconcile.
 
-## The Octobots workflow pack
+## The Octobots pack
 
 `apps/vscode-extension/resources/octobots-pack/` is shipped inside the extension and copied into a
-target workspace's `.claude/` on demand (the *Octobots: Install Workflow Pack* command, or the
-prompt on activation). It contains the `mission-planner` skill (board anatomy, planning rules, and
-the `scripts/` that edit boards — named `octobots` before pack v19), the `workflow-designer` skill
-(deciding how a planned mission runs — phases, agents, parallelism — and authoring `workflow.js`),
-the `mission-execution` skill
-(driving a planned task to a merged, verified PR), the `mission-completion-gate` skill, and a
-`hooks/primer.mjs` session hook that teaches a CLI agent how to read
-and drive the `.octobots/` board. `scripts/add-workflow.js`, `sync-meta.js` and `add-run.js` author
-the workflows the app draws — `sync-meta.js` regenerates a script's `export const meta` from its own
-body, so the diagram cannot drift from the program; `mission-execution` hands a mission's
-`workflow.js` to Claude Code's
-`Workflow` tool — the extension never runs it. `installPack` deletes skill dirs retired by a rename, so an
-upgraded workspace never ends up with two copies. This is product payload — keep it in sync with the board model in
-`packages/board`.
+target workspace on demand (the *Octobots: Install Octobots Pack* command, or the prompt on
+activation). Skills, the graph payload and the hook registration go under `.claude/`; hook scripts
+install to `.octobots/hooks` and tokenomics to `.octobots/tokenomics`. It contains five skills: `mission-planner` (board anatomy, planning rules, and
+the `scripts/` that edit boards), `mission-execution` (driving a planned task to a merged, verified
+PR), `mission-completion-gate` (the blocking mission-level gate), `knowledge-explorer` (reading what
+the repo already knows, enriched by octograph when installed) and `octobots-doctor` (acting on pack
+and board health findings, chiefly a pending pack reconcile). It also contains the session hooks
+under `hooks/` (the session hooks `primer.mjs`, `work-log.mjs` and `mission-gate.mjs`, plus
+`status-flip.mjs`, a helper module the last two import), the optional
+`statusline/`, the `tokenomics/` scripts that collect and price transcripts at the mission gate, and
+the bundled `graph/octograph.mjs`.
+
+Missions are executed by **direct sub-agent dispatch**: `mission-execution` has the orchestrator
+dispatch one sub-agent per phase through the `Agent` tool. There is no Workflow tool, no workflow
+script, and no workflow entity in the board model; the extension never runs a mission (it does run `doctor.js` and the graph commands in a terminal). A leftover
+`workflows/` folder is ignored by the board, and `validate.js` / `doctor.js` warn about it.
+
+**Pack updates (reconcile).** The pack is versioned as one unit (`OCTOBOTS_PACK_VERSION`; see
+`.agents/knowledge/architecture/pack-version-is-one-unit.md`). When `installPack` finds a SKILL.md the
+workspace changed locally, the install prompt offers three choices: *reconcile* (the default),
+*overwrite* (saves the local text as `overwritten-local.md` first) or *keep* (remembered while the
+file is unchanged). Reconcile leaves the live skill alone and stages `base.md`, `local.md`,
+`upstream.md` (only for a skill the pack still ships; a retired skill has none) and `RECONCILE.md` under `.octobots/pack-updates/v<N>/<skill>/`, recording it in
+`.octobots/pack-updates/pending.json`. The session primer sees the pending record and tells the agent
+to run the `octobots-doctor` skill, which merges the three versions and writes `merged.md` and
+`DECISIONS.md`. The bases come from `resources/shipped-skills.json.br`, the store of every SKILL.md
+the pack has shipped: any change to a pack SKILL.md is followed by
+`node apps/vscode-extension/scripts/shipped-skills.mjs --write`, with the store committed.
+`installPack` also deletes skill dirs retired by a rename, so an upgraded workspace never ends up
+with two copies. This is product payload: keep it in sync with the board model in `packages/board`.
 
 ## Testing
 
