@@ -29,7 +29,7 @@ every entity write"), both sides carry an `extra` catch-all so a key **neither f
 survives a round-trip untouched instead of being dropped on the next write. That fixed the
 "unknown key gets silently deleted" failure mode. It did **not** remove the dual-schema hazard: a
 field that's supposed to be *addressable* — read, validated, or edited by the pack's own scripts
-(`add-workflow.js`, `set-step.js`, `add-run.js`, etc.) — still has to be modelled explicitly in
+(`set-criterion.js`, `add-doc.js`, `validate.js`, etc.) — still has to be modelled explicitly in
 **both** `KIND_KEYS`/field lists before those scripts can see or manipulate it by name. `extra`
 only guarantees the field isn't destroyed; it doesn't make it usable on the pack side.
 
