@@ -180,7 +180,8 @@ findings, drive the fix loop, and re-run — do not leave the mission `done`.
 ## Tokenomics capture (phase 4)
 
 The gate is the **only** reliable moment to measure a mission's cost. Session
-transcripts live in `.claude/projects/` — not in git, ~80MB per session, and
+transcripts live in `~/.claude/projects/<slug>` (or `$CLAUDE_CONFIG_DIR/projects/<slug>`), plus the
+legacy repo-local `.claude/projects/<slug>` — not in git, ~80MB per session, and
 pruned without warning. Once they are gone the mission's cost is unrecoverable,
 so the gate captures it at completion rather than at reporting time.
 
