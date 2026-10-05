@@ -448,3 +448,90 @@ describe("octobots-doctor: the tests-pairing paragraph (M4-AC4)", () => {
     expect(find).toContain(`tests-pairing warnings (§${n})`);
   });
 });
+
+describe("QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms", () => {
+  const qaGate = sectionUnder(skill("mission-completion-gate"), /^### QA on the test cases\b/m).replace(/\s+/g, " ");
+  const qaExec = sectionUnder(skill("mission-execution"), /^### Mission QA: run the test cases live\b/m).replace(/\s+/g, " ");
+
+  const terms: Array<[string, RegExp]> = [
+    ["runs every TC in tests/m<n>/", /run(s)? every TC in `tests\/m<n>\/`/i],
+    ["writes runs/RUN-YYYY-MM-DD-NNN.md", /`runs\/RUN-YYYY-MM-DD-NNN\.md`/],
+    ["records PASS, FAIL, BLOCKED or UNREACHABLE", /PASS, FAIL, BLOCKED or UNREACHABLE/],
+    ["UNREACHABLE is status blocked, reason in the RUN file", /UNREACHABLE[^.]*status `blocked`[^.]*reason in the RUN file/],
+    ["names the pre-existing record per criterion", /pre-existing record per criterion/i],
+    ["a criterion proved only on QA-created data is not passed", /only on (QA-created|data QA created)[^.]*is not (passed|a pass)/i],
+    ["writes ## QA verification into task and mission notes via entity-io.mjs", /`## QA verification`[^.]*task and mission `notes`[^.]*`entity-io\.mjs`/],
+    ["ticks exactly the criteria with evidence", /tick(s)? exactly the criteria (that have|with) evidence/i],
+    ["could not drive the browser / log in is BLOCKED", /could not drive the browser[^.]*log in[^.]*BLOCKED/i],
+    ["notes a manual (F5/human) execution as manual in the RUN file", /manual[^.]*\(F5[^.]*\)[^.]*noted as manual in the RUN file|noted as manual in the RUN file/i],
+    ["edits the TC frontmatter status by hand for now", /frontmatter `status`[^.]*by hand/],
+  ];
+
+  for (const [label, re] of terms) {
+    it(`gate: ${label}`, () => {
+      expect(qaGate).not.toBe("");
+      expect(qaGate).toMatch(re);
+    });
+    it(`mission-execution: ${label}`, () => {
+      expect(qaExec).not.toBe("");
+      expect(qaExec).toMatch(re);
+    });
+  }
+
+  it("gate phase 2 points at the block, and mission-execution names the last-task convention and the gate", () => {
+    const phase2 = skill("mission-completion-gate").split(/^## The gate\b.*$/m)[1] ?? "";
+    expect(phase2).toMatch(/### QA on the test cases/);
+    expect(qaExec).toMatch(/Mission QA: run tests\/m<n> live/);
+    expect(qaExec).toMatch(/owned by QA/);
+    expect(qaExec).toMatch(/whole suite/);
+    expect(qaExec).toMatch(/mission-completion-gate/);
+  });
+
+  it("mission-planner names the same last task", () => {
+    expect(skill("mission-planner").replace(/\s+/g, " ")).toMatch(/Mission QA: run tests\/m<n> live/);
+  });
+});
+
+describe("T4.3 reviewer nits", () => {
+  const planner = skill("mission-planner").replace(/\s+/g, " ");
+  it("mission-planner: the TC id equals the filename prefix before the first `_`", () => {
+    expect(planner).toMatch(/filename prefix before the first `_`/);
+  });
+  it("mission-planner: `mission` allows a letter suffix (^M\\d+[a-z]*$, m3b -> M3b)", () => {
+    expect(planner).toContain("^M\\d+[a-z]*$");
+    expect(planner).toMatch(/m3b` -> `M3b/);
+  });
+  it("octobots-doctor: the frontmatter description lists tests-pairing", () => {
+    const fm = skill("octobots-doctor").split("---")[1] ?? "";
+    expect(fm).toMatch(/description:[^\n]*tests-pairing/);
+  });
+});
+
+describe("T4.4 review: the last-task live run does not contradict the rest of the pack", () => {
+  const exec = skill("mission-execution").replace(/\s+/g, " ");
+  const gate = skill("mission-completion-gate").replace(/\s+/g, " ");
+  const planner = skill("mission-planner").replace(/\s+/g, " ");
+  it("mission-execution: live E2E is never per BUILD task, and the last task is named as the other live run", () => {
+    expect(exec).not.toMatch(/Live E2E at the mission gate\*\* \(e\.g\. Playwright\), never per task\b/);
+    expect(exec).toMatch(/never per build task[^.]*\. The one other live run is the mission's last task/);
+    expect(exec).toMatch(/only live run outside the gate: build tasks still gate statically/);
+  });
+  it("gate: ticking happens at phase 5, Sage's verdict only marks the evidenced criteria", () => {
+    expect(gate).toMatch(/In the gate, Sage's verdict marks which criteria have evidence and the ticking itself is phase 5's/);
+  });
+  it("mission-planner: the hazard-named examples use the Mission QA title", () => {
+    expect(planner).not.toMatch(/`T\d+\.\d+ - End-to-end:/);
+    expect(planner).toMatch(/`T6\.6 - Mission QA: run tests\/m6 live: /);
+  });
+  it("both QA blocks carry last_run with the by-hand status edit", () => {
+    expect(exec).toMatch(/frontmatter `status` \(and `last_run`\) by hand/);
+    expect(gate).toMatch(/frontmatter `status` \(and `last_run`:/);
+  });
+});
+
+describe("T4.4 review: who writes which notes", () => {
+  it("gate: the last task writes task and mission notes; the gate writes the mission's", () => {
+    const gate = skill("mission-completion-gate").replace(/\s+/g, " ");
+    expect(gate).toMatch(/\(the last task writes both; the gate writes the mission's\)/);
+  });
+});

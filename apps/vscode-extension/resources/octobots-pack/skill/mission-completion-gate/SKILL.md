@@ -101,6 +101,7 @@ dispatches the addressee with them, and then hands the answers back in a follow-
    `AGENTS.md` asks for one. If a criterion is ambiguous, Sage returns `questions_for_ba`. The orchestrator dispatches `ba` with those
    questions, then re-dispatches Sage with the answers. Verdict:
    `{"criteria":[{"n":1,"pass":bool,"evidence":"…","record":"…"}],"questions_for_ba":[…]}`.
+   Where the mission has a `tests/m<n>/` folder, Sage runs it as described in § *QA on the test cases*.
 3. **Critical review (Rio)**: dispatch `tech-lead` (`model: opus`) with Sage's verdict, the
    criteria, and the range `git diff <base>...<mission-branch>`. The coverage step measured against
    the same base. Rio reviews with a security lens, walks each criterion to the code that implements
@@ -127,6 +128,37 @@ dispatches the addressee with them, and then hands the answers back in a follow-
 
 When any phase is blocked, relay the findings, have the right dev fix them, and re-run from the
 blocked phase. Do not leave the mission `done` on a red gate.
+
+
+### QA on the test cases
+
+This is the canonical statement of how QA runs a mission's functional test cases. `mission-execution`
+§ *Mission QA: run the test cases live* carries the same rules for the mission's last task, and the two
+must stay in step. Phase 2 and that last task are the same work done at two moments; the gate repeats
+it on a fresh tree and is not satisfied by an earlier RUN file alone.
+
+- **Run every TC in `tests/m<n>/`** (`.octobots/campaigns/<c>/tests/m<n>/TC-*.md`), on the real running
+  system, by the execution mode each TC names (API/CLI calls, Playwright MCP for UI). Not a sample.
+- **Write `runs/RUN-YYYY-MM-DD-NNN.md`** in that folder: one section per TC with the commands or steps
+  actually run, the observed values and the result. `NNN` counts the runs of that day.
+- **Record each TC as PASS, FAIL, BLOCKED or UNREACHABLE.** PASS -> `pass`, FAIL -> `fail`, BLOCKED ->
+  `blocked`. UNREACHABLE (the pre-existing record the case needs does not exist) is written as status
+  `blocked`, with the reason in the RUN file. Say UNREACHABLE rather than create the record and call it a pass.
+- **Could not drive the browser or log in is BLOCKED**, never a pass and never a quiet skip. Report what was tried.
+- **A manual execution** (a human or an F5 Extension Development Host session) is noted as manual in
+  the RUN file; its status is still `pass`, `fail` or `blocked`.
+- **Name the pre-existing record per criterion**: the real record each criterion was proved on. A
+  criterion proved only on QA-created data is not passed.
+- **Write `## QA verification` into the task and mission `notes`** (the last task writes both; the gate
+  writes the mission's) through `entity-io.mjs`
+  (`loadEntity`/`dumpEntity`, never raw appended text): the verdict, the RUN file, per criterion the
+  pre-existing record and the observed value, and every TC that is not `pass` with its reason.
+- **Tick exactly the criteria that have evidence.** A ticked criterion with no matching line in
+  `## QA verification` is a defect; a criterion with a BLOCKED or UNREACHABLE case behind it stays unticked. In the gate, Sage's verdict
+  marks which criteria have evidence and the ticking itself is phase 5's, once phases 1-3 are green.
+- **Statuses are written by hand for now.** Edit each TC's frontmatter `status` (and `last_run`:
+  `{date, evidence: <RUN file>}`) by hand, per the TC format contract in `mission-planner`. This is the
+  single seam a status-writing script will replace; nothing else in this block changes.
 
 ## Tokenomics capture (phase 4)
 
