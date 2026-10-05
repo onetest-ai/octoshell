@@ -19,9 +19,10 @@ GitHub Copilot CLI — how to read and drive the very same board.
   disk. A single debounced, git‑aware watcher keeps the UI in sync through
   `git checkout` / `stash` / `rebase` without churn.
 - **Octobots pack installer.** One command drops the Octobots skills (mission-planner,
-  mission-execution, mission-completion-gate, knowledge-explorer, octobots-doctor), planning agents
-  and session hooks into `<workspace>/.claude` so your CLI agents understand the board model. Skills
-  you changed locally are staged for an agent to merge rather than overwritten.
+  mission-execution, mission-completion-gate, knowledge-explorer, octobots-doctor) and session hooks
+  into the workspace so your CLI agents understand the board model. Skills, the graph payload and
+  the hook registration go under `.claude`; hook scripts go to `.octobots/hooks` and tokenomics to
+  `.octobots/tokenomics`. Skills you changed locally are staged for an agent to merge rather than overwritten.
 
 ## Getting started
 
