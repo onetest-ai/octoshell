@@ -86,6 +86,12 @@ describe("resources/shipped-skills.json.br (committed store)", () => {
     for (const v of ["22", "26", "31", "41"]) expect(store.versions[v], v).toBeUndefined();
   });
 
+  it("never lists the bumps that exist only on unmerged or squashed branches (38-40, 52, 53)", () => {
+    // 0c28b89/a19a8e7/6ba9e9f (v38-v40) and f55b2ab/1d10ca1 (v52/v53) were never reachable from
+    // main and never released; --write reads HEAD's history only, so they must stay absent.
+    for (const v of ["38", "39", "40", "52", "53"]) expect(store.versions[v], v).toBeUndefined();
+  });
+
   it("keeps every build of v57 in commit order: the v56-text-plus-marker body of 800c62c comes first", () => {
     // 800c62c ("bump workflow pack to v57") was the first v57 build; M2 changed these two bodies
     // at v57 afterwards. Base-recovery rule 3 reads index 0 as the EARLIEST body for (skill, N).

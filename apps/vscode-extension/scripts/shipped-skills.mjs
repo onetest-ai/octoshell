@@ -14,7 +14,9 @@
 // - A pack version can have SEVERAL bodies per skill: M2 changed two SKILL.md bodies after the first
 //   v57 build. `versions[N][skill][0]` is the EARLIEST build at N (base-recovery rule 3 reads it),
 //   so the list order is load-bearing; it is commit order and is only ever appended to.
-// - Versions that never shipped (22, 26, 31, 41) simply have no entry.
+// - Versions that never shipped (22, 26, 31, 41) simply have no entry, and neither do 38-40, 52 and 53:
+//   those bumps exist only on branches that were squash-merged or abandoned (never reachable from
+//   main, never released), so a workspace on one of them reads as `unknown-version`.
 //
 // Modes:
 //   --write   appends what is missing: first from the git history of the pack's SKILL.md files
