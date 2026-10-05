@@ -35,7 +35,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { brotliCompressSync, brotliDecompressSync, constants as zc } from "node:zlib";
 
-import { skillSha256 } from "../resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs";
+import { parseSkillMarker, skillSha256 } from "../resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXT_ROOT = join(HERE, "..");
@@ -72,14 +72,13 @@ export function bodyHash(text) {
 const normalise = (text) => text.replace(/\r\n/g, "\n");
 
 /**
- * The integer in the first `version:` line of the frontmatter, or null. Frontmatter only: a
- * `version:` line further down the body is prose.
+ * The pack version a SKILL.md declares, or null. Read through the pack's skill-marker.mjs, the one
+ * rule (BOM stripped, frontmatter only, the FIRST `version:` line): only a plain integer counts, so
+ * `57-local` / `57+local` and a missing line are null.
  */
 export function frontmatterVersion(text) {
-  const m = normalise(text).match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
-  if (!m) return null;
-  const v = m[1].match(/^version:[ \t]*(\d+)[ \t]*$/m);
-  return v ? Number(v[1]) : null;
+  const m = parseSkillMarker(text);
+  return m.kind === "integer" ? m.n : null;
 }
 
 export function emptyStore() {

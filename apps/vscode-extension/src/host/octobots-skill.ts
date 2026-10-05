@@ -39,12 +39,6 @@ export function requiredSkillsForAgent(_agent: string): string[] {
   return [...OCTOBOTS_SKILLS];
 }
 
-/** Read the `version:` integer from frontmatter; null if absent/unparseable. */
-export function parseVersion(text: string): number | null {
-  const m = text.match(/^version:\s*(\d+)\s*$/m);
-  return m ? Number(m[1]) : null;
-}
-
 /**
  * Read the `// octobots-pack-version: N` marker from the primer script; null if absent.
  * Delegates to the shared rule (`pack-version-marker.ts`) — same marker, one spelling.
@@ -74,10 +68,23 @@ export interface PackStatus {
   newer: string[];
 }
 
-/** True when `store` lists `skill` at `version` and at no earlier version: the pack introduced it then. */
-function isNewInVersion(store: ShippedStore | null, skill: string, version: number): boolean {
-  if (!store || !store.versions[String(version)]?.[skill]) return false;
-  return Object.entries(store.versions).every(([v, per]) => Number(v) >= version || !per[skill]);
+/** The earliest pack version `store` lists `skill` at, or null when it never shipped. */
+function introducedIn(store: ShippedStore | null, skill: string): number | null {
+  if (!store) return null;
+  const at = Object.entries(store.versions).filter(([, per]) => per[skill]).map(([v]) => Number(v));
+  return at.length === 0 ? null : Math.min(...at);
+}
+
+/**
+ * True when a workspace may lack `skill` without being broken: the pack introduced it after the
+ * version the workspace was installed at, or in the very version being checked (a bump in flight).
+ * The installed version is the primer's `octobots-pack-version` marker (`installedAt`): every pack
+ * version installs the primer, so it dates the workspace even when the missing skill cannot.
+ */
+function isNewSince(store: ShippedStore | null, skill: string, installedAt: number | null, currentVersion: number): boolean {
+  const introduced = introducedIn(store, skill);
+  if (introduced === null || introduced > currentVersion) return false;
+  return introduced === currentVersion || (installedAt !== null && introduced > installedAt);
 }
 
 /**
@@ -97,14 +104,18 @@ export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERS
   };
   const notInstalled = { installed: false, upToDate: false, upToDateExceptLocal: false, ...base };
 
-  // A missing skill that the pack introduced in this very version is "not yet installed", not a broken
-  // install; any other missing skill is a broken install.
+  // The version the workspace was installed at, from the primer marker (null when unreadable).
+  let installedAt: number | null = null;
+  try { installedAt = existsSync(primer) ? parsePrimerVersion(readFileSync(primer, "utf8")) : null; } catch { /* unreadable: no exemption */ }
+
+  // A missing skill the pack introduced after the workspace's installed version (or in the version
+  // being checked) is "not yet installed", not a broken install; any other missing skill is broken.
   const missingNew: string[] = [];
   const markers = new Map<string, ReturnType<typeof parseSkillMarker> | null>();
   for (const s of OCTOBOTS_SKILLS) {
     const file = join(repoRoot, ".claude", "skills", s, "SKILL.md");
     if (!existsSync(file)) {
-      if (!isNewInVersion(store, s, currentVersion)) return notInstalled;
+      if (!isNewSince(store, s, installedAt, currentVersion)) return notInstalled;
       missingNew.push(s);
       continue;
     }

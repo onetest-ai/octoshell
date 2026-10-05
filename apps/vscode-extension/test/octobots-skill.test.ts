@@ -2,7 +2,6 @@ import { readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync, rmSync
 import { join } from "node:path";
 import { describe, it, expect, vi } from "vitest";
 import {
-  parseVersion,
   requiredSkillsForAgent,
   OCTOBOTS_PACK_VERSION,
   OCTOBOTS_SKILLS,
@@ -12,7 +11,7 @@ import {
 import { registerClaudeHook, claudeHookStatus } from "../src/host/octobots-hooks.js";
 import { GIT_BUDGET_MS, recoverBase, type ShippedStore } from "../src/host/pack-deviations.js";
 import { forks } from "./fixtures/pack-store.js";
-import { skillSha256 } from "../src/host/skill-marker.js";
+import { parseSkillMarker, skillSha256 } from "../src/host/skill-marker.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { store } from "./fixtures/pack-store.js";
 
@@ -32,12 +31,6 @@ const shippedBody = (skill: string): string => {
 };
 
 describe("octobots-skill helpers", () => {
-  it("parses the version: frontmatter field, or null when absent", () => {
-    expect(parseVersion("---\nname: octobots\nversion: 3\n---\nbody")).toBe(3);
-    expect(parseVersion("---\nname: octobots\n---\nbody")).toBeNull();
-    expect(parseVersion("no frontmatter")).toBeNull();
-  });
-
   it("every managed agent requires both pack skills", () => {
     for (const agent of ["scout", "any-agent"]) {
       expect(requiredSkillsForAgent(agent)).toContain("mission-planner");
@@ -56,7 +49,7 @@ describe("bundled pack payloads", () => {
   it.each(OCTOBOTS_SKILLS)("%s carries a matching name + pack version", (name) => {
     const skill = readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
     expect(skill).toMatch(new RegExp(`^name:\\s*${name}\\s*$`, "m"));
-    expect(parseVersion(skill)).toBe(OCTOBOTS_PACK_VERSION);
+    expect(parseSkillMarker(skill)).toMatchObject({ kind: "integer", n: OCTOBOTS_PACK_VERSION });
   });
 
   it.each(OCTOBOTS_SKILLS)("%s describes when to use it, not what it does", (name) => {
@@ -433,6 +426,49 @@ describe("packStatus: deviations, reconciled and newer skills", () => {
     expect([st.installed, st.upToDate, st.upToDateExceptLocal]).toEqual([true, false, false]);
     // The same gap in a skill the pack shipped before is a broken install.
     expect(packStatus(repo, OCTOBOTS_PACK_VERSION, store).installed).toBe(false);
+  });
+
+  // The workspace's installed version is the primer's `octobots-pack-version` marker: every pack
+  // version installs the primer, so it names the version the workspace was last installed at, even
+  // when the skill that would say so is the one that is missing.
+  describe("a skill introduced after the workspace's installed version", () => {
+    /** `store` with octobots-doctor first shipped at `v`: it is dropped from every earlier version. */
+    const doctorIntroducedAt = (v: number): ShippedStore => ({ ...store, versions: Object.fromEntries(
+      Object.entries(store.versions).map(([n, per]) => {
+        if (Number(n) >= v) return [n, per];
+        const { "octobots-doctor": _gone, ...rest } = per;
+        return [n, rest];
+      }),
+    ) });
+    const workspaceAt = (primerVersion: number) => {
+      const repo = installed();
+      rmSync(join(repo, ".claude", "skills", "octobots-doctor"), { recursive: true });
+      const primer = join(repo, ".octobots", "hooks", "primer.mjs");
+      writeFileSync(primer, readFileSync(primer, "utf8").replace(/octobots-pack-version:\s*\d+/, `octobots-pack-version: ${primerVersion}`));
+      return repo;
+    };
+
+    it("v56 workspace at pack v57: the skill new in 57 may be missing", () => {
+      const st = packStatus(workspaceAt(56), 57, doctorIntroducedAt(57));
+      expect([st.installed, st.upToDate]).toEqual([true, false]);
+    });
+
+    it("v56 workspace at pack v58: the skill new in 57 may still be missing", () => {
+      const st = packStatus(workspaceAt(56), 58, doctorIntroducedAt(57));
+      expect([st.installed, st.upToDate]).toEqual([true, false]);
+    });
+
+    it("a v57 workspace missing a skill that shipped in 57 is a broken install at pack v58", () => {
+      expect(packStatus(workspaceAt(57), 58, doctorIntroducedAt(57)).installed).toBe(false);
+    });
+
+    it("a skill missing from a workspace that predates nothing about it is still broken", () => {
+      // doctor shipped at 40: a v56 workspace lacking it lost it.
+      const old = doctorIntroducedAt(57);
+      const hash = old.versions["57"]!["octobots-doctor"]!;
+      const shippedAt40: ShippedStore = { ...old, versions: { ...old.versions, "40": { "octobots-doctor": hash } } };
+      expect(packStatus(workspaceAt(56), 58, shippedAt40).installed).toBe(false);
+    });
   });
 
   it("reads pending reconciles through pack-updates: none on a clean install, the staged skills after a reconcile", () => {
