@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
@@ -9,6 +9,7 @@ import { installTokenomics } from "../src/host/octobots-tokenomics.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PACK = join(HERE, "..", "resources", "octobots-pack");
 const FAKE = join(HERE, "fixtures", "fake-ccusage.mjs");
+const TOK_SRC = join(PACK, "tokenomics");
 const REAL_CANDIDATES = [
   process.env.OCTOBOTS_REAL_CCUSAGE,
   join(HERE, "..", "..", "..", ".octobots", "tools", "node_modules", ".bin", "ccusage"),
@@ -43,7 +44,7 @@ function fixture(): Fixture {
 }
 
 /** Writes one session of `turns` assistant records into `<slugDir>/<id>.jsonl`. */
-function session(slugDir: string, id: string, turns: number, opts: { subagent?: boolean } = {}): void {
+function session(slugDir: string, id: string, turns: number, opts: { subagent?: boolean; workflow?: number } = {}): void {
   mkdirSync(slugDir, { recursive: true });
   const rec = (n: number, tag: string) => JSON.stringify({
     type: "assistant", sessionId: id, gitBranch: "main", timestamp: `2026-10-01T00:00:${String(n).padStart(2, "0")}Z`,
@@ -56,6 +57,14 @@ function session(slugDir: string, id: string, turns: number, opts: { subagent?: 
     const sub = join(slugDir, id, "subagents");
     mkdirSync(sub, { recursive: true });
     writeFileSync(join(sub, "agent-a.jsonl"), rec(0, `${id}-sub`) + "\n");
+  }
+  if (opts.workflow) {
+    // A Workflow-tool agent: real ccusage 20.0.18 reports it as its OWN row keyed `wf_<id>`, not under
+    // the session, so a session-id-only filter drops it (measured on solo: 1.7B cache_read tokens).
+    const wf = join(slugDir, id, "subagents", "workflows", `wf_${id}`);
+    mkdirSync(wf, { recursive: true });
+    const lines = Array.from({ length: opts.workflow }, (_, n) => rec(n, `${id}-wf`));
+    writeFileSync(join(wf, "agent-w.jsonl"), lines.join("\n") + "\n");
   }
 }
 
@@ -196,6 +205,61 @@ describe("tokenomics verify.mjs reads the collector's transcript roots", () => {
     expect(out(r)).not.toMatch(/network/i);
   });
 
+  it("Workflow-tool agents (subagents/workflows/wf_*) count toward their session's population -> PASS", () => {
+    const f = fixture();
+    session(f.homeSlugDir, "s-wf", 3, { subagent: true, workflow: 20 });
+    const r = verify(f);
+    expect(out(r)).toMatch(/matched: 1\/1/);
+    expect(r.status, out(r)).toBe(0);
+  });
+
+  it("nothing pruned -> cost IS gated: a cost-only mismatch FAILs (the pruned-session escape is not always on)", () => {
+    const f = fixture();
+    session(f.homeSlugDir, "s-home", 5);
+    const env = baseEnv(f, { OCTOBOTS_CCUSAGE_BIN: FAKE });
+    pipeline(f, env);
+    const runsFile = join(f.tok, "runs.json");
+    const runs = JSON.parse(readFileSync(runsFile, "utf8"));
+    for (const r of runs.runs) r.cost_api_equivalent_usd *= 2; // tokens untouched: only cost can trip
+    runs.unattributed.cost_api_equivalent_usd *= 2;
+    writeFileSync(runsFile, JSON.stringify(runs));
+    const r = node(join(f.tok, "verify.mjs"), ["--project-dir", f.repo], env);
+    expect(out(r)).toMatch(/FAIL cost/);
+    expect(out(r)).not.toMatch(/no longer on disk/);
+    expect(r.status, out(r)).toBe(1);
+  });
+
+  it("run from a worktree -> reads the MAIN checkout's slug -> PASS", () => {
+    const f = fixture();
+    session(f.homeSlugDir, "s-home", 5);
+    const wt = join(f.repo, ".claude", "worktrees", "qa-wt");
+    mkdirSync(wt, { recursive: true });
+    installTokenomics(PACK, wt);
+    const env = baseEnv(f, { OCTOBOTS_CCUSAGE_BIN: FAKE });
+    const wtTok = join(wt, ".octobots", "tokenomics");
+    for (const [script, extra] of [["collect.mjs", []], ["rollup.mjs", ["--no-gh"]]] as const) {
+      const p = node(join(wtTok, script), ["--project-dir", wt, "--quiet", ...extra], env);
+      expect(p.status, `${script}: ${p.stderr}`).toBe(0);
+    }
+    const r = node(join(wtTok, "verify.mjs"), ["--project-dir", wt], env);
+    expect(out(r)).toMatch(/matched: 1\/1/);
+    expect(r.status, out(r)).toBe(0);
+  });
+
+  it("the staging temp dir is removed on success AND on ccusage failure, and the roots are left intact", () => {
+    for (const fail of [false, true]) {
+      const f = fixture();
+      session(f.homeSlugDir, "s-home", 5, { subagent: true });
+      const tmp = join(realpathSync(mkdtempClean("verify-tmp-")), "t");
+      mkdirSync(tmp);
+      const before = readdirSync(f.homeSlugDir, { recursive: true }).map(String).sort();
+      const r = verify(f, { TMPDIR: tmp, ...(fail ? { FAKE_CCUSAGE_FAIL: "1" } : {}) });
+      expect(r.status, out(r)).toBe(fail ? 2 : 0);
+      expect(readdirSync(tmp), `leftover staging after ${fail ? "failure" : "success"}`).toEqual([]);
+      expect(readdirSync(f.homeSlugDir, { recursive: true }).map(String).sort()).toEqual(before);
+    }
+  });
+
   // Skipped ONLY when the real binary is genuinely absent (not installed under .octobots/tools and no
   // OCTOBOTS_REAL_CCUSAGE): the skip is environmental, not a deferral.
   describe.skipIf(!REAL)("against the real ccusage binary", () => {
@@ -215,6 +279,13 @@ describe("tokenomics verify.mjs reads the collector's transcript roots", () => {
       expect(r.status, out(r)).toBe(0);
     });
 
+    it("Workflow-tool agents under subagents/workflows -> PASS (real ccusage keys them as wf_<id> rows)", () => {
+      const f = fixture();
+      session(f.homeSlugDir, "s-wf", 3, { subagent: true, workflow: 20 });
+      const r = verify(f, {}, REAL!);
+      expect(r.status, out(r)).toBe(0);
+    });
+
     it("symlinked slug dir -> PASS", () => {
       const f = fixture();
       const real = join(realpathSync(mkdtempClean("verify-real-")), "elsewhere", "real-slug");
@@ -227,3 +298,39 @@ describe("tokenomics verify.mjs reads the collector's transcript roots", () => {
   });
 });
 
+// The population rule (roots, slug, worktree unwinding) is ONE module that both scripts import; a
+// second spelling of it in either script is exactly the drift this file exists to catch.
+describe("tokenomics roots.mjs is the single population rule", () => {
+  it("collect.mjs and verify.mjs both import it and neither re-spells the rule", () => {
+    for (const script of ["collect.mjs", "verify.mjs"]) {
+      const src = readFileSync(join(TOK_SRC, script), "utf8");
+      expect(src, script).toMatch(/import \{[^}]*\blocateTranscripts\b[^}]*\} from "\.\/roots\.mjs";/);
+      expect(src, script).toMatch(/\blocateTranscripts\(args\)/);
+      expect(src, `${script} re-spells the slug rule`).not.toContain("[^A-Za-z0-9]");
+      expect(src, `${script} re-spells the worktree unwind`).not.toContain("/.claude/worktrees/");
+      expect(src, `${script} re-spells the roots`).not.toMatch(/env\.OCTOBOTS_TOKENOMICS_PROJECTS_DIR|homedir\(/);
+    }
+  });
+
+  it("is installed next to the scripts that import it", () => {
+    const f = fixture();
+    expect(existsSync(join(f.tok, "roots.mjs"))).toBe(true);
+  });
+
+  it("locateTranscripts: worktree unwinding, slug, root precedence and dedupe", async () => {
+    const roots = (await import(join(TOK_SRC, "roots.mjs"))) as {
+      locateTranscripts: (argv: string[], env: Record<string, string | undefined>, cwd?: string) =>
+        { projectDir: string; mainDir: string; slug: string; roots: string[] };
+    };
+    const wt = roots.locateTranscripts(["--project-dir", "/w/my_repo/.claude/worktrees/x/"], { CLAUDE_CONFIG_DIR: "/cfg" });
+    expect(wt.projectDir).toBe("/w/my_repo/.claude/worktrees/x");
+    expect(wt.mainDir).toBe("/w/my_repo");
+    expect(wt.slug).toBe("-w-my-repo");
+    expect(wt.roots).toEqual(["/cfg/projects", "/w/my_repo/.claude/projects"]);
+    const explicit = roots.locateTranscripts(["--projects-dir", "/w/r/.claude/projects"], { CLAUDE_PROJECT_DIR: "/w/r", CLAUDE_CONFIG_DIR: "/cfg" });
+    expect(explicit.roots).toEqual(["/w/r/.claude/projects"]);
+    const viaEnv = roots.locateTranscripts([], { OCTOBOTS_TOKENOMICS_PROJECTS_DIR: "/x" }, "/w/r");
+    expect(viaEnv.projectDir).toBe("/w/r");
+    expect(viaEnv.roots).toEqual(["/x", "/w/r/.claude/projects"]);
+  });
+});

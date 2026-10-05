@@ -5,7 +5,9 @@
 //     `projects/` dir itself. Any other entry (or a missing one) is an error, exit 1.
 //   * A symlinked PROJECT dir inside a root is NOT followed; a symlink named `projects` IS.
 //   * Records dedupe on requestId across ALL roots, so a session in two roots counts once.
-//   * Subagent files fold into their parent session; the session id is emitted in `period`.
+//   * Rows are keyed by PATH, not by the records' sessionId (emitted in `period`): `<slug>/<sid>.jsonl`
+//     and `<slug>/<sid>/subagents/*.jsonl` -> `<sid>`; any deeper file -> the name of the dir holding it,
+//     so a Workflow-tool agent at `<sid>/subagents/workflows/wf_<id>/a.jsonl` is its own `wf_<id>` row.
 //   * FAKE_CCUSAGE_FAIL=1 exits 1 (a broken binary). FAKE_CCUSAGE_LOG appends {argv, CLAUDE_CONFIG_DIR, resolved}.
 import { appendFileSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -52,7 +54,8 @@ for (const projects of projectsDirs) {
     if (lstatSync(slugDir).isSymbolicLink() || !lstatSync(slugDir).isDirectory()) continue;
     for (const { file } of jsonl(slugDir)) {
       const rel = file.slice(slugDir.length + 1).split("/");
-      const topSession = rel[0].replace(/\.jsonl$/, "");
+      const parent = rel.length >= 2 ? rel[rel.length - 2] : null;
+      const id = rel.length === 1 ? rel[0].replace(/\.jsonl$/, "") : parent === "subagents" ? rel[0] : parent;
       for (const line of readFileSync(file, "utf8").split("\n")) {
         if (!line) continue;
         let d;
@@ -62,7 +65,6 @@ for (const projects of projectsDirs) {
           if (seen.has(d.requestId)) continue;
           seen.add(d.requestId);
         }
-        const id = d.sessionId ?? topSession;
         const s = sessions.get(id) ?? { agent: "claude", period: id, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalCost: 0 };
         const u = d.message.usage;
         s.inputTokens += u.input_tokens ?? 0;

@@ -10,17 +10,19 @@
 //
 // Population: exactly the one collect.mjs reads - THIS project's slug directory under the same
 // roots (`$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`, plus the legacy repo-local
-// `.claude/projects`). ccusage has no project filter, so we hand it only our own slug dirs (staged
-// as `projects` symlinks in a temp dir) and keep only the sessions found there. Runs ccusage
+// `.claude/projects`). ccusage has no project filter and does not follow a symlinked slug dir, so
+// we hand it each root that holds our slug dir (staged as a `projects` symlink in a temp dir; it
+// reads every project there) and keep only the sessions found in our slug dirs. Runs ccusage
 // offline from the workspace's installed copy; `npx` is only the fallback when that copy is
 // absent, and only then can the network matter.
 //
 // Usage: node .octobots/tokenomics/verify.mjs [--tolerance PCT] [--project-dir DIR]
 
 import { readFileSync, existsSync, readdirSync, mkdtempSync, mkdirSync, symlinkSync, realpathSync, rmSync, statSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
-import { homedir, tmpdir } from "node:os";
+import { basename, join, dirname } from "node:path";
+import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
+import { locateTranscripts } from "./roots.mjs";
 
 const args = process.argv.slice(2);
 const argOf = (name, dflt) => {
@@ -29,25 +31,11 @@ const argOf = (name, dflt) => {
 };
 
 const TOLERANCE = Number(argOf("--tolerance", "10"));
-const PROJECT_DIR = resolve(argOf("--project-dir", process.env.CLAUDE_PROJECT_DIR ?? process.cwd()));
 const CCUSAGE = argOf("--ccusage", "ccusage@20.0.18");
 
-// --- Mirrors collect.mjs (keep in step; pack scripts stay standalone, collect.mjs is not importable) ---
-// Artifacts live in the current checkout; transcripts only in the main one.
-const wt = PROJECT_DIR.indexOf("/.claude/worktrees/");
-const MAIN_DIR = wt !== -1 ? PROJECT_DIR.slice(0, wt) : PROJECT_DIR;
-const PROJECT_SLUG = MAIN_DIR.replace(/[^A-Za-z0-9]/g, "-");
-function resolveRoots() {
-  const i = args.indexOf("--projects-dir");
-  const explicit = (i !== -1 ? args[i + 1] : null) || process.env.OCTOBOTS_TOKENOMICS_PROJECTS_DIR;
-  const roots = explicit
-    ? [explicit]
-    : [join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects")];
-  roots.push(join(MAIN_DIR, ".claude", "projects")); // legacy snapshot, read in addition
-  return [...new Set(roots)];
-}
-const ROOTS = resolveRoots();
-// --- end mirror ---
+// The same population rule collect.mjs reads (roots, slug, worktree unwinding): one shared module.
+// Artifacts live in the current checkout; transcripts only under the main one's slug.
+const { projectDir: PROJECT_DIR, mainDir: MAIN_DIR, slug: PROJECT_SLUG, roots: ROOTS } = locateTranscripts(args);
 
 const TOK_DIR = join(PROJECT_DIR, ".octobots", "tokenomics");
 const runsFile = join(TOK_DIR, "runs.json");
@@ -68,12 +56,30 @@ if (present.length === 0) {
   console.error(`tokenomics: no transcripts for slug ${PROJECT_SLUG} under ${ROOTS.join(", ")} - nothing to cross-check`);
   process.exit(2);
 }
+// ccusage `session` keys a row by the transcript's PATH, not its records' sessionId (probed on
+// 20.0.18): `<slug>/<sid>.jsonl` and `<sid>/subagents/*.jsonl` give row `<sid>`, but a deeper file
+// gives a row named after the dir holding it - a Workflow-tool agent at
+// `<sid>/subagents/workflows/wf_<id>/` is its own `wf_<id>` row. collect.mjs folds all of those into
+// `<sid>`, so our population's ccusage keys are the session ids (S) plus those dir names (K).
 const S = new Set();
+const K = new Set();
+function nestedKeys(dir, isSubagentsRoot) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const e of entries) {
+    if (e.isDirectory()) nestedKeys(join(dir, e.name), false);
+    else if (!isSubagentsRoot && e.name.endsWith(".jsonl")) K.add(basename(dir));
+  }
+}
 const rootCounts = [];
 for (const r of present) {
   let n = 0;
   for (const e of readdirSync(join(r, PROJECT_SLUG))) {
-    if (e.endsWith(".jsonl")) { S.add(e.slice(0, -6)); n++; }
+    if (!e.endsWith(".jsonl")) continue;
+    const id = e.slice(0, -6);
+    S.add(id);
+    n++;
+    nestedKeys(join(r, PROJECT_SLUG, id, "subagents"), true);
   }
   rootCounts.push(`${r} (${n})`);
 }
@@ -144,8 +150,8 @@ const parsed = JSON.parse(raw);
 const rows = parsed.session ?? parsed.sessions ?? parsed.data ?? [];
 let matched = 0;
 for (const r of rows) {
-  if (!S.has(r.period) || (r.agent && r.agent !== "claude")) continue;
-  matched++;
+  if (!(S.has(r.period) || K.has(r.period)) || (r.agent && r.agent !== "claude")) continue;
+  if (S.has(r.period)) matched++;
   cc.input += r.inputTokens ?? 0;
   cc.output += r.outputTokens ?? 0;
   cc.cache_create += r.cacheCreationTokens ?? 0;

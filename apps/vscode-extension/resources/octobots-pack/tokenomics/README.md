@@ -246,8 +246,9 @@ node .octobots/tokenomics/verify.mjs
 
 It reads the collector's own transcript roots: `$CLAUDE_CONFIG_DIR/projects` (else
 `~/.claude/projects`) plus the legacy repo-local `.claude/projects`, and under each only this
-repo's slug directory. ccusage has no project filter, so `verify.mjs` stages just those directories
-for it and keeps only the sessions found there. It runs `ccusage session --json --offline` from the
+repo's slug directory. ccusage has no project filter, so `verify.mjs` stages each root that holds
+this repo's slug directory for it (ccusage reads every project in that root) and keeps only the
+sessions found in this repo's slug directories. It runs `ccusage session --json --offline` from the
 workspace's installed copy (`.octobots/tools`), so no network is needed; `npx` is only the fallback
 when that copy is absent. A missing or empty legacy root is fine. The cost line is compared only
 while every collected session is still on disk; once Claude Code prunes a transcript, cost is shown

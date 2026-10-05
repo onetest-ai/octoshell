@@ -22,48 +22,23 @@
 // Usage: node .octobots/tokenomics/collect.mjs [--project-dir DIR] [--projects-dir DIR] [--quiet]
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
-import { join, basename, resolve } from "node:path";
-import { homedir } from "node:os";
+import { join, basename } from "node:path";
+import { locateTranscripts } from "./roots.mjs";
 
 const args = process.argv.slice(2);
 const quiet = args.includes("--quiet");
 const log = (...a) => { if (!quiet) console.error(...a); };
 
 // ---------------------------------------------------------------------------
-// Locate the main repo. Transcripts are keyed by the MAIN checkout's path (the
-// slug), never by a worktree copy's, so unwind a worktree path.
+// Locate the transcripts: roots, slug and worktree unwinding are ONE rule in
+// roots.mjs, shared with verify.mjs. Artifacts are written to the CURRENT
+// checkout (so a worktree stays isolated); transcripts are only ever looked up
+// by the MAIN checkout's slug.
 // ---------------------------------------------------------------------------
-function resolveProjectDir() {
-  const i = args.indexOf("--project-dir");
-  // resolve(): a relative path or a trailing slash must not change the slug.
-  return resolve(i !== -1 ? args[i + 1] : (process.env.CLAUDE_PROJECT_DIR ?? process.cwd()));
-}
-
-// Artifacts are written to the CURRENT checkout (so a worktree stays isolated);
-// transcripts are only ever looked up by the MAIN checkout's slug, since a
-// worktree has no transcript directory of its own.
-const PROJECT_DIR = resolveProjectDir();
-const wt = PROJECT_DIR.indexOf("/.claude/worktrees/");
-const MAIN_DIR = wt !== -1 ? PROJECT_DIR.slice(0, wt) : PROJECT_DIR;
+const { projectDir: PROJECT_DIR, slug: PROJECT_SLUG, roots: ROOTS } = locateTranscripts(args);
 
 const OUT_DIR = join(PROJECT_DIR, ".octobots", "tokenomics");
 const RAW_DIR = join(OUT_DIR, "raw");
-
-// Claude Code names a project's transcript dir by replacing every character that
-// is not [A-Za-z0-9] in the absolute path with "-" ("/", "_" and "." included:
-// `applied_ai` is stored as `applied-ai`).
-const PROJECT_SLUG = MAIN_DIR.replace(/[^A-Za-z0-9]/g, "-");
-
-function resolveRoots() {
-  const i = args.indexOf("--projects-dir");
-  const explicit = (i !== -1 ? args[i + 1] : null) || process.env.OCTOBOTS_TOKENOMICS_PROJECTS_DIR;
-  const roots = explicit
-    ? [explicit]
-    : [join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects")];
-  roots.push(join(MAIN_DIR, ".claude", "projects")); // legacy snapshot, read in addition
-  return [...new Set(roots)];
-}
-const ROOTS = resolveRoots();
 
 // The 5m/1h cache-creation split is tracked separately because the two bill at
 // different rates (1.25x vs 2x input). Collapsing them loses real money.
