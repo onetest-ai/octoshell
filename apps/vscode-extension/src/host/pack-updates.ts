@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 /**
@@ -57,11 +57,27 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 const isStr = (v: unknown): v is string => typeof v === "string" && v !== "";
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
 
+/**
+ * pending.json is a user-editable file and the installer deletes files in the folder an entry
+ * names, so a skill name and a `dir` are accepted only in their one safe shape: a lower-case
+ * skill name, and `.octobots/pack-updates/v<N>/<that skill>`. Anything else (`../x`, an absolute
+ * path, another skill's folder, `.octobots/campaigns/...`) makes the file malformed.
+ */
+export const SKILL_NAME = /^[a-z0-9][a-z0-9-]*$/;
+const STAGING_DIR = /^\.octobots\/pack-updates\/v(\d+)\/([a-z0-9][a-z0-9-]*)$/;
+const isSkillName = (v: unknown): v is string => typeof v === "string" && SKILL_NAME.test(v);
+
+/** True when `dir` is the staging folder `.octobots/pack-updates/v<N>/<skill>` (of `skill`, when given). */
+export function isStagingDir(dir: string, skill?: string): boolean {
+  const m = STAGING_DIR.exec(dir);
+  return m !== null && (skill === undefined || m[2] === skill);
+}
+
 function entryOf(v: unknown): PendingEntry | null {
   if (!isObj(v)) return null;
   const { skill, action, localVersion, localSha256, base, upstreamSha256, retired, dir } = v;
-  if (!isStr(skill) || action !== "reconcile" || !isStr(localVersion) || !isStr(localSha256)) return null;
-  if (!(upstreamSha256 === null || isStr(upstreamSha256)) || typeof retired !== "boolean" || !isStr(dir)) return null;
+  if (!isSkillName(skill) || action !== "reconcile" || !isStr(localVersion) || !isStr(localSha256)) return null;
+  if (!(upstreamSha256 === null || isStr(upstreamSha256)) || typeof retired !== "boolean" || !isStr(dir) || !isStagingDir(dir, skill)) return null;
   let b: PendingEntry["base"] = null;
   if (base !== null) {
     if (!isObj(base) || !isInt(base.version) || !isStr(base.sha256) || typeof base.source !== "string" || !BASE_SOURCES.includes(base.source)) return null;
@@ -71,7 +87,7 @@ function entryOf(v: unknown): PendingEntry | null {
 }
 
 function keptOf(v: unknown): KeptEntry | null {
-  if (!isObj(v) || !isStr(v.skill) || !isInt(v.packVersion) || !isStr(v.sha256)) return null;
+  if (!isObj(v) || !isSkillName(v.skill) || !isInt(v.packVersion) || !isStr(v.sha256)) return null;
   return { skill: v.skill, packVersion: v.packVersion, sha256: v.sha256 };
 }
 
@@ -128,7 +144,11 @@ export function readPending(repoRoot: string): PendingRecord | null {
   try { return parsePending(readFileSync(pendingFile(repoRoot), "utf8")); } catch { return null; }
 }
 
-/** Writes the record unless the file already holds exactly these bytes. True when it wrote. */
+/**
+ * Writes the record unless the file already holds exactly these bytes. True when it wrote. The
+ * write goes to a temp file renamed over pending.json, so a crash leaves the old record or the new
+ * one, never a truncated file.
+ */
 export function writePending(repoRoot: string, rec: PendingRecord): boolean {
   const file = pendingFile(repoRoot);
   const text = serializePending(rec);
@@ -136,7 +156,14 @@ export function writePending(repoRoot: string, rec: PendingRecord): boolean {
     try { if (readFileSync(file, "utf8") === text) return false; } catch { /* rewrite below */ }
   }
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, text);
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, text);
+    renameSync(tmp, file);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw e;
+  }
   return true;
 }
 

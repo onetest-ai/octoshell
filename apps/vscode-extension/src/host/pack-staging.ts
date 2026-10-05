@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RecoveredBase } from "./pack-deviations.js";
-import { PACK_UPDATES_DIR, type PendingEntry } from "./pack-updates.js";
+import { PACK_UPDATES_DIR, isStagingDir, type PendingEntry } from "./pack-updates.js";
 
 /**
  * Staging folders for pack updates: `.octobots/pack-updates/v<N>/<skill>/`.
@@ -21,6 +21,15 @@ export const PACK_UPDATES_GITIGNORE = "*\n!.gitignore\n!*/\n!*/*/DECISIONS.md\n!
 const INPUT_FILES = ["base.md", "local.md", "upstream.md", "RECONCILE.md", "merged.md"] as const;
 
 const stagingRoot = (repoRoot: string): string => join(repoRoot, ".octobots", "pack-updates");
+
+/**
+ * The absolute path of a workspace-relative staging folder, or null when `dirRel` is not of the
+ * shape `.octobots/pack-updates/v<N>/<skill>`: a folder read from pending.json can never steer a
+ * read or a delete outside `.octobots/pack-updates/`.
+ */
+function stagingPath(repoRoot: string, dirRel: string): string | null {
+  return isStagingDir(dirRel) ? join(repoRoot, ...dirRel.split("/")) : null;
+}
 
 /** Workspace-relative staging folder, with `/`. */
 export const stagingDirRel = (packVersion: number, skill: string): string => `${PACK_UPDATES_DIR}/v${packVersion}/${skill}`;
@@ -72,8 +81,8 @@ export function carriedBlocks(brief: string): CarriedBlock[] {
  * its DECISIONS.md, or, when the agent never ran there, the blocks its RECONCILE.md itself carried.
  */
 export function carriedFrom(repoRoot: string, prior: PendingEntry | undefined, priorVersion: number): CarriedBlock[] {
-  if (!prior) return [];
-  const dir = join(repoRoot, ...prior.dir.split("/"));
+  const dir = prior ? stagingPath(repoRoot, prior.dir) : null;
+  if (!dir) return [];
   const decisions = join(dir, "DECISIONS.md");
   if (existsSync(decisions)) {
     try {
@@ -136,8 +145,8 @@ export function renderBrief(b: BriefInput): string {
 
 /** Removes the installer's inputs from a staging folder (never a log), then the folder if it is empty. */
 export function clearInputs(repoRoot: string, dirRel: string): void {
-  const dir = join(repoRoot, ...dirRel.split("/"));
-  if (!existsSync(dir)) return;
+  const dir = stagingPath(repoRoot, dirRel);
+  if (!dir || !existsSync(dir)) return;
   for (const f of INPUT_FILES) rmSync(join(dir, f), { force: true });
   pruneStaging(dir);
 }

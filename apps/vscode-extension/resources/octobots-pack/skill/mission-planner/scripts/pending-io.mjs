@@ -1,0 +1,137 @@
+// The ONE reader and writer of `.octobots/pack-updates/pending.json` on the pack side. The extension
+// host has its twin in src/host/pack-updates.ts; the extension's test/pending-io-parity.test.ts drives
+// both (and the primer's) from test/fixtures/pending-cases.json and asserts identical
+// {packVersion, reconcile, kept}. doctor.js, validate.js and pack-reconcile.mjs import this file.
+// Dependency-free on purpose, like the rest of scripts/.
+//
+//   {packVersion, skills: [{skill, action: "reconcile", localVersion, localSha256,
+//                           base: {version, sha256, source} | null, upstreamSha256 | null, retired, dir}],
+//    kept: [{skill, packVersion, sha256}]}
+//
+// Strict on the fields it relies on, silent about extras: any violation makes the whole file
+// malformed, which every reader treats as no record at all. pending.json is user-editable and the
+// installer deletes files in the folder an entry names, so a skill name and `dir` are accepted only
+// in their one safe shape: a lower-case skill name and `.octobots/pack-updates/v<N>/<that skill>`.
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+
+export const PACK_UPDATES_DIR = ".octobots/pack-updates";
+const BASE_SOURCES = ["reconciled-from", "workspace-git", "declared", "closest"];
+const SKILL_NAME = /^[a-z0-9][a-z0-9-]*$/;
+const STAGING_DIR = /^\.octobots\/pack-updates\/v(\d+)\/([a-z0-9][a-z0-9-]*)$/;
+
+const isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+const isStr = (v) => typeof v === "string" && v !== "";
+const isInt = (v) => typeof v === "number" && Number.isInteger(v);
+const isSkillName = (v) => typeof v === "string" && SKILL_NAME.test(v);
+
+/** pending.json under the workspace `root`. */
+export const pendingFile = (root) => join(root, ".octobots", "pack-updates", "pending.json");
+
+/** True when `dir` is the staging folder `.octobots/pack-updates/v<N>/<skill>` (of `skill`, when given). */
+export function isStagingDir(dir, skill) {
+  const m = STAGING_DIR.exec(dir);
+  return m !== null && (skill === undefined || m[2] === skill);
+}
+
+function entryOf(v) {
+  if (!isObj(v)) return null;
+  const { skill, action, localVersion, localSha256, base, upstreamSha256, retired, dir } = v;
+  if (!isSkillName(skill) || action !== "reconcile" || !isStr(localVersion) || !isStr(localSha256)) return null;
+  if (!(upstreamSha256 === null || isStr(upstreamSha256)) || typeof retired !== "boolean" || !isStr(dir) || !isStagingDir(dir, skill)) return null;
+  let b = null;
+  if (base !== null) {
+    if (!isObj(base) || !isInt(base.version) || !isStr(base.sha256) || !BASE_SOURCES.includes(base.source)) return null;
+    b = { version: base.version, sha256: base.sha256, source: base.source };
+  }
+  return { skill, action, localVersion, localSha256, base: b, upstreamSha256, retired, dir };
+}
+
+function keptOf(v) {
+  if (!isObj(v) || !isSkillName(v.skill) || !isInt(v.packVersion) || !isStr(v.sha256)) return null;
+  return { skill: v.skill, packVersion: v.packVersion, sha256: v.sha256 };
+}
+
+/** The record in `text`, or null when it is not a well-formed one. */
+export function parsePending(text) {
+  let raw;
+  try { raw = JSON.parse(text); } catch { return null; }
+  if (!isObj(raw) || !isInt(raw.packVersion) || !Array.isArray(raw.skills) || !Array.isArray(raw.kept)) return null;
+  const skills = [];
+  const kept = [];
+  const seen = new Set();
+  for (const s of raw.skills) {
+    const e = entryOf(s);
+    if (!e || seen.has(e.skill)) return null;
+    seen.add(e.skill);
+    skills.push(e);
+  }
+  for (const k of raw.kept) {
+    const e = keptOf(k);
+    if (!e || seen.has(e.skill)) return null; // one entry per skill, pending or kept
+    seen.add(e.skill);
+    kept.push(e);
+  }
+  return { packVersion: raw.packVersion, skills, kept };
+}
+
+/** `{packVersion, reconcile: [skill], kept: [skill]}`; packVersion is null when the file is malformed. */
+export function pendingSummary(text) {
+  const rec = parsePending(text);
+  if (!rec) return { packVersion: null, reconcile: [], kept: [] };
+  return { packVersion: rec.packVersion, reconcile: rec.skills.map((s) => s.skill), kept: rec.kept.map((k) => k.skill) };
+}
+
+/**
+ * `{state: "none"}` when there is no pending.json, `{state: "malformed"}` when it cannot be read as a
+ * record, else `{state: "ok", record}`. doctor.js and validate.js warn on "malformed".
+ */
+export function readPending(root) {
+  const file = pendingFile(root);
+  if (!existsSync(file)) return { state: "none" };
+  let text;
+  try { text = readFileSync(file, "utf8"); } catch { return { state: "malformed" }; }
+  const record = parsePending(text);
+  return record ? { state: "ok", record } : { state: "malformed" };
+}
+
+/** Stable key order, 2-space indent, one trailing newline: byte-identical to the host's serializer. */
+export function serializePending(rec) {
+  const out = {
+    packVersion: rec.packVersion,
+    skills: rec.skills.map((s) => ({
+      skill: s.skill,
+      action: s.action,
+      localVersion: s.localVersion,
+      localSha256: s.localSha256,
+      base: s.base === null ? null : { version: s.base.version, sha256: s.base.sha256, source: s.base.source },
+      upstreamSha256: s.upstreamSha256,
+      retired: s.retired,
+      dir: s.dir,
+    })),
+    kept: rec.kept.map((k) => ({ skill: k.skill, packVersion: k.packVersion, sha256: k.sha256 })),
+  };
+  return JSON.stringify(out, null, 2) + "\n";
+}
+
+/**
+ * Writes the record unless the file already holds exactly these bytes; true when it wrote. Through a
+ * temp file renamed over pending.json, so a crash leaves the old record or the new one.
+ */
+export function writePending(root, rec) {
+  const file = pendingFile(root);
+  const text = serializePending(rec);
+  if (existsSync(file)) {
+    try { if (readFileSync(file, "utf8") === text) return false; } catch { /* rewrite below */ }
+  }
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, text);
+    renameSync(tmp, file);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw e;
+  }
+  return true;
+}

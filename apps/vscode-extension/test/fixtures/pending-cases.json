@@ -111,6 +111,51 @@
         "reconcile": [],
         "kept": []
       }
+    },
+    {
+      "name": "malformed-dir-traversal",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [\n    {\n      \"skill\": \"mission-execution\",\n      \"action\": \"reconcile\",\n      \"localVersion\": \"57-local\",\n      \"localSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"base\": null,\n      \"upstreamSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n      \"retired\": false,\n      \"dir\": \"../../victim\"\n    }\n  ],\n  \"kept\": []\n}\n",
+      "expected": {
+        "packVersion": null,
+        "reconcile": [],
+        "kept": []
+      }
+    },
+    {
+      "name": "malformed-dir-outside-pack-updates",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [\n    {\n      \"skill\": \"mission-execution\",\n      \"action\": \"reconcile\",\n      \"localVersion\": \"57-local\",\n      \"localSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"base\": null,\n      \"upstreamSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n      \"retired\": false,\n      \"dir\": \".octobots/campaigns/c1/missions/m1\"\n    }\n  ],\n  \"kept\": []\n}\n",
+      "expected": {
+        "packVersion": null,
+        "reconcile": [],
+        "kept": []
+      }
+    },
+    {
+      "name": "malformed-dir-of-another-skill",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [\n    {\n      \"skill\": \"mission-execution\",\n      \"action\": \"reconcile\",\n      \"localVersion\": \"57-local\",\n      \"localSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"base\": null,\n      \"upstreamSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n      \"retired\": false,\n      \"dir\": \".octobots/pack-updates/v57/mission-planner\"\n    }\n  ],\n  \"kept\": []\n}\n",
+      "expected": {
+        "packVersion": null,
+        "reconcile": [],
+        "kept": []
+      }
+    },
+    {
+      "name": "malformed-skill-name-is-a-path",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [\n    {\n      \"skill\": \"../mission-execution\",\n      \"action\": \"reconcile\",\n      \"localVersion\": \"57-local\",\n      \"localSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"base\": null,\n      \"upstreamSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n      \"retired\": false,\n      \"dir\": \".octobots/pack-updates/v57/../mission-execution\"\n    }\n  ],\n  \"kept\": []\n}\n",
+      "expected": {
+        "packVersion": null,
+        "reconcile": [],
+        "kept": []
+      }
+    },
+    {
+      "name": "malformed-kept-skill-name-is-a-path",
+      "text": "{\n  \"packVersion\": 57,\n  \"skills\": [],\n  \"kept\": [\n    {\n      \"skill\": \"a/b\",\n      \"packVersion\": 57,\n      \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    }\n  ]\n}\n",
+      "expected": {
+        "packVersion": null,
+        "reconcile": [],
+        "kept": []
+      }
     }
   ]
 }
