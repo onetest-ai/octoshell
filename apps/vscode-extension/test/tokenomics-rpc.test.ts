@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderManagedBlock } from "@octoshell/board";
@@ -19,11 +19,11 @@ function writeBrief(kind: "campaign" | "mission", dir: string, fields: Record<st
   writeFileSync(join(dir, `${kind}.md`), renderManagedBlock(kind, fields as any, [], "planner") + tail, "utf8");
 }
 
-function transcript(branch: string): void {
-  const proj = join(root, ".claude", "projects", root.replace(/[^A-Za-z0-9]/g, "-"));
+function transcript(branch: string, projectsRoot = join(root, ".claude", "projects"), slug = root.replace(/[^A-Za-z0-9]/g, "-"), session = "sess-1"): void {
+  const proj = join(projectsRoot, slug);
   mkdirSync(proj, { recursive: true });
   writeFileSync(
-    join(proj, "sess-1.jsonl"),
+    join(proj, `${session}.jsonl`),
     JSON.stringify({
       type: "assistant",
       gitBranch: branch,
@@ -77,5 +77,43 @@ describe("tokenomics:report", () => {
     expect(report.runs).toEqual([]);
     expect(report.unattributed.branches).toEqual(["main"]);
     expect(report.unattributed.costUsd).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Mission AC4, the data half of the webview: the Tokenomics view renders exactly what this route
+ * returns, so the route must read the HOME root (Claude Code's default `~/.claude/projects/<slug>`),
+ * not only the legacy repo-local one, and must take only the workspace's own slug from either.
+ * HOME and the two override variables are pinned, so the developer's real transcripts never leak in.
+ */
+describe("tokenomics:report reads the home transcript root (AC4)", () => {
+  const saved = { HOME: process.env.HOME, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, OCTOBOTS_TOKENOMICS_PROJECTS_DIR: process.env.OCTOBOTS_TOKENOMICS_PROJECTS_DIR };
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it("includes a session that exists only under ~/.claude/projects/<slug>, and no other project's slug", async () => {
+    const home = mkdtempClean("tok-rpc-home-");
+    process.env.HOME = home;
+    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.OCTOBOTS_TOKENOMICS_PROJECTS_DIR;
+
+    const c = join(root, ".octobots", "campaigns", "demo");
+    writeBrief("campaign", c, { name: "Demo", description: "", acceptanceCriteria: "", status: "draft", target: "" });
+    writeBrief("mission", join(c, "missions", "m1"), { name: "M1 - Demo", description: "d", acceptanceCriteria: "- [ ] ac" });
+    transcript("feat/demo-m1", join(home, ".claude", "projects"), undefined, "home-only");
+    // Decoys: another project's slug dir in BOTH roots (the shape of octoshell's own legacy root).
+    transcript("feat/demo-m1", join(home, ".claude", "projects"), "-Users-someone-else", "decoy-home");
+    transcript("feat/demo-m1", join(root, ".claude", "projects"), "-private-tmp", "decoy-legacy");
+
+    const report = (await dispatch("tokenomics:report", {}, ctx())) as Report;
+    expect(report.runs).toHaveLength(1);
+    expect(report.runs[0]!.missionTitle).toBe("M1 - Demo");
+    expect(report.runs[0]!.sessions).toBe(1); // home-only, and neither decoy
+    expect(report.runs[0]!.turns).toBe(1);
+    expect(report.unattributed.segments).toBe(0);
   });
 });
