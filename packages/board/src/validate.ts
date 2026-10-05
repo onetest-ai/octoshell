@@ -3,6 +3,7 @@ import { basename, dirname, join, parse, relative, resolve, sep } from "node:pat
 import type { EntityKind } from "./managed-block.js";
 import { isCampaignDir } from "./board-model.js";
 import { loadEntity, KIND_KEYS, KNOWN_KEYS, type EntityFields } from "./entity-schema.js";
+import { missionTestsFindings } from "./tc-io.js";
 
 export interface BoardFinding {
   mdPath: string;
@@ -263,6 +264,25 @@ function legacyWorkflowFindings(dir: string, kind: "campaign" | "mission"): Boar
 }
 
 /**
+ * The tests-pairing warnings of one mission (tc-io.ts `missionTestsFindings`): its tests README exists and
+ * is linked, every acceptance criterion is covered by a TC, the README map agrees with the TC frontmatter,
+ * and each TC file follows the TC format contract. Always warnings, never errors. Only a mission with a
+ * `mission.yaml` is checked (a legacy `mission.md` has no structured criteria or documents).
+ */
+function missionTestsWarnings(campaignDir: string, missionDir: string): BoardFinding[] {
+  const yamlPath = join(missionDir, "mission.yaml");
+  const text = safeReadFile(yamlPath);
+  if (text === null) return [];
+  const messages = missionTestsFindings({
+    campaignDir,
+    campaign: basename(campaignDir),
+    base: boardRootOf(missionDir),
+    mission: loadEntity(text),
+  });
+  return messages.map((message) => ({ mdPath: yamlPath, kind: "mission" as const, severity: "warning" as const, message }));
+}
+
+/**
  * Walk every entity under the board and aggregate findings. `root` is a workspace holding
  * `.octobots/`, or the board directory itself (the folder holding `campaigns/`, whatever it is named).
  * Covers:
@@ -300,7 +320,10 @@ export function validateBoard(root: string): BoardFinding[] {
 
       // mission.md
       findings.push(...validateFile(join(missionDir, "mission.md"), "mission"));
-      if (isCampaignDir(campaignDir)) findings.push(...legacyWorkflowFindings(missionDir, "mission"));
+      if (isCampaignDir(campaignDir)) {
+        findings.push(...legacyWorkflowFindings(missionDir, "mission"));
+        findings.push(...missionTestsWarnings(campaignDir, missionDir));
+      }
 
       // mission tasks
       const tasksDir = join(missionDir, "tasks");

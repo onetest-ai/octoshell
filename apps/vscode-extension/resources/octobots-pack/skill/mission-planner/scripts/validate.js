@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { existsSync, statSync } from "node:fs";
-import { dirname } from "node:path";
-import { boardRootOf, findLegacyWorkflowFolders, legacyWorkflowsWarning } from "./legacy-workflows.mjs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { boardRootOf, findLegacyWorkflowFolders, isCampaignDir, legacyWorkflowsWarning } from "./legacy-workflows.mjs";
+import { acIdsOf, missionToken, missionTestsFindings, readTestsText, tcProblems } from "./tc-io.mjs";
 import { readPending, workspaceRootOf, MALFORMED_PENDING_NOTE } from "./pending-io.mjs";
 import { readEntity, resolveEntityFile, KIND_KEYS, KNOWN_KEYS } from "./entity-io.mjs";
 
@@ -10,6 +11,9 @@ if (!arg || !existsSync(arg)) {
   console.error(`validate: file not found: ${arg ?? "(none)"}`);
   process.exit(2);
 }
+
+// A test-case file (<campaign>/tests/m<n>/TC-*.md) is checked on its own: its `warning:` lines, exit 0.
+if (isTcFile(arg)) checkTcFile(resolve(arg));
 
 // Resolve the target: an entity file (<kind>.yaml / legacy <kind>.md) or a folder holding one.
 const ent = resolveEntityFile(arg);
@@ -81,6 +85,62 @@ function legacyWorkflowWarnings() {
 }
 
 /**
+ * Non-fatal: the tests-pairing findings (tc-io.mjs `missionTestsFindings`) of this mission, or of every
+ * mission of this campaign: the tests README exists and is linked, every acceptance criterion is covered by
+ * a TC, the README map agrees with the TC frontmatter, each TC follows the TC format contract. Warnings
+ * only: they never change the exit code. Mirrors packages/board/src/validate.ts `missionTestsWarnings`.
+ */
+function testsWarnings() {
+  const dir = dirname(path);
+  const base = boardRootOf(dir);
+  const forMission = (campaignDir, missionFields) =>
+    missionTestsFindings({ campaignDir, campaign: basename(campaignDir), base, mission: missionFields }).map((m) => `warning: ${m}`);
+  if (kind === "mission" && format === "yaml") {
+    const campaignDir = dirname(dirname(dir));
+    if (basename(dirname(dir)) !== "missions" || !isCampaignDir(campaignDir)) return [];
+    return forMission(campaignDir, fields);
+  }
+  if (kind !== "campaign" || !isCampaignDir(dir)) return [];
+  const missions = join(dir, "missions");
+  const out = [];
+  for (const e of existsSync(missions) ? readdirSync(missions, { withFileTypes: true }) : []) {
+    const file = join(missions, e.name, "mission.yaml");
+    if (e.isDirectory() && existsSync(file)) out.push(...forMission(dir, readEntity(file, "yaml")));
+  }
+  return out;
+}
+
+/** True for a path shaped `.../tests/m<n>/TC-*.md` that is a file. */
+function isTcFile(p) {
+  const abs = resolve(p);
+  return /^TC-.*\.md$/.test(basename(abs)) && /^m\d+[a-z]*$/.test(basename(dirname(abs))) &&
+    basename(dirname(dirname(abs))) === "tests" && statSync(abs).isFile();
+}
+
+/** `validate.js <TC file>`: print the file's `warning:` lines and exit 0 (a TC problem is never an error). */
+function checkTcFile(file) {
+  const dir = dirname(file);
+  const folder = basename(dir);
+  const campaignDir = dirname(dirname(dir));
+  const base = boardRootOf(dir);
+  // The mission this folder belongs to (its criteria bound what `covers` may name); unknown -> prefix check only.
+  let acIds = null;
+  const missions = join(campaignDir, "missions");
+  for (const e of existsSync(missions) ? readdirSync(missions, { withFileTypes: true }) : []) {
+    const mf = join(missions, e.name, "mission.yaml");
+    if (!e.isDirectory() || !existsSync(mf)) continue;
+    const m = readEntity(mf, "yaml");
+    const token = missionToken(m.name);
+    if (token?.folder === folder) { acIds = acIdsOf(token.id, m.acceptanceCriteria.length); break; }
+  }
+  const rel = relative(base, file).split(sep).join("/");
+  const problems = tcProblems({ fileName: basename(file), folder, text: readTestsText(file) ?? "", acIds });
+  console.log(`OK ${file}`);
+  for (const p of problems) console.log(`warning: ${rel}: ${p}`);
+  process.exit(0);
+}
+
+/**
  * Non-fatal: pack skills awaiting an agent's reconcile (.octobots/pack-updates/pending.json of the
  * workspace this entity sits in), one line each; a pending.json that cannot be read is one line.
  */
@@ -94,7 +154,7 @@ function packReconcileWarnings() {
 }
 
 function report() {
-  const warnings = [...legacyWorkflowWarnings(), ...packReconcileWarnings()];
+  const warnings = [...legacyWorkflowWarnings(), ...testsWarnings(), ...packReconcileWarnings()];
   if (problems.length) {
     console.error(`INVALID ${path}:`);
     for (const p of problems) console.error(`  - ${p}`);
