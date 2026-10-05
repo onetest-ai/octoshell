@@ -16,9 +16,10 @@ export const TOKENOMICS_ENTRY = "run.mjs";
 /**
  * Files the workspace owns after the first install. `prices.json` is a cache that
  * `update-prices.mjs` refreshes from upstream, so re-installing must not roll a refreshed table
- * back to the snapshot we happened to bundle.
+ * back to the snapshot we happened to bundle. `prices.local.json` is the workspace's own price
+ * additions (models upstream does not list yet); it is hand-edited, so it is never overwritten.
  */
-const PRESERVED = new Set(["prices.json"]);
+const PRESERVED = new Set(["prices.json", "prices.local.json"]);
 
 /**
  * Read the `// octobots-pack-version: N` marker from the runner; null if absent.

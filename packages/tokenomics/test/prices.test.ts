@@ -73,4 +73,20 @@ describe("pricing", () => {
     expect(Object.keys(cached.models).length).toBeGreaterThan(5);
     expect(cached.models["claude-opus-4-8"]?.input_cost_per_token).toBeGreaterThan(0);
   });
+
+  // Locally-seeded models (the pack's prices.local.json, merged under upstream by
+  // scripts/update-prices.mjs) must be priced by the compiled-in table.
+  it("prices the locally-seeded claude-opus-5-5 and claude-sonnet-5-5 from the compiled-in table", () => {
+    const cached = loadPrices();
+    expect(cached.models["claude-opus-5-5"]).toEqual({
+      input_cost_per_token: 0.000004,
+      output_cost_per_token: 0.00002,
+      cache_read_input_token_cost: 0.0000002,
+      cache_creation_input_token_cost: 0.000005,
+      cache_creation_input_token_cost_above_1hr: 0.000008,
+    });
+    expect(cached.models["claude-sonnet-5-5"]?.input_cost_per_token).toBe(0.000002);
+    expect(costOfModel(cached, "claude-opus-5-5", tokens({ input: 1e6, output: 1e6 }))).toBeCloseTo(4 + 20, 6);
+    expect(unpricedModels(cached, ["claude-opus-5-5", "claude-sonnet-5-5"])).toEqual([]);
+  });
 });

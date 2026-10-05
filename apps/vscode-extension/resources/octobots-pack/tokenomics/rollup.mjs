@@ -11,7 +11,7 @@
 // criteria), plus the once-per-submission segment header.
 //
 // Costs are recomputed from raw tokens under the cached LiteLLM price table
-// (`prices.json`) on every run — the
+// (`prices.json`, plus the workspace's `prices.local.json`) on every run — the
 // token counts are canonical, the dollars are derived and disposable.
 //
 // Usage: node .octobots/tokenomics/rollup.mjs [--project-dir DIR] [--no-gh] [--quiet]
@@ -71,6 +71,16 @@ const PRICE_FIELDS = {
 };
 
 const pricing = JSON.parse(readFileSync(join(TOK_DIR, "prices.json"), "utf8"));
+// `prices.local.json` holds the workspace's own additions (models upstream does not list yet).
+// `update-prices.mjs` rewrites only prices.json, so these survive a refresh. Upstream wins on a
+// conflict: once LiteLLM lists a model its number is authoritative and the local one is stale.
+{
+  const localFile = join(TOK_DIR, "prices.local.json");
+  if (existsSync(localFile)) {
+    const local = JSON.parse(readFileSync(localFile, "utf8"));
+    pricing.models = { ...(local.models ?? {}), ...pricing.models };
+  }
+}
 const unpriced = new Set();
 
 function priceOf(model) {
