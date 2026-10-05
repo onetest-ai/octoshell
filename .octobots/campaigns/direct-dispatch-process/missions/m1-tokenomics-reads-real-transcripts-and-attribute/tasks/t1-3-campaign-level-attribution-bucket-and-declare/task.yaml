@@ -11,3 +11,5 @@ acceptance_criteria:
     done: false
   - text: after a root `pnpm build`, `pnpm --filter @octoshell/vscode-extension graph:payload:write` leaves graph-payload.mjs --verify green, and the 57 hash in graph-payload-versions.json is rewritten in a visible diff line if the bytes changed
     done: false
+  - text: verify.mjs's ccusage cross-check reads the same transcript population as collect.mjs (the own-slug dirs of the configured root plus the legacy root; e.g. ccusage session --json rows filtered to the session ids found in those dirs, or a comma-separated CLAUDE_CONFIG_DIR plus a session filter). Given one session only in the home root and an empty legacy root, verify reports PASS; given no legacy root at all, verify reports PASS and never 'needs network access'. mission-completion-gate/SKILL.md and tokenomics/README.md describe the real roots and no longer advise CLAUDE_CONFIG_DIR=<repo>/.claude. Covered by apps/vscode-extension/test/tokenomics-verify-roots.test.ts
+    done: false
