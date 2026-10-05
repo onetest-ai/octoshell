@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync, rmSync, rmdirSync } from "node:fs";
 import { join } from "node:path";
 import { installPrimer, registerClaudeHook, unregisterClaudeHook, claudeHookStatus } from "./octobots-hooks.js";
 import { installTokenomics, tokenomicsStatus } from "./octobots-tokenomics.js";
@@ -6,10 +6,11 @@ import { installGraph, graphStatus } from "./octograph-install.js";
 import { installStatusline, registerStatusline, unregisterStatusline, statuslineStatus } from "./octobots-statusline.js";
 import { installTools, removeTools, toolsStatus } from "./octobots-tools.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
-import { OCTOBOTS_SKILLS, RETIRED_SKILLS } from "./pack-skills.js";
-import { detectDeviations, type Deviation, type ShippedStore } from "./pack-deviations.js";
-import { pendingReconcile } from "./pack-updates.js";
-import { parseSkillMarker } from "./skill-marker.js";
+import { OCTOBOTS_SKILLS, RETIRED_SKILLS, RETIRED_SKILL_FILES } from "./pack-skills.js";
+import { detectDeviations, recoverBase, GIT_BUDGET_MS, type Deviation, type ShippedStore } from "./pack-deviations.js";
+import { pendingReconcile, readPending, writePending, pendingFile, type KeptEntry, type PendingEntry, type PendingRecord } from "./pack-updates.js";
+import { carriedFrom, clearInputs, ensureGitignore, saveOverwritten, stageEntry, stagingDirRel, type CarriedBlock } from "./pack-staging.js";
+import { parseSkillMarker, skillSha256 } from "./skill-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
 export const OCTOBOTS_PACK_VERSION = 57;
@@ -148,17 +149,86 @@ export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERS
   return { installed: true, upToDate, upToDateExceptLocal, ...base };
 }
 
-/** Recursively copy a directory tree, counting files written. */
-function copyTree(from: string, to: string): number {
+/** Recursively copy a directory tree, counting files written. `skipRoot` names top-level files to leave alone. */
+function copyTree(from: string, to: string, skipRoot: readonly string[] = []): number {
   let written = 0;
   mkdirSync(to, { recursive: true });
   for (const entry of readdirSync(from, { withFileTypes: true })) {
+    if (skipRoot.includes(entry.name)) continue;
     const f = join(from, entry.name);
     const t = join(to, entry.name);
     if (entry.isDirectory()) written += copyTree(f, t);
     else if (statSync(f).isFile()) { copyFileSync(f, t); written++; }
   }
   return written;
+}
+
+/** What an install does with a pack skill whose SKILL.md was changed in the workspace. */
+export type LocalChanges = "reconcile" | "overwrite" | "keep";
+
+export interface InstallOptions {
+  hooks?: boolean;
+  statusline?: boolean;
+  tools?: boolean;
+  /**
+   * `reconcile` (default; also what any non-interactive install records) keeps each changed SKILL.md and
+   * stages it for an agent; `overwrite` saves it as overwritten-local.md and replaces it (a retired
+   * skill is deleted); `keep` leaves it and records that. Only SKILL.md is ever protected.
+   */
+  localChanges?: LocalChanges;
+  /**
+   * The shipped-skill store (`loadShippedStore`), or null when it is missing or unreadable. Without
+   * it a changed SKILL.md cannot be told from the pack's own, so the install writes nothing.
+   */
+  store: ShippedStore | null;
+  /** Overrides the pack version for detection and staging (QA only: exercises a later version). */
+  packVersion?: number;
+}
+
+export interface InstallResult {
+  written: number;
+  hooksRegistered: boolean;
+  statusline: "registered" | "foreign" | "skipped";
+  tools: "installed" | "failed" | "skipped";
+  /** Skills staged for an agent to reconcile. */
+  pending: string[];
+  /** Skills the user chose to keep as they are. */
+  kept: string[];
+  /** Files in a retired skill's directory that the pack never shipped; left in place. Workspace-relative, with `/`. */
+  keptFiles: string[];
+  /** Set when nothing was installed, and why. */
+  error?: string;
+}
+
+export const STORE_MISSING = "shipped-skill store missing";
+
+const skillDirOf = (repoRoot: string, name: string): string => join(repoRoot, ".claude", "skills", name);
+
+/** Removes empty directories under `dir` (and `dir` itself) bottom-up. */
+function pruneEmpty(dir: string): void {
+  if (!existsSync(dir)) return;
+  for (const e of readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) pruneEmpty(join(dir, e.name));
+  if (readdirSync(dir).length === 0) rmdirSync(dir);
+}
+
+/** Every file left under `dir`, relative to `base`, with `/`. */
+function filesUnder(dir: string, base: string): string[] {
+  const out: string[] = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) out.push(...filesUnder(p, base));
+    else out.push(p.slice(base.length + 1).split(/[\\/]/).join("/"));
+  }
+  return out;
+}
+
+/** Removes the files the pack shipped for a retired skill; returns the files it left because it never shipped them. */
+function removeRetiredSkill(repoRoot: string, name: (typeof RETIRED_SKILLS)[number]): string[] {
+  const dir = skillDirOf(repoRoot, name);
+  if (!existsSync(dir)) return [];
+  for (const rel of RETIRED_SKILL_FILES[name]) rmSync(join(dir, ...rel.split("/")), { force: true });
+  pruneEmpty(dir);
+  return existsSync(dir) ? filesUnder(dir, repoRoot) : [];
 }
 
 /**
@@ -168,27 +238,122 @@ function copyTree(from: string, to: string): number {
  * leaves two copies on disk. The graph payload (`.claude/skills/graph/octograph.mjs`) is refreshed
  * here too, but only when already present — see `graphStatus`'s doc comment for why it's opt-in.
  *
+ * A skill whose SKILL.md the workspace changed is handled per `opts.localChanges` (see
+ * `InstallOptions`). Only SKILL.md is protected: the rest of that skill's directory installs as for
+ * any skill, `RETIRED_FILES` inside it are removed and files the pack never shipped are kept. A
+ * retired skill's directory loses only the files the pack shipped; the rest is kept and reported.
+ *
  * The pack installs **no agents**. Planning and execution run under whatever agent the user is
  * already in, driven by the skills; agent rosters belong to the repo, not to us.
  */
-export function installPack(
-  srcRoot: string,
-  repoRoot: string,
-  opts: { hooks?: boolean; statusline?: boolean; tools?: boolean } = {},
-): { written: number; hooksRegistered: boolean; statusline: "registered" | "foreign" | "skipped"; tools: "installed" | "failed" | "skipped" } {
+export function installPack(srcRoot: string, repoRoot: string, opts: InstallOptions): InstallResult {
+  const { store } = opts;
+  if (!store) {
+    return { written: 0, hooksRegistered: false, statusline: "skipped", tools: "skipped", pending: [], kept: [], keptFiles: [], error: STORE_MISSING };
+  }
+  const packVersion = opts.packVersion ?? OCTOBOTS_PACK_VERSION;
+  const choice: LocalChanges = opts.localChanges ?? "reconcile";
+  // Rule-2 base recovery runs git synchronously, so the whole install shares ONE deadline: it blocks
+  // the extension host for GIT_BUDGET_MS at most, however many skills are deviated.
+  const gitDeadline = Date.now() + GIT_BUDGET_MS;
+
+  const currentHashes: Record<string, string> = {};
+  for (const name of OCTOBOTS_SKILLS) {
+    const f = join(srcRoot, "skill", name, "SKILL.md");
+    if (existsSync(f)) currentHashes[name] = skillSha256(readFileSync(f, "utf8"));
+  }
+  const report = detectDeviations(repoRoot, packVersion, store, { currentHashes });
+  const prior = readPending(repoRoot);
+  const priorEntry = (skill: string): PendingEntry | undefined => prior?.skills.find((e) => e.skill === skill);
+  const priorVersion = (e: PendingEntry): number => Number(e.dir.match(/\/v(\d+)\//)?.[1] ?? prior?.packVersion ?? packVersion);
+  const localBytes = new Map<string, Buffer>(report.deviations.map((d) => [d.skill, readFileSync(join(skillDirOf(repoRoot, d.skill), "SKILL.md"))]));
+
+  // Decide, before writing anything, what to stage: an entry that is unchanged is reused untouched.
+  interface Plan { dev: Deviation; reuse: PendingEntry | null; base: ReturnType<typeof recoverBase>; upstream: Buffer | null; carried: CarriedBlock[]; replacedDir?: string }
+  const plans: Plan[] = [];
+  if (choice === "reconcile") {
+    for (const dev of report.deviations) {
+      const dirRel = stagingDirRel(packVersion, dev.skill);
+      const upstreamSha = dev.retired ? null : (currentHashes[dev.skill] ?? null);
+      const old = priorEntry(dev.skill);
+      const unchanged = old !== undefined && old.dir === dirRel && old.localSha256 === dev.sha256 && old.localVersion === dev.version &&
+        old.retired === dev.retired && old.upstreamSha256 === upstreamSha && prior?.packVersion === packVersion &&
+        existsSync(join(repoRoot, ...dirRel.split("/"), "local.md")) && existsSync(join(repoRoot, ...dirRel.split("/"), "RECONCILE.md"));
+      if (unchanged) { plans.push({ dev, reuse: old, base: null, upstream: null, carried: [] }); continue; }
+      const upstreamFile = join(srcRoot, "skill", dev.skill, "SKILL.md");
+      plans.push({
+        dev,
+        reuse: null,
+        base: recoverBase(repoRoot, dev.skill, localBytes.get(dev.skill)!, packVersion, store, { gitDeadline }),
+        upstream: dev.retired ? null : readFileSync(upstreamFile),
+        carried: carriedFrom(repoRoot, old, old ? priorVersion(old) : packVersion),
+        ...(old ? { replacedDir: old.dir } : {}),
+      });
+    }
+  }
+
+  const deviated = new Set(report.deviations.map((d) => d.skill));
+  const replaced = new Set(choice === "overwrite" ? deviated : []);
+  // Overwrite saves what it replaces FIRST: if that fails, nothing else has been touched.
+  for (const dev of report.deviations) {
+    if (replaced.has(dev.skill)) saveOverwritten(repoRoot, packVersion, dev.skill, localBytes.get(dev.skill)!);
+  }
+
   let written = 0;
+  const keptFiles: string[] = [];
+  const left = new Set([...deviated, ...report.newer]); // a retired skill left whole: changed, or newer than the pack
   for (const name of RETIRED_SKILLS) {
-    rmSync(join(repoRoot, ".claude", "skills", name), { recursive: true, force: true });
+    if (left.has(name) && !replaced.has(name)) continue;
+    keptFiles.push(...removeRetiredSkill(repoRoot, name));
   }
   for (const rel of RETIRED_FILES) {
     rmSync(join(repoRoot, ".claude", rel), { force: true });
   }
+  // SKILL.md of a changed skill (kept or being reconciled) and of a reconciled one is protected; a
+  // skill newer than the pack is not touched at all.
+  const protectedSkills = new Set<string>([...report.reconciled, ...[...deviated].filter((s) => !replaced.has(s))]);
   for (const name of OCTOBOTS_SKILLS) {
+    if (report.newer.includes(name)) continue;
     written += copyTree(
       join(srcRoot, "skill", name),
-      join(repoRoot, ".claude", "skills", name),
+      skillDirOf(repoRoot, name),
+      protectedSkills.has(name) ? ["SKILL.md"] : [],
     );
   }
+
+  // The pending record: one entry per skill, rebuilt from this install's results.
+  const skills: PendingEntry[] = [];
+  const kept: KeptEntry[] = [];
+  const staged: string[] = [];
+  for (const plan of plans) {
+    const { dev } = plan;
+    if (plan.reuse) { skills.push(plan.reuse); staged.push(dev.skill); continue; }
+    skills.push(stageEntry({
+      repoRoot, skill: dev.skill, packVersion, retired: dev.retired, localVersion: dev.version, localSha256: dev.sha256,
+      base: plan.base, upstreamSha256: dev.retired ? null : (currentHashes[dev.skill] ?? null), carried: plan.carried,
+      localBytes: localBytes.get(dev.skill)!, upstreamBytes: plan.upstream,
+      ...(plan.replacedDir ? { replacedDir: plan.replacedDir } : {}), restage: priorEntry(dev.skill) !== undefined,
+    }));
+    staged.push(dev.skill);
+  }
+  if (choice !== "reconcile") {
+    for (const dev of report.deviations) {
+      // Inputs of the entry (and of this version's folder) go; logs and saved local files stay.
+      const old = priorEntry(dev.skill);
+      if (old) clearInputs(repoRoot, old.dir);
+      clearInputs(repoRoot, stagingDirRel(packVersion, dev.skill));
+      if (choice === "keep") kept.push({ skill: dev.skill, packVersion, sha256: dev.sha256 });
+    }
+  }
+  // Keep pending.json current once there is anything to record, or a record to bring up to date
+  // (a malformed one is replaced from these results). A workspace that never had a changed skill
+  // gets no `.octobots/pack-updates/` at all.
+  if (skills.length > 0 || kept.length > 0 || existsSync(pendingFile(repoRoot))) {
+    const rec: PendingRecord = { packVersion, skills, kept };
+    writePending(repoRoot, rec);
+  }
+  if (existsSync(join(repoRoot, ".octobots", "pack-updates"))) ensureGitignore(repoRoot);
+
   written += installPrimer(srcRoot, repoRoot);
   written += installTokenomics(srcRoot, repoRoot);
   // Graph is opt-in (see `graphStatus`'s doc comment): a general pack (re)install only refreshes
@@ -232,5 +397,5 @@ export function installPack(
   } else if (opts.tools === true || toolsStatus(repoRoot).ccusage) {
     tools = installTools(repoRoot) ? "installed" : "failed";
   }
-  return { written, hooksRegistered, statusline, tools };
+  return { written, hooksRegistered, statusline, tools, pending: staged, kept: kept.map((k) => k.skill), keptFiles };
 }

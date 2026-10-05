@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { graphStatus, installGraph, parseGraphVersion, GRAPH_RELATIVE_PATH } from "../src/host/octograph-install.js";
 import { installPack, packStatus, OCTOBOTS_PACK_VERSION } from "../src/host/octobots-skill.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
+import { store } from "./fixtures/pack-store.js";
 
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
 
@@ -99,7 +100,7 @@ describe("installGraph", () => {
 describe("graph wiring into packStatus / installPack — one drift mechanism, not two", () => {
   it("a workspace that never installed graph stays reported installed/up-to-date on graph alone", () => {
     const repo = mkdtempClean("octograph-install-");
-    installPack(PACK_SRC, repo);
+    installPack(PACK_SRC, repo, { store });
     expect(graphStatus(repo, OCTOBOTS_PACK_VERSION).present).toBe(false);
     const st = packStatus(repo);
     expect(st.installed).toBe(true);
@@ -108,7 +109,7 @@ describe("graph wiring into packStatus / installPack — one drift mechanism, no
 
   it("a stale installed graph payload flips packStatus.upToDate, the same signal a stale skill gives", () => {
     const repo = mkdtempClean("octograph-install-");
-    installPack(PACK_SRC, repo);
+    installPack(PACK_SRC, repo, { store });
     const entry = join(repo, GRAPH_RELATIVE_PATH);
     mkdirSync(join(repo, ".claude", "skills", "graph"), { recursive: true });
     writeFileSync(entry, "// octobots-pack-version: 1\nstale body");
@@ -120,19 +121,19 @@ describe("graph wiring into packStatus / installPack — one drift mechanism, no
 
   it("re-running installPack refreshes an already-present graph payload to current", () => {
     const repo = mkdtempClean("octograph-install-");
-    installPack(PACK_SRC, repo);
+    installPack(PACK_SRC, repo, { store });
     const entry = join(repo, GRAPH_RELATIVE_PATH);
     mkdirSync(join(repo, ".claude", "skills", "graph"), { recursive: true });
     writeFileSync(entry, "// octobots-pack-version: 1\nstale body");
 
-    installPack(PACK_SRC, repo);
+    installPack(PACK_SRC, repo, { store });
 
     expect(graphStatus(repo, OCTOBOTS_PACK_VERSION)).toEqual({ present: true, current: true });
   });
 
   it("installPack does not install graph for a workspace that never asked for it", () => {
     const repo = mkdtempClean("octograph-install-");
-    installPack(PACK_SRC, repo);
+    installPack(PACK_SRC, repo, { store });
     expect(existsSync(join(repo, ".claude", "skills", "graph"))).toBe(false);
   });
 });
