@@ -698,7 +698,7 @@ describe("pack doctor.js", () => {
     }
     const findings = (root: string) =>
       (JSON.parse(run(root).out) as { findings: { level: string; area: string; msg: string }[] }).findings;
-    const SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
+    const SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer", "octobots-doctor"];
     function installSkills(versions: Record<string, number> = {}): void {
       for (const sk of SKILLS) {
         const dir = join(projectDir, ".claude", "skills", sk);
@@ -853,6 +853,7 @@ describe("pack doctor.js", () => {
         dir("mission-execution", "57-local"); // pending in the record
         dir("mission-completion-gate", "57+local"); // reconciled
         dir("knowledge-explorer", "58"); // newer than the record's pack version
+        dir("octobots-doctor", "57");
         installPrimer(57);
         writePending(projectDir, "rule-5-base-null");
         const f = packFindings(projectDir);
@@ -877,7 +878,7 @@ describe("pack doctor.js", () => {
       });
 
       it("with no record, a primer behind every skill is the stale file: nothing is called newer", () => {
-        installSkills({ "mission-planner": 58, "mission-execution": 58, "mission-completion-gate": 58, "knowledge-explorer": 58 });
+        installSkills({ "mission-planner": 58, "mission-execution": 58, "mission-completion-gate": 58, "knowledge-explorer": 58, "octobots-doctor": 58 });
         installPrimer(57);
         const f = packFindings(projectDir);
         expect(f.find((x) => /primer.mjs is v57, skills are v58/.test(x.msg))?.level).toBe("fail");

@@ -447,8 +447,9 @@ completion gate*. See **mission-completion-gate**.
 
 Older boards may hold `.octobots/campaigns/<campaign>/workflows/<slug>/workflow.js` (and a
 `runs.jsonl` run log) under a campaign or mission. Octobots no longer authors, validates or runs
-workflows: treat a leftover `workflow.js` as **historical reference only**, and never edit, move or
-delete those folders — they are the user's files. Missions are executed by **mission-execution**,
+workflows: treat a leftover `workflow.js` as **historical reference only**. Those folders are the
+user's files: they are never changed by the installer or any tooling, and only **octobots-doctor** may
+delete one, with the user's explicit OK for that folder. Missions are executed by **mission-execution**,
 which dispatches sub-agents directly.
 
 ## Naming the agent on a task — the `role` field

@@ -167,8 +167,8 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
     expect(packStatus(repo).upToDate).toBe(true);
   });
 
-  it("ships exactly four skills and none of the retired workflow payload", () => {
-    expect([...OCTOBOTS_SKILLS]).toEqual(["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"]);
+  it("ships exactly five skills and none of the retired workflow payload", () => {
+    expect([...OCTOBOTS_SKILLS]).toEqual(["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer", "octobots-doctor"]);
     expect(readdirSync(join(PACK_SRC, "skill")).sort()).toEqual([...OCTOBOTS_SKILLS].sort());
     const scripts = join(PACK_SRC, "skill", "mission-planner", "scripts");
     for (const f of ["add-workflow.js", "sync-meta.js", "add-run.js", "mission-input.js", "extract-meta.mjs", "workflow-meta.mjs", "vendor/acorn.mjs"]) {

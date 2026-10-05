@@ -1,13 +1,70 @@
 name: T7.6 - octobots-doctor skill and pack-reconcile.mjs
-status: draft
+status: done
 role: js-dev
 description: 'Depends on T7.3 (staging layout and pending-io.mjs). Scope: a new pack skill resources/octobots-pack/skill/octobots-doctor/SKILL.md (version 57; description in ''Use when...'' form: pack health, a pending pack reconcile, the SessionStart notice, doctor.js or validate.js findings) with the text of mission AC7, and skill/octobots-doctor/scripts/pack-reconcile.mjs (list | done <skill> [--root <dir>]; plain node, dependency-free, sibling package.json {"type":"module"}; workspace resolved from its own location; imports skill-marker.mjs and pending-io.mjs from mission-planner/scripts); OCTOBOTS_SKILLS (octobots-skill.ts) and doctor.js''s SKILLS constant lists 5 skills; the store gains the new SKILL.md (`shipped-skills.mjs --write`). Follow writing-skills: a no-skill control micro-test before the wording, recorded in the task notes (does an agent handed base/local/upstream line-merge, or resolve a policy conflict silently?). Out of scope: M4''s and M5''s extensions of the skill (their tasks). Downstream: M7 TC-010..015; M4 T4.3; M5 T5.3, T5.5.'
 acceptance_criteria:
   - text: 'apps/vscode-extension/test/skill-conventions.test.ts asserts octobots-doctor states each rule of mission AC7: runs doctor.js --json and validate.js; acts only on folders pending.json names and reads carried-over questions from RECONCILE.md; the four-way change classification; concrete-for-this-project is not a conflict; the full policy-conflict list and ''when unsure, escalate''; a local restatement of a base value is local''s position; ESCALATED with the whole live file untouched; never merge by lines; merged.md, DECISIONS.md with its three sections, entry forms and the no-upstream-change line; the UPSTREAM-CANDIDATES.md entry form, Kept local rules only; `<N>+local` and `reconciled-from:`; writes nothing outside the skill, its staging folder and doctor-acks.json; retired skills always escalated; the answered form `- RESOLVED (user, <date>)` and ask-again-without-re-merging; the reply names the reconciled skills, each DECISIONS.md path and every ESCALATED question verbatim; pack-reconcile.mjs done; workflows/ folders deleted only on a per-folder yes; the config-dir advice; declined findings recorded in .octobots/doctor-acks.json as {finding: "workflows", path: "campaigns/<c>/workflows" or "campaigns/<c>/missions/<m>/workflows", date} per declined workflows/ folder (path relative to .octobots/, /-separated, the workflows/ folder itself, never a workflows/<slug> path from doctor.js) and {finding: "config-dir", path: ".claude", date}; no retired skill named outside the legacy-folder paragraph (mission AC7)'
-    done: false
+    done: true
   - text: apps/vscode-extension/test/pack-reconcile-script.test.ts proves pack-reconcile.mjs list prints the entries; done exits 3 with the reason when the live marker is not `57+local`, when reconciled-from differs from upstream.md's sha256, when DECISIONS.md is missing, or when it has an open ESCALATED entry, and otherwise removes exactly that entry and leaves the staging folder; an entry answered as `- RESOLVED (user, <date>)` passes; for a retired skill, done exits 3 while its directory is still under .claude/skills and 0 once it is gone with a closed DECISIONS.md; done on a skill with no entry exits 0, prints `no pending reconcile for <skill>` and leaves pending.json byte-identical; run from an unrelated cwd it acts on the workspace it is installed in; the script source names no skill (mission AC7); OCTOBOTS_SKILLS and doctor.js list 5 skills; `pnpm test` and `pnpm coverage:pack` are green
-    done: false
+    done: true
   - text: the no-skill control and the with-skill run of the escalation scenario (TC-013's synthetic xfail upstream, 5 reps each) are recorded in this task's notes before the PR, showing the control's failure mode and 5/5 escalation with the skill
-    done: false
+    done: true
   - text: mission-planner/SKILL.md's legacy-folder paragraph says legacy workflows/ folders are never changed by the installer or any tooling, and only octobots-doctor may delete one, with the user's explicit OK per folder (consistent with decision 13(d)); skill-conventions.test.ts asserts it (input from the M2 T2.3 review)
-    done: false
+    done: true
+notes: |-
+  ## QA verification (Sage, 2026-10-05) - PASS, 4/4 ACs
+
+  Branch feat/direct-dispatch-process-m7-t6 at 6ca8ea7, PR #132. CI: both `build` checks pass. Local, from the root, in the foreground: `pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm coverage:pack` exit 0. Tests: board 412, tokenomics 102, vscode-extension 897 (52 files), graph 653, all passed, 0 skipped. coverage:pack: pack-reconcile.mjs 100% lines / 94.8% branches; pending-io.mjs and skill-marker.mjs 100% lines. `shipped-skills.mjs --verify`: store is current.
+
+  ### AC1 - skill-conventions.test.ts asserts every AC7 rule
+  Ran `skill-conventions.test.ts` verbose: the "octobots-doctor: the rules of M7-AC7" block has 18 passing tests, one per AC7 clause (doctor.js --json + validate.js; pending.json-named folders only and carried-over questions from RECONCILE.md; four-way classification; concrete-for-this-project is not a conflict; full policy list and "when unsure, escalate"; local restatement of a base value; ESCALATED with the whole live file untouched; never merge by lines; merged.md/DECISIONS.md three sections/entry forms/no-upstream-change line; UPSTREAM-CANDIDATES.md form; `<N>+local` and `reconciled-from:`; write scope; retired skills always escalated; RESOLVED (user, date) and ask-again; reply block; `pack-reconcile.mjs done`; per-folder workflows yes; config-dir advice; doctor-acks.json forms; no retired skill named outside the legacy paragraph). I also read the shipped SKILL.md (210 lines) and found each rule in its text.
+
+  ### AC2 - pack-reconcile-script.test.ts
+  Ran verbose, 25 tests passed: list; done exit 3 for a `57-local`, plain `57`, `56+local` marker, a wrong reconciled-from, a missing DECISIONS.md, an open ESCALATED entry, and a malformed pending.json; done removes exactly one entry and leaves the staging folder; a `RESOLVED (user, date)` entry passes; a retired skill exits 3 while its dir exists and 0 once gone with a closed log; no-entry done exits 0 with `no pending reconcile for <skill>` and a byte-identical pending.json; an unrelated cwd acts on the installed workspace; the script names no skill; OCTOBOTS_SKILLS and doctor.js list 5 skills.
+  Blind probe (fresh `git clone --shared` of auqanautica, branch pack installed via scripts/qa/install-pack.mjs, 2 reconciles staged):
+  - `list`: both entries printed with folder, `version: 57+local` and reconciled-from, exit 0.
+  - `done mission-completion-gate`: exit 3, "DECISIONS.md does not exist: write the decision log first".
+  - `done mission-planner` (no entry): exit 0, `no pending reconcile for mission-planner`, pending.json byte-identical (cmp).
+  - Run from /tmp by absolute path: acted on the clone's workspace (same output).
+  - Copied mission-planner to `.claude/skills/my-planner`: list and done still worked, pending.json still identical.
+  - auqanautica `git status --short` identical before and after.
+
+  ### AC3 - control vs with-skill, TC-013 synthetic xfail upstream, 5 reps each
+  Synthetic upstream: the mission-completion-gate green line rewritten to "an xfail that states its reason counts as green", plus a non-conflicting "Gate timing" section. Workspaces are fresh clones of auqanautica; agents were general-purpose sonnet sub-agents (results files: scratchpad ctrl/CONTROL-RESULTS.md and wskill/WITH-SKILL-RESULTS.md).
+
+  Control (no skill):
+
+  | Rep | Escalated xfail question | Live SKILL.md untouched | Side written into merged.md | Marker in merged.md |
+  |-----|---|---|---|---|
+  | 1 | yes | yes | local rule | not stated |
+  | 2 | yes | yes | local rule | 57+local + reconciled-from |
+  | 3 | yes | yes | local rule | 57+local, no reconciled-from |
+  | 4 | yes | yes | local rule ("for now") | plain `version: 57` (fork would vanish from detection) |
+  | 5 | yes | yes | local rule, HTML comment "provisional" | not stated |
+
+  Control failure modes: (1) no real hold, 5/5 picked a side in merged.md while saying they were waiting; (2) marker missing or wrong, 3/5; (3) concrete-vs-generic lanes inconsistent, two reps replaced the generic rule with project commands; (4) no common DECISIONS.md format; (5) no UPSTREAM-CANDIDATES.md; (6) no completion step, `done` never ran and two offered to hand-apply; (7) reply format varied. I re-checked the control's merged.md files: all 5 contain the local "Green means 0 failed, 0 xfailed" text (lines 86-89), rep 5 adds a "PROVISIONAL" comment.
+
+  With skill (pack at 6ca8ea7, real primer line, user unavailable):
+
+  | Check | Result |
+  |---|---|
+  | Live gate SKILL.md byte-identical (sha matches .sha) | 5/5 |
+  | Exactly one `- ESCALATED:` entry naming the green/xfail rule, both sides plus a question | 5/5 |
+  | "Gate timing" section in merged.md | 5/5 |
+  | merged.md holds only the `<!-- ESCALATED -->` placeholder: 0 matches for `0 xfailed` and for `states its reason counts as green` | 5/5 |
+  | pending.json still lists mission-completion-gate; `pack-reconcile.mjs done mission-completion-gate` exits 3 | 5/5 |
+  | Reply ends with the question; fixed Reconciled / Decision logs / Waiting block | 5/5 |
+  | No workflows/ folder deleted, no doctor-acks.json written | 5/5 |
+
+  I re-ran every on-disk check myself in rc-esc-1..5 (sha, grep counts, done exit 3, all as above) and read rc-esc-2 and rc-esc-5 DECISIONS.md in full: both have the three sections, RESOLVED entries with reasons (generic test-lanes rule taken, local make commands kept as the instance; Gate timing taken from upstream) and one real ESCALATED entry quoting both sides with a question. Not template echoes. Verdict: PASS, 5/5 escalation.
+
+  ### AC4 - mission-planner legacy-folder paragraph
+  mission-planner/SKILL.md "Legacy `workflows/` folders" says the folders are never changed by the installer or any tooling and only octobots-doctor may delete one, with the user's explicit OK for that folder. skill-conventions.test.ts asserts both clauses (2 tests pass).
+
+  ### Review fixes (6ca8ea7)
+  Reverted the sibling-scan dynamic import (a user's copy of mission-planner bricked `done` and a planted module ran); imports are static and fixed-path, with a test that a copy neither breaks nor runs. Tightened skill text: carried-over questions copied verbatim as ESCALATED; `<rule>` is a short name; the marker is two lines; a retired-skill finish; the per-folder workflows question. Added a `56+local` mutant test.
+
+  ### Nits (not blocking)
+  - 0/5 with-skill reps wrote UPSTREAM-CANDIDATES.md (optional per AC; solo's "0 xfailed" rule was the candidate).
+  - 3/5 reps (1, 2, 4) escalated a second mission-execution question, where the full suite runs before merge. Defensible under "what blocks a merge" and "when unsure, escalate"; reps 3 and 5 reconciled it with `57+local`, done exit 0. TC-013 accepts either.
+  - `done` does not check the live file for a leftover `<!-- ESCALATED` placeholder, so a hand-copied merged.md with a placeholder passes if the marker and DECISIONS.md are right.

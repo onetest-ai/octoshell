@@ -46,7 +46,7 @@ if (!ccd) {
 }
 
 // ── 2. Pack payload ──────────────────────────────────────────────────────────────────────────
-const SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
+const SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer", "octobots-doctor"];
 const markerOf = (text) => { const m = String(text).match(/^(?:\/\/|#)\s*octobots-pack-version:\s*(\d+)\s*$/m); return m ? Number(m[1]) : null; };
 
 // What the installer recorded about local changes (pending.json), read before the skills are
