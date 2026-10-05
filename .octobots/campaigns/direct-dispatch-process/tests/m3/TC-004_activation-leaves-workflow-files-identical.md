@@ -4,7 +4,8 @@ title: "Activation leaves every file under the 11 real workflows/ folders byte-i
 mission: M3
 covers: [M3-AC2]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m3/runs/RUN-2026-10-05-001.md}
 priority: critical
 size: M
 ---

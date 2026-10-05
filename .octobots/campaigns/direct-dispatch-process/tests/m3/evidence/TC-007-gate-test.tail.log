@@ -1,0 +1,60 @@
+@octoshell/graph:test: [fixture retry]   objects/pack: (empty)
+@octoshell/graph:test: [fixture retry]   df: Filesystem   1024-blocks      Used  Available Capacity iused       ifree %iused  Mounted on | /dev/disk3s5  1948455240 538822440 1386602792    28% 7781192 13866027920    0%   /System/Volumes/Data
+@octoshell/graph:test: [fixture retry] retrying once — see the filed bug 'packages/graph e2e heaviest fixture'
+@octoshell/vscode-extension:test:  ✓ test/tokenomics-selftest.test.ts  (14 tests) 2348ms
+@octoshell/graph:test:  ✓ test/module-edge-direction.test.ts  (4 tests) 4287ms
+@octoshell/graph:test:  ✓ test/diff-impact-truncated-rename.test.ts  (1 test) 1ms
+@octoshell/graph:test:  ✓ test/rank.test.ts  (5 tests) 2ms
+@octoshell/graph:test:  ✓ test/layers.test.ts  (4 tests) 3ms
+@octoshell/graph:test:  ✓ test/fixture-retry.test.ts  (2 tests) 1851ms
+@octoshell/graph:test:  ✓ test/e2e-gate.test.ts  (4 tests) 9726ms
+@octoshell/vscode-extension:test:  ✓ test/field.test.tsx  (8 tests) 83ms
+@octoshell/vscode-extension:test:  ✓ test/notes-block.test.tsx  (22 tests) 427ms
+@octoshell/vscode-extension:test:  ✓ test/qa-dump-ids.test.ts  (3 tests) 2640ms
+@octoshell/vscode-extension:test:  ✓ test/tokenomics-view-campaign-rows.test.tsx  (6 tests) 103ms
+@octoshell/vscode-extension:test:  ✓ test/campaign-view.test.tsx  (7 tests) 322ms
+@octoshell/vscode-extension:test:  ✓ test/qa-install-pack.test.ts  (14 tests) 4837ms
+@octoshell/vscode-extension:test:  ✓ test/octobots-work-log.test.ts  (22 tests) 5508ms
+@octoshell/vscode-extension:test:  ✓ test/checklist-field.test.tsx  (6 tests) 153ms
+@octoshell/vscode-extension:test:  ✓ test/task-view.test.tsx  (10 tests) 378ms
+@octoshell/vscode-extension:test:  ✓ test/pack-deviations.test.ts  (37 tests) 9885ms
+@octoshell/tokenomics:test:  ✓ test/rollup-parity.test.ts  (32 tests) 10678ms
+@octoshell/tokenomics:test: 
+@octoshell/tokenomics:test:  Test Files  7 passed (7)
+@octoshell/tokenomics:test:       Tests  102 passed (102)
+@octoshell/tokenomics:test:    Start at  21:39:37
+@octoshell/tokenomics:test:    Duration  12.05s (transform 345ms, setup 0ms, collect 1.77s, tests 11.32s, environment 0ms, prepare 730ms)
+@octoshell/tokenomics:test: 
+@octoshell/vscode-extension:test:  ✓ test/mission-view.test.tsx  (8 tests) 297ms
+@octoshell/vscode-extension:test:  ✓ test/bug-view.test.tsx  (7 tests) 145ms
+@octoshell/graph:test:  ✓ test/attribution.test.ts  (20 tests) 10975ms
+@octoshell/vscode-extension:test:  ✓ test/octoshell-shim.test.ts  (3 tests) 4ms
+@octoshell/vscode-extension:test:  ✓ test/chat-entry-bound.test.ts  (5 tests) 1ms
+@octoshell/vscode-extension:test:  ✓ test/activation-workflows-untouched.test.ts  (3 tests) 2378ms
+@octoshell/graph:test:  ✓ test/setup-e2e-gate.test.ts  (9 tests) 11496ms
+@octoshell/graph:test:  ✓ test/cycle-ranks-and-omission.test.ts  (3 tests) 7431ms
+@octoshell/vscode-extension:test:  ✓ test/pack-install-reconcile.test.ts  (29 tests) 12058ms
+@octoshell/graph:test:  ✓ test/map-reproducibility.test.ts  (4 tests) 14573ms
+@octoshell/graph:test:  ✓ test/setup.test.ts  (14 tests) 16648ms
+@octoshell/graph:test:  ✓ test/doctor.test.ts  (29 tests) 19348ms
+@octoshell/graph:test:  ✓ test/cli.test.ts  (80 tests) 21443ms
+@octoshell/vscode-extension:test:  ✓ test/shipped-skills.test.ts  (32 tests) 25462ms
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test:  Test Files  58 passed (58)
+@octoshell/vscode-extension:test:       Tests  947 passed (947)
+@octoshell/vscode-extension:test:    Start at  21:39:37
+@octoshell/vscode-extension:test:    Duration  27.51s (transform 5.57s, setup 16.81s, collect 21.96s, tests 121.54s, environment 4.14s, prepare 9.31s)
+@octoshell/vscode-extension:test: 
+@octoshell/graph:test:  ✓ test/e2e.test.ts  (12 tests) 26740ms
+@octoshell/graph:test:  ✓ test/analyze.test.ts  (19 tests) 33583ms
+@octoshell/graph:test: 
+@octoshell/graph:test:  Test Files  46 passed (46)
+@octoshell/graph:test:       Tests  653 passed (653)
+@octoshell/graph:test:    Start at  21:39:37
+@octoshell/graph:test:    Duration  34.78s (transform 2.70s, setup 0ms, collect 13.29s, tests 209.43s, environment 3ms, prepare 5.99s)
+@octoshell/graph:test: 
+
+ Tasks:    6 successful, 6 total
+Cached:    2 cached, 6 total
+  Time:    35.166s 
+

@@ -1,0 +1,24 @@
+### forced (no turbo cache) lint+typecheck
+
+ Tasks:    10 successful, 10 total
+Cached:    0 cached, 10 total
+  Time:    3.014s 
+
+exit 
+### test summary lines
+@octoshell/board:test:  Test Files  25 passed (25)
+@octoshell/board:test:       Tests  293 passed (293)
+@octoshell/tokenomics:test:  Test Files  7 passed (7)
+@octoshell/tokenomics:test:       Tests  102 passed (102)
+@octoshell/vscode-extension:test:  Test Files  58 passed (58)
+@octoshell/vscode-extension:test:       Tests  947 passed (947)
+@octoshell/graph:test:  Test Files  46 passed (46)
+@octoshell/graph:test:       Tests  653 passed (653)
+### docs grep (must print nothing)
+grep exit 1 (1 = no match)
+### doctor.js
+Install Workflow Pack: 0
+Install Octobots Pack: 10
+### extension.ts
+grep exit 1
+Octobots pack

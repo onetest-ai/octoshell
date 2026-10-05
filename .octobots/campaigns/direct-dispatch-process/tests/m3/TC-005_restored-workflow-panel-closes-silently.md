@@ -4,7 +4,8 @@ title: "A restored octoshell.workflow panel from a pre-upgrade session closes si
 mission: M3
 covers: [M3-AC5]
 kind: ui
-status: draft
+status: blocked
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m3/runs/RUN-2026-10-05-001.md}
 priority: medium
 size: M
 ---

@@ -1,0 +1,43 @@
+$ TC-004
+[33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/activation-workflows-untouched.test.ts > activating the board leaves every workflows/ file alone > sha256 of every file under any workflows/ is equal before and after 526ms
+ ✓ test/activation-workflows-untouched.test.ts > activating the board leaves every workflows/ file alone > a legacy workflow.md next to a workflow.js is no longer retired or rewritten 473ms
+ ✓ test/activation-workflows-untouched.test.ts > activating the board leaves every workflows/ file alone > the board under test really has workflows/ files to protect 370ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  21:38:42
+   Duration  1.66s (transform 44ms, setup 46ms, collect 45ms, tests 1.37s, environment 0ms, prepare 29ms)
+
+1,12c1,12
+< 90d31957aa574467bc916bc2f6f28b592efbb5c32d82ef8887db5344d0a7b83a  octo-octobots/campaigns/octograph-code-architecture-graph/missions/m3-drift-doctor-and-the-shipped-cli/workflows/build-and-gate/workflow.js
+< 079bf07943357151ecfc2f86754c34fd6da6c1b7a54a11ae77e0f47c960136ac  octo-octobots/campaigns/octograph-code-architecture-graph/missions/m4-board-overlay-own-and-conflicts/workflows/build-and-gate/workflow.js
+< f081fd392c85bfd34b5519f5f21a8efbf3dbcb4f5c8a48fedc0190ad6f71256b  octo-octobots/campaigns/octograph-code-architecture-graph/missions/m5-interactive-setup-installer/workflows/build-and-gate/workflow.js
+< d5392ca29c85f219c6630cbee21a03d825b6f5ec80fe9567383bfeb4890d804b  octo-octobots/campaigns/octograph-code-architecture-graph/missions/m6-extension-bridge/workflows/build-and-gate/workflow.js
+< 8b96bde7a76a3ff8639e80db2f6aca1ca53e8660742de451616c6e7833c6f58d  octo-octobots/campaigns/octograph-code-architecture-graph/missions/m7-working-sets-surface-the-discovered-delta/workflows/build-and-gate/workflow.js
+< c119a6c71ea23a040b9d771643ccbdc86c6eb0438c8f46b0f18d16441690c406  solo-octobots/campaigns/sensor-assignment-uplift/missions/m2-player-role-on-the-edge-match-roster-read-only/workflows/m2-execution/runs.jsonl
+< 3117750d07128c9bce6ce3c95a2e8dc09a6aefd6d6500aaeee456f9bbbeb845b  solo-octobots/campaigns/sensor-assignment-uplift/missions/m2-player-role-on-the-edge-match-roster-read-only/workflows/m2-execution/workflow.js
+< cc24eb794218ef8d7a1c2181f81ffa281e0deb63cea7ca0b574b00a4401e5e23  solo-octobots/campaigns/session-replay-track-store-and-read-api/missions/m1-real-analysis-table-and-batch-copy-writer/workflows/m1-analysis-store/workflow.js
+< 8dbed2ee1334b8e577ac4b3b81d3d72c7ede86faff163822400330bf6ace7857  solo-octobots/campaigns/session-replay-track-store-and-read-api/missions/m2-time-range-read-api-with-bulk-identity-resoluti/workflows/m2-tracks-read-api/workflow.js
+< 233827369340655ef186a391ceabd069d82b7f82a62fce9afe95dd56765ce117  solo-octobots/campaigns/session-replay-track-store-and-read-api/missions/m3-live-edge-contract-on-sessionrecordingspanrespo/workflows/m3-live-edge/workflow.js
+< 8d4bd99a691d3fd6b70f9b8628f173d80189e51287c066b0620773e985c117b8  solo-octobots/campaigns/session-replay-track-store-and-read-api/missions/m4-verification-red-proofs-and-live-e2e-against-a/workflows/m4-verification/workflow.js
+< 4b625d2b10741168a3c88dd012ba899e4ad5a6ea164a157fb3f2dba9d9c01663  solo-octobots/campaigns/session-replay-track-store-and-read-api/missions/m5-pipeline-level-admin-action-lock-closes-the-cyc/workflows/m5-admin-lock/workflow.js
+---
+> 90d31957aa574467bc916bc2f6f28b592efbb5c32d82ef8887db5344d0a7b83a  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/octo-octobots/campaigns/octograph-code-architecture-graph/missions/m3-drift-doctor-and-the-shipped-cli/workflows/build-and-gate/workflow.js
+> 079bf07943357151ecfc2f86754c34fd6da6c1b7a54a11ae77e0f47c960136ac  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/octo-octobots/campaigns/octograph-code-architecture-graph/missions/m4-board-overlay-own-and-conflicts/workflows/build-and-gate/workflow.js
+> f081fd392c85bfd34b5519f5f21a8efbf3dbcb4f5c8a48fedc0190ad6f71256b  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/octo-octobots/campaigns/octograph-code-architecture-graph/missions/m5-interactive-setup-installer/workflows/build-and-gate/workflow.js
+> d5392ca29c85f219c6630cbee21a03d825b6f5ec80fe9567383bfeb4890d804b  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/octo-octobots/campaigns/octograph-code-architecture-graph/missions/m6-extension-bridge/workflows/build-and-gate/workflow.js
+> 8b96bde7a76a3ff8639e80db2f6aca1ca53e8660742de451616c6e7833c6f58d  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/octo-octobots/campaigns/octograph-code-architecture-graph/missions/m7-working-sets-surface-the-discovered-delta/workflows/build-and-gate/workflow.js
+> c119a6c71ea23a040b9d771643ccbdc86c6eb0438c8f46b0f18d16441690c406  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/solo-octobots/campaigns/sensor-assignment-uplift/missions/m2-player-role-on-the-edge-match-roster-read-only/workflows/m2-execution/runs.jsonl
+> 3117750d07128c9bce6ce3c95a2e8dc09a6aefd6d6500aaeee456f9bbbeb845b  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/solo-octobots/campaigns/sensor-assignment-uplift/missions/m2-player-role-on-the-edge-match-roster-read-only/workflows/m2-execution/workflow.js
+> cc24eb794218ef8d7a1c2181f81ffa281e0deb63cea7ca0b574b00a4401e5e23  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/solo-octobots/campaigns/session-replay-track-store-and-read-api/missions/m1-real-analysis-table-and-batch-copy-writer/workflows/m1-analysis-store/workflow.js
+> 8dbed2ee1334b8e577ac4b3b81d3d72c7ede86faff163822400330bf6ace7857  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/solo-octobots/campaigns/session-replay-track-store-and-read-api/missions/m2-time-range-read-api-with-bulk-identity-resoluti/workflows/m2-tracks-read-api/workflow.js
+> 233827369340655ef186a391ceabd069d82b7f82a62fce9afe95dd56765ce117  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/solo-octobots/campaigns/session-replay-track-store-and-read-api/missions/m3-live-edge-contract-on-sessionrecordingspanrespo/workflows/m3-live-edge/workflow.js
+> 8d4bd99a691d3fd6b70f9b8628f173d80189e51287c066b0620773e985c117b8  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/solo-octobots/campaigns/session-replay-track-store-and-read-api/missions/m4-verification-red-proofs-and-live-e2e-against-a/workflows/m4-verification/workflow.js
+> 4b625d2b10741168a3c88dd012ba899e4ad5a6ea164a157fb3f2dba9d9c01663  /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3qa/solo-octobots/campaigns/session-replay-track-store-and-read-api/missions/m5-pipeline-level-admin-action-lock-closes-the-cyc/workflows/m5-admin-lock/workflow.js
+      11
+      12
+UNTOUCHED_NORMALISED
