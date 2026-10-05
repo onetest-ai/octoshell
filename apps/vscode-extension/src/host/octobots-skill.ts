@@ -171,9 +171,17 @@ export interface InstallOptions {
   statusline?: boolean;
   tools?: boolean;
   /**
-   * `reconcile` (default; also what any non-interactive install records) keeps each changed SKILL.md and
-   * stages it for an agent; `overwrite` saves it as overwritten-local.md and replaces it (a retired
-   * skill is deleted); `keep` leaves it and records that. Only SKILL.md is ever protected.
+   * `reconcile` keeps each changed SKILL.md and stages it for an agent; `overwrite` saves it as
+   * overwritten-local.md and replaces it (a retired skill is deleted); `keep` leaves it and records
+   * that. Only SKILL.md is ever protected.
+   *
+   * These three are EXPLICIT choices, made in the install prompt, and each applies to every changed
+   * skill, including one kept earlier. OMITTING the option is the DEFAULT install (also what any
+   * non-interactive or activation install does): it reconciles changed skills like `reconcile`, except
+   * that a skill the user chose to keep stays kept while its SKILL.md still has the sha256 it was
+   * kept at ("Keep my changes is remembered"; decision 13(e)). A changed fork re-opens it. The
+   * default is "preserve what the user decided", never a choice of its own, so the options are not
+   * a four-way enum a prompt could pick.
    */
   localChanges?: LocalChanges;
   /**
@@ -253,6 +261,7 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
   }
   const packVersion = opts.packVersion ?? OCTOBOTS_PACK_VERSION;
   const choice: LocalChanges = opts.localChanges ?? "reconcile";
+  const isDefault = opts.localChanges === undefined;
   // Rule-2 base recovery runs git synchronously, so the whole install shares ONE deadline: it blocks
   // the extension host for GIT_BUDGET_MS at most, however many skills are deviated.
   const gitDeadline = Date.now() + GIT_BUDGET_MS;
@@ -271,8 +280,17 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
   // Decide, before writing anything, what to stage: an entry that is unchanged is reused untouched.
   interface Plan { dev: Deviation; reuse: PendingEntry | null; base: ReturnType<typeof recoverBase>; upstream: Buffer | null; carried: CarriedBlock[]; replacedDir?: string }
   const plans: Plan[] = [];
+  // Default install: a skill kept earlier whose SKILL.md is unchanged since is not staged again.
+  const remembered = new Map<string, KeptEntry>();
+  if (isDefault) {
+    for (const dev of report.deviations) {
+      const k = prior?.kept.find((e) => e.skill === dev.skill && e.sha256 === dev.sha256);
+      if (k) remembered.set(dev.skill, k);
+    }
+  }
   if (choice === "reconcile") {
     for (const dev of report.deviations) {
+      if (remembered.has(dev.skill)) continue;
       const dirRel = stagingDirRel(packVersion, dev.skill);
       const upstreamSha = dev.retired ? null : (currentHashes[dev.skill] ?? null);
       const old = priorEntry(dev.skill);
@@ -336,6 +354,9 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
     }));
     staged.push(dev.skill);
   }
+  // The entries are kept as they are, packVersion included: the choice was made for that pack
+  // version, and the activation prompt asks again for a newer one.
+  kept.push(...remembered.values());
   if (choice !== "reconcile") {
     for (const dev of report.deviations) {
       // Inputs of the entry (and of this version's folder) go; logs and saved local files stay.

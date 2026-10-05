@@ -10,8 +10,11 @@
 //   --pack-root       the pack to install from (default resources/octobots-pack); M6-AC8 points it at
 //                     the pack unzipped from the VSIX. It replaces the PACK only: detection and base
 //                     recovery always read this extension's resources/shipped-skills.json.br.
-//   --local-changes   what to do with a pack skill whose SKILL.md the workspace changed (default
-//                     reconcile, as any non-interactive install records).
+//   --local-changes   an EXPLICIT choice for a pack skill whose SKILL.md the workspace changed, as the
+//                     install prompt makes it. Without the flag this is the DEFAULT install, which
+//                     is what any non-interactive or activation install does: changed skills are
+//                     reconciled, except those kept earlier with an unchanged SKILL.md, which stay
+//                     kept (not staged). Only an explicit reconcile or overwrite re-opens them.
 //   --pack-version    overrides the pack version for detection and staging (QA only, to exercise a
 //                     later version).
 //
@@ -30,7 +33,7 @@ import { build } from "esbuild";
 const USAGE = "usage: install-pack.mjs <workspace> [--pack-root <dir>] [--local-changes=reconcile|overwrite|keep] [--pack-version <n>]";
 const args = process.argv.slice(2);
 let packRootArg;
-let localChanges = "reconcile";
+let localChanges; // undefined: the default install, which preserves skills kept earlier
 let packVersion;
 const positional = [];
 const usage = () => { console.error(USAGE); process.exit(2); };
@@ -78,7 +81,7 @@ try {
   const version = packVersion ?? mod.OCTOBOTS_PACK_VERSION;
   const before = mod.packStatus(workspace, version, store);
   const deviations = before.deviations;
-  const result = mod.installPack(packRoot, workspace, { store, localChanges, ...(packVersion === undefined ? {} : { packVersion }) });
+  const result = mod.installPack(packRoot, workspace, { store, ...(localChanges === undefined ? {} : { localChanges }), ...(packVersion === undefined ? {} : { packVersion }) });
   const after = mod.packStatus(workspace, version, store);
   console.log(JSON.stringify({ before, deviations, result, after }, null, 2));
   if (result.error) throw new Error(result.error);

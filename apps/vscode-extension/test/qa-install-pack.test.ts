@@ -121,6 +121,21 @@ describe("scripts/qa/install-pack.mjs: local changes", () => {
     expect(go([forked(), "--local-changes=reconcile"]).report!.result.pending).toEqual(["mission-execution"]);
   });
 
+  it("keep, then a default run (no flag): kept unchanged, nothing staged; an explicit reconcile re-opens it", () => {
+    const ws = forked();
+    expect(go([ws, "--local-changes=keep"]).report!.result).toMatchObject({ pending: [], kept: ["mission-execution"] });
+    const again = go([ws]);
+    expect(again.status).toBe(0);
+    expect(again.stderr).toBe("");
+    expect(again.report!.result).toMatchObject({ pending: [], kept: ["mission-execution"] });
+    expect(again.report!.after.pendingReconcile).toEqual([]);
+    expect(live(ws).equals(FORK)).toBe(true);
+    expect(existsSync(join(ws, ".octobots", "pack-updates", `v${OCTOBOTS_PACK_VERSION}`))).toBe(false);
+
+    const reopened = go([ws, "--local-changes=reconcile"]);
+    expect(reopened.report!.result).toMatchObject({ pending: ["mission-execution"], kept: [] });
+  });
+
   it("--local-changes=overwrite replaces the file, saves the old one, and prints no stderr line", () => {
     const ws = forked();
     const { status, stderr, report } = go([ws, "--local-changes=overwrite"]);

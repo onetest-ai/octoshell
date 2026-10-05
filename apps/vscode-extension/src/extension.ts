@@ -9,7 +9,8 @@ import { CampaignsTree } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
 import { packStatus, installPack, OCTOBOTS_PACK_VERSION } from "./host/octobots-skill.js";
-import { loadShippedStore } from "./host/pack-deviations.js";
+import { loadShippedStore, decideLocalChanges, installCompletionMessage, shouldPromptOnActivation } from "./host/pack-deviations.js";
+import { readPending } from "./host/pack-updates.js";
 import { claudeHookStatus } from "./host/octobots-hooks.js";
 import { toolsStatus } from "./host/octobots-tools.js";
 import { launchSdlcBundleInstall } from "./host/sdlc-bundles-command.js";
@@ -34,6 +35,16 @@ function packSrcRoot(context: vscode.ExtensionContext): string {
  */
 async function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: string): Promise<void> {
   const src = packSrcRoot(context);
+  const store = loadShippedStore(vscode.Uri.joinPath(context.extensionUri, "resources", "shipped-skills.json.br").fsPath);
+
+  // First, before any other question and before any write: what to do with pack skills this
+  // workspace changed. Cancel or Escape installs nothing. The extension never starts an agent; the
+  // pack's SessionStart hook tells the next session to run octobots-doctor.
+  const decision = await decideLocalChanges(packStatus(repoRoot, OCTOBOTS_PACK_VERSION, store), OCTOBOTS_PACK_VERSION, (message, detail, buttons) =>
+    vscode.window.showWarningMessage(message, { modal: true, detail }, ...buttons),
+  );
+  if (decision.cancelled) return;
+
   const alreadyHooked = claudeHookStatus(repoRoot, OCTOBOTS_PACK_VERSION).present;
 
   let hooks: boolean | undefined;
@@ -65,9 +76,9 @@ async function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: s
     if (answer !== undefined) tools = answer === "Install";
   }
 
-  const store = loadShippedStore(vscode.Uri.joinPath(context.extensionUri, "resources", "shipped-skills.json.br").fsPath);
   const res = installPack(src, repoRoot, {
     store,
+    ...(decision.localChanges === undefined ? {} : { localChanges: decision.localChanges }),
     ...(hooks === undefined ? {} : { hooks }),
     ...(tools === undefined ? {} : { tools }),
   });
@@ -75,15 +86,7 @@ async function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: s
     void vscode.window.showErrorMessage(`Octobots: nothing was installed (${res.error}).`);
     return;
   }
-  const parts = [
-    res.hooksRegistered ? "session hooks" : null,
-    res.tools === "installed" ? "tokenomics CLI" : null,
-  ].filter(Boolean);
-  const suffix = parts.length ? ` with ${parts.join(" and ")}` : "";
-  const failed = res.tools === "failed" ? " (the tokenomics CLI could not be downloaded — the npx fallback still works)" : "";
-  void vscode.window.showInformationMessage(
-    `Octobots: workflow pack installed (${res.written} files)${suffix}.${failed}`,
-  );
+  void vscode.window.showInformationMessage(installCompletionMessage(res, OCTOBOTS_PACK_VERSION));
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -118,7 +121,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   void (async () => {
     const store = loadShippedStore(vscode.Uri.joinPath(context.extensionUri, "resources", "shipped-skills.json.br").fsPath);
     const st = packStatus(repoRoot, OCTOBOTS_PACK_VERSION, store);
-    if (st.installed && st.upToDate) return;
+    if (!shouldPromptOnActivation(st, readPending(repoRoot), OCTOBOTS_PACK_VERSION)) return;
     const verb = st.installed ? "update" : "install";
     const Verb = `${verb[0]!.toUpperCase()}${verb.slice(1)}`;
     const choice = await vscode.window.showInformationMessage(

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { brotliDecompressSync } from "node:zlib";
 import { OCTOBOTS_SKILLS, RETIRED_SKILLS } from "./pack-skills.js";
 import { parseSkillMarker, skillSha256 } from "./skill-marker.js";
+import type { PendingRecord } from "./pack-updates.js";
 
 /**
  * Deviation detection and base recovery for pack updates (M7).
@@ -292,4 +293,114 @@ export function recoverBase(
   }
   if (best) return { version: best.version, sha256: best.hash, source: "closest", body: store.bodies[best.hash]! };
   return null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The install prompt (T7.4). Pure, so a test asserts the text word for word and the wiring in
+// extension.ts stays thin. The extension never starts an agent and never copies a prompt: the
+// next agent session is told by the pack's SessionStart hook.
+// ---------------------------------------------------------------------------------------------
+
+export interface DeviationPrompt {
+  message: string;
+  detail: string;
+  /** Reconcile first, so it is the default. VS Code adds Cancel. */
+  buttons: string[];
+}
+
+/** What an install does with a changed pack skill (`LocalChanges` of octobots-skill.ts). */
+export type PromptChoice = "reconcile" | "overwrite" | "keep";
+
+const BUTTONS = { reconcile: "Reconcile", overwrite: "Overwrite", keep: "Keep mine" } as const;
+
+function deviationLine(d: Deviation, packVersion: number): string {
+  const why =
+    d.reason === "label" ? "not a pack version"
+    : d.reason === "content" ? `differs from the pack's v${d.version} file`
+    : d.reason === "unknown-version" ? "not a file the pack shipped"
+    : "reconciled against an earlier pack file";
+  const retired = d.retired ? `; retired in v${packVersion}, so Overwrite deletes it` : "";
+  return `• ${d.skill}: version ${d.version} (${why}${retired})`;
+}
+
+/** The modal shown before an install writes anything, when `deviations` is not empty. */
+export function deviationPrompt(deviations: readonly Deviation[], packVersion: number): DeviationPrompt {
+  const detail = [
+    `Installing the Octobots pack v${packVersion} would replace or delete these skills:`,
+    ...deviations.map((d) => deviationLine(d, packVersion)),
+    `Reconcile: install everything else and stage these skills in .octobots/pack-updates/v${packVersion}/; your next agent session merges them with the octobots-doctor skill.`,
+    "Overwrite: replace them with the pack's files.",
+    "Keep mine: install everything else and leave these skills as they are.",
+    "Cancel: install nothing.",
+  ].join("\n");
+  return {
+    message: `Octobots: ${deviations.length} pack skill(s) in this workspace were changed locally.`,
+    detail,
+    buttons: [BUTTONS.reconcile, BUTTONS.overwrite, BUTTONS.keep],
+  };
+}
+
+/** The installer's choice for a pressed button; null for Cancel or Escape (`undefined`). */
+export function choiceForButton(button: string | undefined): PromptChoice | null {
+  for (const [choice, label] of Object.entries(BUTTONS)) if (label === button) return choice as PromptChoice;
+  return null;
+}
+
+export type LocalChangesDecision =
+  | { cancelled: true }
+  /** `localChanges` is absent when there was nothing to ask: the install then takes its default. */
+  | { cancelled: false; localChanges?: PromptChoice };
+
+/**
+ * Asks about changed skills before any write. Without deviations nothing is asked and the install
+ * runs with its default (which preserves skills the user chose to keep earlier). A pick is an
+ * EXPLICIT choice: only it may re-open a kept skill. `ask` shows the modal and resolves to the
+ * pressed button, or undefined for Cancel/Escape.
+ */
+export async function decideLocalChanges(
+  status: { deviations: readonly Deviation[] },
+  packVersion: number,
+  ask: (message: string, detail: string, buttons: string[]) => PromiseLike<string | undefined>,
+): Promise<LocalChangesDecision> {
+  if (status.deviations.length === 0) return { cancelled: false };
+  const p = deviationPrompt(status.deviations, packVersion);
+  const choice = choiceForButton(await ask(p.message, p.detail, p.buttons));
+  return choice === null ? { cancelled: true } : { cancelled: false, localChanges: choice };
+}
+
+/** The install result message: the pack line, then what Reconcile staged. */
+export function installCompletionMessage(
+  res: { written: number; hooksRegistered: boolean; tools: "installed" | "failed" | "skipped"; pending: readonly string[] },
+  packVersion: number,
+): string {
+  const parts = [res.hooksRegistered ? "session hooks" : null, res.tools === "installed" ? "tokenomics CLI" : null].filter(Boolean);
+  const suffix = parts.length ? ` with ${parts.join(" and ")}` : "";
+  const failed = res.tools === "failed" ? " (the tokenomics CLI could not be downloaded — the npx fallback still works)" : "";
+  let msg = `Octobots: workflow pack installed (${res.written} files)${suffix}.${failed}`;
+  if (res.pending.length > 0) {
+    msg += ` Staged ${res.pending.join(", ")} for reconcile in .octobots/pack-updates/v${packVersion}/. The next agent session will be asked to run the octobots-doctor skill.`;
+    if (!res.hooksRegistered) msg += " The SessionStart hook is off, so ask your agent to run octobots-doctor.";
+  }
+  return msg;
+}
+
+/**
+ * Whether the activation prompt should ask. It does not while the only differences are newer skills
+ * and deviations already answered for this pack version (pending, or kept, with the same sha256);
+ * it asks again for a new pack version, a changed sha256 or a new deviation. The Install command
+ * itself always asks.
+ */
+export function shouldPromptOnActivation(
+  status: { installed: boolean; upToDate: boolean; upToDateExceptLocal: boolean; deviations: readonly Deviation[] },
+  pending: PendingRecord | null,
+  packVersion: number,
+): boolean {
+  if (!status.installed) return true;
+  if (status.upToDate) return false;
+  if (!status.upToDateExceptLocal) return true;
+  return status.deviations.some((d) => {
+    const pend = pending?.packVersion === packVersion && pending.skills.some((e) => e.skill === d.skill && e.localSha256 === d.sha256);
+    const kept = pending?.kept.some((k) => k.skill === d.skill && k.packVersion === packVersion && k.sha256 === d.sha256) ?? false;
+    return !pend && !kept;
+  });
 }

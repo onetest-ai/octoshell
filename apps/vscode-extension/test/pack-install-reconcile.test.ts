@@ -387,6 +387,92 @@ describe("installPack: overwrite and keep", () => {
     expect(existsSync(join(ws, ".octobots", "pack-updates", `v${PACK}`))).toBe(false); // nothing left to hold
   });
 
+  describe("Keep my changes is remembered (T7.4 AC3)", () => {
+    const keptAll = () => {
+      const w = soloLike();
+      installPack(PACK_SRC, w.ws, { store, localChanges: "keep" });
+      return w;
+    };
+    const state = (ws: string) => tree(join(ws, ".octobots", "pack-updates"));
+
+    it("a default install (no localChanges) leaves every kept skill kept: not staged, not pending, byte-identical", () => {
+      const { ws, f } = keptAll();
+      const before = state(ws);
+      const res = installPack(PACK_SRC, ws, { store });
+      expect(res.pending).toEqual([]);
+      expect(res.kept).toEqual(["mission-planner", "mission-execution", "mission-completion-gate", "workflow-designer"]);
+      const rec = readPending(ws)!;
+      expect(rec.skills).toEqual([]);
+      expect(rec.kept.map((k) => k.skill)).toEqual(res.kept);
+      expect(rec.kept.find((k) => k.skill === "mission-execution")).toEqual({
+        skill: "mission-execution", packVersion: PACK, sha256: skillSha256(f["mission-execution"].toString("utf8")),
+      });
+      expect(bytes(ws, ".claude", "skills", "mission-execution", "SKILL.md").equals(f["mission-execution"])).toBe(true);
+      expect(files(join(ws, ".octobots", "pack-updates")).filter((n) => n.startsWith("v"))).toEqual([]);
+      expect(state(ws)).toEqual(before);
+      expectPackFilesInstalled(ws, "mission-execution");
+    });
+
+    it("stays kept across repeated default installs", () => {
+      const { ws } = keptAll();
+      installPack(PACK_SRC, ws, { store });
+      const before = state(ws);
+      installPack(PACK_SRC, ws, { store });
+      expect(state(ws)).toEqual(before);
+      expect(readPending(ws)!.kept.length).toBe(4);
+    });
+
+    it("an explicit 'reconcile' re-opens a kept skill and stages it", () => {
+      const { ws } = keptAll();
+      const res = installPack(PACK_SRC, ws, { store, localChanges: "reconcile" });
+      expect(res.pending).toEqual(["mission-planner", "mission-execution", "mission-completion-gate", "workflow-designer"]);
+      expect(res.kept).toEqual([]);
+      expect(readPending(ws)!.kept).toEqual([]);
+    });
+
+    it("an explicit 'overwrite' replaces a kept skill", () => {
+      const { ws } = keptAll();
+      installPack(PACK_SRC, ws, { store, localChanges: "overwrite" });
+      expect(bytes(ws, ".claude", "skills", "mission-execution", "SKILL.md").equals(readFileSync(join(SKILLS, "mission-execution", "SKILL.md")))).toBe(true);
+      expect(readPending(ws)!.kept).toEqual([]);
+    });
+
+    it("a kept skill whose fork bytes changed is re-opened by a default install", () => {
+      const { ws, f } = keptAll();
+      writeFileSync(skillMd(ws, "mission-execution"), Buffer.concat([f["mission-execution"], Buffer.from("\nAnother local rule.\n")]));
+      const res = installPack(PACK_SRC, ws, { store });
+      expect(res.pending).toEqual(["mission-execution"]);
+      expect(res.kept).toEqual(["mission-planner", "mission-completion-gate", "workflow-designer"]);
+      expect(readPending(ws)!.kept.map((k) => k.skill)).not.toContain("mission-execution");
+    });
+
+    it("a kept skill the user reverted to the pack's file is no longer recorded", () => {
+      const { ws } = keptAll();
+      writeFileSync(skillMd(ws, "mission-execution"), readFileSync(join(SKILLS, "mission-execution", "SKILL.md")));
+      const res = installPack(PACK_SRC, ws, { store });
+      expect(res.kept).not.toContain("mission-execution");
+      expect(readPending(ws)!.kept.map((k) => k.skill)).not.toContain("mission-execution");
+    });
+
+    it("keeps its original packVersion on a later pack version (the activation prompt then asks again)", () => {
+      const { ws } = keptAll();
+      const res = installPack(PACK_SRC, ws, { store, packVersion: PACK + 1 });
+      expect(res.pending).toEqual([]);
+      expect(readPending(ws)!.kept.every((k) => k.packVersion === PACK)).toBe(true);
+    });
+
+    it("a skill that was pending and a skill that was kept coexist: only the pending one is re-staged", () => {
+      const { ws, f } = soloLike();
+      installPack(PACK_SRC, ws, { store }); // all four staged
+      // keep two, leave two pending: simulate by keeping everything, then re-forking one skill
+      installPack(PACK_SRC, ws, { store, localChanges: "keep" });
+      writeFileSync(skillMd(ws, "mission-completion-gate"), Buffer.concat([f["mission-completion-gate"], Buffer.from("\nNew.\n")]));
+      const res = installPack(PACK_SRC, ws, { store });
+      expect(res.pending).toEqual(["mission-completion-gate"]);
+      expect(res.kept).toEqual(["mission-planner", "mission-execution", "workflow-designer"]);
+    });
+  });
+
   it("keep on a fresh workspace stages nothing at all", () => {
     const { ws } = soloLike();
     installPack(PACK_SRC, ws, { store, localChanges: "keep" });
