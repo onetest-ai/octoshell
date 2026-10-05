@@ -9,9 +9,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
 import { loadEntity, dumpEntity, type EntityFields, type EntityKind } from "../src/entity-schema.js";
 import { BoardModel } from "../src/board-model.js";
@@ -957,5 +957,185 @@ describe("pack doctor.js", () => {
       writeFileSync(join(projectDir, ".octobots", "statusline.sh"), "# octobots-pack-version: 57\n");
       expect(findings(projectDir).find((x) => x.area === "statusline")?.level).toBe("ok");
     });
+  });
+});
+
+describe("add-tests.js — scaffolding a mission's tests folder", () => {
+  const LONG = `${"a very long acceptance criterion ".repeat(12)}end`;
+
+  function missionWith(title: string, criteria: string[]): { dir: string; campaign: string } {
+    const c = createCampaign(boardRoot, { name: "Camp Alpha" });
+    const m = createMission(boardRoot, c.id, {
+      title,
+      acceptanceCriteria: criteria.map((t) => `- [ ] ${t}`).join("\n"),
+    });
+    return { dir: join(boardRoot, m.folderPath), campaign: join(boardRoot, c.folderPath) };
+  }
+
+  function documents(dir: string): { label: string; target: string }[] {
+    return loadEntity(readFileSync(join(dir, "mission.yaml"), "utf8")).documents;
+  }
+
+  it("creates the README with an AC map of k rows, the three sections, and links it", () => {
+    const { dir, campaign } = missionWith("M4 - Gate", ["first criterion", "second criterion", LONG]);
+    const out = runScript("add-tests.js", [dir], projectDir);
+
+    const readme = readFileSync(join(campaign, "tests", "m4", "README.md"), "utf8");
+    expect(readme).toMatch(/\| M4-AC1 \| first criterion \| *\|/);
+    expect(readme).toMatch(/\| M4-AC2 \| second criterion \| *\|/);
+    expect(readme).toMatch(/\| M4-AC3 \| a very long/);
+    expect(readme).not.toContain("M4-AC4");
+    expect(readme).not.toContain(LONG); // truncated
+    for (const h of ["## Shared preconditions", "## Pre-existing records", "## Assumptions to confirm"]) {
+      expect(readme).toContain(h);
+    }
+    const slug = campaign.split("/").pop();
+    expect(documents(dir)).toEqual([
+      { label: "M4 functional test cases", target: `.octobots/campaigns/${slug}/tests/m4/README.md` },
+    ]);
+    expect(out).toContain("created");
+    expect(out).toContain("tests/m4/README.md");
+  });
+
+  it("a second run changes nothing and exits 0", () => {
+    const { dir, campaign } = missionWith("M2 - Gate", ["one", "two"]);
+    runScript("add-tests.js", [dir], projectDir);
+    const readmePath = join(campaign, "tests", "m2", "README.md");
+    const readme1 = readFileSync(readmePath);
+    const yaml1 = readFileSync(join(dir, "mission.yaml"));
+
+    const out = runScript("add-tests.js", [dir], projectDir);
+    expect(readFileSync(readmePath).equals(readme1)).toBe(true);
+    expect(readFileSync(join(dir, "mission.yaml")).equals(yaml1)).toBe(true);
+    expect(documents(dir)).toHaveLength(1);
+    expect(out).toContain("already");
+  });
+
+  it("never overwrites an existing README, but still links it", () => {
+    const { dir, campaign } = missionWith("M1 - Gate", ["one"]);
+    const readmePath = join(campaign, "tests", "m1", "README.md");
+    mkdirSync(join(campaign, "tests", "m1"), { recursive: true });
+    writeFileSync(readmePath, "# my own suite\n\nhand written\n");
+    const before = readFileSync(readmePath);
+
+    const out = runScript("add-tests.js", [dir], projectDir);
+    expect(readFileSync(readmePath).equals(before)).toBe(true);
+    expect(documents(dir).map((d) => d.label)).toEqual(["M1 functional test cases"]);
+    expect(out).toContain("exists");
+    expect(out).toContain("not overwritten");
+  });
+
+  it("does not add a second document when the target is already linked under another label", () => {
+    const { dir, campaign } = missionWith("M1 - Gate", ["one"]);
+    const slug = campaign.split("/").pop();
+    const target = `.octobots/campaigns/${slug}/tests/m1/README.md`;
+    runScript("add-doc.js", [dir, "M1 functional test cases (API)", target], projectDir);
+    runScript("add-tests.js", [dir], projectDir);
+    expect(documents(dir)).toEqual([{ label: "M1 functional test cases (API)", target }]);
+  });
+
+  it("keeps a letter suffix: M3b -> tests/m3b", () => {
+    const { dir, campaign } = missionWith("M3b - Follow-up", ["only one"]);
+    runScript("add-tests.js", [dir], projectDir);
+    expect(existsSync(join(campaign, "tests", "m3b", "README.md"))).toBe(true);
+    expect(readFileSync(join(campaign, "tests", "m3b", "README.md"), "utf8")).toContain("M3b-AC1");
+    expect(documents(dir)[0]?.label).toBe("M3b functional test cases");
+  });
+
+  it("accepts the mission.yaml path as well as the directory", () => {
+    const { dir, campaign } = missionWith("M5 - Gate", ["x"]);
+    runScript("add-tests.js", [join(dir, "mission.yaml")], projectDir);
+    expect(existsSync(join(campaign, "tests", "m5", "README.md"))).toBe(true);
+  });
+
+  it("handles a mission with no acceptance criteria (table header only)", () => {
+    const { dir, campaign } = missionWith("M6 - Bare", []);
+    runScript("add-tests.js", [dir], projectDir);
+    const readme = readFileSync(join(campaign, "tests", "m6", "README.md"), "utf8");
+    expect(readme).toContain("## Shared preconditions");
+    expect(readme).not.toContain("M6-AC1");
+  });
+
+  it("fails with a message on a missing path, no argument, a non-mission, and an id-less mission", () => {
+    const miss = runFailing("add-tests.js", [join(boardRoot, "nope")], projectDir);
+    expect(miss.status).toBe(2);
+    expect(miss.stderr).toContain("path not found");
+    expect(runFailing("add-tests.js", [], projectDir).stderr).toContain("usage");
+
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    const notMission = runFailing("add-tests.js", [join(boardRoot, c.folderPath)], projectDir);
+    expect(notMission.status).toBe(2);
+    expect(notMission.stderr).toContain("not a mission");
+
+    const noId = missionWith("Gate without an id", ["x"]);
+    const r = runFailing("add-tests.js", [noId.dir], projectDir);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("M<n>");
+  });
+
+  it("ships a TC template with the contract frontmatter and required sections", () => {
+    const tpl = readFileSync(join(SCRIPTS, "..", "templates", "TC-template.md"), "utf8");
+    const fm = tpl.split("---")[1] ?? "";
+    for (const key of ["id:", "title:", "mission:", "covers:", "kind:", "status: draft"]) expect(fm).toContain(key);
+    for (const h of ["## Objective", "## Preconditions", "## Real data", "## Commands", "## Steps", "## Expected Final State", "## Teardown"]) {
+      expect(tpl).toContain(h);
+    }
+  });
+
+  describe("never writes through the tests folder (it is repo content, so untrusted)", () => {
+    function refused(mission: string): void {
+      const before = readFileSync(join(mission, "mission.yaml"));
+      const r = runFailing("add-tests.js", [mission], projectDir);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain("refusing to write");
+      expect(readFileSync(join(mission, "mission.yaml")).equals(before)).toBe(true); // not linked either
+    }
+
+    it("refuses a dangling README.md symlink (it would create the file outside the workspace)", () => {
+      const { dir, campaign } = missionWith("M1 - Gate", ["one"]);
+      const outside = mkdtempSync(join(tmpdir(), "add-tests-outside-"));
+      try {
+        mkdirSync(join(campaign, "tests", "m1"), { recursive: true });
+        symlinkSync(join(outside, "pwned.md"), join(campaign, "tests", "m1", "README.md"));
+        refused(dir);
+        expect(existsSync(join(outside, "pwned.md"))).toBe(false);
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    });
+
+    it("refuses a symlinked tests/ or tests/m<n>/ directory", () => {
+      for (const link of ["tests", join("tests", "m1")]) {
+        const { dir, campaign } = missionWith("M1 - Gate", ["one"]);
+        const outside = mkdtempSync(join(tmpdir(), "add-tests-outside-"));
+        try {
+          mkdirSync(dirname(join(campaign, link)), { recursive: true });
+          symlinkSync(outside, join(campaign, link));
+          refused(dir);
+          expect(readdirSync(outside)).toEqual([]);
+        } finally {
+          rmSync(outside, { recursive: true, force: true });
+          rmSync(campaign, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("refuses a README.md that is a directory, and a tests/m<n> that is a file", () => {
+      const a = missionWith("M1 - Gate", ["one"]);
+      mkdirSync(join(a.campaign, "tests", "m1", "README.md"), { recursive: true });
+      refused(a.dir);
+      rmSync(a.campaign, { recursive: true, force: true });
+
+      const b = missionWith("M1 - Gate", ["one"]);
+      mkdirSync(join(b.campaign, "tests"), { recursive: true });
+      writeFileSync(join(b.campaign, "tests", "m1"), "");
+      refused(b.dir);
+    });
+  });
+
+  it("points the README at the template", () => {
+    const { dir, campaign } = missionWith("M7 - Gate", ["x"]);
+    runScript("add-tests.js", [dir], projectDir);
+    expect(readFileSync(join(campaign, "tests", "m7", "README.md"), "utf8")).toContain("templates/TC-template.md");
   });
 });
