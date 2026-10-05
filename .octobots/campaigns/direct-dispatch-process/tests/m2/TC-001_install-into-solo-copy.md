@@ -2,7 +2,7 @@
 id: TC-001
 title: "Install into a copy of solo .claude: workflow-designer gone, forks replaced, create-team.js kept"
 mission: M2
-covers: [M2-AC1, M2-AC2]
+covers: [M2-AC1, M2-AC2, M2-AC9]
 kind: cli
 status: draft
 priority: critical
@@ -11,11 +11,11 @@ size: M
 
 # TC-001: Install into a copy of solo .claude: workflow-designer gone, forks replaced, create-team.js kept
 
-**Mission:** M2 | **Priority:** critical | **Kind:** cli | **Covers:** M2-AC1, M2-AC2
+**Mission:** M2 | **Priority:** critical | **Kind:** cli | **Covers:** M2-AC1, M2-AC2, M2-AC9
 
 ## Objective
 
-Install into a copy of solo .claude: workflow-designer gone, forks replaced, create-team.js kept. Verifies M2-AC1 and M2-AC2 of M2 - Pack runs missions by direct sub-agent dispatch.
+Install into a copy of solo .claude: workflow-designer gone, forks replaced, create-team.js kept. Overwrite is chosen for the two locally changed skills, as the user would in the modal (campaign decision 13). Verifies M2-AC1, M2-AC2 and M2-AC9 of M2 - Pack runs missions by direct sub-agent dispatch.
 
 ## Preconditions
 
@@ -30,8 +30,9 @@ $WORK/solo/.claude (copy of solo's real install: workflow-designer, two `57-loca
 
 ```bash
 ls $WORK/solo/.claude/skills; ls $WORK/solo/.claude/skills/mission-planner/scripts
-node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs $WORK/solo > $WORK/install-solo.json; echo "exit=$?"
-jq '{before: .before.upToDate, after: .after}' $WORK/install-solo.json
+node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs $WORK/solo --local-changes=overwrite > $WORK/install-solo.json; echo "exit=$?"
+jq -c '.localChanges[] | {skill, version, reason, retired}' $WORK/install-solo.json
+jq '{before: .before.upToDate, after: .after, kept: .result.kept}' $WORK/install-solo.json
 ls $WORK/solo/.claude/skills; test ! -e $WORK/solo/.claude/skills/workflow-designer && echo WD_GONE
 for f in add-workflow sync-meta add-run mission-input; do test ! -e $WORK/solo/.claude/skills/mission-planner/scripts/$f.js && echo "$f gone"; done
 for f in extract-meta workflow-meta; do test ! -e $WORK/solo/.claude/skills/mission-planner/scripts/$f.mjs && echo "$f gone"; done
@@ -45,7 +46,7 @@ grep -h "^version:" $WORK/solo/.claude/skills/*/SKILL.md
 | # | Action | Expected Result |
 |---|--------|----------------|
 | 1 | List skills and scripts before the install | workflow-designer present, 2 forks `57-local`, create-team.js present |
-| 2 | Run installPack against the copy through install-pack.mjs | Exit 0; `.before.upToDate` false, `.after.upToDate` true |
+| 2 | Run installPack against the copy through install-pack.mjs with --local-changes=overwrite | Exit 0; `.localChanges` lists exactly mission-execution and mission-completion-gate (version `57-local`, reason label, retired false), and not workflow-designer (byte-identical to the shipped v56 file); `.before.upToDate` false; `.after.upToDate` true with an empty localChanges; `.result.kept` empty |
 | 3 | Check the 8 retired paths | All absent |
 | 4 | Check create-team.js | Still present (the installer never deletes unknown files) |
 | 5 | Read every remaining SKILL.md version | All `version: 57`; exactly 4 skills installed by the pack (mission-planner, mission-execution, mission-completion-gate, knowledge-explorer) + any non-pack skills solo already had |

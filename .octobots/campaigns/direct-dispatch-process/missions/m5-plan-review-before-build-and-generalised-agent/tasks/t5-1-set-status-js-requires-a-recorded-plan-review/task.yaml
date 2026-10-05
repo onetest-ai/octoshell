@@ -1,7 +1,16 @@
 name: T5.1 - set-status.js requires a recorded plan review to start a mission
 status: draft
 role: js-dev
-description: 'Scope: the pack set-status.js mission/active path: planReviewStatus(missionNotes, campaignNotes), exit 1 + unchanged file when missing, --force appends the overridden note; mission-gate.mjs untouched. Out of scope: the extension UI (T5.2) and planner text (T5.3). Downstream: T5.2 mirrors the pure function.'
+description: |-
+  Scope:
+  - a new pack module skill/mission-planner/scripts/plan-review.mjs, dependency-free like entity-io.mjs, exporting `planReviewStatus(missionNotes, campaignNotes) -> {ok: true, heading, where: "mission" | "campaign", legacy: boolean} | {ok: false, candidates: [{heading, where, missing: string[]}]}` per mission AC1;
+  - set-status.js: when the target is a mission, the state maps to executing and the stored status is not executing, read the mission notes and `<mission dir>/../../campaign.yaml` notes and call it; on a refusal exit 3 and leave the file unchanged; on a legacy allow print the warning line to stderr;
+  - pull `--force=<reason>` out of argv (any position) before `stateParts.join` (set-status.js:13-15); a bare `--force` or an empty reason exits 2;
+  - on a forced refused move, append `## Plan review overridden (<YYYY-MM-DD UTC>)` and the reason to the mission notes through entity-io (the rest of the notes byte-preserved);
+  - the shared case table packages/board/test/fixtures/plan-review-cases.json (T5.2 reuses it).
+  mission-gate.mjs is untouched. Out of scope: the extension UI (T5.2) and the planner text (T5.3). Downstream: T5.2 mirrors the module; M2-AC8's hooks see a refusal as no status change; M5 TC-001..003, TC-005, TC-013.
 acceptance_criteria:
-  - text: 'the refusal, --force and normal-flip cases of mission AC1 are covered by scripts-cli-scenarios, including a section with Verdict: changes requested and one with only one reviewer role being rejected'
+  - text: 'packages/board/test/scripts-cli-scenarios.test.ts covers, on temp copies: draft, awaiting approval, failed, done and cancelled -> executing (also spelled active) without a review exit 3 with the file byte-identical; executing -> executing and moves to draft, awaiting approval, done, failed and cancelled are not gated (draft -> done included); `--force=<reason>` in first, middle and last argv position flips the status and appends the overridden note, and a bare `--force` exits 2; a strict record in the mission notes, and one in the campaign notes, flip with nothing on stderr; a legacy heading-only record flips with the `warning: legacy plan review` stderr line (mission AC1)'
+    done: false
+  - text: 'packages/board/test/plan-review.test.ts unit-tests plan-review.mjs on packages/board/test/fixtures/plan-review-cases.json: strict allowed with legacy false; legacy allowed with legacy true; strict wins over legacy; refused: `Verdict: changes requested` under a heading naming both, a heading naming one reviewer, `Reviewers: Alex, Rio`, a Verdict line without a Reviewers line, `## Plan review overridden (...)`, `tech-leadership`, a Reviewers line after the next `## `, and this campaign''s M5 notes alone (self-approval check); `pnpm coverage:pack` passes'
     done: false

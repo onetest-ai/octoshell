@@ -42,7 +42,7 @@ test ! -e $XP/skill/workflow-designer && echo "no workflow-designer"
 grep -rh -E "^version:|octobots-pack-version" $XP | sort | uniq -c
 # (3) install the VSIX's own pack into a copy of solo
 mkdir -p $WORK/solo-rel && cp -R $SOLO/.claude $SOLO/.octobots $WORK/solo-rel/
-node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs $WORK/solo-rel --pack-root $XP | jq '{before: .before.upToDate, after: .after}'
+node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs $WORK/solo-rel --pack-root $XP --local-changes=overwrite | jq '{changed: [.localChanges[].skill], before: .before.upToDate, after: .after}'   # Overwrite, as the user chooses in the modal (M2-AC9)
 ls $WORK/solo-rel/.claude/skills; test -e $WORK/solo-rel/.claude/skills/mission-planner/scripts/create-team.js && echo "create-team KEPT"
 for f in add-workflow.js sync-meta.js add-run.js mission-input.js extract-meta.mjs workflow-meta.mjs vendor/acorn.mjs; do test ! -e $WORK/solo-rel/.claude/skills/mission-planner/scripts/$f && echo "$f gone"; done
 # (4) no tests-pairing warning on this campaign's missions
@@ -57,9 +57,9 @@ pnpm lint && pnpm build && pnpm typecheck && pnpm test && pnpm coverage && echo 
 | # | Action | Expected Result |
 |---|--------|----------------|
 | 1 | Read the release commit and version | Subject `chore(ext): release 0.1.0 with workflow pack v57`; the only file is apps/vscode-extension/package.json; version 0.1.0 |
-| 2 | Classify every line of vsix-hits.txt | Each hit is one of: the validate/doctor 'no longer read' text; the legacy-folder paragraph in a skill; tokenomics' wf_ transcript reader; the installer's RETIRED_SKILLS/RETIRED_FILES lists in dist/extension.js; the disposing octoshell.workflow serializer. Any other hit FAILs |
+| 2 | Classify every line of vsix-hits.txt | Each hit is one of: the validate/doctor 'no longer read' text; the legacy-folder paragraph in a skill; tokenomics' wf_ transcript reader; the installer's RETIRED_SKILLS/RETIRED_FILES lists and its shipped-skill hash table (workflow-designer entries) in dist/extension.js; the disposing octoshell.workflow serializer. Any other hit FAILs |
 | 3 | Check the new scripts, workflow-designer and markers | qa-env.mjs, scan-parked.js, add-tests.js, set-test-status.js, tc-io.mjs present; no workflow-designer; every `version:` and `octobots-pack-version` reads 57 |
-| 4 | Install the VSIX's pack into the solo copy | `.before` false (57-local), `.after.upToDate` true; workflow-designer and the 7 retired files gone; create-team.js and solo's non-pack skills kept |
+| 4 | Install the VSIX's pack into the solo copy with Overwrite | `changed` is [mission-execution, mission-completion-gate] (workflow-designer is not a local change); `.before` false (57-local), `.after.upToDate` true with an empty localChanges; workflow-designer and the 7 retired files gone; create-team.js and solo's non-pack skills kept |
 | 5 | validate.js on each of this campaign's six missions | 0 `warning:` lines each (no tests-pairing warning) |
 | 6 | scan-parked.js on octoshell; the repo gates | Scan exit 0 (0 unsigned); GATES_GREEN |
 

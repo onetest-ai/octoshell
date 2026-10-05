@@ -1,11 +1,21 @@
 name: T5.2 - Board library and BoardHost.setStatus enforce plan review with a confirm dialog
 status: draft
 role: js-dev
-description: 'Scope: planReviewStatus mirrored in packages/board (pure, exported); BoardHost.setStatus (the status dropdown''s path) returns/raises ''plan review missing'' for mission->active; the extension host shows a modal showWarningMessage confirm and, on confirm, calls setStatus with force and appends the overridden note; parity vitest against the pack function using the same inputs; regenerate the graph payload and rewrite the 57 hash. Out of scope: the script. Downstream: M6 shares BoardHost.'
+description: |-
+  Scope:
+  - packages/board/src/plan-review.ts: planReviewStatus, a pure mirror of plan-review.mjs with the same return shape, exported from src/index.ts;
+  - `BoardHost.setStatus(kind, id, status, opts?: {force?: string})` returns `{ok: true} | {ok: false, reason: "plan-review-missing", message}` (the boolean return is replaced for every kind; campaign, task and bug keep their behaviour); a mission move into executing from another status is checked, and a forced move appends the overridden note through the board library write path;
+  - `DispatchCtx.dialog.confirm(message, actionLabel): Promise<boolean>` added (rpc-dispatcher.ts:14-15) and wired in extension.ts to `vscode.window.showWarningMessage(message, {modal: true}, actionLabel)`;
+  - the `mission:setStatus` handler (rpc-dispatcher.ts:71) asks confirm on plan-review-missing and retries with `force: "confirmed in the extension's status dropdown"`; on cancel it returns the stored status and the webview re-renders it;
+  - no message of any kind on a legacy allow (campaign decision 12);
+  - the parity vitest over packages/board/test/fixtures/plan-review-cases.json (from T5.1) and every real notes pair.
+  Touches packages/board: campaign notes § Test conventions rule 8 (payload regen after a root build, 57 hash). Out of scope: the script. Downstream: M6 shares BoardHost.
 acceptance_criteria:
-  - text: BoardHost.setStatus refuses mission->active without a satisfying review unless forced; the forced path appends the overridden note (mission AC2)
+  - text: 'apps/vscode-extension/test/board-host.test.ts: BoardHost.setStatus on a mission moving into executing without a satisfying review returns {ok: false, reason: "plan-review-missing"} and the YAML is byte-identical; `{force}` flips it and appends the overridden note; a strict record and a legacy record each flip it; draft -> done and draft -> awaitingApproval are not checked; campaign, task and bug status changes behave as before (mission AC2)'
     done: false
-  - text: the host shows the modal confirm and cancel leaves the status unchanged; confirm flips it (host unit test with a stubbed window)
+  - text: 'apps/vscode-extension/test/rpc-dispatcher.test.ts, with a stubbed `dialog.confirm`: Cancel leaves the YAML byte-identical and returns the stored status; Confirm flips the status and appends the note; confirm is never called when a strict or legacy review exists or when the move is not into executing'
     done: false
-  - text: pack and board implementations agree on every case of a shared table (parity test)
+  - text: 'packages/board/test/plan-review-parity.test.ts: the pack and board implementations return identical results on packages/board/test/fixtures/plan-review-cases.json and on every (mission notes, campaign notes) pair of the boards in OCTOBOTS_BOARD_COPIES (else a temp copy of the repo''s own .octobots/), at least 1 test passed'
+    done: false
+  - text: after a root `pnpm build`, `pnpm --filter @octoshell/vscode-extension graph:payload:write` leaves `--verify` green, and the 57 hash in graph-payload-versions.json is rewritten in a visible diff line if the bytes changed
     done: false

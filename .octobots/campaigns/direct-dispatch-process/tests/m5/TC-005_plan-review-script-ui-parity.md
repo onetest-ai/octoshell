@@ -1,6 +1,6 @@
 ---
 id: TC-005
-title: "Pack planReviewStatus and board planReviewStatus agree on every real notes block"
+title: "Pack plan-review.mjs and @octoshell/board planReviewStatus agree on the shared table and every real notes pair of both boards"
 mission: M5
 covers: [M5-AC1, M5-AC2]
 kind: unit
@@ -9,13 +9,13 @@ priority: high
 size: M
 ---
 
-# TC-005: Pack planReviewStatus and board planReviewStatus agree on every real notes block
+# TC-005: Pack plan-review.mjs and @octoshell/board planReviewStatus agree on the shared table and every real notes pair of both boards
 
 **Mission:** M5 | **Priority:** high | **Kind:** unit | **Covers:** M5-AC1, M5-AC2
 
 ## Objective
 
-Pack planReviewStatus and board planReviewStatus agree on every real notes block. Verifies M5-AC1 and M5-AC2 of M5 - Plan review before build, and generalised agent-ops guards.
+One rule, two implementations, no drift between the script and the UI. Verifies M5-AC1 and M5-AC2 of M5 - Plan review before build, and generalised agent-ops guards.
 
 ## Preconditions
 
@@ -24,20 +24,21 @@ Pack planReviewStatus and board planReviewStatus agree on every real notes block
 
 ## Real data (pre-existing record)
 
-every mission+campaign `notes` block in the copies of the solo and octoshell boards (real notes, not synthesised)
+Every (mission notes, campaign notes) pair in the copies of the solo and octoshell boards (real notes). On 2026-10-05 the rule spike found solo: 115 missions, 6 allowed (the uwb missions, legacy, through the campaign notes); this campaign: 6 of 6 allowed (strict).
 
 ## Commands
 
 ```bash
-cd $OCTO && OCTOBOTS_BOARD_COPIES="$WORK/solo-octobots:$WORK/octo-octobots" pnpm --filter @octoshell/board test -- plan-review-parity
+cd $OCTO && OCTOBOTS_BOARD_COPIES="$WORK/solo-octobots:$WORK/octo-octobots" pnpm --filter @octoshell/board exec vitest run test/plan-review-parity.test.ts --reporter=verbose
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run both functions over every real notes pair and compare verdicts | Identical for all pairs; the test lists which pairs are satisfied (expected: uwb, whatever else carries a plan review) |
+| 1 | Run the parity test | At least 1 test passed, none failed: identical {ok, legacy, heading, where, candidates} from both implementations for the shared table and for every real pair |
+| 2 | Read the satisfied pairs it lists | Solo: only uwb-ranging-ingest-vendor-v01 missions, each legacy, through the campaign notes. Octoshell: this campaign's missions, strict, through the campaign notes. This campaign's M5 notes alone are not satisfying (self-approval check) |
 
 ## Expected Final State
 
-No drift between script and UI rule.
+The script and the UI rule cannot drift.
