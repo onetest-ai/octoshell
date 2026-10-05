@@ -4,8 +4,8 @@ title: "validateBoard on the solo copy: 6 warnings, 0 workflow errors, same text
 mission: M3
 covers: [M3-AC3]
 kind: unit
-status: fail
-last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m3/runs/RUN-2026-10-05-001.md}
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m3/runs/RUN-2026-10-05-002.md}
 priority: high
 size: M
 ---

@@ -1,0 +1,52 @@
+## FIXED, copies set
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/board
+
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > over every real board copy: one warning per workflows/ folder, no error for them, union equals validate.js 1449ms
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > agrees with validate.js on a copy not named .octobots, and counts an empty workflows/ as one 545ms
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > reports from the .octobots root even when a campaign folder is itself named campaigns 569ms
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > emits nothing for a campaigns/ dir with no campaign.yaml, as validate.js does
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > emits nothing for a board with no workflows/ folder
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > keeps working when the board sits in <workspace>/.octobots 505ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  22:08:57
+   Duration  3.29s (transform 33ms, setup 0ms, collect 41ms, tests 3.12s, environment 0ms, prepare 27ms)
+
+EXIT=0
+
+## BASE (red expected)
+ × test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > over every real board copy: one warning per workflows/ folder, no error for them, union equals validate.js 630ms
+   → expected 51 to be 45 // Object.is equality
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > agrees with validate.js on a copy not named .octobots, and counts an empty workflows/ as one 549ms
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > reports from the .octobots root even when a campaign folder is itself named campaigns 579ms
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > emits nothing for a campaigns/ dir with no campaign.yaml, as validate.js does
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > emits nothing for a board with no workflows/ folder
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > keeps working when the board sits in <workspace>/.octobots 517ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > over every real board copy: one warning per workflows/ folder, no error for them, union equals validate.js
+AssertionError: expected 51 to be 45 // Object.is equality
+      Tests  1 failed | 5 passed (6)
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/validate-workflows-warning.test.ts --reporter=verbose
+EXIT=1
+    7744 packages/board/test/validate-workflows-warning.test.ts
+
+## FIXED after restore, copies set
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > over every real board copy: one warning per workflows/ folder, no error for them, union equals validate.js 1890ms
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > agrees with validate.js on a copy not named .octobots, and counts an empty workflows/ as one 557ms
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > reports from the .octobots root even when a campaign folder is itself named campaigns 575ms
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > emits nothing for a campaigns/ dir with no campaign.yaml, as validate.js does
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > emits nothing for a board with no workflows/ folder
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > keeps working when the board sits in <workspace>/.octobots 517ms
+      Tests  6 passed (6)
+EXIT=0
+
+## FIXED, variable unset
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > over every real board copy: one warning per workflows/ folder, no error for them, union equals validate.js
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > agrees with validate.js on a copy not named .octobots, and counts an empty workflows/ as one
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > reports from the .octobots root even when a campaign folder is itself named campaigns
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > emits nothing for a campaigns/ dir with no campaign.yaml, as validate.js does
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > emits nothing for a board with no workflows/ folder
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > keeps working when the board sits in <workspace>/.octobots
+      Tests  6 passed (6)
