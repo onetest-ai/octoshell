@@ -60,6 +60,15 @@ export function ChecklistField(
 ): JSX.Element {
   const [items, setItems] = useState<Item[]>(() => parse(value));
   const editing = useRef(false);
+  // The serialized list at the moment an item gained focus. Blur saves only if the user changed it
+  // since; an untouched list adopts the newest `value` (an external edit that arrived while focused)
+  // instead of saving its stale items over it. An edit reverted to this text counts as untouched.
+  const focusSnapshot = useRef<string | null>(null);
+  // The `value` prop at the moment of focus. An untouched list adopts `value` only if it changed
+  // since: right after another item saved, `value` still holds the pre-save text until the host
+  // echoes the write back, and adopting it then would revert (and a following tick would re-save
+  // over) the user's own just-saved edit.
+  const focusValue = useRef(value);
 
   // Re-sync from the source string when it changes externally and we're not mid-edit.
   useEffect(() => {
@@ -101,9 +110,22 @@ export function ChecklistField(
               <AutoTextarea
                 value={it.text}
                 checked={it.checked}
-                onFocus={() => { editing.current = true; }}
+                onFocus={() => {
+                  editing.current = true;
+                  focusSnapshot.current = serialize(items);
+                  focusValue.current = value;
+                }}
                 onChange={(v) => setItems((cur) => cur.map((x, i) => (i === idx ? { ...x, text: v } : x)))}
-                onCommit={() => { editing.current = false; commit(items); }}
+                onCommit={() => {
+                  editing.current = false;
+                  const atFocus = focusSnapshot.current;
+                  focusSnapshot.current = null;
+                  if (atFocus !== null && serialize(items) === atFocus) {
+                    if (value !== focusValue.current) setItems(parse(value));
+                    return;
+                  }
+                  commit(items);
+                }}
               />
               <button onClick={() => commit(items.filter((_, i) => i !== idx))} aria-label="Remove criterion" className="mt-1 shrink-0 text-fg-muted hover:text-fg">
                 <span className="codicon codicon-close" aria-hidden="true" />
