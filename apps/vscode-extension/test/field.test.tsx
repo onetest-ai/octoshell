@@ -40,4 +40,38 @@ describe("Field", () => {
     rerender(<Field label="Target" value="b" onSave={() => {}} />);
     expect((screen.getByLabelText(/target/i) as HTMLTextAreaElement).value).toBe("b");
   });
+  it("an untouched focused field adopts the newer prop on blur and saves nothing", () => {
+    const saved: string[] = [];
+    const { rerender } = render(<Field label="Target" value="a" onSave={(v) => saved.push(v)} />);
+    const ta = screen.getByLabelText(/target/i) as HTMLTextAreaElement;
+    fireEvent.focus(ta);
+    rerender(<Field label="Target" value="b" onSave={(v) => saved.push(v)} />);
+    fireEvent.blur(ta);
+    expect(saved).toEqual([]);
+    expect(ta.value).toBe("b");
+  });
+
+  it("an edited field keeps the user's text over a newer prop on blur", () => {
+    const saved: string[] = [];
+    const { rerender } = render(<Field label="Target" value="a" onSave={(v) => saved.push(v)} />);
+    const ta = screen.getByLabelText(/target/i) as HTMLTextAreaElement;
+    fireEvent.focus(ta);
+    fireEvent.change(ta, { target: { value: "mine" } });
+    rerender(<Field label="Target" value="b" onSave={(v) => saved.push(v)} />);
+    fireEvent.blur(ta);
+    expect(saved).toEqual(["mine"]);
+  });
+
+  it("an edit reverted to the focus-time value counts as untouched: newer prop wins", () => {
+    const saved: string[] = [];
+    const { rerender } = render(<Field label="Target" value="a" onSave={(v) => saved.push(v)} />);
+    const ta = screen.getByLabelText(/target/i) as HTMLTextAreaElement;
+    fireEvent.focus(ta);
+    fireEvent.change(ta, { target: { value: "mine" } });
+    fireEvent.change(ta, { target: { value: "a" } });
+    rerender(<Field label="Target" value="b" onSave={(v) => saved.push(v)} />);
+    fireEvent.blur(ta);
+    expect(saved).toEqual([]);
+    expect(ta.value).toBe("b");
+  });
 });
