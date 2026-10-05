@@ -76,7 +76,7 @@ export function workspaceRootOf(path) {
 /** The `warning:` text for a pending.json that cannot be read as a record. */
 export const MALFORMED_PENDING_NOTE = `${PACK_UPDATES_DIR}/pending.json is malformed, so no pack reconcile can be listed`;
 /** What to do about it: the installer replaces the file from its own results. */
-export const MALFORMED_PENDING_FIX = 'run "Octobots: Install Workflow Pack" (it rewrites pending.json), or delete the file';
+export const MALFORMED_PENDING_FIX = 'run "Octobots: Install Octobots Pack" (it rewrites pending.json), or delete the file';
 
 /** True when `dir` is the staging folder `.octobots/pack-updates/v<N>/<skill>` (of `skill`, when given). */
 export function isStagingDir(dir, skill) {
