@@ -1,9 +1,9 @@
 name: B1 - campaign-view.test.tsx:46 flakes in the full parallel run (target textarea empty)
-status: draft
+status: done
 severity: minor
 description: 'apps/vscode-extension/test/campaign-view.test.tsx:46 failed once during a full root `pnpm test` run (parallel): the target textarea was still empty when asserted. It passed 5/5 in isolation and in the full re-run. Pre-existing and unrelated to T2.1; likely an async render not awaited (findBy/waitFor). A flaky suite undermines the gate''s ''green means green''.'
 steps_to_reproduce: Run `pnpm test` from the root several times on feat/direct-dispatch-process-m2 and watch campaign-view.test.tsx:46.
 expected: 'Deterministic: the test awaits the textarea''s populated state; it passes in every run, parallel or isolated.'
 actual: 'Intermittent failure: the target textarea is empty at assertion time.'
-rca: ''
+rca: 'Cause (plausible, not observed): the webview Field component copied its value prop into local state in a useEffect, so the commit that delivered a new prop rendered the OLD (often empty) value for one frame; an assertion landing in that gap under CPU contention in the parallel run saw an empty textarea. Fix (PR #140): Field syncs its prop during render, so the commit that carries the new prop already shows it; typing is preserved and it is StrictMode-safe. Evidence: new deterministic test/field.test.tsx goes red on the old field.tsx (expected '''' to be ''cut triage 30%'', re-verified by QA) and green on the fix; the full suite is green 3 of 3 and campaign-view plus heavy host tests pass 20 of 20 under CPU load, and the whole extension suite 20 of 20 under 8 CPU hogs. The original flake never reproduced (dev 0/30, QA 0/60), so the root cause is supported by the deterministic red/green test and code reading, not by observing the original failure. Separately found, pre-existing and not a B1 failure: focus without typing, then an external value change, then blur saves the stale value (filed separately).'
 environment: 'seen by the T2.1 review gate (PR #120, 2026-10-05)'
