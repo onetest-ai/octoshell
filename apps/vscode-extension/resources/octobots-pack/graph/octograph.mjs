@@ -3775,7 +3775,7 @@ function loadEntity(text) {
 
 // ../board/dist/board-model.js
 import { readdirSync as readdirSync3, readFileSync as readFileSync6, statSync as statSync2 } from "node:fs";
-import { join as join7 } from "node:path";
+import { basename as basename2, dirname as dirname2, join as join7 } from "node:path";
 var BoardModel = class {
   root;
   // Entity maps keyed by id
