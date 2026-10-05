@@ -9,3 +9,5 @@ acceptance_criteria:
     done: false
   - text: the no-skill control and the with-skill run of the escalation scenario (TC-013's synthetic xfail upstream, 5 reps each) are recorded in this task's notes before the PR, showing the control's failure mode and 5/5 escalation with the skill
     done: false
+  - text: mission-planner/SKILL.md's legacy-folder paragraph says legacy workflows/ folders are never changed by the installer or any tooling, and only octobots-doctor may delete one, with the user's explicit OK per folder (consistent with decision 13(d)); skill-conventions.test.ts asserts it (input from the M2 T2.3 review)
+    done: false

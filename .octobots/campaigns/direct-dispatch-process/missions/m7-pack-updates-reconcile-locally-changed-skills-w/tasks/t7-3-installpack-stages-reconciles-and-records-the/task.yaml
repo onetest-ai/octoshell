@@ -12,3 +12,5 @@ acceptance_criteria:
     done: false
   - text: apps/vscode-extension/test/pending-io-parity.test.ts parses every case of test/fixtures/pending-cases.json with pack-updates.ts and pending-io.mjs and asserts identical {packVersion, reconcile, kept}, and installPack over the malformed case replaces it from its own results (mission AC3); apps/vscode-extension/test/qa-install-pack.test.ts runs install-pack.mjs with the default, --local-changes=overwrite, =keep, --pack-version 58 and a --pack-root copy without a store on a temp workspace holding a `57-local` skill and asserts {before, deviations, result, after} and the stderr line (mission AC5); `pnpm test` and `pnpm coverage:pack` are green
     done: false
+  - text: Retiring a skill whose directory holds files the pack never shipped (e.g. .claude/skills/workflow-designer/my-notes.md) keeps those files in place, removes only the files the pack shipped for that skill, and reports the kept paths in the install result; apps/vscode-extension/test/octobots-skill.test.ts proves it (input from the M2 T2.3 review, 2026-10-05)
+    done: false
