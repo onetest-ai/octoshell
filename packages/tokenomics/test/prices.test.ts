@@ -1,4 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { costOfModel, loadPrices, unpricedModels, type PriceTable } from "../src/prices.js";
 import { emptyTotals } from "../src/types.js";
 
@@ -88,5 +93,55 @@ describe("pricing", () => {
     expect(cached.models["claude-sonnet-5-5"]?.input_cost_per_token).toBe(0.000002);
     expect(costOfModel(cached, "claude-opus-5-5", tokens({ input: 1e6, output: 1e6 }))).toBeCloseTo(4 + 20, 6);
     expect(unpricedModels(cached, ["claude-opus-5-5", "claude-sonnet-5-5"])).toEqual([]);
+  });
+});
+
+// scripts/update-prices.mjs, run for real with `fetch` stubbed and its output + seed redirected to a
+// temp dir (OCTOSHELL_PRICES_OUT / OCTOSHELL_PRICES_LOCAL), so the repo's prices.data.ts is never touched.
+describe("update-prices.mjs seed merge", () => {
+  const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "update-prices.mjs");
+  // Independent literals: upstream lists sonnet-x at 9e-6 and knows nothing of local-only.
+  const CATALOG = {
+    "claude-sonnet-x": { litellm_provider: "anthropic", mode: "chat", input_cost_per_token: 9e-6, output_cost_per_token: 45e-6 },
+  };
+
+  function run(seed: string | null) {
+    const dir = mkdtempSync(join(tmpdir(), "update-prices-"));
+    const stub = join(dir, "fetch-stub.mjs");
+    writeFileSync(stub, `globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => (${JSON.stringify(CATALOG)}) });\n`);
+    const seedFile = join(dir, "prices.local.json");
+    if (seed !== null) writeFileSync(seedFile, seed);
+    const out = join(dir, "prices.data.ts");
+    const r = spawnSync(process.execPath, ["--import", stub, SCRIPT], {
+      encoding: "utf8",
+      env: { ...process.env, OCTOSHELL_PRICES_OUT: out, OCTOSHELL_PRICES_LOCAL: seedFile },
+    });
+    return { r, seedFile, data: (() => { try { return readFileSync(out, "utf8"); } catch { return ""; } })() };
+  }
+
+  it("upstream wins when the seed lists the same model, and seed-only models are kept", () => {
+    const seed = JSON.stringify({ models: {
+      "claude-sonnet-x": { input_cost_per_token: 1e-6, output_cost_per_token: 2e-6 },
+      "local-only": { input_cost_per_token: 3e-6, output_cost_per_token: 4e-6 },
+    } });
+    const { r, data } = run(seed);
+    expect(r.status, r.stderr).toBe(0);
+    expect(data).toContain('"input_cost_per_token": 0.000009'); // upstream's sonnet-x, not the seed's 1e-6
+    expect(data).not.toContain('"input_cost_per_token": 0.000001');
+    expect(data).toContain('"local-only"');
+  });
+
+  it("a malformed seed is reported on stderr, naming the file and the parse error, and the refresh still succeeds", () => {
+    const { r, seedFile, data } = run("{");
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain(seedFile);
+    expect(r.stderr).toMatch(/JSON|Unexpected|Expected/i);
+    expect(data).toContain('"claude-sonnet-x"'); // upstream still written
+  });
+
+  it("a missing seed is not an error and prints no seed warning", () => {
+    const { r, seedFile } = run(null);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).not.toContain(seedFile);
   });
 });

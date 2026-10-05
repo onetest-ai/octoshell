@@ -20,10 +20,11 @@ import { fileURLToPath } from "node:url";
 const SOURCE =
   "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 const HERE = dirname(fileURLToPath(import.meta.url));
-const OUT = join(HERE, "..", "src", "prices.data.ts");
+// OCTOSHELL_PRICES_OUT / OCTOSHELL_PRICES_LOCAL redirect the two files for tests; unset in real use.
+const OUT = process.env.OCTOSHELL_PRICES_OUT ?? join(HERE, "..", "src", "prices.data.ts");
 // The pack's seed of models upstream does not list yet. Merged UNDER upstream below, so the
 // compiled-in table prices them too. The extension never reads a workspace's copy at runtime.
-const LOCAL = join(HERE, "..", "..", "..", "apps", "vscode-extension", "resources", "octobots-pack", "tokenomics", "prices.local.json");
+const LOCAL = process.env.OCTOSHELL_PRICES_LOCAL ?? join(HERE, "..", "..", "..", "apps", "vscode-extension", "resources", "octobots-pack", "tokenomics", "prices.local.json");
 const checkOnly = process.argv.includes("--check");
 
 /** The cost fields we keep, under upstream's own names. */
@@ -75,7 +76,13 @@ for (const id of Object.keys(catalog).sort()) {
 
 // Upstream wins wherever it has the same model.
 let local = {};
-try { local = JSON.parse(readFileSync(LOCAL, "utf8")).models ?? {}; } catch { /* no seed: nothing to merge */ }
+try {
+  local = JSON.parse(readFileSync(LOCAL, "utf8")).models ?? {};
+} catch (err) {
+  // No seed file is normal. A seed that exists but cannot be parsed is a hand-edit gone wrong: say so
+  // (the models in it would otherwise silently drop out of the compiled-in table).
+  if (err?.code !== "ENOENT") console.warn(`[tokenomics] ignoring unreadable seed ${LOCAL}: ${err.message}`);
+}
 const models = Object.fromEntries(Object.entries({ ...local, ...upstream }).sort(([a], [b]) => (a < b ? -1 : 1)));
 
 if (Object.keys(upstream).length === 0) {

@@ -42,6 +42,8 @@ const PRICES: PriceTable = {
   fetched_at: "2026-10-01",
   models: {
     cheap: { input_cost_per_token: 1e-6, output_cost_per_token: 2e-6, cache_read_input_token_cost: 1e-7 },
+    // A second model so per-model cost (costByModel / cost_by_model) is a real split, not a copy of the total.
+    dear: { input_cost_per_token: 5e-6, output_cost_per_token: 25e-6, cache_read_input_token_cost: 5e-7 },
   },
 };
 
@@ -118,6 +120,14 @@ function materialise(): string {
           cache_creation_5m_tokens: 0,
           cache_creation_1h_tokens: 0,
         },
+        dear: {
+          input_tokens: n * 200_000,
+          output_tokens: n * 30_000,
+          cache_read_input_tokens: n * 5,
+          cache_creation_input_tokens: 0,
+          cache_creation_5m_tokens: 0,
+          cache_creation_1h_tokens: 0,
+        },
       },
       tools: {},
     };
@@ -135,10 +145,10 @@ function installPackYaml(dir: string): void {
 }
 
 interface Totals { input: number; output: number; cacheRead: number; cacheCreate: number }
-interface NRow { target: string; branches: string[]; sessions: number; turns: number; tokens: Totals; costUsd: number }
+interface NRow { target: string; branches: string[]; sessions: number; turns: number; tokens: Totals; costByModel: Record<string, number>; costUsd: number }
 interface Normalised {
   rows: NRow[];
-  unattributed: { segments: number; turns: number; branches: string[]; tokens: Totals; costUsd: number };
+  unattributed: { segments: number; turns: number; branches: string[]; tokens: Totals; costByModel: Record<string, number>; costUsd: number };
   branchToTarget: Map<string, string>;
 }
 
@@ -146,6 +156,7 @@ interface MjsTokens { input: number; output: number; cache_read: number; cache_c
 interface MjsRow {
   work_item_level: string;
   tokens: MjsTokens;
+  cost_by_model: Record<string, number>;
   cost_api_equivalent_usd: number;
   sessions: number;
   turns: number;
@@ -165,7 +176,7 @@ function runMjs(dir: string): Normalised {
   execFileSync("node", [ROLLUP, "--project-dir", dir, "--no-gh", "--quiet"], { encoding: "utf8" });
   const out = JSON.parse(readFileSync(join(dir, ".octobots/tokenomics/runs.json"), "utf8")) as {
     runs: MjsRow[];
-    unattributed: { segments: number; turns: number; branches: string[]; tokens: MjsTokens; cost_api_equivalent_usd: number };
+    unattributed: { segments: number; turns: number; branches: string[]; tokens: MjsTokens; cost_by_model: Record<string, number>; cost_api_equivalent_usd: number };
   };
   const rows = out.runs.map((r): NRow => ({
     target:
@@ -176,6 +187,7 @@ function runMjs(dir: string): Normalised {
     sessions: r.sessions,
     turns: r.turns,
     tokens: mjsTotals(r.tokens),
+    costByModel: r.cost_by_model,
     costUsd: r.cost_api_equivalent_usd,
   }));
   const u = out.unattributed;
@@ -184,6 +196,7 @@ function runMjs(dir: string): Normalised {
     turns: u.turns,
     branches: u.branches,
     tokens: mjsTotals(u.tokens),
+    costByModel: u.cost_by_model,
     costUsd: u.cost_api_equivalent_usd,
   });
 }
@@ -211,10 +224,11 @@ function runTs(dir: string, prices: PriceTable): Normalised {
     sessions: r.sessions,
     turns: r.turns,
     tokens: tot(r.tokens),
+    costByModel: r.costByModel,
     costUsd: r.costUsd,
   }));
   const u = report.unattributed;
-  return finish(rows, { segments: u.segments, turns: u.turns, branches: u.branches, tokens: tot(u.tokens), costUsd: u.costUsd });
+  return finish(rows, { segments: u.segments, turns: u.turns, branches: u.branches, tokens: tot(u.tokens), costByModel: u.costByModel, costUsd: u.costUsd });
 }
 
 /** The same merged price table rollup.mjs builds: `prices.local.json` under `prices.json`. */
@@ -240,6 +254,22 @@ function segmentTotals(dir: string): Totals {
     }
   }
   return sum;
+}
+
+function segmentTotalsByModel(dir: string): Record<string, Totals> {
+  const out: Record<string, Totals> = {};
+  const lines = readFileSync(join(dir, ".octobots/tokenomics/raw/segments.jsonl"), "utf8").split("\n").filter((l) => l.trim());
+  for (const l of lines) {
+    const s = JSON.parse(l) as { tokens_by_model: Record<string, Record<string, number>> };
+    for (const [model, t] of Object.entries(s.tokens_by_model)) {
+      const sum = (out[model] ??= { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 });
+      sum.input += t.input_tokens ?? 0;
+      sum.output += t.output_tokens ?? 0;
+      sum.cacheRead += t.cache_read_input_tokens ?? 0;
+      sum.cacheCreate += t.cache_creation_input_tokens ?? 0;
+    }
+  }
+  return out;
 }
 
 function invariant(n: Normalised, dir: string): void {
@@ -269,6 +299,8 @@ describe("attribution parity: rollup.mjs and rollup.ts", () => {
 
   it("runs[] and unattributed are identical, campaign rows included", () => {
     expect(ts.rows.some((r) => r.target.startsWith("campaign:"))).toBe(true);
+    // Not vacuous: per-model cost is compared on the unattributed bucket too, over two models.
+    expect(Object.keys(mjs.unattributed.costByModel).sort()).toEqual(["cheap", "dear"]);
     expect(ts).toEqual(mjs);
   });
 
@@ -283,9 +315,13 @@ describe("attribution parity: rollup.mjs and rollup.ts", () => {
 });
 
 function segmentCost(dir: string): number {
-  const t = segmentTotals(dir);
-  const m = PRICES.models.cheap!;
-  return t.input * m.input_cost_per_token! + t.output * m.output_cost_per_token! + t.cacheRead * m.cache_read_input_token_cost!;
+  const t = { byModel: segmentTotalsByModel(dir) };
+  let usd = 0;
+  for (const [model, tt] of Object.entries(t.byModel)) {
+    const m = PRICES.models[model]!;
+    usd += tt.input * m.input_cost_per_token! + tt.output * m.output_cost_per_token! + tt.cacheRead * m.cache_read_input_token_cost!;
+  }
+  return usd;
 }
 
 /**
@@ -298,7 +334,7 @@ function mergeSharedIds(rows: NRow[]): Array<NRow & { rows: number }> {
   for (const r of rows) {
     const cur = out.get(r.target);
     if (!cur) {
-      out.set(r.target, { ...r, tokens: { ...r.tokens }, rows: 1 });
+      out.set(r.target, { ...r, tokens: { ...r.tokens }, costByModel: { ...r.costByModel }, rows: 1 });
       continue;
     }
     cur.rows += 1;
@@ -306,6 +342,7 @@ function mergeSharedIds(rows: NRow[]): Array<NRow & { rows: number }> {
     cur.turns += r.turns;
     cur.sessions += r.sessions;
     cur.costUsd += r.costUsd;
+    for (const [m, c] of Object.entries(r.costByModel)) cur.costByModel[m] = (cur.costByModel[m] ?? 0) + c;
     for (const k of ["input", "output", "cacheRead", "cacheCreate"] as const) cur.tokens[k] += r.tokens[k];
   }
   return [...out.values()];
@@ -435,6 +472,7 @@ describe("real board copy (OCTOBOTS_TOKENOMICS_COPY, else this repo's own .octob
       expect(t.tokens, t.target).toEqual(m.tokens);
       expect(Math.abs(t.costUsd - m.costUsd), t.target).toBeLessThanOrEqual(0.01 * t.rows);
       if (t.rows === 1) expect(t.sessions, t.target).toBe(m.sessions); // sessions are not summable across rows
+      if (t.rows === 1) expect(t.costByModel, t.target).toEqual(m.costByModel);
     });
   });
 });

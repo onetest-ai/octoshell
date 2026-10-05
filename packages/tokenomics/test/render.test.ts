@@ -40,7 +40,7 @@ const report = (over: Partial<Report> = {}): Report => ({
       ],
     },
   ],
-  unattributed: { segments: 1, turns: 5, branches: ["main"], tokens: emptyTotals(), costUsd: 2 },
+  unattributed: { segments: 1, turns: 5, branches: ["main"], tokens: emptyTotals(), costByModel: {}, costUsd: 2 },
   unpricedModels: [],
   ...over,
 });
@@ -75,7 +75,7 @@ describe("renderReportHtml", () => {
   it("raises unattributed spend above 10% as a finding", () => {
     // 10 of 50 total = 20%, past the threshold.
     const html = renderReportHtml(
-      report({ unattributed: { segments: 1, turns: 5, branches: ["main"], tokens: emptyTotals(), costUsd: 10 } }),
+      report({ unattributed: { segments: 1, turns: 5, branches: ["main"], tokens: emptyTotals(), costByModel: {}, costUsd: 10 } }),
     );
     expect(html).toMatch(/20% of spend is not attributable to a mission/);
   });
@@ -103,7 +103,7 @@ describe("renderReportHtml", () => {
     const html = renderReportHtml(
       report({
         runs: [],
-        unattributed: { segments: 0, turns: 0, branches: [], tokens: emptyTotals(), costUsd: 0 },
+        unattributed: { segments: 0, turns: 0, branches: [], tokens: emptyTotals(), costByModel: {}, costUsd: 0 },
       }),
     );
     expect(html).toContain("No gaps detected");

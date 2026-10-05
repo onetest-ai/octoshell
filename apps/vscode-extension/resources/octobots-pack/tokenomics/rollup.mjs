@@ -77,8 +77,13 @@ const pricing = JSON.parse(readFileSync(join(TOK_DIR, "prices.json"), "utf8"));
 {
   const localFile = join(TOK_DIR, "prices.local.json");
   if (existsSync(localFile)) {
-    const local = JSON.parse(readFileSync(localFile, "utf8"));
-    pricing.models = { ...(local.models ?? {}), ...pricing.models };
+    // Hand-edited, so it can be malformed: name the file and the error, then price from prices.json alone.
+    try {
+      const local = JSON.parse(readFileSync(localFile, "utf8"));
+      pricing.models = { ...(local.models ?? {}), ...pricing.models };
+    } catch (err) {
+      console.error(`tokenomics: WARNING ignoring ${localFile}: ${err.message}`);
+    }
   }
 }
 const unpriced = new Set();
@@ -964,6 +969,8 @@ const unattributedBucket = {
     cache_create: unattrTotals.cache_creation_input_tokens,
   },
   cost_api_equivalent_usd: round2(costOf(unattrByModel)),
+  // Per model, like the run rows, so `verify.mjs` can leave out models ccusage cannot price.
+  cost_by_model: Object.fromEntries(Object.entries(unattrByModel).map(([m, t]) => [m, round2(costOf({ [m]: t }))])),
 };
 
 const submission = {

@@ -129,6 +129,7 @@ export function rollup(opts: RollupOptions): Report {
       turns: unattributed.reduce((n, s) => n + s.turns, 0),
       branches: [...new Set(unattributed.map((s) => s.branch))].sort(),
       tokens: totalsOf(unattrByModel),
+      costByModel: Object.fromEntries(Object.entries(unattrByModel).map(([m, t]) => [m, round2(costOfModel(prices, m, t))])),
       costUsd: round2(costOf(prices, unattrByModel)),
     },
     unpricedModels: unpricedModels(prices, seenModels),

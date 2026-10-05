@@ -157,6 +157,8 @@ export interface Unattributed {
   turns: number;
   branches: string[];
   tokens: TokenTotals;
+  /** Priced per model, like a run row: `verify.mjs` drops the models ccusage cannot price. */
+  costByModel: Record<string, number>;
   costUsd: number;
 }
 

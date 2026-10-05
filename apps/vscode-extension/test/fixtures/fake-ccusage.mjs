@@ -8,6 +8,9 @@
 //   * Rows are keyed by PATH, not by the records' sessionId (emitted in `period`): `<slug>/<sid>.jsonl`
 //     and `<slug>/<sid>/subagents/*.jsonl` -> `<sid>`; any deeper file -> the name of the dir holding it,
 //     so a Workflow-tool agent at `<sid>/subagents/workflows/wf_<id>/a.jsonl` is its own `wf_<id>` row.
+//   * Each row carries `modelBreakdowns` (per model: tokens + `cost`), like the real binary.
+//     FAKE_CCUSAGE_ZERO_COST_MODELS=a,b makes those models cost $0 (ccusage's bundled price table
+//     predates e.g. claude-opus-5-5, so the real binary reports $0 for it) - totalCost follows.
 //   * FAKE_CCUSAGE_FAIL=1 exits 1 (a broken binary). FAKE_CCUSAGE_LOG appends {argv, CLAUDE_CONFIG_DIR, resolved}.
 import { appendFileSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -46,6 +49,7 @@ function* jsonl(dir) {
   }
 }
 
+const zeroCost = new Set((process.env.FAKE_CCUSAGE_ZERO_COST_MODELS ?? "").split(",").map((m) => m.trim()).filter(Boolean));
 const seen = new Set();
 const sessions = new Map();
 for (const projects of projectsDirs) {
@@ -71,9 +75,17 @@ for (const projects of projectsDirs) {
         s.outputTokens += u.output_tokens ?? 0;
         s.cacheCreationTokens += u.cache_creation_input_tokens ?? 0;
         s.cacheReadTokens += u.cache_read_input_tokens ?? 0;
-        s.totalCost +=
+        const cost = zeroCost.has(d.message.model) ? 0 :
           (u.input_tokens ?? 0) * PRICE.input + (u.output_tokens ?? 0) * PRICE.output +
           (u.cache_read_input_tokens ?? 0) * PRICE.cacheRead + (u.cache_creation_input_tokens ?? 0) * PRICE.cacheCreate;
+        s.totalCost += cost;
+        const mb = (s.modelBreakdowns ??= []).find((b) => b.modelName === d.message.model) ??
+          (s.modelBreakdowns.push({ modelName: d.message.model, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, cost: 0 }), s.modelBreakdowns.at(-1));
+        mb.inputTokens += u.input_tokens ?? 0;
+        mb.outputTokens += u.output_tokens ?? 0;
+        mb.cacheCreationTokens += u.cache_creation_input_tokens ?? 0;
+        mb.cacheReadTokens += u.cache_read_input_tokens ?? 0;
+        mb.cost += cost;
         sessions.set(id, s);
       }
     }

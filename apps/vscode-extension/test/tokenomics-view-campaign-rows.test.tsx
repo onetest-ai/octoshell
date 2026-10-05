@@ -41,7 +41,7 @@ const report = (runs: MissionRun[]): Report => ({
   agentTool: "claude-code",
   pricesFetchedAt: null,
   runs,
-  unattributed: { segments: 0, turns: 0, branches: [], tokens: emptyTotals(), costUsd: 0 },
+  unattributed: { segments: 0, turns: 0, branches: [], tokens: emptyTotals(), costByModel: {}, costUsd: 0 },
   unpricedModels: [],
 });
 

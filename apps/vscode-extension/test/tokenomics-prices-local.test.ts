@@ -98,6 +98,29 @@ describe("pack prices.local.json", () => {
     expect(rollupCost(repo, "claude-sonnet-5-5")).toBeCloseTo(9, 6);
   });
 
+  it("a malformed prices.local.json warns on stderr naming the file and the error, then prices from prices.json alone (B1)", () => {
+    const { repo, tok } = workspace();
+    const local = join(tok, "prices.local.json");
+    writeFileSync(local, "{");
+    // sonnet-4-5 is in the bundled prices.json; opus-5-5 only lived in the (now unreadable) seed.
+    const tokDir = join(repo, ".octobots", "tokenomics");
+    mkdirSync(join(tokDir, "raw"), { recursive: true });
+    const seg = (model: string) => JSON.stringify({
+      session_id: "s1", agent: "main", branch: "main", turns: 1,
+      started_at: "2026-01-01T00:00:00Z", ended_at: "2026-01-01T00:01:00Z",
+      tokens_by_model: { [model]: { input_tokens: 1_000_000 } },
+    });
+    writeFileSync(join(tokDir, "raw", "segments.jsonl"), seg("claude-sonnet-4-5") + "\n");
+    const r = spawnSync(process.execPath, [join(tok, "rollup.mjs"), "--project-dir", repo, "--no-gh", "--quiet"], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain(local);
+    expect(r.stderr).toMatch(/prices\.local\.json/);
+    expect(r.stderr).toMatch(/JSON|Unexpected|Expected/i);
+    expect(r.stderr).not.toMatch(/SyntaxError\s*\n\s+at /); // no uncaught stack trace
+    const runs = JSON.parse(readFileSync(join(tokDir, "runs.json"), "utf8"));
+    expect(runs.unattributed.cost_api_equivalent_usd).toBeCloseTo(3, 6); // 1M input x 3e-6, from prices.json
+  });
+
   it("is preserved byte-identical when the pack is re-installed over an edited copy", () => {
     const { repo, tok } = workspace();
     const target = join(tok, "prices.local.json");

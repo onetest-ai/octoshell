@@ -104,6 +104,15 @@ for (const line of readFileSync(segFile, "utf8").split("\n")) {
 }
 for (const r of d.runs ?? []) ours.cost += r.cost_api_equivalent_usd;
 ours.cost += d.unattributed?.cost_api_equivalent_usd ?? 0;
+// Our cost per model (runs + the unattributed bucket), keyed by the normalised model id, so the
+// models ccusage cannot price can be taken out of the cost comparison.
+const normModel = (m) => String(m).replace(/\[.*$/, "").replace(/-\d{8}$/, "");
+const oursCostByModel = {};
+for (const src of [...(d.runs ?? []), d.unattributed ?? {}]) {
+  for (const [m, c] of Object.entries(src.cost_by_model ?? {})) {
+    oursCostByModel[normModel(m)] = (oursCostByModel[normModel(m)] ?? 0) + c;
+  }
+}
 const vanished = [...collected].filter((id) => !S.has(id)).length;
 
 // ccusage side. Stage each present slug dir's parent as `<tmp>/r<i>/projects`: a symlink named
@@ -149,6 +158,7 @@ const cc = { input: 0, output: 0, cache_create: 0, cache_read: 0, cost: 0 };
 const parsed = JSON.parse(raw);
 const rows = parsed.session ?? parsed.sessions ?? parsed.data ?? [];
 let matched = 0;
+const ccByModel = {}; // normalised model -> { tokens, cost } over the rows in our population
 for (const r of rows) {
   if (!(S.has(r.period) || K.has(r.period)) || (r.agent && r.agent !== "claude")) continue;
   if (S.has(r.period)) matched++;
@@ -157,6 +167,29 @@ for (const r of rows) {
   cc.cache_create += r.cacheCreationTokens ?? 0;
   cc.cache_read += r.cacheReadTokens ?? 0;
   cc.cost += r.totalCost ?? 0;
+  for (const b of r.modelBreakdowns ?? []) {
+    const m = (ccByModel[normModel(b.modelName)] ??= { tokens: 0, cost: 0 });
+    m.tokens += (b.inputTokens ?? 0) + (b.outputTokens ?? 0) + (b.cacheCreationTokens ?? 0) + (b.cacheReadTokens ?? 0);
+    m.cost += b.cost ?? 0;
+  }
+}
+
+// A model ccusage reports tokens for but $0 cost is one it has no price for (its bundled table can
+// predate a model family). Cost over such a model says nothing about our collector, so it leaves
+// the cost gate; token lines are unaffected.
+const unpriced = Object.entries(ccByModel).filter(([, m]) => m.tokens > 0 && m.cost === 0).map(([k]) => k).sort();
+const pricedModels = Object.entries(ccByModel).filter(([, m]) => m.tokens > 0 && m.cost > 0);
+let costNote = null;
+let costGated = vanished === 0;
+if (unpriced.length > 0) {
+  if (pricedModels.length === 0) {
+    costGated = false;
+    costNote = `cost: info (ccusage has no price for ${unpriced.join(", ")})`;
+  } else {
+    // Compare over the priced models only: drop the unpriced models' cost from our total.
+    for (const u of unpriced) ours.cost -= oursCostByModel[u] ?? 0;
+    costNote = `cost: gated over priced models only (ccusage has no price for ${unpriced.join(", ")})`;
+  }
 }
 
 const oursTotal = ours.input + ours.output + ours.cache_create + ours.cache_read;
@@ -173,7 +206,7 @@ const fmt = (n) => n.toLocaleString("en-US");
 //              request per attempt rather than adding generation, so summing
 //              both double-counts. We count the top-level figure only.
 const GATED = [
-  ["cost (USD)", ours.cost, cc.cost, vanished === 0],
+  ["cost (USD)", ours.cost, cc.cost, costGated],
   ["total tokens", oursTotal, ccTotal, true],
   ["cache_read", ours.cache_read, cc.cache_read, true],
   ["cache_create", ours.cache_create, cc.cache_create, true],
@@ -196,6 +229,7 @@ for (const [name, o, c, gated] of GATED) {
 }
 
 console.log();
+if (costNote) console.log(`  ${costNote}\n`);
 if (vanished) console.log(`${vanished} session(s) in segments.jsonl are no longer on disk - cost not comparable (shown as info).\n`);
 if (failed) {
   console.log(`${failed} gated field(s) outside ${TOLERANCE}% — investigate the COLLECTOR first.`);
