@@ -9,7 +9,7 @@ import { OCTOBOTS_PACK_VERSION } from "../src/host/octobots-skill.js";
 const SCRIPT = fileURLToPath(new URL("../scripts/qa/install-pack.mjs", import.meta.url));
 const PACK = fileURLToPath(new URL("../resources/octobots-pack", import.meta.url));
 
-interface Status { installed: boolean; currentVersion: number; upToDate: boolean }
+interface Status { installed: boolean; currentVersion: number; upToDate: boolean; upToDateExceptLocal: boolean; deviations: unknown[]; newer: unknown[] }
 interface Report {
   before: Status;
   result: { written: number; hooksRegistered: boolean; statusline: string; tools: string };
@@ -26,10 +26,10 @@ describe("scripts/qa/install-pack.mjs", () => {
     const report = run([ws]);
 
     expect(Object.keys(report).sort()).toEqual(["after", "before", "result"]);
-    expect(report.before).toEqual({ installed: false, currentVersion: OCTOBOTS_PACK_VERSION, upToDate: false });
+    expect(report.before).toMatchObject({ installed: false, currentVersion: OCTOBOTS_PACK_VERSION, upToDate: false, upToDateExceptLocal: false });
     expect(report.result.written).toBeGreaterThan(0);
     expect(report.result.tools).toBe("skipped");
-    expect(report.after).toEqual({ installed: true, currentVersion: OCTOBOTS_PACK_VERSION, upToDate: true });
+    expect(report.after).toMatchObject({ installed: true, currentVersion: OCTOBOTS_PACK_VERSION, upToDate: true, deviations: [], newer: [] });
     expect(existsSync(join(ws, ".claude", "skills", "mission-planner", "SKILL.md"))).toBe(true);
   });
 

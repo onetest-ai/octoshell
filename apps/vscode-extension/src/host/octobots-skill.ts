@@ -6,18 +6,15 @@ import { installGraph, graphStatus } from "./octograph-install.js";
 import { installStatusline, registerStatusline, unregisterStatusline, statuslineStatus } from "./octobots-statusline.js";
 import { installTools, removeTools, toolsStatus } from "./octobots-tools.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
+import { OCTOBOTS_SKILLS, RETIRED_SKILLS } from "./pack-skills.js";
+import { detectDeviations, type Deviation, type ShippedStore } from "./pack-deviations.js";
+import { pendingReconcile } from "./pack-updates.js";
+import { parseSkillMarker } from "./skill-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
 export const OCTOBOTS_PACK_VERSION = 57;
 
-/** The skills the pack ships, by directory name under `skill/` and `.claude/skills/`. */
-export const OCTOBOTS_SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"] as const;
-
-/**
- * Skill dirs earlier pack versions installed that no longer exist. Removed on install so an
- * agent never sees a renamed skill twice (v18's `octobots` is now `mission-planner`).
- */
-const RETIRED_SKILLS = ["octobots", "workflow-designer"] as const;
+export { OCTOBOTS_SKILLS };
 
 /**
  * Files earlier pack versions installed that no longer exist. Removed on install, so an upgraded
@@ -56,21 +53,67 @@ export function parsePrimerVersion(text: string): number | null {
 }
 
 export interface PackStatus {
+  /** All payloads are present. A `57-local` skill counts as present; a skill new in this pack version may be missing. */
   installed: boolean;
   currentVersion: number;
+  /** Every skill is at the pack version with a stored hash or RECONCILED, and every other payload is current. */
   upToDate: boolean;
+  /**
+   * `upToDate`, except for deviations (pending, kept or unchosen) and newer skills. True whenever
+   * `upToDate` is: what is left to install is nothing, or only what the user's own changes block.
+   */
+  upToDateExceptLocal: boolean;
+  /** Skills whose SKILL.md differs from what the pack shipped, retired ones included. */
+  deviations: Deviation[];
+  /** Skills at `<N>+local` for this pack version, reconciled against the pack's current SKILL.md. */
+  reconciled: string[];
+  /** Skills staged for an agent to reconcile (`.octobots/pack-updates/pending.json`). */
+  pendingReconcile: string[];
+  /** Skills whose version is above the pack version. */
+  newer: string[];
 }
 
-/** Inspect the installed pack: installed only if all payloads exist; up-to-date only if all match. */
-export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERSION): PackStatus {
-  const skills = OCTOBOTS_SKILLS.map((s) => join(repoRoot, ".claude", "skills", s, "SKILL.md"));
+/** True when `store` lists `skill` at `version` and at no earlier version: the pack introduced it then. */
+function isNewInVersion(store: ShippedStore | null, skill: string, version: number): boolean {
+  if (!store || !store.versions[String(version)]?.[skill]) return false;
+  return Object.entries(store.versions).every(([v, per]) => Number(v) >= version || !per[skill]);
+}
+
+/**
+ * Inspect the installed pack: installed only if all payloads exist; up-to-date only if all match.
+ * `store` is the shipped-skills store (`loadShippedStore`); without it SKILL.md content cannot be
+ * checked, so an integer version up to the pack version is taken at its word.
+ */
+export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERSION, store: ShippedStore | null = null): PackStatus {
   const primer = join(repoRoot, ".octobots", "hooks", "primer.mjs");
-  if (skills.some((s) => !existsSync(s)) || !existsSync(primer)) {
-    return { installed: false, currentVersion, upToDate: false };
+  const report = detectDeviations(repoRoot, currentVersion, store);
+  const base = {
+    currentVersion,
+    deviations: report.deviations,
+    reconciled: report.reconciled,
+    pendingReconcile: pendingReconcile(repoRoot),
+    newer: report.newer,
+  };
+  const notInstalled = { installed: false, upToDate: false, upToDateExceptLocal: false, ...base };
+
+  // A missing skill that the pack introduced in this very version is "not yet installed", not a broken
+  // install; any other missing skill is a broken install.
+  const missingNew: string[] = [];
+  const markers = new Map<string, ReturnType<typeof parseSkillMarker> | null>();
+  for (const s of OCTOBOTS_SKILLS) {
+    const file = join(repoRoot, ".claude", "skills", s, "SKILL.md");
+    if (!existsSync(file)) {
+      if (!isNewInVersion(store, s, currentVersion)) return notInstalled;
+      missingNew.push(s);
+      continue;
+    }
+    let m: ReturnType<typeof parseSkillMarker> | null;
+    try { m = parseSkillMarker(readFileSync(file, "utf8")); } catch { m = null; }
+    // `57-local` and `57+local` count as present; only a file with no version line is unreadable.
+    if (m === null || m.kind === "none") return notInstalled;
+    markers.set(s, m);
   }
-  const skillVs = skills.map((s) => {
-    try { return parseVersion(readFileSync(s, "utf8")); } catch { return null; }
-  });
+  if (!existsSync(primer)) return notInstalled;
   let primerV: number | null;
   try { primerV = parsePrimerVersion(readFileSync(primer, "utf8")); } catch { primerV = null; }
   // Hooks being ABSENT is a legitimate choice (they are opt-in). Settings being UNREADABLE is not
@@ -83,9 +126,7 @@ export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERS
   // The tokenomics CLI is pack payload too: the mission gate is told to run it, so a pack without
   // it is incomplete, not merely missing an extra.
   const tokenomics = tokenomicsStatus(repoRoot, currentVersion);
-  if (skillVs.some((v) => v === null) || primerV === null || !tokenomics.present) {
-    return { installed: false, currentVersion, upToDate: false };
-  }
+  if (primerV === null || !tokenomics.present) return notInstalled;
   // Graph (octograph, M6) is opt-in via its own "Install Graph" command — a workspace that never
   // ran it must not be reported not-installed just because this optional payload is absent. Once
   // installed, though, staleness feeds the same `upToDate` verdict a stale skill/primer/tokenomics
@@ -95,11 +136,16 @@ export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERS
   // and re-prompt on every open. Once present, staleness feeds `upToDate` exactly as graph's does,
   // which is what lets an upgrade repair the duplicate entries older versions left behind.
   const graph = graphStatus(repoRoot, currentVersion);
-  const upToDate =
-    skillVs.every((v) => v === currentVersion) && primerV === currentVersion &&
-    claudeReadable && (!claude.present || claude.current) &&
+  const otherPayloadsCurrent =
+    primerV === currentVersion && claudeReadable && (!claude.present || claude.current) &&
     tokenomics.current && (!graph.present || graph.current);
-  return { installed: true, currentVersion, upToDate };
+  // A skill that is none of deviated, newer or reconciled is the pack's own file for SOME version:
+  // current only when that version is this one (an older pristine file is stale, a pack matter).
+  const local = new Set([...report.deviations.map((d) => d.skill), ...report.newer, ...report.reconciled]);
+  const stale = [...markers].filter(([s, m]) => !local.has(s) && !(m?.kind === "integer" && m.n === currentVersion));
+  const upToDateExceptLocal = otherPayloadsCurrent && stale.length === 0 && missingNew.length === 0;
+  const upToDate = upToDateExceptLocal && report.deviations.length === 0 && report.newer.length === 0;
+  return { installed: true, upToDate, upToDateExceptLocal, ...base };
 }
 
 /** Recursively copy a directory tree, counting files written. */

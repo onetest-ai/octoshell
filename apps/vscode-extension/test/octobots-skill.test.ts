@@ -10,6 +10,8 @@ import {
   packStatus,
 } from "../src/host/octobots-skill.js";
 import { registerClaudeHook, claudeHookStatus } from "../src/host/octobots-hooks.js";
+import { loadShippedStore, type ShippedStore } from "../src/host/pack-deviations.js";
+import { skillSha256 } from "../src/host/skill-marker.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
@@ -322,5 +324,111 @@ describe("tokenomics CLI install", () => {
     expect(readFileSync(join(dir, "worklog.jsonl"), "utf8")).toContain("T1.1");
     expect(readFileSync(join(dir, "runs.json"), "utf8")).toContain("kept");
     expect(readFileSync(join(dir, "prices.json"), "utf8")).toContain("refreshed");
+  });
+});
+
+describe("packStatus: deviations, reconciled and newer skills", () => {
+  const store = loadShippedStore(join(__dirname, "..", "resources", "shipped-skills.json.br"))!;
+  const skillPath = (repo: string, name: string) => join(repo, ".claude", "skills", name, "SKILL.md");
+  const relabel = (repo: string, name: string, label: string, extra = "") => {
+    const text = readFileSync(skillPath(repo, name), "utf8");
+    writeFileSync(skillPath(repo, name), text.replace(/^version:.*$/m, `version: ${label}${extra}`));
+  };
+  const installed = () => {
+    const repo = mkdtempClean("octobots-pack-");
+    installPack(PACK_SRC, repo);
+    return repo;
+  };
+
+  it("all pristine: upToDate and upToDateExceptLocal, nothing listed", () => {
+    const st = packStatus(installed(), OCTOBOTS_PACK_VERSION, store);
+    expect(st).toMatchObject({
+      installed: true, upToDate: true, upToDateExceptLocal: true,
+      deviations: [], reconciled: [], pendingReconcile: [], newer: [],
+    });
+  });
+
+  it("one deviation (solo's `57-local`): present, listed, upToDate false and upToDateExceptLocal true", () => {
+    const repo = installed();
+    relabel(repo, "mission-execution", "57-local");
+    const st = packStatus(repo, OCTOBOTS_PACK_VERSION, store);
+    expect(st.installed).toBe(true);
+    expect(st.upToDate).toBe(false);
+    expect(st.upToDateExceptLocal).toBe(true);
+    expect(st.deviations).toEqual([
+      { skill: "mission-execution", version: "57-local", reason: "label", retired: false, sha256: skillSha256(readFileSync(skillPath(repo, "mission-execution"), "utf8")) },
+    ]);
+  });
+
+  it("a kept content fork of a numeric-version file stays a deviation for as long as it differs", () => {
+    const repo = installed();
+    writeFileSync(skillPath(repo, "mission-planner"), readFileSync(skillPath(repo, "mission-planner"), "utf8") + "\nkept\n");
+    const st = packStatus(repo, OCTOBOTS_PACK_VERSION, store);
+    expect(st.deviations.map((d) => [d.skill, d.reason])).toEqual([["mission-planner", "content"]]);
+    expect([st.upToDate, st.upToDateExceptLocal]).toEqual([false, true]);
+  });
+
+  it("a reconciled skill is up to date and listed as reconciled", () => {
+    const repo = installed();
+    const current = skillSha256(readFileSync(skillPath(repo, "mission-completion-gate"), "utf8"));
+    relabel(repo, "mission-completion-gate", `${OCTOBOTS_PACK_VERSION}+local`, `\nreconciled-from: ${current}`);
+    const st = packStatus(repo, OCTOBOTS_PACK_VERSION, store);
+    expect(st.reconciled).toEqual(["mission-completion-gate"]);
+    expect(st.deviations).toEqual([]);
+    expect([st.installed, st.upToDate, st.upToDateExceptLocal]).toEqual([true, true, true]);
+  });
+
+  it("a newer skill is listed, not a deviation: upToDate false and upToDateExceptLocal true", () => {
+    const repo = installed();
+    relabel(repo, "mission-execution", `${OCTOBOTS_PACK_VERSION + 1}`);
+    const st = packStatus(repo, OCTOBOTS_PACK_VERSION, store);
+    expect(st.newer).toEqual(["mission-execution"]);
+    expect(st.deviations).toEqual([]);
+    expect([st.installed, st.upToDate, st.upToDateExceptLocal]).toEqual([true, false, true]);
+  });
+
+  it("a pristine skill of an older pack version is stale, which no local choice explains", () => {
+    const repo = installed();
+    const v56 = store.bodies[store.versions["56"]!["mission-execution"]![0]!]!;
+    writeFileSync(skillPath(repo, "mission-execution"), v56);
+    const st = packStatus(repo, OCTOBOTS_PACK_VERSION, store);
+    expect(st.deviations).toEqual([]);
+    expect([st.installed, st.upToDate, st.upToDateExceptLocal]).toEqual([true, false, false]);
+  });
+
+  it("a deviation does not hide a stale primer: upToDateExceptLocal needs every other payload current", () => {
+    const repo = installed();
+    relabel(repo, "mission-execution", "57-local");
+    const primer = join(repo, ".octobots", "hooks", "primer.mjs");
+    writeFileSync(primer, readFileSync(primer, "utf8").replace(/octobots-pack-version:\s*\d+/, "octobots-pack-version: 1"));
+    const st = packStatus(repo, OCTOBOTS_PACK_VERSION, store);
+    expect([st.installed, st.upToDate, st.upToDateExceptLocal]).toEqual([true, false, false]);
+  });
+
+  it("a skill the pack introduced in this version may be missing without making the pack not installed", () => {
+    const repo = installed();
+    rmSync(join(repo, ".claude", "skills", "knowledge-explorer"), { recursive: true });
+    const introducedNow: ShippedStore = { ...store, versions: Object.fromEntries(
+      Object.entries(store.versions).map(([v, per]) => {
+        if (Number(v) >= OCTOBOTS_PACK_VERSION) return [v, per];
+        const { "knowledge-explorer": _gone, ...rest } = per;
+        return [v, rest];
+      }),
+    ) };
+    const st = packStatus(repo, OCTOBOTS_PACK_VERSION, introducedNow);
+    expect([st.installed, st.upToDate, st.upToDateExceptLocal]).toEqual([true, false, false]);
+    // The same gap in a skill the pack shipped before is a broken install.
+    expect(packStatus(repo, OCTOBOTS_PACK_VERSION, store).installed).toBe(false);
+  });
+
+  it("reads pending reconciles through pack-updates (none until T7.3 stages any)", () => {
+    expect(packStatus(installed(), OCTOBOTS_PACK_VERSION, store).pendingReconcile).toEqual([]);
+  });
+
+  it("without a store it still reports installed and up to date for a pristine pack, and a label as a deviation", () => {
+    const repo = installed();
+    expect(packStatus(repo).upToDate).toBe(true);
+    relabel(repo, "mission-execution", "57-local");
+    expect(packStatus(repo).deviations.map((d) => d.skill)).toEqual(["mission-execution"]);
   });
 });

@@ -30,11 +30,12 @@
 // Every change to a pack SKILL.md is followed by `--write`, with the store committed in the same PR.
 // `--verify` runs in this package's `build` script, so a forgotten `--write` fails the build.
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { brotliCompressSync, brotliDecompressSync, constants as zc } from "node:zlib";
+
+import { skillSha256 } from "../resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXT_ROOT = join(HERE, "..");
@@ -59,9 +60,13 @@ export function readPackVersionFromSource(text = readFileSync(SKILL_SRC, "utf8")
   return Number(m[1]);
 }
 
-/** sha256 of a SKILL.md body with CRLF normalised to LF. */
+/**
+ * sha256 of a SKILL.md body with CRLF normalised to LF. The pack's skill-marker.mjs owns the rule
+ * (detection, doctor.js and validate.js hash with it too), so a stored key and a workspace hash
+ * can never be computed two ways.
+ */
 export function bodyHash(text) {
-  return createHash("sha256").update(normalise(text)).digest("hex");
+  return skillSha256(text);
 }
 
 const normalise = (text) => text.replace(/\r\n/g, "\n");
@@ -110,7 +115,7 @@ export function encodeStore(store) {
  */
 export function addBody(store, version, skill, text) {
   const body = normalise(text);
-  const hash = createHash("sha256").update(body).digest("hex");
+  const hash = skillSha256(body);
   let changed = false;
   if (!(hash in store.bodies)) {
     store.bodies[hash] = body;
