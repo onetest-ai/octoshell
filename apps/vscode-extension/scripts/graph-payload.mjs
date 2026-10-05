@@ -59,10 +59,7 @@ export const PAYLOAD_PATH =
 /**
  * Reads `OCTOBOTS_PACK_VERSION` out of `octobots-skill.ts` by regex, WITHOUT executing or
  * transpiling TypeScript: this script runs under bare `node`, as part of `pnpm build`, before the
- * extension's own TypeScript is ever compiled, so it cannot `import` that module. The same
- * technique `packages/board/src/workflow-meta.ts` uses to read a workflow script's
- * `export const meta` without running the script (brace-match the literal, evaluate only that) —
- * see its doc comment for the precedent this follows.
+ * extension's own TypeScript is ever compiled, so it cannot `import` that module.
  *
  * This IS a second spelling of one number, made visible and pinned rather than silent:
  * `test/graph-payload.test.ts` asserts this stays equal to the real, imported
