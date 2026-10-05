@@ -1,5 +1,4 @@
 import type { RpcClient } from "./rpc-client.js";
-import type { Workflow } from "@octoshell/board";
 
 /** Board-only webview API exposed on window.octoshell.
  * Declares only the namespaces actually wired to RPC calls.
@@ -19,13 +18,6 @@ export interface OctoshellExtApi {
   };
   mission: {
     get: (projectId: unknown, missionId: string) => Promise<unknown>;
-  };
-  workflows: {
-    list: (parent: { campaignId?: string; missionId?: string }) => Promise<Workflow[]>;
-    get: (workflowId: string) => Promise<Workflow | null>;
-    create: (name: string, parent: { campaignId?: string; missionId?: string }) => Promise<{ id: string; folderPath: string }>;
-    remove: (workflowId: string) => Promise<{ ok: true }>;
-    openScript: (workflowId: string) => Promise<{ ok: true }>;
   };
   settings: {
     getAppearance: () => Promise<unknown>;
@@ -52,13 +44,6 @@ export function createOctoshellShim(rpc: RpcClient): OctoshellExtApi {
     },
     mission: {
       get: (_p, missionId) => c("mission:get", { missionId }) as never,
-    },
-    workflows: {
-      list: (parent) => c("workflow:list", parent) as never,
-      get: (workflowId) => c("workflow:get", { workflowId }) as never,
-      create: (name, parent) => c("workflow:create", { name, ...parent }) as never,
-      remove: (workflowId) => c("workflow:delete", { workflowId }) as never,
-      openScript: (workflowId) => c("workflow:openScript", { workflowId }) as never,
     },
     settings: {
       getAppearance: () => c("settings:getAppearance", {}) as never,
