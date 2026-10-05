@@ -15,6 +15,7 @@ import { dirname, join, resolve } from "node:path";
 import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
 import { loadEntity, dumpEntity, type EntityFields, type EntityKind } from "../src/entity-schema.js";
 import { BoardModel } from "../src/board-model.js";
+import { readmeText, synthBoard, tcText, writeTests } from "./fixtures/tests-board.js";
 
 const SCRIPTS = resolve(
   __dirname,
@@ -518,7 +519,8 @@ describe("validate.js contract checks", () => {
   });
 
   describe("leftover workflows/ folders (the real-data shape: several at mission level, one with runs)", () => {
-    const warningLines = (out: string) => out.split("\n").filter((l) => l.startsWith("warning:"));
+    // Only the workflow warnings: a seeded mission with criteria and no tests/ folder also gets the tests-pairing one.
+    const warningLines = (out: string) => out.split("\n").filter((l) => l.startsWith("warning:") && l.endsWith("no longer read since pack v57"));
 
     function seedMissions(): { campaign: string; missions: string[]; ids: string[] } {
       const c = createCampaign(boardRoot, { name: "Octograph" });
@@ -1137,5 +1139,50 @@ describe("add-tests.js — scaffolding a mission's tests folder", () => {
     const { dir, campaign } = missionWith("M7 - Gate", ["x"]);
     runScript("add-tests.js", [dir], projectDir);
     expect(readFileSync(join(campaign, "tests", "m7", "README.md"), "utf8")).toContain("templates/TC-template.md");
+  });
+});
+
+// Mission AC2: a tests-pairing finding is a warning only; it never blocks `set-status.js ... done`.
+describe("set-status.js done on a mission with tests-pairing warnings", () => {
+  const warnings = (dir: string): string[] =>
+    runScript("validate.js", [dir], projectDir).split("\n").filter((l) => l.startsWith("warning: ") && l.includes("/tests/m1"));
+
+  it("succeeds on a mission with no tests README, and the mission is done afterwards", () => {
+    const c = synthBoard(boardRoot, [{ title: "M1 - Auth", acs: 2 }]);
+    expect(warnings(c.missionDirs.m1!)).toHaveLength(1);
+    const out = runScript("set-status.js", [c.campaignDir, "M1 - Auth", "done"], projectDir);
+    expect(out).toContain('octobots: status mission "M1 - Auth" draft -> done');
+    const m = board().listMissions(board().listCampaigns()[0]!.id)[0]!;
+    expect(m.status).toBe("done");
+    expect(warnings(c.missionDirs.m1!)).toHaveLength(1); // still reported, still not an error
+  });
+
+  it("succeeds with every kind of finding at once: unlinked README, uncovered AC, disagreeing map, malformed TC", () => {
+    const c = synthBoard(boardRoot, [{ title: "M1 - Auth", acs: 3, linked: false }]);
+    writeTests(c, "m1", {
+      "README.md": readmeText([["M1-AC1", "TC-001, TC-007"], ["M9-AC1", "TC-001"]]),
+      "TC-001_a.md": tcText(["id: TC-002", "covers: [M1-AC1, M1-AC8]", "kind: e2e"], "no sections\n"),
+      "TC-002_b.md": "---\ntitle: a: b\n---\n",
+    });
+    expect(warnings(c.missionDirs.m1!).length).toBeGreaterThanOrEqual(8);
+    for (const state of ["active", "awaiting approval", "failed", "draft", "done"]) {
+      runScript("set-status.js", [c.campaignDir, "M1 - Auth", state], projectDir);
+    }
+    expect(board().listMissions(board().listCampaigns()[0]!.id)[0]!.status).toBe("done");
+  });
+
+  it("leaves validate.js's exit code at what the entity alone produces, at every status", () => {
+    const c = synthBoard(boardRoot, [{ title: "M1 - Auth", acs: 2 }]);
+    for (const state of ["draft", "active", "done"]) {
+      runScript("set-status.js", [c.campaignDir, "M1 - Auth", state], projectDir);
+      expect(warnings(c.missionDirs.m1!)).not.toHaveLength(0); // execFileSync would throw on a non-zero exit
+    }
+  });
+
+  it("stops reporting once the mission is cancelled", () => {
+    const c = synthBoard(boardRoot, [{ title: "M1 - Auth", acs: 2 }]);
+    expect(warnings(c.missionDirs.m1!)).not.toHaveLength(0);
+    runScript("set-status.js", [c.campaignDir, "M1 - Auth", "cancelled"], projectDir);
+    expect(warnings(c.missionDirs.m1!)).toEqual([]);
   });
 });

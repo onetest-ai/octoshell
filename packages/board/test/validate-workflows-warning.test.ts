@@ -22,8 +22,11 @@ function packWarnings(campaignDir: string): string[] {
 
 /** validateBoard's warnings as the `warning: <message>` lines validate.js prints. */
 function boardWarnings(root: string): string[] {
-  return validateBoard(root).filter((f) => f.severity === "warning").map((f) => `warning: ${f.message}`);
+  return workflowWarnings(root).map((f) => `warning: ${f.message}`);
 }
+
+/** validateBoard's workflows/ warnings (the tests-pairing ones are checked by validate-tests-parity.test.ts). */
+const workflowWarnings = (root: string) => validateBoard(root).filter((f) => f.severity === "warning" && f.message.endsWith(SUFFIX));
 
 /** A campaign dir the board model (and validate.js) treats as one: it holds a campaign.yaml/.md. */
 const isEntityCampaign = (dir: string): boolean => existsSync(join(dir, "campaign.yaml")) || existsSync(join(dir, "campaign.md"));
@@ -69,13 +72,13 @@ function plantWorkflows(board: string): { planted: string[]; superseded: string[
 function expectBaselinePlusPlanted(board: string): void {
   // A real board copy (OCTOBOTS_BOARD_COPIES) may already hold leftover workflows/ folders, each a
   // correct warning. Take the baseline first, then expect exactly baseline + planted.
-  const baseline = validateBoard(board).filter((f) => f.severity === "warning").map((f) => f.message);
+  const baseline = workflowWarnings(board).map((f) => f.message);
   const { planted, superseded } = plantWorkflows(board);
   expect(planted.length).toBeGreaterThan(0);
   const gone = new Set(superseded.map((p) => `${p}: ${SUFFIX}`));
   const expected = [...baseline.filter((m) => !gone.has(m)), ...planted.map((p) => `${p}: ${SUFFIX}`)].sort();
   const findings = validateBoard(board);
-  const warnings = findings.filter((f) => f.severity === "warning");
+  const warnings = workflowWarnings(board);
   const messages = warnings.map((w) => w.message).sort();
   expect(messages).toEqual(expected); // exact: none from a dir that is no campaign, nothing pre-existing dropped
   expect(warnings.length).toBe(baseline.length - superseded.length + planted.length);
@@ -105,7 +108,7 @@ describe("validateBoard: leftover workflows/ folders", () => {
     const first = existsSync(missions) ? readdirSync(missions)[0] : undefined;
     expect(first).toBeDefined();
     mkdirSync(join(missions, first!, "workflows"), { recursive: true });
-    expect(validateBoard(board!).filter((f) => f.severity === "warning").map((f) => f.message)).toEqual(
+    expect(workflowWarnings(board!).map((f) => f.message)).toEqual(
       expect.arrayContaining([`${rel(board!, join(campaign, "workflows"))}: ${SUFFIX}`]),
     );
     expectBaselinePlusPlanted(board!);
@@ -146,7 +149,7 @@ describe("validateBoard: leftover workflows/ folders", () => {
     const dir = join(root, "campaigns", "stray");
     mkdirSync(join(dir, "missions", "m1", "workflows", "x"), { recursive: true });
     mkdirSync(join(dir, "workflows", "y"), { recursive: true });
-    expect(validateBoard(root).filter((f) => f.severity === "warning")).toEqual([]);
+    expect(workflowWarnings(root)).toEqual([]);
     const r = spawnSync("node", [VALIDATE_JS, dir], { encoding: "utf8" });
     expect(r.status).toBe(2);
     expect(r.stderr + r.stdout).toMatch(/no entity/);
@@ -156,7 +159,7 @@ describe("validateBoard: leftover workflows/ folders", () => {
   it("emits nothing for a board with no workflows/ folder", () => {
     const root = scratchDir("board-clean-");
     mkdirSync(join(root, "campaigns", "c1"), { recursive: true });
-    expect(validateBoard(root).filter((f) => f.severity === "warning")).toEqual([]);
+    expect(workflowWarnings(root)).toEqual([]);
   });
 
   it("keeps working when the board sits in <workspace>/.octobots", () => {
