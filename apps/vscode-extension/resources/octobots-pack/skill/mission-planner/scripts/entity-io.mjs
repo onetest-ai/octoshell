@@ -4,7 +4,7 @@
 // and status/role/severity/tokenomics living in the child's OWN file. Zero external install — it
 // imports only the vendored js-yaml bundle. Keep this in step with entity-schema.ts.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { load as yamlLoad, dump as yamlDump } from "./vendor/js-yaml.mjs";
 
@@ -302,4 +302,25 @@ export function entityName(dir, kind) {
 /** Directory entries (folder names) under `p`, or []. */
 export function childDirs(p) {
   return existsSync(p) ? readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name) : [];
+}
+
+/**
+ * Resolve the entity `set-status.js <parent-dir|entity.yaml> "<title>" <state>` acts on: the parent
+ * itself (campaign/mission self-status), else a child under missions/ | tasks/ | bugs/ whose name
+ * equals `title` case-insensitively. Returns `{ dir, kind }`, or null when nothing matches.
+ *
+ * The ONE title-matching rule: set-status.js writes through it and the PostToolUse hooks
+ * (mission-gate.mjs, work-log.mjs) verify through it, so a hook can never believe a flip landed on
+ * an entity the script did not touch.
+ */
+export function resolveStatusTarget(arg, title) {
+  const parentDir = statSync(arg).isDirectory() ? arg : dirname(arg);
+  const titleKey = String(title ?? "").trim().toLowerCase();
+  const candidates = [];
+  const self = resolveEntityFile(parentDir);
+  if (self) candidates.push({ dir: parentDir, kind: self.kind });
+  for (const [sub, kind] of [["missions", "mission"], ["tasks", "task"], ["bugs", "bug"]]) {
+    for (const slug of childDirs(join(parentDir, sub))) candidates.push({ dir: join(parentDir, sub, slug), kind });
+  }
+  return candidates.find((c) => entityName(c.dir, c.kind).toLowerCase() === titleKey) ?? null;
 }

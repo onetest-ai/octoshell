@@ -1,6 +1,6 @@
 ---
 name: mission-completion-gate
-description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. Runs the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
+description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. The orchestrator dispatches sub-agents (never the Workflow tool) for the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
 version: 57
 ---
 
@@ -29,11 +29,12 @@ done until this gate is green.
   criteria + spec only** — Sage is **never** handed the diff or the source, and
   **never reads the implementation**. Sage communicates with **Alex** (`ba`, to
   clarify criteria) and **Rio** (`tech-lead`, to hand off the verdict) — and with
-  no one else. No dev contact.
+  no one else, always through the orchestrator's relay. No dev contact.
 - **Rio challenges the devs.** In review, Rio (`tech-lead`) reviews the whole
-  branch diff, then **calls Py (`python-dev`) / Jay (`js-dev`) directly** and
-  challenges each of their decisions **against the acceptance criteria**
-  ("criterion N says X — your code does Y; defend it"). Devs justify or fix.
+  branch diff and challenges each dev decision **against the acceptance criteria**
+  ("criterion N says X — your code does Y; defend it"). Rio cannot call the devs
+  itself: it returns the questions, and the orchestrator relays them to Py
+  (`python-dev`) / Jay (`js-dev`) and brings back the answers. Devs justify or fix.
 - **A fixed finding is not a failed gate.** Rio remediates in-flight — fix, plus
   the regression test that would have caught it. Block on findings that are
   **still open**, never on the mere existence of findings; then have Sage
@@ -53,129 +54,75 @@ done until this gate is green.
 - **Merge/complete only on green.** Trust-but-verify substantive fixes in the
   merged code afterward.
 
-## The gate (one Workflow, phases with structured handoffs)
+## The gate (orchestrator dispatches one sub-agent per phase)
 
-Run this as a single `Workflow`. Pass the mission id, its acceptance criteria
-(from the board) and the mission's **base branch** as `args` — the base is the branch
-the mission was cut from (a campaign branch, else `main`); it defaults to `main` when
-omitted. Phases:
+**Do not use the `Workflow` tool for this gate.** The orchestrator (main loop) runs the phases
+itself, dispatching each one with the `Agent` tool **in the foreground, one at a time**, and reading
+each verdict before deciding the next step. Collect the inputs first:
 
-1. **Tests + coverage** — Py/Jay run the project's mechanical gate: linters,
-   type-checks and full suites green **and** new-code coverage at or above the
-   project's threshold (80% unless the project sets its own). Red → back to the dev,
-   bounded fix loop, re-run. Structured result: `{green, coveragePct, failures}`.
-   Where octograph is installed, `impact --diff`'s `tests that historically move with this`
-   section feeds this question directly — a suggested test absent from the coverage run is
-   worth a look before calling coverage sufficient.
-2. **QA — black-box (Sage)** — input is **only** the mission's acceptance criteria
-   + the BA spec. Sage checks each criterion as pass/fail with observable
-   evidence (behavior, endpoints, artifacts), **without reading code**. Ambiguity
-   → Sage asks **Alex**. Output: per-criterion verdict → handed to **Rio**.
-3. **Critical review (Rio)** — Rio reviews `git diff <base>...HEAD` — where `<base>` is the
-   branch the mission was cut from (the campaign branch when it lands atomically, else `main`),
-   the **same base the coverage step measures against** — with a security
-   lens, then interrogates Py/Jay against the criteria. Rio **fixes each blocking
-   finding in place + adds the regression test that would have caught it**, and
-   returns `{fixed:[…], stillOpen:[…], nits:[…]}`. Block on `stillOpen` only —
-   then Sage re-verifies the criteria those fixes touched (still black-box),
-   because a fix changed the code *after* Sage signed off on it.
-4. **Tokenomics capture (non-blocking)** — run
-   `node .octobots/tokenomics/run.mjs` and commit the refreshed
-   `.octobots/tokenomics/` artifacts (`raw/segments.jsonl`, `runs.json`,
-   `report.html`). See § *Tokenomics capture* below. **Never blocks**: this is
-   analytics, and the gate must not fail a correct mission over it.
-5. **Merge / complete** — only when 1–3 are all green. Then check off the
-   mission-level acceptance criteria on the board and mark it `done` for real.
-   **Post the gate results** (suites + coverage %, black-box QA per-criterion
-   verdict, review outcome) wherever the project mirrors its missions — a GitHub
-   issue, a Jira ticket, or the mission's own `description` field if there is no
-   external tracker. Each gate run appends its outcome, so the mission carries
-   its verification history. See `mission-planner` (§ *External systems*).
+- the mission id and its acceptance criteria, read from the board with `show.js <mission-dir>`;
+- the **base branch**, which is the branch the mission was cut from (a campaign branch, otherwise `main`);
+- the mission feature branch, checked out in the one working tree.
 
-### Workflow template
+Dispatch rules are those of `mission-execution` § *Dispatch rules*:
+- pass `model:` explicitly (`sonnet` for tests and QA, `opus` for review);
+- pin the cwd and scope searches to the subproject;
+- run long commands in the foreground with `timeout: 600000`;
+- end every brief with a required JSON verdict block, and treat a missing or unparseable verdict as **BLOCKED**.
 
-```
-export const meta = {
-  name: 'mission-completion-gate',
-  description: 'Blocking mission gate: tests+coverage, black-box QA, critical review, merge on green',
-  phases: [
-    { title: 'Tests+Coverage' }, { title: 'QA' }, { title: 'Review' },
-    { title: 'Tokenomics' }, { title: 'Complete' },
-  ],
-}
-// baseBranch = the branch this mission was cut from: the campaign branch when the
-// campaign lands atomically, else `main`. The review diffs against it (three-dot from
-// `main` would sweep in prior missions already merged into the campaign branch).
-// `args` arrives as a JSON STRING, not an object — parse it once. Destructuring
-// the raw global gives `undefined` for every field, and `baseBranch` then falls
-// through to 'main' SILENTLY: the whole-mission review diffs against the wrong
-// range and reports a clean gate. See workflow-designer § Body constraints.
-const ARGS = typeof args === 'string' ? JSON.parse(args || '{}') : (args || {})
-const { missionId, criteria, baseBranch = 'main' } = ARGS   // criteria: [{id, text}]
+Sub-agents cannot spawn sub-agents. Every "Sage asks Alex" or "Rio challenges Py" exchange is
+therefore a **relay done by the orchestrator**: the agent returns its questions, the orchestrator
+dispatches the addressee with them, and then hands the answers back in a follow-up dispatch.
 
-phase('Tests+Coverage')
-const tests = await agent(
-  `Run the project's mechanical gate for mission ${missionId}. Report suites green ` +
-  `and the new-code coverage %. If red or below threshold, fix (TDD) and re-run.`,
-  { agentType: 'python-dev', phase: 'Tests+Coverage', schema: TESTS_SCHEMA })
-if (!tests.green || tests.coveragePct < 80) return { blocked: 'tests/coverage', tests }
+1. **Tests + coverage**: dispatch `python-dev` or `js-dev`, whichever owns the changed code
+   (`model: sonnet`). It runs the project's mechanical gate (linters, type-checks, full suites) and
+   reports new-code coverage on changed lines vs `<base>`. The threshold is 80% unless the project
+   sets its own. If the result is red, the same agent gets one bounded fix round, then re-runs.
+   Verdict: `{"green":bool,"coveragePct":n,"failures":[…],"blocked":bool}`.
+   **Green means 0 failed, 0 xfailed or todo, and no skip without a stated environmental reason.** An
+   `xfail`, a `todo` or a bare `skip` is a parked defect, not a pass. It is fixed where the error
+   actually is, in code or in the test, before the gate goes green, unless the user explicitly signs
+   it off.
+   Run the full suite on the project's **fast lane** and run coverage **once, on the coverage lane
+   only**. Read the project's declared test lanes (`AGENTS.md § Test lanes`; where a project has not
+   declared them yet, use the project's documented commands in its `CLAUDE.md` / `AGENTS.md`). Brief
+   the agents with those commands by name, never with a command of your own.
+   Where octograph is installed, `impact --diff`'s `tests that historically move with this` section
+   feeds this question directly. A suggested test that the coverage run never exercised is worth a
+   look before calling coverage sufficient.
+2. **QA, black-box (Sage)**: dispatch `qa-engineer` (`model: sonnet`). Its input is **only** the
+   mission's acceptance criteria and the BA spec. **Never** pass it the diff, file paths, or source.
+   For each criterion, Sage records pass or fail with observable evidence (behaviour, endpoints,
+   artifacts) and **names the pre-existing record that backed it**, where the project's `CLAUDE.md` /
+   `AGENTS.md` asks for one. If a criterion is ambiguous, Sage returns `questions_for_ba`. The orchestrator dispatches `ba` with those
+   questions, then re-dispatches Sage with the answers. Verdict:
+   `{"criteria":[{"n":1,"pass":bool,"evidence":"…","record":"…"}],"questions_for_ba":[…]}`.
+3. **Critical review (Rio)**: dispatch `tech-lead` (`model: opus`) with Sage's verdict, the
+   criteria, and the range `git diff <base>...<mission-branch>`. The coverage step measured against
+   the same base. Rio reviews with a security lens, walks each criterion to the code that implements
+   it, and **fixes each blocking finding in place, adding the regression test that would have caught
+   it**. Define "blocking" in the brief: an AC demonstrably unmet, a reproducible defect, or a
+   security exposure with a PoC. To challenge a dev's decision, Rio returns `questions_for_devs`. The
+   orchestrator dispatches `python-dev` or `js-dev` with them, then re-dispatches Rio once with the
+   answers. Verdict: `{"fixed":[{"criterion":n,…}],"stillOpen":[…],"nits":[…],"questions_for_devs":[…]}`.
+   **Block on `stillOpen` only.** If `fixed` is non-empty, re-dispatch Sage on **only the affected
+   criteria**, still black-box: a fix changed the code after Sage signed off.
+   Allow one review round and one fix round. Residue beyond that is filed as board bugs with an owner.
+4. **Tokenomics capture (non-blocking)**: dispatch a general-purpose agent (`model: sonnet`), or run
+   it in the main loop, since it is two commands with no judgment involved:
+   `node .octobots/tokenomics/run.mjs` and `node .octobots/tokenomics/backfill-worklog-sha.mjs`.
+   Report this mission's `runs.json` row and whether its authored sizing is present. Commit the
+   refreshed `.octobots/tokenomics/` artifacts. See § *Tokenomics capture* below. **Never blocks.**
+5. **Merge / complete**: only when phases 1–3 are all green. Then check off the mission-level
+   acceptance criteria on the board and leave the mission `done`. **Post the gate results** (suites
+   and coverage %, the black-box QA verdict per criterion with its backing record, the review
+   outcome) wherever the project mirrors its missions: a GitHub issue, a Jira ticket, or the
+   mission's own `description` field if there is no external tracker. Each gate run appends its
+   outcome, so the mission carries its verification history. See `mission-planner`
+   (§ *External systems*).
 
-phase('QA')  // BLACK-BOX: criteria only, never the diff
-const qa = await agent(
-  `You are QA (Sage). Verify mission ${missionId} against ONLY these acceptance ` +
-  `criteria — do NOT read the implementation/diff:\n${JSON.stringify(criteria)}\n` +
-  `For each: pass/fail + observable evidence. Ambiguity → note a question for Alex (BA). ` +
-  `Report to Rio (tech-lead).`,
-  { agentType: 'qa-engineer', phase: 'QA', schema: QA_SCHEMA })
-if (qa.criteria.some(c => !c.pass)) return { blocked: 'qa', qa }
-
-phase('Review')
-const review = await agent(
-  `You are Rio (tech-lead). Review \`git diff ${baseBranch}...HEAD\` for ${missionId} with a ` +
-  `security lens, then challenge Py/Jay's decisions against each acceptance criterion. ` +
-  `Fix each blocking finding yourself, add the regression test that would have caught it, ` +
-  `re-run the suites green, and push. Report findings as fixed vs still-open.`,
-  { agentType: 'tech-lead', phase: 'Review', schema: REVIEW_SCHEMA })
-
-// Gate on what is STILL OPEN, not on whether anything was found. A finding that Rio found,
-// fixed and regression-tested is the gate working — failing the mission for it would punish
-// the review for doing its job, and (worse) train the next reviewer to report less.
-if (review.stillOpen.length) return { blocked: 'review', review }
-
-// A fix changes the code AFTER Sage signed off, so Sage's verdict no longer covers it.
-// Re-verify the affected criteria only — still black-box, still no diff, no source.
-if (review.fixed.length) {
-  const affected = [...new Set(review.fixed.map(f => f.criterion).filter(Boolean))]
-  const recheck = await agent(
-    `You are Sage. You already passed these criteria, then the tech lead fixed blocking defects ` +
-    `in the code you verified. Re-verify ONLY these against the FIXED build, still black-box — ` +
-    `do not read src/ or the diff:\n${JSON.stringify(affected)}\n` +
-    `For each defect, prove the specific failure it describes can no longer occur.`,
-    { agentType: 'qa-engineer', phase: 'Review', schema: QA_SCHEMA })
-  if (recheck.criteria.some(c => !c.pass)) return { blocked: 'qa-recheck', recheck }
-}
-
-phase('Tokenomics')   // non-blocking: analytics never fails a green mission
-const tokenomics = await agent(
-  `Run \`node .octobots/tokenomics/run.mjs\` at the repo root, then report the row ` +
-  `for mission ${missionId} from .octobots/tokenomics/runs.json (cost, tokens, turns, ` +
-  `dispatches, net_loc) and whether its authored sizing (effort_days/size_tshirt) is ` +
-  `present. Also run \`node .octobots/tokenomics/backfill-worklog-sha.mjs\` — it fills a ` +
-  `merge SHA into worklog entries whose branch \`gh pr merge --delete-branch\` already ` +
-  `deleted, which octograph's \`own\`/\`conflicts\` need for provenance-mode task<->file ` +
-  `attribution; it detects octograph and skips cleanly when the workspace doesn't have it. ` +
-  `Report how many entries it filled. Commit the refreshed .octobots/tokenomics/ artifacts, ` +
-  `including worklog.jsonl if the backfill changed it. If anything fails, report it and ` +
-  `continue — do NOT block.`,
-  { phase: 'Tokenomics', schema: TOKENOMICS_SCHEMA })
-
-phase('Complete')
-return { blocked: null, tests, qa, review, tokenomics }
-```
-
-Define `TESTS_SCHEMA` / `QA_SCHEMA` / `REVIEW_SCHEMA` / `TOKENOMICS_SCHEMA` inline as small JSON Schemas
-(see `mission-execution` for the handoff-schema style). On `blocked`, relay the
-findings, drive the fix loop, and re-run — do not leave the mission `done`.
+When any phase is blocked, relay the findings, have the right dev fix them, and re-run from the
+blocked phase. Do not leave the mission `done` on a red gate.
 
 ## Tokenomics capture (phase 4)
 
@@ -263,8 +210,8 @@ failure by design; pass `--strict` only when running it by hand to debug.
 
 ## Companions
 
-- **`mission-execution`** — the mission loop this gate sits on top of (one Workflow per mission,
-  tasks sequenced inside it); same role model (Rio/Py/Jay/Sage/Alex/Max) and review machinery.
+- **`mission-execution`** — the mission loop this gate sits on top of (the orchestrator dispatches
+  plan/build/review/QA sub-agents per task); same role model (Rio/Py/Jay/Sage/Alex/Max) and review machinery.
 - **`knowledge-explorer`** — Sage uses it in phase 2 to size the risk surface: which paths the
   change is historically coupled to, and which of those the QA pass has not touched.
 - **`code-review` / `requesting-code-review`** — the review mechanics Rio uses in

@@ -23,6 +23,7 @@
 //
 // DESIGN RULES
 //   * Inert unless it recognises a status flip — exits 0 on all other Bash calls.
+//   * Logs a flip only once the target's YAML shows the requested status (status-flip.mjs).
 //   * Self-gates on `.octobots/`, so it does nothing in a non-Octobots repo.
 //   * Writes only; emits nothing on stdout and never influences the agent.
 //   * Never fails the tool call. A work log is analytics; analytics must not
@@ -30,6 +31,7 @@
 import { existsSync, appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
+import { parseSetStatusAll, statusNowEquals } from "./status-flip.mjs";
 
 const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.env.OCTOBOTS_PROJECT_DIR ?? process.cwd();
 if (!existsSync(join(projectDir, ".octobots"))) process.exit(0);
@@ -40,49 +42,38 @@ async function slurpStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-/** Tokenize a shell command respecting single/double quotes. */
-function tokenize(cmd) {
-  const out = [];
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  let m;
-  while ((m = re.exec(cmd)) !== null) out.push(m[1] ?? m[2] ?? m[3]);
-  return out;
-}
-
-/** Find a `set-status.js <board> <title> <state>` call in a (possibly chained) command. */
-function parseSetStatus(command) {
-  for (const seg of command.split(/&&|;|\|\|/)) {
-    const toks = tokenize(seg.trim());
-    const idx = toks.findIndex((t) => t.endsWith("set-status.js"));
-    if (idx === -1) continue;
-    const a = toks.slice(idx + 1).filter((t) => !t.startsWith("-"));
-    if (a.length < 3) continue;
-    return { title: a[a.length - 2], state: a[a.length - 1] };
-  }
-  return null;
-}
-
 let evt;
 try {
   evt = JSON.parse(await slurpStdin());
 } catch {
   process.exit(0);
 }
+if (!evt || typeof evt !== "object") process.exit(0);
 
 if ((evt.tool_name ?? evt.toolName) !== "Bash") process.exit(0);
-const command = (evt.tool_input ?? evt.toolInput ?? {}).command ?? "";
-if (!command.includes("set-status.js")) process.exit(0);
+const command = (evt.tool_input ?? evt.toolInput ?? {})?.command;
+if (typeof command !== "string" || !command.includes("set-status.js")) process.exit(0);
 
-const parsed = parseSetStatus(command);
-if (!parsed) process.exit(0);
+const sessionId = evt.session_id ?? evt.sessionId ?? null;
+if (!sessionId) process.exit(0);
 
 // Tasks (`T<m>.<n>`) and missions (`M<n>`). Task links are what branch
 // inference gets wrong most often; mission links make the session -> mission
-// join a recorded fact too, rather than depending on branch naming.
-const taskId = parsed.title.match(/^(T\d+\.\d+)\b/)?.[1] ?? null;
-const missionId = taskId ? null : (parsed.title.match(/^(M\d+)\b/)?.[1] ?? null);
-if (!taskId && !missionId) process.exit(0);
-if (!["active", "done"].includes(parsed.state)) process.exit(0);
+// join a recorded fact too, rather than depending on branch naming. Every call
+// in a chained command counts (`… "T1.3 - …" done && … "M1 - …" done`).
+const flips = [];
+for (const call of parseSetStatusAll(command)) {
+  const taskId = call.title.match(/^(T\d+\.\d+)\b/)?.[1] ?? null;
+  const missionId = taskId ? null : (call.title.match(/^(M\d+)\b/)?.[1] ?? null);
+  if (!taskId && !missionId) continue;
+  if (!["active", "done"].includes(call.state)) continue;
+  // Log only a flip that landed: re-read the target's YAML and require its status to be the one asked
+  // for. `set-status.js … "M9 - no such mission" active; echo` exits 0 but writes nothing, and logging
+  // it would attribute this session's planning to a mission it never started.
+  if (!(await statusNowEquals(call, typeof evt.cwd === "string" ? evt.cwd : projectDir, projectDir))) continue;
+  flips.push(taskId ? { task: taskId, state: call.state } : { mission: missionId, state: call.state });
+}
+if (flips.length === 0) process.exit(0);
 
 let branch = null;
 try {
@@ -95,21 +86,13 @@ try {
   // Detached HEAD, or not a git repo — the session id alone still links the work.
 }
 
-const sessionId = evt.session_id ?? evt.sessionId ?? null;
-if (!sessionId) process.exit(0);
-
 try {
   const dir = join(projectDir, ".octobots", "tokenomics");
   mkdirSync(dir, { recursive: true });
+  const at = new Date().toISOString();
   appendFileSync(
     join(dir, "worklog.jsonl"),
-    JSON.stringify({
-      session_id: sessionId,
-      ...(taskId ? { task: taskId } : { mission: missionId }),
-      state: parsed.state,
-      branch,
-      at: new Date().toISOString(),
-    }) + "\n",
+    flips.map((f) => JSON.stringify({ session_id: sessionId, ...f, branch, at }) + "\n").join(""),
   );
 } catch {
   // Never fail the tool call over analytics.

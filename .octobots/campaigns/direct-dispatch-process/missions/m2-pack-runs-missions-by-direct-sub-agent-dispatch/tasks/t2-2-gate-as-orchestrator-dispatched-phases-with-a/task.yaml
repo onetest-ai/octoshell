@@ -1,11 +1,42 @@
 name: T2.2 - Gate as orchestrator-dispatched phases with a stopping rule
-status: draft
+status: done
 role: js-dev
 description: 'Scope: replace pack gate :56-138,265-266 with solo''s version, generalised (solo :85-86). Update hooks/mission-gate.mjs:79-101 directive (phases 1-3 match the skill; relay wording) and the stale :8-12 ''git pre-commit hook (Layer 1)'' comment. Make hooks/mission-gate.mjs and hooks/work-log.mjs:85 re-read the target''s YAML (resolved the way set-status.js resolves <parent-dir> + title) and act only when its status now equals the requested state (mission AC8). Out of scope: TCs. Downstream: M4 T4.4 adds the TC run to phase 2; M5''s refused starts rely on AC8.'
 acceptance_criteria:
   - text: apps/vscode-extension/test/skill-conventions.test.ts asserts the gate skill states the 5 dispatched phases, the blocking definition, one review + one fix round with residue filed as board bugs, the green definition, and coverage on the coverage lane only (mission AC6)
-    done: false
+    done: true
   - text: apps/vscode-extension/test/octobots-mission-gate.test.ts pipes a real `set-status.js <campaign-dir> "M1 - ..." done` PostToolUse JSON into mission-gate.mjs and asserts relay wording and no 'directly' (mission AC7); `pnpm coverage:pack` passes
-    done: false
+    done: true
   - text: apps/vscode-extension/test/octobots-mission-gate.test.ts and apps/vscode-extension/test/octobots-work-log.test.ts each feed a `set-status.js <campaign-dir> "M9 - no such mission" done; echo` command (exit 0 overall, no write) and assert no directive is printed and no work-log line is written; the same command for an existing mission whose YAML changed still acts (mission AC8)
-    done: false
+    done: true
+notes: |
+  ## QA verification
+
+  **Verdict: PASS.** PR #121 (feat/direct-dispatch-process-m2-t2 -> feat/direct-dispatch-process-m2), head 90eb5a1. CI `build` checks: pass (both runs). Every claim below re-verified from scratch, not taken from the dev or review.
+
+  **Records checked against:** solo's fork /Users/arozumenko/Development/auqanautica/.claude/skills/mission-completion-gate/SKILL.md (read only), sha256 16dd44681852db1eadf4ce8f3fa137cc50988236445a82cd5c441ed8d9a3e5ab (version: 57-local). Shipped pack text sha256 bdb85a45814b01b420477ce3c383a2a9c2275ea30b8b7da4db605edd20bedc03 (version: 57). Diff vs solo is only the generalisations: project-declared test lanes instead of `make edgeserver-*`, `CLAUDE.md`/`AGENTS.md` for the record rule, the real transcript roots (`~/.claude/projects`, `$CLAUDE_CONFIG_DIR/projects`, legacy repo-local), campaign rows in the runs.json line, "0 xfailed or todo", and wording of the dispatch-rules pointer.
+
+  **Blind probes on the shipped hooks** (pack hooks/ copied to <ws>/.octobots/hooks, skill/mission-planner to <ws>/.claude/skills; board built with add-campaign/add-mission/add-task/set-criterion; each command REALLY run, then PostToolUse JSON + CLAUDE_PROJECT_DIR piped to mission-gate.mjs and work-log.mjs):
+  - Real `set-status.js <campaign-dir> "M1 - y" done`: directive printed (2344 bytes), uses relay wording, 0 matches for "directly"; work-log wrote `{"mission":"M1","state":"done"}`.
+  - `... "M9 - no such mission" done; echo`: set-status reported no entity, shell exit 0; both hooks exit 0, stdout 0 bytes, stderr 0 bytes, no worklog line, no yaml changed.
+  - Chained `... "T1.1 - x" active && ... "M1 - y" done`: gate fires for M1; work-log wrote both lines (T1.1 active, M1 done).
+  - Title `M2 - semi; colon "q" 'x' && z`: parsed as one argument; gate fired for that exact title; worklog M2 done.
+  - SECURITY PoC: planted <scratch>/evil/entity-io.mjs (writes POC_MARKER) + empty evil/set-status.js; piped `echo <scratch>/evil/set-status.js <ws-campaign-dir> "M1 - y" done`: marker NOT created. Variant with a relative `evil2/set-status.js` inside the cwd: marker NOT created. Positive control: the same payload against the pre-fix hooks from 9d60f06 DID create the marker, so the probe is capable of detecting the hole.
+  - Command with no set-status.js (`ls -la`): silent, whole probe ~0.05s.
+  - Payloads null, `garbage{`, empty, `[]`, `123`, no tool_input, tool_input null, non-string command, cwd 5, `set-status.js a b`: all exit 0, stdout 0, stderr 0 for both hooks.
+
+  **Blind read of shipped gate SKILL.md:** 5 dispatched phases (tests+coverage, black-box QA, Rio review, tokenomics non-blocking, merge/complete), orchestrator uses the Agent tool in the foreground and never Workflow; relays Sage-Alex and Rio-devs exchanges; "blocking" = AC demonstrably unmet, reproducible defect, or security exposure with a PoC; block on stillOpen only; one review round plus one fix round, residue filed as board bugs with an owner; green = 0 failed, 0 xfailed or todo, no skip without a stated environmental reason; coverage once on the coverage lane only, lanes read from AGENTS.md/CLAUDE.md; M1 transcript roots present. No project-specific commands.
+
+  **Suites (fresh, root, foreground):** pnpm build && typecheck && lint && test && coverage:pack exit 0. board 388/388, vscode-extension 562/562 (43 files), tokenomics 102/102, graph 653/653. skipped/todo/xfail: 0 (grep of the whole log). coverage:pack: 92.5% stmts, set-status.js and entity-io.mjs 100%/99%.
+
+  **AC1:** skill-conventions.test.ts describe "mission-completion-gate: orchestrator-dispatched phases", 10 tests incl. "states the 5 phases as orchestrator dispatches with the Agent tool, in the foreground", "relays the Sage-Alex and Rio-devs exchanges", "defines blocking", "allows one review round plus one fix round, residue filed as board bugs; blocks on stillOpen only", "defines green", "runs coverage on the coverage lane only", "describes the real transcript roots". File verbose: 35 passed. My mutations of the shipped SKILL.md (dropped the one-round sentence, "or todo", the coverage-lane phrase, and separately "with a PoC") turned exactly the matching 3 tests and the blocking test red; file restored to HEAD (git diff clean).
+
+  **AC2:** octobots-mission-gate.test.ts "uses relay wording ... never says 'directly' (mission AC7)" runs a real set-status.js through runAndPost then pipes the payload; passes. Matches my probe. coverage:pack passes.
+
+  **AC3:** octobots-mission-gate.test.ts and octobots-work-log.test.ts each have the `"M9 - no such mission" done; echo` case (silent / no entry) and "still acts for an existing mission whose YAML changed, under the same '; echo' tail". The three files verbose: 70 passed. Matches my probe: M9 silent, existing mission acts.
+
+  **Non-blocking notes:**
+  - Hooks are not measured by coverage:pack (it covers the pack scripts only); hook behaviour is covered only by the spawn-based tests.
+  - The hooks check "status now equals the request", not "status changed": re-running `set-status.js ... done` on a mission already done, or even an `echo` that names a real done mission (as in the PoC probe), re-fires the directive and appends a worklog line. Idempotent re-fire, no escalation.
+  - The work-log security test ends with zero entries for two reasons (task was not started AND resolver ignored the planted path); the marker assertion is the one doing the security work.
+  - Installed copy of the gate skill in this repo's .claude/skills is not refreshed by this task (pack install does that).
