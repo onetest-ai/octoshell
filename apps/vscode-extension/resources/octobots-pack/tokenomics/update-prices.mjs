@@ -13,6 +13,10 @@
 // Entries are cached VERBATIM from upstream — same field names, same per-token
 // units, no re-derivation. There is no local price schema to drift out of sync,
 // and any number in `prices.json` can be diffed straight against LiteLLM.
+//
+// This script rewrites ONLY `prices.json`. Models upstream does not list yet live in the
+// workspace-owned `prices.local.json`, which rollup.mjs reads alongside it (upstream wins on a
+// conflict); a refresh never touches that file.
 
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";

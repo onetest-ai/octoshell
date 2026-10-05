@@ -168,6 +168,24 @@ fetches** — that keeps collect/rollup/render offline, deterministic, and
 reproducible: a run from six months ago re-prices identically unless someone
 deliberately updates the table.
 
+### Local additions: `prices.local.json`
+
+A model upstream has not listed yet (a new release, a preview) would price at $0 and show up as
+unpriced. Add it to **`prices.local.json`**, next to `prices.json`, in the same schema:
+
+```json
+{ "models": { "claude-opus-5-5": { "input_cost_per_token": 0.000004, "output_cost_per_token": 0.00002 } } }
+```
+
+- `rollup.mjs` reads both files from its own directory. **`prices.json` wins** where both name the
+  same model, so a later upstream listing supersedes your hand-typed number.
+- `update-prices.mjs` rewrites only `prices.json`; `prices.local.json` survives every refresh.
+- Re-installing the pack never overwrites your `prices.local.json` (the pack ships a seed holding
+  `claude-opus-5-5` and `claude-sonnet-5-5`, written once).
+- The extension's own Tokenomics view does not read this file at runtime: it uses a table compiled in
+  at build time, to which the build merges the pack's seed (`packages/tokenomics/scripts/update-prices.mjs`).
+  A model you add only to a workspace is priced by `rollup.mjs`, not by the extension view.
+
 Two things this gets right that a hand-maintained table did not:
 
 - **Cache writes are priced per TTL.** A 5-minute cache write bills at 1.25× input,
