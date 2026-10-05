@@ -1,0 +1,9 @@
+# TC-003
+largest session: 011deac1-41f8-4f6b-9743-636d077044a6 (    3738 lines)
+exit=0
+IDENTICAL
+segments of 011deac1-41f8-4f6b-9743-636d077044a6 178 distinct 178 | total segments 180 | sessions 3
+legacy copy now     1869 lines (home copy     3738)
+MORE_TURNS_WINS
+## extra: swap sizes (home truncated, legacy full) -> still once, now sourced from the larger copy
+SWAPPED_SAME_AS_FULL

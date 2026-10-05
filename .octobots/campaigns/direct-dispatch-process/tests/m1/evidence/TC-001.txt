@@ -1,0 +1,11 @@
+# TC-001 (scratch copy $WORK/copy; HOME=$WORK/home; cwd=$WORK/copy/.claude/worktrees/qa-m1)
+tokenomics: 662 segments (662 new) · 21747 turns · 65 branches · 9 sessions
+tokenomics: wrote $WORK/copy/.claude/worktrees/qa-m1/.octobots/tokenomics/raw/segments.jsonl
+exit=0
+segments 662 sessions 9
+project_slug values ["<COPY_SLUG>"]
+sessions in neither root: 0
+home-only present: 011deac1=true 138ca3b0=true 39d8025a=true
+other slug dirs sitting next to ours in the home root: -Users-arozumenko-Development,-Users-arozumenko-Development-octoshell,-Users-arozumenko-Development-octovoice
+other slug dirs in the legacy root: -Users-arozumenko-Development-analysta,-private-tmp
+decoy sessions available: 3 | of those collected: 0

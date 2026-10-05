@@ -4,7 +4,8 @@ title: "doctor.js treats ~/.claude/projects as the default transcript root and n
 mission: M1
 covers: [M1-AC8]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m1/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---

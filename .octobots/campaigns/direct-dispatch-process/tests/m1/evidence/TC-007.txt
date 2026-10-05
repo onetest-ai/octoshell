@@ -1,0 +1,14 @@
+# TC-007 (clean copy of the committed board at .../worktrees/qa-m1-tc007 with the v57 mission-planner skill copied in (yaml parser for BOTH rollups); HOME=stub)
+v56 tokenomics = git archive origin/main (d1c83cc); roots.mjs in OLD: no
+collect exit=0
+v56 rollup exit=0
+v57 rollup exit=0
+v56 mission rows: 51 | v57 mission rows: 51 | lost: 0 | grew: none
+uwb mission rows: M1 M2 M3 M4 M6
+campaign rows v57: edgeserver-auth(194),edge-ops-ui(324),emulator-arena-loop(41) | campaign rows v56: 0
+mission rows whose branch set changed: none
+v56 unattributed segments: 493 turns: 15294 | branches: 31
+v57 unattributed segments: 462 turns: 14735 | branches: 27
+edgeserver-auth ["fix/edgeserver-auth-coach-gating-gaps"]
+edge-ops-ui ["chore/close-edge-ops-ui-campaign","feat/edge-ops-ui"]
+emulator-arena-loop ["campaign/emulator-arena-loop"]

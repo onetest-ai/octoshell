@@ -1,0 +1,78 @@
+# TC-004 (a) unit half
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/tokenomics
+
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource > counts a request once even when streaming repeats its usage payload
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource > splits one session into a segment per branch
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource > finds workflow agents nested under subagents/workflows/, not just flat ones
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource > keeps the 5m/1h cache-write split, which bill at different rates
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource > attributes an unsplit cache write to the cheaper 5m bucket
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource > counts tool calls and survives a truncated tail line
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource > returns nothing when the repo has no transcripts
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource roots (mission AC4) > reads sessions that exist only under the home root
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource roots (mission AC4) > a repo-local root holding other projects' slug dirs contributes only the repo's own slug
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource roots (mission AC4) > merges the home root and the legacy root; CLAUDE_CONFIG_DIR/projects replaces ~/.claude/projects
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource roots (mission AC4) > an explicit projects dir (option or env) replaces both home and config dir, legacy still read
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource roots (mission AC4) > a duplicate session keeps the copy with more turns, whichever root holds it
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource roots (mission AC4) > a /.claude/worktrees/ path resolves to the main checkout's slug and legacy root
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource roots (mission AC4) > resolves a relative workspace path and ignores a trailing slash
+ ✓ test/claude-source.test.ts > ClaudeTranscriptSource roots (mission AC4) > exposes the roots and the slug dirs that exist
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > home default: same segment ids, own slug only, richer duplicate wins
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > CLAUDE_CONFIG_DIR replaces the home default
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > OCTOBOTS_TOKENOMICS_PROJECTS_DIR and --projects-dir replace both
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > a /.claude/worktrees/ path resolves to the main checkout's slug
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > a duplicate with EQUAL turns keeps the earlier root's copy, on both sides
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > a trailing slash or a relative project path yields the same slug and the same ids
+
+ Test Files  2 passed (2)
+      Tests  21 passed (21)
+   Start at  11:31:17
+   Duration  377ms (transform 26ms, setup 0ms, collect 40ms, tests 238ms, environment 0ms, prepare 49ms)
+
+# (b) tokenomics-report CLI half
+## copy of solo (stub HOME with frozen home slug dir + decoy slugs; legacy root symlinked)
+exit=0
+{
+  "slug": "<COPY_SLUG>",
+  "roots": [
+    "$WORK/home/.claude/projects",
+    "$WORK/copy/.claude/projects"
+  ],
+  "segments": 662,
+  "session_count": 9,
+  "slugs": [
+    "<COPY_SLUG>",
+    "<COPY_SLUG>"
+  ],
+  "homeOnly": [
+    "011deac1-41f8-4f6b-9743-636d077044a6",
+    "138ca3b0-bbb2-492a-9bda-463b71e473e8",
+    "39d8025a-7c64-429a-90de-58c24112cdd8"
+  ]
+}
+## octoshell (real HOME, read-only)
+exit=0
+{
+  "slug": "-Users-arozumenko-Development-octoshell",
+  "roots": [
+    "/Users/arozumenko/.claude/projects",
+    "/Users/arozumenko/Development/octoshell/.claude/projects"
+  ],
+  "segments": 522,
+  "slugs": [
+    "/Users/arozumenko/.claude/projects/-Users-arozumenko-Development-octoshell",
+    "/Users/arozumenko/Development/octoshell/.claude/projects/-Users-arozumenko-Development-octoshell"
+  ]
+}
+slug dirs in real ~/.claude/projects: 28
+-Users-arozumenko-Development-analysta -Users-arozumenko-Development-octoshell -private-tmp -private-var-folders-27-kb-xvzxj7g5-0tqf9zyjlpd00000gn-T 
+## qa-m1 worktree path under the COPY
+"<COPY_SLUG>"
+<COPY_SLUG>
+## empty temp folder (step 6 CLI analogue)
+{
+  "segments": 0,
+  "slugs": []
+}
+exit=0
+octoshell contributing slug dir basename: -Users-arozumenko-Development-octoshell

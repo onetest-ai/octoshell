@@ -1,0 +1,19 @@
+# TC-002 (slug of copy substituted for solo slug; all commands --project-dir $PWD in the qa-m1 dir)
+## (a) HOME=empty CLAUDE_CONFIG_DIR=cfg
+exit=0
+home-only: 011deac1 138ca3b0 39d8025a | sessions: 9
+## (a2) config dir slug moved away
+exit=0
+home-only: none | sessions: 6
+## (b) env beats CLAUDE_CONFIG_DIR
+exit=0
+home-only: 011deac1 138ca3b0 39d8025a | sessions: 9
+## (c) --projects-dir beats env
+exit=0
+home-only: 011deac1 138ca3b0 39d8025a | sessions: 9
+## (a3, extra) populated HOME + CLAUDE_CONFIG_DIR=cfg whose slug is absent: the config dir must REPLACE the populated home
+exit=0
+home-only: none | sessions: 6
+## (a4, extra) same populated HOME, no CLAUDE_CONFIG_DIR: home read again
+exit=0
+home-only: 011deac1 138ca3b0 39d8025a | sessions: 9

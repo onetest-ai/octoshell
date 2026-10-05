@@ -4,7 +4,8 @@ title: "rollup.ts and rollup.mjs agree on attribution (all 7 precedence steps) f
 mission: M1
 covers: [M1-AC5, M1-AC4]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m1/runs/RUN-2026-10-05-001.md}
 priority: high
 size: M
 ---
