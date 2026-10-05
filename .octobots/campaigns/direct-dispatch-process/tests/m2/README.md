@@ -1,6 +1,6 @@
 # Suite: direct-dispatch-process-m2
 
-Functional cases for **M2 - Pack runs missions by direct sub-agent dispatch**, campaign `direct-dispatch-process` (octoshell). 15 cases (12 cli, 1 ui, 2 unit), authored from the mission acceptance criteria (M2-AC1..AC10, numbered in board order) before the mission is built. Every case names a pre-existing record: copies of the real octoshell and solo boards and transcripts, never a self-made fixture (a case that is a synthetic unit check says so).
+Functional cases for **M2 - Pack runs missions by direct sub-agent dispatch**, campaign `direct-dispatch-process` (octoshell). 12 cases (10 cli, 2 unit), authored from the mission acceptance criteria (M2-AC1..AC8, numbered in board order) before the mission is built. Every case names a pre-existing record: copies of the real octoshell and solo boards and transcripts, never a self-made fixture (a case that is a synthetic unit check says so).
 
 ## How to run
 
@@ -15,7 +15,7 @@ Shell variables used in the cases: `SOLO=/Users/arozumenko/Development/auqanauti
 
 - `pnpm install && pnpm build` in $OCTO on the mission branch.
 - Make the copies once: `mkdir -p $WORK/solo $WORK/octo && cp -R $SOLO/.claude $SOLO/.octobots $WORK/solo/ && cp -R $OCTO/.claude $OCTO/.octobots $WORK/octo/` (so `$WORK/solo/.claude/skills` is solo's real v56/57-local install and `$WORK/octo/.claude/skills` is octoshell's real v56 install). NEVER run a case against the originals.
-- installPack runs through the committed harness (T2.3): `node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs <workspace> [--pack-root <dir>] [--local-changes=overwrite|keep]`, which prints `{before, localChanges, result, after}` (packStatus before, the locally changed skills it found, installPack's result incl. `kept`, packStatus after). `--local-changes` stands in for the modal's choice (T2.5); the default is keep, so a case that expects the forks replaced passes `--local-changes=overwrite`.
+- installPack runs through the committed harness (T2.3): `node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs <workspace> [--pack-root <dir>]`, which prints `{before, result, after}` (packStatus before, installPack's result, packStatus after). M2's installPack overwrites locally changed skills as today's does; `--local-changes` and the reconcile default arrive with M7, after which a case here that expects the forks replaced passes `--local-changes=overwrite`.
 - Hooks resolve the project from CLAUDE_PROJECT_DIR before the cwd, so hook cases set `CLAUDE_PROJECT_DIR=<copy>` explicitly (an agent shell may carry octoshell's).
 - Baseline before touching anything: `git -C $SOLO status --short` and `git -C $OCTO status --short` recorded; they must be the same after.
 
@@ -24,15 +24,13 @@ Shell variables used in the cases: `SOLO=/Users/arozumenko/Development/auqanauti
 | AC | Summary | Test cases |
 |----|---------|------------|
 | M2-AC1 | Workflow skill + 7 scripts do not exist; 4 skills listed | TC-001, TC-002, TC-008 |
-| M2-AC2 | installPack retires them, keeps unknown files | TC-001, TC-002, TC-010, TC-015 |
+| M2-AC2 | installPack retires them, keeps unknown files | TC-001, TC-002, TC-010 |
 | M2-AC3 | validate.js warns per workflows/ folder; not-an-entity exit 2 (workflow.json half UNREACHABLE on real data) | TC-003, TC-004, TC-005 |
 | M2-AC4 | doctor.js reports one warn with count + fix | TC-006 |
 | M2-AC5 | mission-execution = direct dispatch, no workflow, no project-specific commands | TC-008, TC-009, TC-011 |
 | M2-AC6 | Gate = 5 dispatched phases + stopping rule | TC-011 |
 | M2-AC7 | Gate hook directive says relay, not 'directly' | TC-007 |
 | M2-AC8 | Gate and work-log hooks act only on a status change that happened | TC-012 |
-| M2-AC9 | installPack asks before overwriting or deleting a locally changed skill (modal; Overwrite / Keep my changes / Cancel), shipped or retired | TC-001, TC-002, TC-013, TC-014, TC-015 |
-| M2-AC10 | packStatus reports localChanges; after Keep the activation prompt stays quiet until the pack version or the fork changes | TC-010, TC-013, TC-014 |
 
 ## Shared preconditions
 
@@ -58,4 +56,4 @@ Every case's "Real data" section names the pre-existing record that backs it. A 
 - A1: octoshell's m6-extension-bridge folder has a workflows/ subfolder (5 octograph missions m3..m7 each hold workflows/build-and-gate); QA confirms the actual folder on the copy and records it.
 - A2: TC-009 is non-deterministic and costs tokens: 5 reps, pass requires 5/5 for the prohibition (no Workflow invocation). Documented as a micro-test, not a unit test.
 - A3: TC-012's 'refused start' variant needs M5's plan-review gate (a refusal exits 3 once M5 lands); before M5 the no-such-mission call (exit 1, chained with `; echo`) is the real non-write.
-- A4: no real workspace holds a locally changed workflow-designer or a numeric-version skill whose content differs; TC-015 derives that variant from solo's real copy by appending one line, and says so. TC-014's modal half is manual (F5).
+- A4: locally changed skills (solo's two `57-local` forks) are overwritten by M2's installer, as today's is; their protection and reconcile are M7 (tests/m7).

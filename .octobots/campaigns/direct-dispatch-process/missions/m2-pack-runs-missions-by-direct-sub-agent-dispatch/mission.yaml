@@ -1,10 +1,10 @@
 name: M2 - Pack runs missions by direct sub-agent dispatch
 status: draft
-description: Upstream solo's 57-local mission-execution and mission-completion-gate, with solo-specifics replaced by project-declared test lanes (declaration format lands in M5; until then 'the project's documented commands'). Delete workflow-designer and the 7 workflow scripts (incl. mission-input.js) from the pack, and retire them on install. The installer asks before it overwrites or deletes a locally changed skill (campaign decision 13). Replace workflow validation in validate.js with a non-fatal 'no longer read' warning. Fix the gate hook's directive, and make the gate and work-log hooks act only on a status change that actually happened. Board library and extension are untouched (M3), except the board test that imports a deleted pack script.
+description: Upstream solo's 57-local mission-execution and mission-completion-gate, with solo-specifics replaced by project-declared test lanes (declaration format lands in M5; until then 'the project's documented commands'). Delete workflow-designer and the 7 workflow scripts (incl. mission-input.js) from the pack, and retire them on install. Protecting locally changed skills during an install is M7 (campaign decision 13, revised); until M7 lands, installPack overwrites them as it does today. Replace workflow validation in validate.js with a non-fatal 'no longer read' warning. Fix the gate hook's directive, and make the gate and work-log hooks act only on a status change that actually happened. Board library and extension are untouched (M3), except the board test that imports a deleted pack script.
 acceptance_criteria:
   - text: Given the v57 pack, skill/workflow-designer/ and scripts/{add-workflow,sync-meta,add-run,mission-input}.js, scripts/{extract-meta,workflow-meta}.mjs and scripts/vendor/acorn.mjs do not exist; OCTOBOTS_SKILLS (octobots-skill.ts:14) and doctor.js:63 list 4 skills
     done: false
-  - text: Given a workspace with any of those installed, when installPack runs, then they are removed (except a locally changed retired skill kept under AC9), and files the pack never shipped (e.g. create-team.js) are kept
+  - text: Given a workspace with any of those installed, when installPack runs, then they are removed, and files the pack never shipped (e.g. create-team.js) are kept (a locally changed skill's protection is M7's)
     done: false
   - text: Given a mission or campaign dir holding workflows/<slug>/ (workflow.js or workflow.json), when validate.js <dir> runs, then it prints one `warning:` line per folder naming the path and 'no longer read since pack v57', and the exit code is what the entity alone would produce; validate.js <path>/workflow.js exits 2 with 'not an entity file'
     done: false
@@ -18,24 +18,20 @@ acceptance_criteria:
     done: false
   - text: 'Given a set-status.js command whose write did not happen (for example `set-status.js <campaign-dir> "M9 - no such mission" done; echo`, which exits 0 as a whole, or a start that set-status.js refused), hooks/mission-gate.mjs and hooks/work-log.mjs re-read the target entity''s YAML and act only when its status now equals the requested state: no gate directive is printed and no work-log line is written'
     done: false
-  - text: 'Given a workspace whose .claude/skills holds a skill from OCTOBOTS_SKILLS or RETIRED_SKILLS (incl. workflow-designer) that is locally changed, meaning its SKILL.md `version:` value is not an integer (solo''s `57-local`), or it is an integer N and the file''s sha256 is none of the hashes apps/vscode-extension/src/host/shipped-skill-hashes.json lists for that skill at N (a version the table does not list cannot be compared and counts as unchanged), when the pack is installed (the Install Octobots Pack command, or Install on the activation prompt), then before any write the extension shows a modal `showWarningMessage` whose message is `Octobots: <n> pack skill(s) in this workspace were changed locally.`, whose detail lists one line per changed skill in the text of M2 notes § Local-fork protection, and whose buttons are `Overwrite` and `Keep my changes` (plus VS Code''s own Cancel). Overwrite installs as before. Keep my changes leaves every listed skill''s directory untouched (a kept retired skill is not deleted, and retired files inside a kept skill are not removed) and installs everything else. Cancel or Escape installs nothing. A workspace with no locally changed skill gets no modal (octoshell''s own v56 install; solo''s workflow-designer, which is byte-identical to the shipped v56 file)'
-    done: false
-  - text: 'Given a workspace where Keep my changes was chosen, then packStatus reports installed: true, upToDate: false, upToDateExceptLocal: true and localChanges listing the kept skills (skill, version, reason, retired, sha256), and the activation prompt is not shown again until the pack version changes, a kept SKILL.md''s bytes change, or another skill becomes locally changed (the extension records {packVersion, skill -> sha256} in workspaceState on Keep). After Overwrite, packStatus reports upToDate: true and an empty localChanges. The Install Octobots Pack command always asks again; the existing Not now answer on the activation prompt keeps today''s behaviour'
-    done: false
 documents:
   - label: M2 functional test cases
     target: .octobots/campaigns/direct-dispatch-process/tests/m2/README.md
 tokenomics:
-  effort_days: 3
+  effort_days: 2.5
   size_tshirt: L
-  complexity_score: 17
+  complexity_score: 15
 notes: |-
   ## Planning notes (Rio, 2026-10-05)
 
   M2 goes before M3: the pack's scripts are dependency-free .mjs with no import edge to packages/board, so the extension keeps compiling while it still reads workflows; M3 then removes the board types and every consumer together.
   Solo-specific text to generalise when porting: solo mission-execution :116 (edgeserver/app search scope), :118-121 (uv run pytest, make edgeserver-test-fast, 'This Mac'), :122-123 (make ci). Defect to fix while porting: the fork has two rules numbered 7. Solo gate :85-86 (make edgeserver-test-fast, make coverage). Gap: the fork never tells QA to run the mission's tests/m<n>/ cases (M4 adds it).
   Retired files must go into RETIRED_SKILLS/RETIRED_FILES (octobots-skill.ts:20,26) or copyTree (:95-105) leaves them forever. mission-planner's create-team.js (solo-only) is not shipped and must survive an upgrade.
-  Solo's `version: 57-local` parses to null (parseVersion regex), so packStatus reports solo not-installed today; accepting the re-install prompt BEFORE v57 ships would roll solo back to v56 workflows (tell the user to decline until 0.1.0). From T2.5 on, a `57-local` skill counts as installed but locally changed, and the install asks before overwriting it (decision 13, AC9/AC10).
+  Solo's `version: 57-local` parses to null (parseVersion regex), so packStatus reports solo not-installed today; accepting the re-install prompt BEFORE v57 ships would roll solo back to v56 workflows (tell the user to decline until 0.1.0). From M7 on, a `57-local` skill counts as installed but deviated, and the install offers to reconcile it (decision 13, revised; M7).
 
   ## Plan-review fixes (2026-10-05)
 
@@ -44,22 +40,6 @@ notes: |-
   - AC8 (hooks confirm the status change): hooks/work-log.mjs:85 logs any `active` without checking the result, which would attribute a planning session to a mission once M5 can refuse a start. It is testable before M5 with a set-status.js call for a title that does not exist, chained with `; echo`.
   - AC3's workflow.json half has no real record (neither board has a workflow.json): UNREACHABLE on real data, covered only by the scripts-cli-scenarios case.
 
-  ## Local-fork protection (decision 13, 2026-10-05)
+  ## Local-fork protection: moved to M7 (2026-10-05)
 
-  Owned by T2.5; the rule is AC9 and AC10.
-  - Detection reads only SKILL.md: its first `version:` line, and its sha256. A skill is locally changed when the value is not an integer (reason `label`), or when the table lists hashes for (skill, N) and the file matches none of them (reason `content`). If the table has no entry for (skill, N), the skill cannot be compared and counts as unchanged, which is today's behaviour. Skills are checked in OCTOBOTS_SKILLS order, then RETIRED_SKILLS order.
-  - What the extension compares against: the VSIX ships only the current pack, so the reference for older versions is a committed table, apps/vscode-extension/src/host/shipped-skill-hashes.json (`{"<version>": {"<skill>": ["<sha256>", ...]}}`), bundled into dist/extension.js. It is generated by apps/vscode-extension/scripts/shipped-skill-hashes.mjs, which walks the git history of resources/octobots-pack/skill/*/SKILL.md (including workflow-designer and the v18 `octobots`) and adds the current files. test/shipped-skill-hashes.test.ts fails when a shipped SKILL.md's hash is not listed under OCTOBOTS_PACK_VERSION. Lists are appended, not replaced, so intermediate v57 builds from M1-M5 stay recognised as shipped files. This follows the graph-payload-versions.json precedent.
-  - The modal is shown by installOctobotsPack before the hooks and tools questions. VS Code adds Cancel itself. The text for solo:
-      message: Octobots: 2 pack skill(s) in this workspace were changed locally.
-      detail:  Installing the Octobots pack v57 would overwrite or delete these skills:
-               • mission-execution: version 57-local (not a pack version)
-               • mission-completion-gate: version 57-local (not a pack version)
-               Overwrite: replace them with the pack's files.
-               Keep my changes: install everything else and leave these skills as they are.
-               Cancel: install nothing.
-      buttons: Overwrite | Keep my changes (and Cancel)
-    A `content` line reads `• <skill>: version <N> (differs from the pack's v<N> file)`. A retired skill's line adds `; retired in v57, so Overwrite deletes it` inside the parentheses. The text is built by a pure localChangesPrompt(changes, packVersion) so a vitest can assert it word for word.
-  - The completion notification gains `Kept your local changes to <skills>.` after Keep. That is the install result message that exists today, not a new warning surface (decision 12 is about validation warnings).
-  - installPack(srcRoot, repoRoot, opts) gains `localChanges?: "overwrite" | "keep"`, default "keep", so it never destroys a changed skill without an explicit yes, and returns `kept: string[]`. The QA harness takes `--local-changes=overwrite|keep` (default keep) and prints `{before, localChanges, result, after}`.
-  - Nag rule: shouldPromptOnActivation(status, kept, packVersion) is true when the pack is not installed, when it would be out of date even ignoring local changes (upToDateExceptLocal false), or when any current local change is not in the kept record (different pack version, or different sha256). So after Keep, the prompt comes back once per new pack version or per new edit, never on every window open for the same fork.
-  - Spike (2026-10-05, scratchpad fork-spike/spike.mjs, run on copies): a table built from octoshell's git history covers versions 18-57. Solo's .claude reports exactly mission-execution and mission-completion-gate (label 57-local). Octoshell's .claude reports nothing. A copy with one line appended to workflow-designer/SKILL.md reports workflow-designer (content, version 56, retired).
+  The warn-first design that was here (T2.5, AC9/AC10) was superseded the same day by campaign decision 13 (revised): agent-driven reconcile. It is planned as M7, which lands after M2. M2 keeps today's overwrite behaviour; its TCs say so.

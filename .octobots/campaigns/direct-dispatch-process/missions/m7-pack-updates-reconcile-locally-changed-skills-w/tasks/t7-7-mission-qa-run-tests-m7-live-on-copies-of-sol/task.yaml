@@ -1,0 +1,9 @@
+name: 'T7.7 - Mission QA: run tests/m7 live on copies of solo''s real forks'
+status: draft
+role: qa-engineer
+description: 'Scope: M7 TC-001..017 against the git copies (README gitcopy) or `cp -R` copies each TC names, in a temp dir (never the originals); installPack runs through install-pack.mjs; TC-011..013 and TC-015 are behavioural micro-tests (5 fresh sub-agents each, 3 for TC-015 on TC-013''s escalated copies, each on its own copy, following M2 TC-009''s convention: score programmatically, then read every flagged output); TC-007 is a manual Extension Development Host (F5) session with screenshots. Update each TC''s status (campaign notes § Test conventions rule 4); write `## QA verification` into task and mission notes. Out of scope: fixes. Downstream: M7 gate.'
+acceptance_criteria:
+  - text: every TC has PASS, FAIL, BLOCKED or UNREACHABLE with evidence and a named pre-existing record; its frontmatter status is pass, fail or blocked (UNREACHABLE recorded as blocked with the reason in the RUN file)
+    done: false
+  - text: '`git -C $SOLO status --short` and `git -C $OCTO status --short` equal the baseline recorded before the run (tests/m7 README § Prerequisites), the sha256 list of octoshell''s gitignored .claude equals its baseline, and solo''s CLAUDE.md and AGENTS.md sha256 are unchanged'
+    done: false

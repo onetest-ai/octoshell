@@ -1,9 +1,9 @@
 name: T3.4 - Docs reflect a workflow-free product
 status: draft
 role: js-dev
-description: 'Scope: root README.md (:7,37,51,84,87,101,107); apps/vscode-extension/README.md (:9,18-25,34,54-56); octoshell CLAUDE.md § Architecture (''workflow-meta.ts...'', ''WorkflowView...'') and the ''The Octobots workflow pack'' section; AGENTS.md (:32,38,54); .agents/knowledge/architecture/pack-version-is-one-unit.md (4 SKILL.md after M2, and statusline.sh is one of the hand-edited markers) and dual-schema-entity-io.md:32. A sentence saying legacy workflows/ folders are ignored is allowed if it uses none of the AC''s grep terms. Out of scope: historical specs under docs/. Downstream: none.'
+description: 'Scope: root README.md (:7,37,51,84,87,101,107); apps/vscode-extension/README.md (:9,18-25,34,54-56); octoshell CLAUDE.md § Architecture (''workflow-meta.ts...'', ''WorkflowView...'') and the ''The Octobots workflow pack'' section (which also names the octobots-doctor skill and the pack-updates reconcile flow M7 adds); AGENTS.md (:32,38,54); .agents/knowledge/architecture/pack-version-is-one-unit.md (5 SKILL.md after M7: 4 after M2 plus octobots-doctor, and statusline.sh is one of the hand-edited markers) and dual-schema-entity-io.md:32. A sentence saying legacy workflows/ folders are ignored is allowed if it uses none of the AC''s grep terms. Out of scope: historical specs under docs/. Downstream: none.'
 acceptance_criteria:
   - text: '`grep -n -i -E ''workflow\.js|WorkflowView|workflow-designer|workflow-diagram|workflow pack|Install Workflow Pack''` on README.md, apps/vscode-extension/README.md, CLAUDE.md, AGENTS.md and the two knowledge notes returns nothing (mission AC7 docs part)'
     done: false
-  - text: pack-version-is-one-unit.md lists the 4 SKILL.md files and statusline.sh among the hand-edited markers
+  - text: pack-version-is-one-unit.md lists the 5 SKILL.md files (mission-planner, mission-execution, mission-completion-gate, knowledge-explorer, octobots-doctor) and statusline.sh among the hand-edited markers, and says every SKILL.md change is followed by `node apps/vscode-extension/scripts/shipped-skills.mjs --write` with the new store committed
     done: false

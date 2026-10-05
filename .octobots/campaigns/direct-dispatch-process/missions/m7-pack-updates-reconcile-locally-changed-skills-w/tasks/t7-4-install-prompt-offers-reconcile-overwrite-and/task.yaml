@@ -1,0 +1,9 @@
+name: T7.4 - Install prompt offers Reconcile, Overwrite and Keep mine
+status: draft
+role: js-dev
+description: 'Depends on T7.3. Scope: apps/vscode-extension/src/host/pack-deviations.ts gains deviationPrompt(deviations, packVersion) -> {message, detail, buttons} (M7 notes § Prompt text) and shouldPromptOnActivation(status, pending, packVersion); extension.ts installOctobotsPack shows the modal before the hooks/tools questions, Cancel returns before any write, maps the button to installPack''s localChanges, and extends the completion message; the activation prompt asks only when shouldPromptOnActivation is true. The extension never starts an agent and never copies a prompt. Out of scope: hooks, statusline and tools prompts (unchanged), Not now (unchanged). Downstream: M7 TC-007.'
+acceptance_criteria:
+  - text: 'apps/vscode-extension/test/pack-deviation-prompt.test.ts asserts deviationPrompt''s exact message, detail and buttons for solo''s two forks, a content, an unknown-version, a reconciled-older and a retired deviation, the completion message with and without the SessionStart hook registered, and the shouldPromptOnActivation table: false when the only differences are newer skills and deviations pending or kept for this pack version with the same sha256; true for not installed, stale apart from deviations, a new pack version, a changed sha256 or a new deviation (mission AC4)'
+    done: false
+  - text: the extension.ts wiring (modal before any write, Reconcile as the first button, Cancel writes nothing, no agent or clipboard call, the activation prompt gated by shouldPromptOnActivation) is shown in a manual Extension Development Host run on a copy of solo's workspace, recorded in M7 TC-007 with screenshots
+    done: false

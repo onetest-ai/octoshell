@@ -1,0 +1,9 @@
+name: T7.1 - Shipped-skill store and its generator
+status: draft
+role: js-dev
+description: 'Scope: apps/vscode-extension/scripts/shipped-skills.mjs (--write appends from git history and the current files; --verify reads no git) and the store apps/vscode-extension/resources/shipped-skills.json.br (M7 notes § The store and detection); .gitattributes marking it `-text`; --verify in the extension''s `build` script beside graph-payload --verify; the VSIX packaging includes the store. Out of scope: reading the store for detection (T7.2). Downstream: T7.2 reads it; every later SKILL.md change runs --write (campaign notes § Test conventions rule 9).'
+acceptance_criteria:
+  - text: 'apps/vscode-extension/test/shipped-skills.test.ts asserts every resources/octobots-pack/skill/*/SKILL.md is indexed under OCTOBOTS_PACK_VERSION with its body stored, the store has workflow-designer entries at 56, an `octobots` entry at 18 and the v56 mission-execution and mission-completion-gate hashes 9af2c928... and 008de10a...; `shipped-skills.mjs --verify` (run with GIT_DIR pointing at an empty directory, so a git read would fail) exits 0 on the committed store and exits 1 naming the file for each of: an unindexed current SKILL.md, a body whose normalised sha256 differs from its key; `--write` on an unchanged tree changes no byte (mission AC1)'
+    done: false
+  - text: '`pnpm --filter @octoshell/vscode-extension build` runs --verify; `pnpm --filter @octoshell/vscode-extension package` produces a VSIX whose `unzip -l` lists extension/resources/shipped-skills.json.br at no more than 100 KB; `pnpm test` is green'
+    done: false

@@ -1,0 +1,9 @@
+name: 'T2.5 - Mission QA: run tests/m2 live on copies of the real solo and octoshell workspaces'
+status: draft
+role: qa-engineer
+description: 'Scope: TC-001..012 against `cp -R` copies in a temp dir (never the originals); installPack runs through apps/vscode-extension/scripts/qa/install-pack.mjs; TC-009 is a behavioural micro-test (5 fresh sub-agents). Update each TC''s status (campaign notes § Test conventions rule 4); write `## QA verification` into task and mission notes. Out of scope: fixes; local-fork protection (M7). Downstream: M2 gate.'
+acceptance_criteria:
+  - text: every TC has PASS, FAIL, BLOCKED or UNREACHABLE with evidence and a named pre-existing record; its frontmatter status is pass, fail or blocked (UNREACHABLE recorded as blocked with the reason in the RUN file)
+    done: false
+  - text: '`git -C $SOLO status --short` and `git -C $OCTO status --short` equal the baseline recorded before the run (tests/m2 README § Prerequisites)'
+    done: false

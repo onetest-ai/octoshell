@@ -1,7 +1,9 @@
 name: T5.3 - Planner § Plan review and execution-skill server/timeout/background rules
 status: draft
 role: js-dev
-description: 'Scope: mission-planner § Plan review text (recorded shape, parallel read-only dispatch with model:, per-AC real-data evidence, blocking vs nits); mission-execution § Dispatch rules: nohup/curl -m 2, no-timeout/perl alarm, never background a test command (server/watcher exceptions), qa-env.mjs for QA servers/migrations/seeds. Out of scope: project CLAUDE.md beyond octoshell''s. Downstream: none.'
+description: 'Scope: mission-planner § Plan review text (recorded shape, parallel read-only dispatch with model:, per-AC real-data evidence, blocking vs nits); mission-execution § Dispatch rules: nohup/curl -m 2, no-timeout/perl alarm, never background a test command (server/watcher exceptions), qa-env.mjs for QA servers/migrations/seeds; octobots-doctor (M7) § legacy plan-review records (acted on from set-status.js output; not a primer finding, M7-AC6). Out of scope: project CLAUDE.md beyond octoshell''s. Downstream: none.'
 acceptance_criteria:
   - text: apps/vscode-extension/test/skill-conventions.test.ts asserts the phrases of mission AC3 and AC5 are present in the shipped skills
+    done: false
+  - text: 'the same suite asserts octobots-doctor''s legacy plan-review paragraph: offer to add Reviewers: (ba, tech-lead) and Verdict:, write only with the user''s OK (mission AC3)'
     done: false

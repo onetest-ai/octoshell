@@ -1,7 +1,9 @@
 name: T4.3 - Planner authors tests with the mission
 status: draft
 role: js-dev
-description: 'Scope: mission-planner/SKILL.md § Mission chat (:152+, after step 4 at :236) and the scripts list; ship the TC template. Out of scope: gate text. Downstream: T4.4.'
+description: 'Scope: mission-planner/SKILL.md § Mission chat (:152+, after step 4 at :236) and the scripts list; ship the TC template; octobots-doctor/SKILL.md (M7) gains its tests-pairing paragraph (acted on from validate.js output; tests-pairing is not a primer finding, M7-AC6). Out of scope: gate text. Downstream: T4.4.'
 acceptance_criteria:
   - text: apps/vscode-extension/test/skill-conventions.test.ts asserts mission-planner documents the TC format contract fields and values, the PASS/FAIL/BLOCKED/UNREACHABLE -> status mapping, {{base_url}}, the execution modes, record-per-case/UNREACHABLE and 'authored before build' via add-tests.js (mission AC4)
+    done: false
+  - text: 'the same suite asserts octobots-doctor''s tests-pairing paragraph: add-tests.js, author the missing TCs with the mission''s owner, never delete an AC, TC or README row (mission AC4)'
     done: false

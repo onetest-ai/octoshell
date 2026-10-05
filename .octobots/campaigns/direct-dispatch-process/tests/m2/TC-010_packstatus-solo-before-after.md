@@ -1,21 +1,21 @@
 ---
 id: TC-010
-title: "packStatus on the solo copy: installed but not up to date with two local changes before; up to date with none after Overwrite"
+title: "packStatus on the solo copy: not up to date before the install; up to date after"
 mission: M2
-covers: [M2-AC2, M2-AC10]
+covers: [M2-AC2]
 kind: unit
 status: draft
 priority: medium
 size: S
 ---
 
-# TC-010: packStatus on the solo copy: installed but not up to date with two local changes before; up to date with none after Overwrite
+# TC-010: packStatus on the solo copy: not up to date before the install; up to date after
 
-**Mission:** M2 | **Priority:** medium | **Kind:** unit | **Covers:** M2-AC2, M2-AC10
+**Mission:** M2 | **Priority:** medium | **Kind:** unit | **Covers:** M2-AC2
 
 ## Objective
 
-packStatus describes solo's forks as local changes, not as a missing install, and reports a clean pack after Overwrite. Verifies M2-AC2 and M2-AC10 of M2 - Pack runs missions by direct sub-agent dispatch.
+packStatus reports solo's copy as not up to date before the install and as a clean v57 pack after it (M2 overwrites the forks; describing them as deviations is M7-AC1). Verifies M2-AC2 of M2 - Pack runs missions by direct sub-agent dispatch.
 
 ## Preconditions
 
@@ -29,22 +29,23 @@ A fresh copy of solo's real `.claude/skills`: mission-execution and mission-comp
 ## Commands
 
 ```bash
-cd $OCTO && pnpm --filter @octoshell/vscode-extension exec vitest run test/octobots-skill.test.ts test/pack-local-changes.test.ts --reporter=verbose
+cd $OCTO && pnpm --filter @octoshell/vscode-extension exec vitest run test/octobots-skill.test.ts --reporter=verbose
 # real-data half: a FRESH copy (TC-001 already upgraded $WORK/solo)
 mkdir -p $WORK/solo2 && cp -R $SOLO/.claude $SOLO/.octobots $WORK/solo2/
 grep -h "^version:" $WORK/solo2/.claude/skills/*/SKILL.md | sort | uniq -c
-node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs $WORK/solo2 --local-changes=overwrite > $WORK/solo2.json
-jq '{before: .before | {installed, upToDate, upToDateExceptLocal, n: (.localChanges | length)}, after: .after | {installed, upToDate, n: (.localChanges | length)}}' $WORK/solo2.json
+node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs $WORK/solo2 > $WORK/solo2.json
+jq '{before: .before | {installed, upToDate}, after: .after | {installed, upToDate}}' $WORK/solo2.json
+grep -h "^version:" $WORK/solo2/.claude/skills/*/SKILL.md | sort | uniq -c
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run the two vitest files | At least 1 test passed in each, none failed |
-| 2 | `.before` on the fresh solo copy | installed: true (a `57-local` skill counts as present), upToDate: false, n: 2 |
-| 3 | `.after` | installed: true, upToDate: true, n: 0; every pack skill version is 57 |
+| 1 | Run the vitest file | At least 1 test passed, none failed |
+| 2 | `.before` on the fresh solo copy | upToDate: false (installed false: `57-local` parses to no version until M7) |
+| 3 | `.after` | installed: true, upToDate: true; every pack skill version is 57 |
 
 ## Expected Final State
 
-The activation prompt has the right inputs for solo before and after the upgrade.
+The activation prompt has the right inputs for solo before and after the upgrade; M7 TC-001 refines `.before` into deviations.

@@ -1,6 +1,6 @@
 # Suite: direct-dispatch-process-m4
 
-Functional cases for **M4 - Functional test cases are a gate-run unit of every mission**, campaign `direct-dispatch-process` (octoshell). 11 cases (8 cli, 3 unit), authored from the mission acceptance criteria (M4-AC1..AC6, numbered in board order) before the mission is built. Every case names a pre-existing record: copies of the real octoshell and solo boards and transcripts, never a self-made fixture (a case that is a synthetic unit check says so).
+Functional cases for **M4 - Functional test cases are a gate-run unit of every mission**, campaign `direct-dispatch-process` (octoshell). 12 cases (8 cli, 4 unit), authored from the mission acceptance criteria (M4-AC1..AC6, numbered in board order) before the mission is built. Every case names a pre-existing record: copies of the real octoshell and solo boards and transcripts, never a self-made fixture (a case that is a synthetic unit check says so).
 
 ## How to run
 
@@ -24,7 +24,7 @@ Shell variables used in the cases: `SOLO=/Users/arozumenko/Development/auqanauti
 | M4-AC1 | add-tests.js scaffolds README + links it; idempotent | TC-001, TC-002 |
 | M4-AC2 | Pairing gaps (coverage from frontmatter covers; README-map disagreement a separate warning) are WARNINGS only | TC-003, TC-004, TC-005, TC-007, TC-011 |
 | M4-AC3 | TC file checks per the TC format contract (warning); validate.js <TC file> exits 0 | TC-006, TC-007 |
-| M4-AC4 | Planner documents TC format, modes, record-per-case, authored before build | TC-009 |
+| M4-AC4 | Planner documents TC format, modes, record-per-case, authored before build; octobots-doctor's tests-pairing paragraph | TC-009, TC-012 |
 | M4-AC5 | Gate QA + last QA task run every TC on real data | TC-010 |
 | M4-AC6 | No entity from tests/; watcher skips runs/ and evidence/, still rebuilds once on a TC/README write | TC-008 |
 
