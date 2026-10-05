@@ -66,16 +66,35 @@ export function NotesBlock(
   const [draft, setDraft] = useState(text);
   // Re-sync from disk only while not editing, so a board reload can't clobber an open edit.
   const editingRef = useRef(false);
+  // The notes the editor was opened on: the baseline for "changed underneath" at Save time.
+  const baseRef = useRef(text);
+  const [conflict, setConflict] = useState(false);
   useEffect(() => {
     if (!editingRef.current) setDraft(text);
   }, [text]);
 
   if (!text && !onSave) return null;
 
-  const open = (): void => { editingRef.current = true; setDraft(text); setEditing(true); };
-  const close = (): void => { editingRef.current = false; setEditing(false); };
-  const save = (): void => { onSave?.(draft); close(); };
+  const open = (): void => {
+    editingRef.current = true;
+    baseRef.current = text;
+    setDraft(text);
+    setConflict(false);
+    setEditing(true);
+  };
+  const close = (): void => { editingRef.current = false; setConflict(false); setEditing(false); };
+  const write = (): void => { onSave?.(draft); close(); };
+  // Save never silently drops a newer value. Compared by value at Save time, so a same-value echo
+  // (our own earlier save, a no-op reload) is not a conflict.
+  const save = (): void => {
+    if (text === baseRef.current) return write();
+    if (draft === baseRef.current) return close(); // untouched draft: the view shows the newer notes
+    setConflict(true);
+  };
   const cancel = (): void => { setDraft(text); close(); };
+  // Reload closes the editor onto the newer notes (draft discarded) instead of loading them into the
+  // textarea: one unambiguous outcome, and the person can reopen to edit from the current text.
+  const reload = (): void => { setDraft(text); close(); };
 
   return (
     <section>
@@ -105,6 +124,23 @@ export function NotesBlock(
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") cancel(); }}
           />
+          {conflict && (
+            <div role="alert" className="flex items-center gap-2 text-sm text-status-error">
+              <span>Notes changed on disk since you opened the editor.</span>
+              <button
+                onClick={write}
+                className="bg-btn-secondary hover:bg-btn-secondary-hover px-2 py-0.5 rounded-sm"
+              >
+                Overwrite
+              </button>
+              <button
+                onClick={reload}
+                className="bg-btn-secondary hover:bg-btn-secondary-hover px-2 py-0.5 rounded-sm"
+              >
+                Reload
+              </button>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <button
               onClick={save}
