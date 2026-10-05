@@ -28,17 +28,29 @@ function boardWarnings(root: string): string[] {
 /** A campaign dir the board model (and validate.js) treats as one: it holds a campaign.yaml/.md. */
 const isEntityCampaign = (dir: string): boolean => existsSync(join(dir, "campaign.yaml")) || existsSync(join(dir, "campaign.md"));
 
+/** Board-relative, `/`-separated path of `dir`, as validateBoard and validate.js report it. */
+const rel = (board: string, dir: string): string => relative(board, dir).split(sep).join("/");
+
+/** True when `dir` is a directory holding no sub-directory (an empty `workflows/` reports as itself). */
+const hasNoSubdir = (dir: string): boolean =>
+  existsSync(dir) && !readdirSync(dir, { withFileTypes: true }).some((e) => e.isDirectory());
+
 /**
  * Plant leftover workflows/ folders on the board's real campaigns: `workflows/w1` on each campaign
- * and `workflows/w2` on its first mission. Returns the board-relative (posix) path of each folder it
- * actually created; a folder the board already had is not counted, so the result is only the new ones.
+ * and `workflows/w2` on its first mission. `planted` is the board-relative (posix) path of each folder
+ * it actually created; a folder the board already had is not counted. `superseded` is each existing
+ * `workflows/` that held no sub-folder before planting: it was reported as itself, and once it holds
+ * the planted folder it is reported through that folder instead.
  */
-function plantWorkflows(board: string): string[] {
+function plantWorkflows(board: string): { planted: string[]; superseded: string[] } {
   const planted: string[] = [];
+  const superseded: string[] = [];
   const plant = (dir: string): void => {
     if (existsSync(dir)) return;
+    const parent = join(dir, "..");
+    if (hasNoSubdir(parent)) superseded.push(rel(board, parent));
     mkdirSync(dir, { recursive: true });
-    planted.push(relative(board, dir).split(sep).join("/"));
+    planted.push(rel(board, dir));
   };
   for (const campaign of campaignDirs(board).filter(isEntityCampaign)) {
     plant(join(campaign, "workflows", "w1"));
@@ -46,34 +58,57 @@ function plantWorkflows(board: string): string[] {
     const first = existsSync(missions) ? readdirSync(missions)[0] : undefined;
     if (first) plant(join(missions, first, "workflows", "w2"));
   }
-  return planted;
+  return { planted, superseded };
+}
+
+/**
+ * Plant on `board` and check validateBoard against what it reported before: exactly the baseline
+ * warnings, less the superseded empty `workflows/` ones, plus one per planted folder (as a set and as
+ * a count), no workflow error, and the same lines as validate.js.
+ */
+function expectBaselinePlusPlanted(board: string): void {
+  // A real board copy (OCTOBOTS_BOARD_COPIES) may already hold leftover workflows/ folders, each a
+  // correct warning. Take the baseline first, then expect exactly baseline + planted.
+  const baseline = validateBoard(board).filter((f) => f.severity === "warning").map((f) => f.message);
+  const { planted, superseded } = plantWorkflows(board);
+  expect(planted.length).toBeGreaterThan(0);
+  const gone = new Set(superseded.map((p) => `${p}: ${SUFFIX}`));
+  const expected = [...baseline.filter((m) => !gone.has(m)), ...planted.map((p) => `${p}: ${SUFFIX}`)].sort();
+  const findings = validateBoard(board);
+  const warnings = findings.filter((f) => f.severity === "warning");
+  const messages = warnings.map((w) => w.message).sort();
+  expect(messages).toEqual(expected); // exact: none from a dir that is no campaign, nothing pre-existing dropped
+  expect(warnings.length).toBe(baseline.length - superseded.length + planted.length);
+  for (const w of warnings) {
+    expect(w.message).toMatch(new RegExp(`^campaigns/.+/workflows(/.+)?: ${SUFFIX}$`));
+    expect(["campaign", "mission"]).toContain(w.kind);
+  }
+  expect(findings.filter((f) => f.severity === "error" && /workflow/i.test(f.message))).toEqual([]);
+
+  const fromPack = campaignDirs(board).flatMap(packWarnings).sort();
+  expect(boardWarnings(board).sort()).toEqual(fromPack);
 }
 
 describe("validateBoard: leftover workflows/ folders", () => {
   it("over every real board copy: one warning per workflows/ folder, no error for them, union equals validate.js", () => {
-    for (const board of trackedBoardCopies()) {
-      // A real board copy (OCTOBOTS_BOARD_COPIES) may already hold leftover workflows/ folders, each a
-      // correct warning. Take the baseline first, then expect exactly baseline + planted.
-      const baseline = validateBoard(board).filter((f) => f.severity === "warning");
-      const planted = plantWorkflows(board);
-      expect(planted.length).toBeGreaterThan(0);
-      const findings = validateBoard(board);
-      const warnings = findings.filter((f) => f.severity === "warning");
-      for (const path of planted) {
-        expect(warnings.map((w) => w.message)).toContain(`${path}: ${SUFFIX}`);
-      }
-      expect(warnings.length).toBe(baseline.length + planted.length); // none from a dir that is no campaign
-      const messages = warnings.map((w) => w.message);
-      for (const b of baseline) expect(messages).toContain(b.message); // nothing pre-existing dropped
-      for (const w of warnings) {
-        expect(w.message).toMatch(new RegExp(`^campaigns/.+/workflows/.+: ${SUFFIX}$`));
-        expect(["campaign", "mission"]).toContain(w.kind);
-      }
-      expect(findings.filter((f) => f.severity === "error" && /workflow/i.test(f.message))).toEqual([]);
+    for (const board of trackedBoardCopies()) expectBaselinePlusPlanted(board);
+  });
 
-      const fromPack = campaignDirs(board).flatMap(packWarnings).sort();
-      expect(boardWarnings(board).sort()).toEqual(fromPack);
-    }
+  // Regression (M3 gate): a real board may hold an EMPTY workflows/ (octobots-doctor removes a
+  // workflows/<slug> with the user's OK and can leave its parent behind). It reports as itself; once
+  // the test plants w1 inside it, that finding is replaced, so "baseline + planted" over-counted by one.
+  it("counts exactly when a campaign and its first mission already hold an empty workflows/", () => {
+    const [board] = trackedBoardCopies();
+    const campaign = campaignDirs(board!).filter(isEntityCampaign)[0]!;
+    mkdirSync(join(campaign, "workflows"), { recursive: true });
+    const missions = join(campaign, "missions");
+    const first = existsSync(missions) ? readdirSync(missions)[0] : undefined;
+    expect(first).toBeDefined();
+    mkdirSync(join(missions, first!, "workflows"), { recursive: true });
+    expect(validateBoard(board!).filter((f) => f.severity === "warning").map((f) => f.message)).toEqual(
+      expect.arrayContaining([`${rel(board!, join(campaign, "workflows"))}: ${SUFFIX}`]),
+    );
+    expectBaselinePlusPlanted(board!);
   });
 
   it("agrees with validate.js on a copy not named .octobots, and counts an empty workflows/ as one", () => {
@@ -126,7 +161,7 @@ describe("validateBoard: leftover workflows/ folders", () => {
 
   it("keeps working when the board sits in <workspace>/.octobots", () => {
     const [board] = trackedBoardCopies();
-    plantWorkflows(board!);
+    expect(plantWorkflows(board!).planted.length).toBeGreaterThan(0);
     const ws = scratchDir("ws-");
     cpSync(board!, join(ws, ".octobots"), { recursive: true });
     const viaWorkspace = boardWarnings(ws).sort();
