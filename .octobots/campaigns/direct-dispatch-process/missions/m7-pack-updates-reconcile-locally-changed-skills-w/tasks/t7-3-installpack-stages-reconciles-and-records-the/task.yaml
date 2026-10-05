@@ -1,5 +1,5 @@
 name: T7.3 - installPack stages reconciles and records the choice
-status: draft
+status: done
 role: js-dev
 description: |-
   Depends on T7.2 (same files). Scope:
@@ -9,10 +9,25 @@ description: |-
   Out of scope: the modal (T7.4), the hook and doctor/validate (T7.5), the skill (T7.6). Downstream: T7.4-T7.6 read pending.json.
 acceptance_criteria:
   - text: 'apps/vscode-extension/test/pack-install-reconcile.test.ts proves on temp workspaces with a `57-local` mission-execution, a `57-local` mission-planner (holding the retired scripts and create-team.js) and a changed retired workflow-designer: reconcile leaves both SKILL.md files byte-identical, installs every other pack file of those directories byte-identical to the pack (mission-execution''s scripts/ present, mission-planner''s scripts current), removes the retired scripts, keeps create-team.js, leaves workflow-designer''s whole directory byte-identical, writes the staging files and pending.json of mission AC3 (no upstream.md for the retired one), installs the rest and returns pending; a `57+local` SKILL.md reconciled against the current pack file is byte-identical after a re-install; overwrite saves overwritten-local.md, replaces/deletes, drops the entries and deletes the input files; keep records kept, stages nothing and deletes the input files; overwrite and keep on a skill whose folder holds a DECISIONS.md with an open ESCALATED entry leave that DECISIONS.md byte-identical; no option = reconcile; a second identical install changes no byte under .octobots/pack-updates/ (mtimes and bytes compared); an edited local SKILL.md updates its one entry; a later pack version (packVersion 58) and a later build of 57 (a changed pack SKILL.md) each re-stage the entry, delete the old input files and keep the old DECISIONS.md, and the new RECONCILE.md carries its open questions under `Carried over from v57:`; an entry whose skill is no longer deviated is dropped; `git check-ignore` ignores base.md, overwritten-local.md and pending.json and not DECISIONS.md (mission AC3)'
-    done: false
+    done: true
   - text: apps/vscode-extension/test/pending-io-parity.test.ts parses every case of test/fixtures/pending-cases.json with pack-updates.ts and pending-io.mjs and asserts identical {packVersion, reconcile, kept}, and installPack over the malformed case replaces it from its own results (mission AC3); apps/vscode-extension/test/qa-install-pack.test.ts runs install-pack.mjs with the default, --local-changes=overwrite, =keep, --pack-version 58 and a --pack-root copy without a store on a temp workspace holding a `57-local` skill and asserts {before, deviations, result, after} and the stderr line (mission AC5); `pnpm test` and `pnpm coverage:pack` are green
-    done: false
+    done: true
   - text: Retiring a skill whose directory holds files the pack never shipped (e.g. .claude/skills/workflow-designer/my-notes.md) keeps those files in place, removes only the files the pack shipped for that skill, and reports the kept paths in the install result; apps/vscode-extension/test/octobots-skill.test.ts proves it (input from the M2 T2.3 review, 2026-10-05)
-    done: false
+    done: true
   - text: installPack computes ONE git deadline per install (Date.now() + GIT_BUDGET_MS from pack-deviations.ts) and passes it as opts.gitDeadline to every recoverBase call, so rule-2 git blocks the extension host at most 2 s per install; and when the shipped-skill store is missing or unreadable, installPack writes NOTHING and reports 'shipped-skill store missing' instead of falling back to overwriting; both proven in apps/vscode-extension/test/octobots-skill.test.ts (input from the T7.2 review)
-    done: false
+    done: true
+notes: |-
+  ## QA verification
+
+  Verdict: PASS (2026-10-05, qa-engineer). PR #129, head 47d86b9 (records: dc301a1 feat installPack stages/reconciles/records; 47d86b9 review fix). Black-box run of scripts/qa/install-pack.mjs on `git clone --shared` copies of the solo repo (auqanautica; HEAD f3a0a8f4 and `git status --short` identical before and after), plus a copy of octoshell's .claude + .octobots. sha256 of every file under .octobots/campaigns/ was identical after every run.
+
+  AC1 (pack-install-reconcile.test.ts, 21 passed): solo reconcile: mission-execution and mission-completion-gate (both 57-local) SKILL.md byte-identical (c5be7bc4..., 16dd4468...). Each staging folder holds base.md, local.md, upstream.md, RECONCILE.md; base.md sha 9af2c928... / 008de10a... (rule 2, workspace-git v56); pending.json has 2 entries; stderr "2 skill(s) need reconcile"; a second run is byte- and mtime-identical (20 files compared). mission-planner scripts installed. Those two pack skill dirs ship only SKILL.md, so the "other pack files installed" check is vacuous on solo (covered by the test's fixtures). overwrite: overwritten-local.md == the fork, live SKILL.md == pack, no pending entries, pending.json not written. keep: forks untouched, nothing staged, kept recorded. Decision logs: DECISIONS.md (open ESCALATED) + UPSTREAM-CANDIDATES.md survive a --pack-version 58 re-stage, overwrite and keep; v58 RECONCILE.md has `Carried over from v57:` with the question. .gitignore: git check-ignore ignores pending.json, base.md, local.md, upstream.md, RECONCILE.md, overwritten-local.md; DECISIONS.md and UPSTREAM-CANDIDATES.md are not ignored.
+  AC2 (pending-io-parity.test.ts 40 passed; qa-install-pack.test.ts 13 passed): `pnpm test` all green (board 387, tokenomics 102, extension 746, graph 653; no skips); `pnpm coverage:pack` green (pending-io.mjs 100% lines). Harness exercised by hand with default, overwrite, keep, --pack-version 58, and a missing store.
+  AC3 (octobots-skill.test.ts, 69 passed): octoshell copy, normal update: no staging, workflow-designer removed (retirement), upToDate true, nothing under .octobots/pack-updates.
+  AC4 (octobots-skill.test.ts): missing store (harness copy without resources/shipped-skills.json.br): exit 1, "shipped-skill store missing", workspace tree sha256-identical before and after for reconcile, overwrite and keep; nothing written. CI: `gh pr checks 129` green (build x2).
+
+  Review fixes re-verified. B1 path traversal: pending.json `dir` set to "../victim", "../../../victim", ".octobots/pack-updates/v57/../../../../victim2" and an absolute path; run with --pack-version 58 under keep/overwrite: victim local.md/RECONCILE.md/other files survive byte-identical and pending.json is replaced from the install's own results. B2: pending-io.mjs twin present, parity green. Atomic pending.json writes not separately observable black-box.
+
+  Keep survival (reported, step 3): a keep does NOT survive a later install. After `--local-changes=keep` (kept recorded, nothing staged), a later default (reconcile) install at the same pack version turned both skills into pending reconcile entries with staged folders and emptied `kept`. This is the review's known non-blocking note; T7.4 must address it.
+
+  Non-blocking notes (carried): an earlier Keep is turned into pending by a later non-keep install (confirmed above); a deleted base.md is not restored until re-stage; staging inputs are not atomic; observed extra: when pending.json is discarded as malformed/unsafe, the old v57 staging folders are left on disk (not deleted, which is the safe side).
