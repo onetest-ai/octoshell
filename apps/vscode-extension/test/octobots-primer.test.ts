@@ -6,7 +6,7 @@ import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { PRE_MISSION_PRIMER, PRE_MISSION_PRIMER_LINES } from "./fixtures/pre-mission-primer.js";
 import { GRAPH_RELATIVE_PATH } from "../src/host/octograph-install.js";
 import { artifactPath, graphCommand } from "../src/host/octograph.js";
-import { findLegacyWorkflowFolders } from "../resources/octobots-pack/skill/mission-planner/scripts/legacy-workflows.mjs";
+import { findLegacyWorkflowFolders, isCampaignDir } from "../resources/octobots-pack/skill/mission-planner/scripts/legacy-workflows.mjs";
 
 const PRIMER = join(__dirname, "..", "resources", "octobots-pack", "hooks", "primer.mjs");
 const PRIMER_SRC = readFileSync(PRIMER, "utf8");
@@ -328,7 +328,13 @@ function write(ws: string, rel: string, text: string): void {
 }
 
 const pendingJson = (ws: string, text: string): void => write(ws, ".octobots/pack-updates/pending.json", text);
-const workflowsDir = (ws: string, rel: string): void => write(ws, `.octobots/${rel}/run/workflow.js`, "x\n");
+// The campaign holding `rel` gets a campaign.yaml: a dir under campaigns/ without one is no campaign
+// to the board model, and the primer (like doctor.js and validateBoard) ignores its workflows/.
+const workflowsDir = (ws: string, rel: string): void => {
+  const campaign = /^campaigns\/[^/]+/.exec(rel)?.[0];
+  if (campaign) write(ws, `.octobots/${campaign}/campaign.yaml`, "name: C\n");
+  write(ws, `.octobots/${rel}/run/workflow.js`, "x\n");
+};
 const acks = (ws: string, list: Array<{ finding: string; path: string }>): void =>
   write(ws, ".octobots/doctor-acks.json", JSON.stringify({ acknowledged: list.map((a) => ({ ...a, date: "2026-10-05" })) }));
 
@@ -520,23 +526,30 @@ describe("primer.mjs health line (octobots-doctor)", () => {
   });
 
   describe("workflows/ counting agrees with legacy-workflows.mjs (the doctor/validate rule)", () => {
-    const LAYOUTS: Array<{ name: string; dirs: string[]; empties?: string[] }> = [
+    const LAYOUTS: Array<{ name: string; dirs: string[]; empties?: string[]; strays?: string[] }> = [
       { name: "none", dirs: [] },
       { name: "campaign level", dirs: ["campaigns/a/workflows"] },
       { name: "mission level", dirs: ["campaigns/a/missions/m1/workflows", "campaigns/a/missions/m2/workflows"] },
       { name: "both levels, two campaigns", dirs: ["campaigns/a/workflows", "campaigns/a/missions/m1/workflows", "campaigns/b/missions/m9/workflows"] },
       { name: "an empty workflows/ folder", dirs: [], empties: ["campaigns/a/missions/m1/workflows"] },
+      // a dir under campaigns/ with no campaign.yaml/.md is no campaign: its workflows/ are not counted
+      { name: "a campaign dir with no campaign.yaml beside a real one", dirs: ["campaigns/a/workflows"], strays: ["campaigns/stray/missions/m1/workflows/x"] },
     ];
 
-    it.each(LAYOUTS)("$name", ({ dirs, empties }) => {
+    it.each(LAYOUTS)("$name", ({ dirs, empties, strays }) => {
       const ws = repoWithOctobots();
       for (const d of dirs) workflowsDir(ws, d);
-      for (const d of empties ?? []) mkdirSync(join(ws, ".octobots", ...d.split("/")), { recursive: true });
+      for (const d of empties ?? []) {
+        write(ws, `.octobots/${/^campaigns\/[^/]+/.exec(d)![0]}/campaign.yaml`, "name: C\n");
+        mkdirSync(join(ws, ".octobots", ...d.split("/")), { recursive: true });
+      }
+      for (const d of strays ?? []) mkdirSync(join(ws, ".octobots", ...d.split("/")), { recursive: true });
       const base = join(ws, ".octobots");
       const campaigns = join(base, "campaigns");
       // The rule's own answer: each reported path is a workflows/ folder or a slug inside one.
       const reported = new Set<string>();
-      for (const c of dirs.length + (empties ?? []).length ? [...new Set([...dirs, ...(empties ?? [])].map((d) => d.split("/")[1]!))] : []) {
+      const all = [...dirs, ...(empties ?? []), ...(strays ?? [])];
+      for (const c of [...new Set(all.map((d) => d.split("/")[1]!))].filter((c) => isCampaignDir(join(campaigns, c)))) {
         for (const p of findLegacyWorkflowFolders(join(campaigns, c), base)) {
           reported.add(p.split("/").slice(0, p.split("/").lastIndexOf("workflows") + 1).join("/"));
         }
