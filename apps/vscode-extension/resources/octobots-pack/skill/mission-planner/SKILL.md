@@ -238,7 +238,28 @@ are `T<missionNumber>.<taskNumber>` within their mission (`T3.1`, `T3.2`, …). 
    plan under `docs/superpowers/plans/`, or a sibling `design.md`), record it as a document — see
    **Documents** below. The tasks come from the plan; without the plan linked, a resumed mission
    can't reconstruct why the tasks are what they are.
-5. Run `validate` and fix any well-formedness errors before you finish.
+5. **Author the tests with the mission, before build.** Run `add-tests.js <mission-dir>` (idempotent;
+   it never overwrites a README and links the mission document `M<n> functional test cases`). Then
+   fill `.octobots/campaigns/<c>/tests/m<n>/README.md`: the AC map (one row per `M<n>-AC<k>` -> its
+   TCs), `Shared preconditions`, `Pre-existing records` and `Assumptions to confirm`, and write
+   `TC-NNN_<slug>.md` cases from `templates/TC-template.md`, one or more per acceptance criterion.
+   - **Frontmatter.** `id` (`^TC-\d{3,}$`, equal to the filename prefix before `_`), `title`,
+     `mission` (`M<n>`, the folder token upper-cased), `covers` (non-empty list of this mission's
+     `M<n>-AC<k>` ids), `kind` (api | ui | cli | unit), `status` (draft | ready | pass | fail |
+     blocked | unknown), optional `last_run` (`{date: YYYY-MM-DD, evidence: <repo-relative RUN file>}`).
+     Other keys are allowed and ignored. Required sections: `## Steps` and `## Expected Final State`.
+   - **Results -> status.** PASS -> pass, FAIL -> fail, BLOCKED -> blocked, UNREACHABLE -> blocked
+     with the reason in the RUN file (`runs/RUN-YYYY-MM-DD-NNN.md`). Note a manual execution as manual.
+   - **`{{base_url}}`.** Never hard-code a host or port in a TC; write `{{base_url}}` (or another
+     `{{variable}}`) and define each variable named in the README under `Shared preconditions`.
+   - **Execution modes.** API/CLI calls (curl, the project's CLI, a test command), and Playwright MCP
+     for UI. A UI that cannot be driven (an Electron app) is a unit test plus a manual session.
+   - **Real data.** A pre-existing record per case, named in the TC and listed in the README; say
+     UNREACHABLE rather than fabricate one.
+   - `validate.js` warns (warning only; it never errors and never blocks `done`) on a missing README
+     or document link, an AC no TC covers, a README row that disagrees with the frontmatter, and a
+     malformed TC.
+6. Run `validate` and fix any well-formedness errors before you finish.
 
 Principles: YAGNI — the fewest tasks that satisfy the mission's acceptance criteria. Every task is
 verifiable: someone can tell when it's done. Stay within the mission's scope; if the mission itself
@@ -540,4 +561,5 @@ Run from the repo root:
 - `node .claude/skills/mission-planner/scripts/set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>` — manage the entity's own `acceptance_criteria`.
 - `node .claude/skills/mission-planner/scripts/set-status.js <parent-dir|entity.yaml> "<entity title>" <state>` — set the `status` field in the named child's own YAML (or the parent's, for a campaign/mission self-status); idempotent, preserves the entity's other fields. On a **mission** the field doesn't drive the app's status, but setting it `done` fires the mission-completion-gate hook — see *Setting status on a mission* above.
 - `node .claude/skills/mission-planner/scripts/migrate.js [--root <dir>]` — one-time, idempotent md→yaml conversion for a board still on the legacy Markdown files (the app runs the same sweep on activation; use this for a CLI-first board opened before the app). It parses each `<kind>.md`, folds the old parent `[status:]`/`[role:]`/`[severity:]` markers and `## Tokenomics` into the child's YAML, writes `<kind>.yaml`, and trashes the `.md`. A folder already on YAML is skipped.
+- `node .claude/skills/mission-planner/scripts/add-tests.js <mission-dir|mission.yaml>` — scaffold `<campaign>/tests/m<n>/README.md` (AC map, shared preconditions, pre-existing records, assumptions) and link it as the mission document `M<n> functional test cases`; idempotent, never overwrites a README. The TC template is `templates/TC-template.md`.
 - `node .claude/skills/mission-planner/scripts/validate.js <entity-dir|entity.yaml>` — check an entity is well-formed AND meets the contract: a descriptive (non-placeholder) name, for missions/tasks at least one acceptance criterion, and no acceptance criteria stranded as `- [ ]` prose inside `notes`. Run it after editing and fix every problem.

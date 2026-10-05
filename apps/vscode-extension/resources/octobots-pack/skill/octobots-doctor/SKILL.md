@@ -203,6 +203,15 @@ Waiting for your answer:
 
 Leave out `Waiting for your answer:` only when no escalation is open.
 
+## 8. Tests pairing
+
+`validate.js` also warns when a mission has no linked `tests/m<n>/README.md`, an AC that no TC
+covers, or a TC that breaks the format. You act on that `validate.js` output; a tests-pairing
+warning is not a primer finding, and the SessionStart notice never names it. Resolve it by running
+`add-tests.js <mission-dir>` and authoring the missing TCs with the mission's owner (see the
+mission-planner skill). Never resolve it by deleting an AC, a TC or a README row; that hides the gap
+instead of closing it.
+
 ## Red flags
 
 | Thought | What to do instead |
