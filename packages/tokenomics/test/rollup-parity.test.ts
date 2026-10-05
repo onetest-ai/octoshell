@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { dump } from "js-yaml";
 import { BoardModel } from "@octoshell/board";
 import { rollup } from "../src/rollup.js";
+import { readEstimate } from "../src/estimates.js";
 import { isCampaignRun, type MissionRun } from "../src/types.js";
 import type { PriceTable } from "../src/prices.js";
 import { jsonlSource } from "./helpers/jsonl-source.js";
@@ -310,11 +311,104 @@ function mergeSharedIds(rows: NRow[]): Array<NRow & { rows: number }> {
   return [...out.values()];
 }
 
-// Environmental: needs a real project's data, which the repo does not carry.
-describe.skipIf(!process.env.OCTOBOTS_TOKENOMICS_COPY)("real copy (OCTOBOTS_TOKENOMICS_COPY)", () => {
+const REPO_OCTOBOTS = join(HERE, "../../../.octobots");
+
+/**
+ * The real board to compare over (campaign § Test conventions rule 2): `OCTOBOTS_TOKENOMICS_COPY`
+ * when QA names a copy of a project's `.octobots`, otherwise THIS repo's own `.octobots` - its
+ * committed board always exists, and its local tokenomics data (segments, worklog, prices) is
+ * taken when present. Never skipped: an unset env var (CI) still compares a real board.
+ */
+function copyRealBoard(): { dir: string; source: string } {
+  const dir = mkTmp();
+  const env = process.env.OCTOBOTS_TOKENOMICS_COPY;
+  const oct = join(dir, ".octobots");
+  if (env) {
+    cpSync(env, oct, { recursive: true });
+    return { dir, source: env };
+  }
+  cpSync(join(REPO_OCTOBOTS, "campaigns"), join(oct, "campaigns"), { recursive: true });
+  for (const f of ["raw/segments.jsonl", "worklog.jsonl", "prices.json", "prices.local.json"]) {
+    const from = join(REPO_OCTOBOTS, "tokenomics", f);
+    if (existsSync(from)) {
+      mkdirSync(dirname(join(oct, "tokenomics", f)), { recursive: true });
+      cpSync(from, join(oct, "tokenomics", f));
+    }
+  }
+  return { dir, source: REPO_OCTOBOTS };
+}
+
+/**
+ * Segments (and worklog entries) built from the copied board's own vocabulary, appended to whatever
+ * real segments it carries, so every precedence step meets the REAL board shape even where no
+ * transcripts were collected (CI): every campaign slug bare and with `-m<n>` for each mission plus
+ * one number past the last, every declared branch, a `session|branch` worklog entry per task label,
+ * and branches that match nothing.
+ */
+function appendBoardDerivedSegments(dir: string): void {
+  const oct = join(dir, ".octobots");
+  const board = new BoardModel(oct);
+  board.rebuild();
+  const branches = new Set<string>(["main", "HEAD", "chore/matches-no-campaign"]);
+  const worklog: Array<Record<string, unknown>> = [];
+  for (const c of board.listCampaigns()) {
+    const slug = slugOfCampaignId(c.folderPath);
+    for (const b of [slug, `feat/${slug}`, `chore/${slug}-plan`]) branches.add(b);
+    for (const b of readEstimate(join(oct, c.folderPath), "campaign").branches) branches.add(b);
+    let max = 0;
+    for (const m of board.listMissions(c.id)) {
+      const n = Number(/^M(\d+)/i.exec(m.title)?.[1] ?? 0);
+      max = Math.max(max, n);
+      if (n) branches.add(`feat/${slug}-m${n}`).add(`feat/${slug}-m${n}-t1`);
+      for (const b of readEstimate(join(oct, m.folderPath), "mission").branches) branches.add(b);
+      for (const t of board.listTasks(m.id)) {
+        const label = /T\d+\.\d+/i.exec(t.name)?.[0];
+        if (!label) continue;
+        const branch = `chore/worklog-${label.toLowerCase()}`;
+        branches.add(branch);
+        worklog.push({ session_id: `synthetic-parity:${branch}`, task: label, branch, state: "done", at: "2026-10-01T00:00:00.000Z" });
+      }
+    }
+    branches.add(`feat/${slug}-m${max + 1}`);
+  }
+  const segs = [...branches].map((branch, i) => {
+    const n = i + 1;
+    return JSON.stringify({
+      segment_id: `synthetic-parity:${branch}:main:${branch}`,
+      session_id: `synthetic-parity:${branch}`,
+      kind: "orchestrator",
+      agent_type: null,
+      branch,
+      started_at: "2026-10-01T00:00:00.000Z",
+      ended_at: "2026-10-01T00:01:00.000Z",
+      turns: n,
+      tokens_by_model: {
+        "claude-sonnet-4-5": {
+          input_tokens: n * 1000,
+          output_tokens: n * 100,
+          cache_read_input_tokens: n * 10,
+          cache_creation_input_tokens: 0,
+          cache_creation_5m_tokens: 0,
+          cache_creation_1h_tokens: 0,
+        },
+      },
+      tools: {},
+    });
+  });
+  const tok = join(oct, "tokenomics");
+  mkdirSync(join(tok, "raw"), { recursive: true });
+  const append = (file: string, lines: string[]): void => {
+    const prev = existsSync(file) ? readFileSync(file, "utf8") : "";
+    writeFileSync(file, prev + (prev && !prev.endsWith("\n") ? "\n" : "") + lines.join("\n") + "\n");
+  };
+  append(join(tok, "raw/segments.jsonl"), segs);
+  append(join(tok, "worklog.jsonl"), worklog.map((e) => JSON.stringify(e)));
+}
+
+describe("real board copy (OCTOBOTS_TOKENOMICS_COPY, else this repo's own .octobots)", () => {
   it("rollup.mjs and rollup.ts agree on a copy of a real .octobots, and the totals invariant holds", () => {
-    const dir = mkTmp();
-    cpSync(process.env.OCTOBOTS_TOKENOMICS_COPY!, join(dir, ".octobots"), { recursive: true });
+    const { dir } = copyRealBoard();
+    appendBoardDerivedSegments(dir);
     if (!existsSync(join(dir, ".octobots/tokenomics/prices.json"))) {
       cpSync(join(PACK, "tokenomics/prices.json"), join(dir, ".octobots/tokenomics/prices.json"));
     }
@@ -324,6 +418,10 @@ describe.skipIf(!process.env.OCTOBOTS_TOKENOMICS_COPY)("real copy (OCTOBOTS_TOKE
     installPackYaml(dir);
     const mjs = runMjs(dir);
     const ts = runTs(dir, pricesOf(dir));
+    // Not vacuous: the real board produced mission rows, campaign rows and unattributed work.
+    expect(mjs.rows.some((r) => r.target.startsWith("mission:")), "a mission row").toBe(true);
+    expect(mjs.rows.some((r) => r.target.startsWith("campaign:")), "a campaign row").toBe(true);
+    expect(mjs.unattributed.segments, "unattributed segments").toBeGreaterThan(0);
     invariant(mjs, dir);
     invariant(ts, dir);
     expect(ts.unattributed).toEqual(mjs.unattributed);
