@@ -33,7 +33,7 @@ plan a first‑class, in‑repo, markdown artifact that both the editor UI and t
 
 - **In the editor.** The Octobots activity‑bar view lists campaigns, missions, tasks, and bugs.
   Opening any entity gives a detail panel with a status dropdown, an acceptance‑criteria
-  checklist, attached documents, and team assignments. Every change is written straight to
+  checklist, attached documents, and notes. Every change is written straight to
   markdown; the board is rebuilt from disk and a debounced, git‑quiescence‑gated watcher keeps the
   UI honest through `git checkout` / `stash` / `rebase`.
 - **For agents.** Installing the Octobots pack drops the Octobots skills (`mission-planner`, `mission-execution`, `mission-completion-gate`, `knowledge-explorer` and `octobots-doctor`) and session hooks (primer, work‑log, mission‑gate) into

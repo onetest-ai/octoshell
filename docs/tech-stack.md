@@ -42,7 +42,7 @@ it, and rebuilds its in‑memory model from disk on every change.
   variables — never hardcoded colors), plus `@vscode-elements/elements` web components.
 - The entry routes on the host's `bind` message to the entity detail editors (`CampaignView`,
   `MissionView`, `TaskView`, `BugView`) with status dropdowns, acceptance‑criteria checklists,
-  document links, and team sections.
+  document links, and notes.
 - Host↔webview communication is `postMessage` request/response (`rpc` → `rpc:result`).
 
 ## Board model (`packages/board`)
