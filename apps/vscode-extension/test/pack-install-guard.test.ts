@@ -40,6 +40,21 @@ describe("installOctobotsPack in extension.ts", () => {
     expect(stop).toBeLessThan(fn.indexOf("decideLocalChanges("));
   });
 
+  it("the activation prompt checks the store before asking to install", () => {
+    const act = src.slice(src.indexOf("export async function activate"));
+    const status = act.indexOf("shouldPromptOnActivation(");
+    const check = act.indexOf("prepareInstall(", status);
+    const prompt = act.indexOf("Octobots workflow pack isn't", status);
+    expect(status).toBeGreaterThan(-1);
+    expect(check).toBeGreaterThan(status);
+    expect(prompt).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(prompt);
+    // The store error is shown and the prompt is not reached.
+    const stop = act.indexOf("showErrorMessage(", check);
+    expect(stop).toBeGreaterThan(check);
+    expect(stop).toBeLessThan(prompt);
+  });
+
   it("catches a throw and shows it as an error message", () => {
     expect(fn).toMatch(/try\s*{/);
     expect(fn).toMatch(/catch\s*\(\w+\)\s*{[^}]*showErrorMessage\(installFailureMessage\(/);

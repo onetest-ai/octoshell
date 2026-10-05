@@ -135,6 +135,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const store = loadShippedStore(vscode.Uri.joinPath(context.extensionUri, "resources", "shipped-skills.json.br").fsPath);
     const st = packStatus(repoRoot, OCTOBOTS_PACK_VERSION, store);
     if (!shouldPromptOnActivation(st, readPending(repoRoot), OCTOBOTS_PACK_VERSION)) return;
+    // No store: an "Install?" prompt here would only lead to the store error, so show that instead.
+    const prepared = prepareInstall(store);
+    if ("error" in prepared) {
+      void vscode.window.showErrorMessage(prepared.error);
+      return;
+    }
     const verb = st.installed ? "update" : "install";
     const Verb = `${verb[0]!.toUpperCase()}${verb.slice(1)}`;
     const choice = await vscode.window.showInformationMessage(
