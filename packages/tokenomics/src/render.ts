@@ -1,4 +1,4 @@
-import type { MissionRun, Report, TaskRun, TokenTotals } from "./types.js";
+import { isCampaignRun, type MissionRun, type Report, type TaskRun, type TokenTotals } from "./types.js";
 
 /**
  * Render a report to a single self-contained HTML file.
@@ -11,13 +11,18 @@ import type { MissionRun, Report, TaskRun, TokenTotals } from "./types.js";
  * path years from now, offline.
  */
 export function renderReportHtml(report: Report, title = "Factory Tokenomics"): string {
+  // Every row is attributed spend, so the cost, token, turn, dispatch and model totals cover them
+  // all. Only the mission-shaped sections (tiles, tables, sizing findings) read `missions`: a campaign
+  // row has no estimate, no tasks and no PR, and counting it as a mission would skew all three.
   const runs = report.runs;
+  const missions = runs.filter((r) => !isCampaignRun(r));
+  const campaignRows = runs.filter(isCampaignRun);
   const attributed = runs.reduce((n, r) => n + r.costUsd, 0);
   const total = attributed + report.unattributed.costUsd;
   const tokens = runs.reduce((n, r) => n + tokenTotal(r.tokens), 0);
   const turns = runs.reduce((n, r) => n + r.turns, 0);
   const dispatches = runs.reduce((n, r) => n + r.subagentDispatches, 0);
-  const maxCost = Math.max(1, ...runs.map((r) => r.costUsd));
+  const maxCost = Math.max(1, ...missions.map((r) => r.costUsd));
 
   // Weighted by cost, not a plain mean: a $1 mission must not swing the average
   // as hard as a $100 one.
@@ -50,7 +55,7 @@ and are API-equivalent, not billed. Generated ${esc(report.generatedAt)}.</p>
 
 <div class="tiles">
   ${tile(usd(total), "Total metered cost")}
-  ${tile(String(runs.length), "Missions measured")}
+  ${tile(String(missions.length), "Missions measured")}
   ${tile(mtok(tokens), "Tokens (attributed)")}
   ${tile(int(turns), "Turns")}
   ${tile(String(dispatches), "Subagent dispatches")}
@@ -65,7 +70,7 @@ and are API-equivalent, not billed. Generated ${esc(report.generatedAt)}.</p>
     <th class="l">Cost</th><th>Orch.</th><th>Cache</th><th>Sessions</th><th>Turns</th><th>Disp.</th><th>Tokens</th>
   </tr></thead>
   <tbody>
-  ${runs
+  ${missions
     .map(
       (r) => `<tr>
       <td class="l"><span class="strong">${esc(r.missionTitle)}</span></td>
@@ -89,11 +94,12 @@ and are API-equivalent, not billed. Generated ${esc(report.generatedAt)}.</p>
 </table>
 </div>
 
+${campaignRows.length ? campaignSection(campaignRows) : ""}
 <h2>Per-task breakdown</h2>
 <p class="sub">Tasks within each mission, costliest first. <strong>Mission-level</strong> is work on the mission
 branch itself — planning, integration, the gate — attributable to no single task. <strong>Attributed</strong>
 shows whether the link was a recorded fact (<code>worklog</code>) or inferred from the branch name.</p>
-${runs.map(missionDetails).join("\n")}
+${missions.map(missionDetails).join("\n")}
 
 <h2>Cost by size</h2>
 <p class="sub">Measured cost against authored effort. Sizes come from the rubric's Effort bands, so this
@@ -104,7 +110,7 @@ comparison stays non-circular — <strong>cost is never a sizing input</strong>.
   <tbody>
   ${["XS", "S", "M", "L", "XL"]
     .map((size) => {
-      const rs = runs.filter((r) => r.estimate.sizeTshirt === size);
+      const rs = missions.filter((r) => r.estimate.sizeTshirt === size);
       if (!rs.length) return "";
       const costs = rs.map((r) => r.costUsd).sort((a, b) => a - b);
       const sum = costs.reduce((a, b) => a + b, 0);
@@ -164,6 +170,35 @@ Rendered from the report alone — no transcript access required.</footer>
 `;
 }
 
+/** Spend attributed to a campaign but to none of its missions: its planning branch, declared branches. */
+function campaignSection(rows: MissionRun[]): string {
+  return `<h2>Campaign-level work</h2>
+<p class="sub">Work attributed to a campaign rather than to one of its missions - the campaign's own planning
+or hand-off branches. Included in the totals above; it is not a mission, so it carries no sizing.</p>
+<div class="card scroll">
+<table>
+  <thead><tr>
+    <th class="l">Campaign</th><th class="l">Branches</th><th class="l">Cost</th><th>Sessions</th><th>Turns</th><th>Tokens</th>
+  </tr></thead>
+  <tbody>
+  ${rows
+    .map(
+      (r) => `<tr>
+      <td class="l"><span class="strong">${esc(r.missionTitle)}</span> <span class="dim">${esc(shortCampaign(r.campaignId))}</span></td>
+      <td class="l dim">${r.branches.map(esc).join(", ")}</td>
+      <td class="l n">${usd(r.costUsd)}</td>
+      <td class="n">${r.sessions}</td>
+      <td class="n">${int(r.turns)}</td>
+      <td class="n">${mtok(tokenTotal(r.tokens))}</td>
+    </tr>`,
+    )
+    .join("\n  ")}
+  </tbody>
+</table>
+</div>
+`;
+}
+
 function missionDetails(r: MissionRun): string {
   const maxTask = Math.max(1, ...r.tasks.map((t) => t.costUsd));
   const measured = r.tasks.filter((t) => !t.unmeasured).length;
@@ -205,17 +240,18 @@ function taskRow(t: TaskRun, maxTask: number): string {
 /** Every finding carries an icon + label, so meaning never rests on colour alone. */
 function findings(report: Report, total: number): string[] {
   const out: string[] = [];
-  const noEstimate = report.runs.filter((r) => r.estimate.effortDays === null);
+  const missions = report.runs.filter((r) => !isCampaignRun(r));
+  const noEstimate = missions.filter((r) => r.estimate.effortDays === null);
   if (noEstimate.length) {
     out.push(
       finding(
         "warning",
-        `${noEstimate.length} of ${report.runs.length} missions have no authored effort`,
+        `${noEstimate.length} of ${missions.length} missions have no authored effort`,
         "Effort is the rubric's sizing key and cannot be derived from transcripts. Add a <code>## Tokenomics</code> block at planning time.",
       ),
     );
   }
-  const retro = report.runs.filter((r) => r.estimate.estimatedRetrospectively);
+  const retro = missions.filter((r) => r.estimate.estimatedRetrospectively);
   if (retro.length) {
     out.push(
       finding(

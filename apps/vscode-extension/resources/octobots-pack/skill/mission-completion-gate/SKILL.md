@@ -199,7 +199,7 @@ Produces, under `.octobots/tokenomics/` (all committed):
 | Artifact | What it is |
 |---|---|
 | `raw/segments.jsonl` | Durable per-(session × agent × branch) token records. The thing that survives transcript pruning — append-only, idempotent. |
-| `runs.json` | One schema-conformant row per mission + the segment header. Costs re-priced from raw tokens on every run. |
+| `runs.json` | One schema-conformant row per mission, plus one `work_item_level: "campaign"` row per campaign with campaign-level work (its own planning or declared branches), + the segment header. Costs re-priced from raw tokens on every run. |
 | `prices.json` | Cached LiteLLM price table (verbatim). Refresh occasionally with the pack's price-refresh command; the pipeline itself never fetches. |
 | `report.html` | Self-contained analytics report, rendered from `runs.json` alone. |
 
