@@ -1,5 +1,5 @@
 name: M1 - Tokenomics reads real transcripts and attributes campaign branches
-status: executing
+status: done
 description: Port solo's collector fix into the pack and make the extension's ClaudeTranscriptSource read the same roots. Transcripts are read from $OCTOBOTS_TOKENOMICS_PROJECTS_DIR or --projects-dir, else $CLAUDE_CONFIG_DIR/projects, else ~/.claude/projects. The legacy <main checkout>/.claude/projects is read in addition, and only the project's own slug directory (/[^A-Za-z0-9]/g -> '-') is scanned. Add a campaign-level attribution row with one precedence order shared by rollup.mjs and rollup.ts. Keep hand-added model prices across refreshes. doctor.js stops recommending CLAUDE_CONFIG_DIR=<repo>/.claude. Bump the pack to v57 (the single bump for the campaign; T1.4 lands first).
 acceptance_criteria:
   - text: Given HOME holding ~/.claude/projects/<slug-of-repo>/<s>.jsonl and another project's slug dir, when collect.mjs runs, then raw/segments.jsonl contains only that repo's sessions
