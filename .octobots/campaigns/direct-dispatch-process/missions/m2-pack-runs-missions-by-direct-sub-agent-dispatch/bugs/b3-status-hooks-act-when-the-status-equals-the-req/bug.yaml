@@ -1,0 +1,9 @@
+name: B3 - status hooks act when the status equals the request, not when it changed (re-fires the gate, logs refused starts)
+status: draft
+severity: major
+description: hooks/status-flip.mjs confirms a flip by checking that the YAML status NOW EQUALS the requested state, not that it CHANGED. Re-running `set-status ... done` on an already-done mission (or an `echo` naming one) re-fires the gate directive and appends a duplicate work-log line. Once M5 makes set-status refuse a start without a plan review, a refused `active` on a mission that is already executing would still be logged. M5 T5.1/T5.2 should settle this together with the refusal exit code (3).
+steps_to_reproduce: In a scratch workspace with the shipped pack, set a mission done, then pipe `set-status.js <c> "M1 - x" done` (or `echo` of it) into mission-gate.mjs and work-log.mjs again.
+expected: 'The hooks act only on a real transition: the before-state differed (e.g. set-status prints a transition line the hooks parse from tool_response, or exits 0 only on change) and the command''s exit status was 0.'
+actual: The directive is printed and a work-log line is appended again.
+rca: ''
+environment: 'found by the T2.2 review gate (PR #121, 2026-10-05), confirmed by QA'
