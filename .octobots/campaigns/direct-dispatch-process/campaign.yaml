@@ -101,3 +101,7 @@ notes: |-
   ## M1 landed (2026-10-05)
 
   M1 merged into feat/direct-dispatch-process via PR #119 (gate green; record in M1 notes). Campaign AC3 is aligned with M1-AC5's gate-clarified wording and checked off on M1's black-box gate evidence (solo copy: 3 campaign rows, a 4th with uwb declared; 51 mission rows identical). AC3 now says 'a copy of solo', because a worktree inside solo writes to solo.
+
+  ## Rule 9 addendum (T7.1, 2026-10-05)
+
+  The shipped-skill store (apps/vscode-extension/resources/shipped-skills.json.br) is binary (`-text`). When two branches both ran `shipped-skills.mjs --write`, resolve a merge conflict by taking either side and re-running `--write` on the merged tree (append-only, reads git history), never by hand. CI's `pnpm build` runs `--verify`, so a SKILL.md change without `--write` fails CI. A local `pnpm package` bypasses build (T6.6 guards it).

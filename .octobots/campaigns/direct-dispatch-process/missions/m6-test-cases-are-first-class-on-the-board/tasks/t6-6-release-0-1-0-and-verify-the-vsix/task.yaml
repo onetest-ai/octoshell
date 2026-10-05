@@ -10,6 +10,8 @@ acceptance_criteria:
     done: false
   - text: The campaign-AC2 VSIX grep allowlist explicitly names mission-execution/SKILL.md's heading '## No `Workflow` tool, no `workflow.js`' (or the heading is reworded and skill-conventions.test.ts updated in the same PR) (input from the M2 T2.3 review)
     done: false
+  - text: The VSIX is built so that scripts/package-vsix.mjs:38-44 (which runs both update-prices.mjs scripts) leaves tracked files unchanged, or the refreshed prices are committed deliberately in their own commit before the release commit; and the package path runs shipped-skills.mjs --verify (package-vsix.mjs bypasses the build script today) (input from the T7.1 review)
+    done: false
 tokenomics:
   effort_days: 0.5
   size_tshirt: XS
