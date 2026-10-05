@@ -35,7 +35,13 @@
     "vscode": "^1.122.0",
     "node": ">=22.5"
   },
-  "activationEvents": [],
+  "activationEvents": [
+    "onWebviewPanel:octoshell.campaign",
+    "onWebviewPanel:octoshell.mission",
+    "onWebviewPanel:octoshell.task",
+    "onWebviewPanel:octoshell.bug",
+    "onWebviewPanel:octoshell.workflow"
+  ],
   "contributes": {
     "colors": [
       {

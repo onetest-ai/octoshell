@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { BoardHost } from "../src/host/board-host.js";
 import { realBoardCopies } from "./fixtures/real-board.js";
 
@@ -29,6 +31,12 @@ function walk(tree: InstanceType<typeof CampaignsTree>): TreeNode[] {
 describe("CampaignsTree over a real board", () => {
   it("every campaign, mission, task and bug is a node, and no workflow is", () => {
     for (const dir of realBoardCopies()) {
+      // The repo's own board has workflows/ only under missions; plant one under a campaign too, so
+      // a campaign-level workflow node cannot come back unnoticed.
+      const first = new BoardHost(dir).listCampaigns()[0]!;
+      const planted = join(dir, first.folderPath, "workflows", "planted");
+      mkdirSync(planted, { recursive: true });
+      writeFileSync(join(planted, "workflow.js"), "export const meta = { name: 'planted', phases: [] };\n");
       const board = new BoardHost(dir);
       const campaigns = board.listCampaigns();
       expect(campaigns.length).toBeGreaterThan(0);
