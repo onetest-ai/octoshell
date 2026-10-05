@@ -43,7 +43,7 @@ shasum -a 256 $W/.octobots/pack-updates/pending.json > $WORK/p10.sha; (cd $W && 
 | # | Action | Expected Result |
 |---|--------|----------------|
 | 1 | Run the two vitest files | At least 1 test passed in each, none failed |
-| 2 | Read the lines the grep points at | The classification, the full policy-conflict list with 'when unsure, escalate', ESCALATED with the whole live file untouched, never merge by lines, the DECISIONS.md sections and entry forms, the no-upstream-change line, the UPSTREAM-CANDIDATES.md form, `<N>+local` + `reconciled-from:`, workflows/ deleted only on a per-folder yes, the config-dir advice, doctor-acks.json for declined findings |
+| 2 | Read the lines the grep points at | The classification, the full policy-conflict list with 'when unsure, escalate', ESCALATED with the whole live file untouched, never merge by lines, the DECISIONS.md sections and entry forms, the no-upstream-change line, the UPSTREAM-CANDIDATES.md form, `<N>+local` + `reconciled-from:`, workflows/ deleted only on a per-folder yes, the config-dir advice, doctor-acks.json for declined findings (keys {finding: "workflows", path: "campaigns/.../workflows"} relative to .octobots/, and {finding: "config-dir", path: ".claude"}) |
 | 3 | Grep the script for skill names | 0 (it names no skill) |
 | 4 | list run from octoshell's checkout | Prints the solo copy's two entries (the script resolves its workspace from its own location, not the cwd) |
 | 5 | done on an unreconciled skill | exit 3 naming the marker (`57-local`, not `57+local`); pending.json still has 2 entries |
