@@ -1,5 +1,5 @@
 name: M3 - Extension and board library drop Workflow entities
-status: draft
+status: executing
 description: 'Delete the Workflow entity from packages/board and every consumer in the extension: tree nodes, commands, panel, diagram, RPC, BoardHost API, the activation-time migrateLegacyWorkflows. Existing workflows/ folders are ignored by the model and left untouched on disk. validateBoard mirrors the pack''s warning. The octograph payload is regenerated because it inlines @octoshell/board. The ''Install Workflow Pack'' command is retitled ''Install Octobots Pack'' (id unchanged).'
 acceptance_criteria:
   - text: '@octoshell/board exports no Workflow* type, parseWorkflowMeta, extractPhases, createWorkflow, deleteWorkflow, appendWorkflowRun or migrateLegacyWorkflows; EntityKind is campaign | mission | task | bug; acorn is no longer a dependency, pnpm-lock.yaml no longer resolves it for @octoshell/board, and `pnpm install --frozen-lockfile` succeeds'
