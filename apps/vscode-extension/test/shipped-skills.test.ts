@@ -10,7 +10,7 @@ import {
 import { dirname, join } from "node:path";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { readPackVersionFromSource } from "../scripts/shipped-skills.mjs";
+import { frontmatterVersion, readPackVersionFromSource } from "../scripts/shipped-skills.mjs";
 import { OCTOBOTS_PACK_VERSION } from "../src/host/octobots-skill.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
@@ -273,6 +273,22 @@ describe("scripts/shipped-skills.mjs --write", () => {
     expect(r.status).toBe(0);
     expect(existsSync(nested)).toBe(true);
     expect(run("--verify", { ...s.env, SHIPPED_SKILLS_STORE_PATH: nested }).status).toBe(0);
+  });
+});
+
+describe("frontmatterVersion (the pack's one version rule)", () => {
+  it.each([
+    ["integer", "---\nname: x\nversion: 57\n---\nbody", 57],
+    ["CRLF", "---\r\nversion: 57\r\n---\r\nbody", 57],
+    ["a leading BOM", "\uFEFF---\nname: x\nversion: 57\n---\nbody", 57],
+    ["no version line", "---\nname: x\n---\nbody", null],
+    ["no frontmatter", "version: 57\nbody", null],
+    ["a version line in the body is prose", "---\nname: x\n---\nversion: 57", null],
+    // The FIRST version line is the version: a later integer line must not rescue a label.
+    ["a label first, an integer later", "---\nversion: 57-local\nversion: 12\n---\nbody", null],
+    ["plus-local is not the pack's integer", "---\nversion: 57+local\n---\nbody", null],
+  ])("%s", (_name, text, expected) => {
+    expect(frontmatterVersion(text)).toBe(expected);
   });
 });
 
