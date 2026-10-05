@@ -17,6 +17,8 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
 import { findLegacyWorkflowFolders, NO_LONGER_READ } from "./legacy-workflows.mjs";
+import { parseSkillMarker } from "./skill-marker.mjs";
+import { readPending, MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX } from "./pending-io.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
@@ -45,28 +47,63 @@ if (!ccd) {
 
 // ── 2. Pack payload ──────────────────────────────────────────────────────────────────────────
 const SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
-const versionOf = (text) => { const m = String(text).match(/^version:\s*(\d+)\s*$/m); return m ? Number(m[1]) : null; };
 const markerOf = (text) => { const m = String(text).match(/^(?:\/\/|#)\s*octobots-pack-version:\s*(\d+)\s*$/m); return m ? Number(m[1]) : null; };
 
-const skillVersions = new Map();
+// What the installer recorded about local changes (pending.json), read before the skills are
+// compared: a skill it is reconciling or was told to keep is not expected to match the pack.
+const pending = readPending(ROOT);
+const record = pending.state === "ok" ? pending.record : null;
+const pendingSkills = new Set(record ? record.skills.map((s) => s.skill) : []);
+const keptSkills = new Set(record ? record.kept.map((k) => k.skill) : []);
+
+// Version agreement uses the pack's one marker rule (skill-marker.mjs). Only a plain integer
+// version takes part; pending, kept, reconciled (`<N>+local`) and newer skills are excluded and
+// reported by state in one line instead.
+const primer = join(ROOT, ".octobots", "hooks", "primer.mjs");
+const primerVersion = existsSync(primer) ? markerOf(readFileSync(primer, "utf8")) : null;
+const installed = [];
 for (const s of SKILLS) {
   const p = join(ROOT, ".claude", "skills", s, "SKILL.md");
   if (!existsSync(p)) { fail("pack", `skill missing: ${s}`, 'run "Octobots: Install Workflow Pack"'); continue; }
-  skillVersions.set(s, versionOf(readFileSync(p, "utf8")));
+  installed.push({ s, m: parseSkillMarker(readFileSync(p, "utf8")) });
+}
+// "Newer" is newer than the installed pack: the record's version, else primer.mjs's marker, which
+// every install writes (pending.json exists only once a skill was changed locally, and the installer
+// leaves a newer skill alone without recording it). With no record, a primer behind EVERY integer
+// skill is itself the stale file, so nothing is called newer and the checks below report it.
+let newerThan = record ? record.packVersion : primerVersion;
+if (!record && newerThan !== null && !installed.some(({ m }) => m.kind === "integer" && m.n <= newerThan)) newerThan = null;
+const skillVersions = new Map();
+const excluded = [];
+for (const { s, m } of installed) {
+  if (pendingSkills.has(s)) excluded.push(`${s} (pending reconcile)`);
+  else if (keptSkills.has(s)) excluded.push(`${s} (kept: ${m.label ?? "no version"})`);
+  else if (newerThan !== null && m.n !== null && m.n > newerThan) excluded.push(`${s} (newer: ${m.label})`);
+  else if (m.kind === "plus-local") excluded.push(`${s} (reconciled: ${m.label})`);
+  else skillVersions.set(s, m.kind === "integer" ? m.n : null);
 }
 const versions = [...skillVersions.values()].filter((v) => v !== null);
-const packVersion = versions.length ? Math.max(...versions) : null;
+const packVersion = versions.length ? Math.max(...versions) : (record ? record.packVersion : null);
 if (versions.length && new Set(versions).size > 1) {
   fail("pack", `skills disagree on version: ${[...skillVersions].map(([k, v]) => `${k}=${v}`).join(", ")}`,
     'run "Octobots: Install Workflow Pack" to bring them to one version');
-} else if (packVersion !== null) {
+} else if (versions.length) {
   ok("pack", `${skillVersions.size} skills installed at v${packVersion}`);
 }
+if (excluded.length) note("pack", `not compared with the pack version: ${excluded.join(", ")}`);
 
-const primer = join(ROOT, ".octobots", "hooks", "primer.mjs");
+// Pending reconciles (M7): the agent runs the octobots-doctor skill to merge them. Listed even when
+// .octobots/doctor-acks.json acknowledges other findings — a pending reconcile is never acknowledgeable.
+if (record && record.skills.length) {
+  warn("pack", `pack reconcile pending: ${record.skills.map((s) => `${s.skill} (v${record.packVersion})`).join(", ")}`,
+    "run the octobots-doctor skill");
+} else if (pending.state === "malformed") {
+  warn("pack", MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX);
+}
+
 if (!existsSync(primer)) fail("pack", "primer.mjs is missing", 'run "Octobots: Install Workflow Pack"');
 else {
-  const v = markerOf(readFileSync(primer, "utf8"));
+  const v = primerVersion;
   if (packVersion !== null && v !== packVersion) {
     fail("pack", `primer.mjs is v${v}, skills are v${packVersion}`, 'run "Octobots: Install Workflow Pack"');
   } else ok("pack", `primer.mjs v${v}`);
