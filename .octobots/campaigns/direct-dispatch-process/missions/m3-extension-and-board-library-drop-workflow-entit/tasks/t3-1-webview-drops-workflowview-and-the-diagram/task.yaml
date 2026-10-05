@@ -3,5 +3,5 @@ status: draft
 role: js-dev
 description: 'Scope: delete workflow-view.tsx and workflow-diagram.tsx and their 2 tests; chat-entry.tsx:12,32,43,107-108; octoshell-shim.ts:2,23-28,56-61. Out of scope: host. Downstream: T3.2 removes the RPC the shim called.'
 acceptance_criteria:
-  - text: webview build and tests are green with the two files and their tests removed (part of mission AC4)
+  - text: apps/vscode-extension/test/workflow-view.test.tsx and workflow-diagram.test.tsx are deleted with the two components; `pnpm --filter @octoshell/vscode-extension build` and `pnpm --filter @octoshell/vscode-extension test` are green (part of mission AC4)
     done: false

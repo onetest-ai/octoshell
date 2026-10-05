@@ -1,0 +1,14 @@
+name: T6.6 - Release 0.1.0 and verify the VSIX
+status: draft
+description: 'Runs after T6.5 (the release is cut from the QA-passed tree). Scope: a standalone commit `chore(ext): release 0.1.0 with workflow pack v57` that changes only apps/vscode-extension/package.json (version 0.1.0); its body lists the changes since 0.0.51, per-package verification counts (tests passed per package, coverage numbers) and the removed commands octoshell.newWorkflow, octoshell.deleteWorkflow and octoshell.openWorkflowById, whose keybindings now report ''command not found''. Build the VSIX with apps/vscode-extension/scripts/package-vsix.mjs and verify it per mission AC8 via tests/m6/TC-011_release-vsix-verification.md, executed black-box by a qa-engineer dispatch and recorded with set-test-status.js. After publishing, re-run ''Octobots: Install Octobots Pack'' in octoshell''s own checkout and in every dev workspace that accepted an install prompt from an M1-M5 build (packStatus compares integers only, so 0.1.0 will not re-prompt a workspace already labelled 57). Out of scope: publishing to the marketplace beyond the existing package-vsix flow; any code change (a failure goes back to the owning task as a board bug). Downstream: the campaign -> main PR; campaign AC1, AC2, AC4, AC7.'
+acceptance_criteria:
+  - text: 'a standalone commit `chore(ext): release 0.1.0 with workflow pack v57` changes only apps/vscode-extension/package.json (version 0.1.0), and its body lists the changes since 0.0.51, per-package verification counts and the three removed commands with the ''command not found'' keybinding note'
+    done: false
+  - text: tests/m6/TC-011_release-vsix-verification.md is executed against the VSIX built from that commit and records status pass with last_run pointing at its RUN file (mission AC8)
+    done: false
+  - text: 'after publishing, ''Octobots: Install Octobots Pack'' has been re-run in octoshell''s own checkout and in each dev workspace that held an intermediate v57 install; each is listed in this task''s notes with packStatus upToDate: true'
+    done: false
+tokenomics:
+  effort_days: 0.5
+  size_tshirt: XS
+  complexity_score: 9

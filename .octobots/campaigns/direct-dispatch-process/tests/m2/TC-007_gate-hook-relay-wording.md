@@ -29,8 +29,10 @@ solo uwb mission `m1-venue-ingest-mode-and-vendor-integer-ids` (real mission nam
 ## Commands
 
 ```bash
+cd $WORK/solo                      # the hook exits silently when the project has no .octobots
 CMD='node .claude/skills/mission-planner/scripts/set-status.js .octobots/campaigns/uwb-ranging-ingest-vendor-v01 "M1 - Venue ingest mode and vendor integer ids" done'
-printf '%s' '{"tool_name":"Bash","tool_input":{"command":"'"$(echo $CMD | sed 's/"/\\"/g')"'"},"tool_response":{"exit_code":0}}' | node $PACK/hooks/mission-gate.mjs | tee $WORK/hook.out
+node -e 'console.log(JSON.stringify({session_id:"qa-m2-tc007",tool_name:"Bash",cwd:process.cwd(),tool_input:{command:process.argv[1]},tool_response:{exit_code:0,stdout:"",stderr:""}}))' "$CMD" \
+  | CLAUDE_PROJECT_DIR=$WORK/solo node $PACK/hooks/mission-gate.mjs | tee $WORK/hook.out
 grep -ci "relay" $WORK/hook.out; grep -ci "directly" $WORK/hook.out
 ```
 
@@ -38,7 +40,7 @@ grep -ci "relay" $WORK/hook.out; grep -ci "directly" $WORK/hook.out
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Pipe the PostToolUse JSON for that command into mission-gate.mjs | Hook exits 0 and prints a directive |
+| 1 | From the solo copy, pipe the PostToolUse JSON for that command into mission-gate.mjs (CLAUDE_PROJECT_DIR = the copy; uwb M1's YAML already reads done, so AC8's re-read lets it act) | Hook exits 0 and prints a directive |
 | 2 | Check wording | Contains that the orchestrator relays Rio's questions to the devs (relay count >= 1); 'directly' count is 0 |
 | 3 | Check phases 1-3 named in the directive | Match the gate skill's phases (tests+coverage, black-box QA, critical review) |
 

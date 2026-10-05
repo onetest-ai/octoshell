@@ -30,7 +30,7 @@ $WORK/octo/.claude (copy of octoshell's real v56 install)
 
 ```bash
 ls $WORK/octo/.claude/skills/mission-planner/scripts $WORK/octo/.claude/skills/mission-planner/scripts/vendor
-node $OCTO/.qa/install-pack.mjs $WORK/octo
+node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs $WORK/octo > $WORK/install-octo.json; echo "exit=$?"
 ls $WORK/octo/.claude/skills/mission-planner/scripts $WORK/octo/.claude/skills/mission-planner/scripts/vendor
 test -e $WORK/octo/.claude/skills/mission-planner/scripts/vendor/js-yaml.mjs && echo js-yaml KEPT
 ```
@@ -39,9 +39,9 @@ test -e $WORK/octo/.claude/skills/mission-planner/scripts/vendor/js-yaml.mjs && 
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | List scripts and vendor before | 7 workflow scripts + vendor/acorn.mjs + vendor/js-yaml.mjs present |
-| 2 | Run installPack on the copy | Exit 0 |
-| 3 | List again | The 7 scripts and acorn.mjs gone; vendor/js-yaml.mjs and every non-workflow script remain; workflow-designer/ gone |
+| 1 | List scripts and vendor before | The 6 workflow scripts (add-workflow, sync-meta, add-run, mission-input .js; extract-meta, workflow-meta .mjs) and vendor/acorn.mjs (7 retired files in all) plus vendor/js-yaml.mjs present |
+| 2 | Run installPack on the copy through install-pack.mjs | Exit 0 |
+| 3 | List again | The 7 retired files gone; vendor/js-yaml.mjs and every non-workflow script remain; workflow-designer/ gone |
 
 ## Expected Final State
 

@@ -1,6 +1,6 @@
 ---
 id: TC-004
-title: "validate.js on uwb m2: warning 'M2-AC10 is not mapped'"
+title: "validate.js on uwb m2: warning that M2-AC10 is not covered by any test case"
 mission: M4
 covers: [M4-AC2]
 kind: cli
@@ -9,13 +9,13 @@ priority: high
 size: S
 ---
 
-# TC-004: validate.js on uwb m2: warning 'M2-AC10 is not mapped'
+# TC-004: validate.js on uwb m2: warning that M2-AC10 is not covered by any test case
 
 **Mission:** M4 | **Priority:** high | **Kind:** cli | **Covers:** M4-AC2
 
 ## Objective
 
-validate.js on uwb m2: warning 'M2-AC10 is not mapped'. Verifies M4-AC2 of M4 - Functional test cases are a gate-run unit of every mission.
+validate.js on uwb m2: warning that M2-AC10 is not covered by any test case. Verifies M4-AC2 of M4 - Functional test cases are a gate-run unit of every mission.
 
 ## Preconditions
 
@@ -37,7 +37,7 @@ node $PACK/skill/mission-planner/scripts/validate.js $M; echo "exit=$?"
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run validate.js on m2 | One warning naming M2-AC10 as not mapped (AC index per the real board); exit code 0 |
+| 1 | Run validate.js on m2 | One warning naming M2-AC10 as not covered by any test case (AC index per the real board); exit code 0 |
 
 ## Expected Final State
 

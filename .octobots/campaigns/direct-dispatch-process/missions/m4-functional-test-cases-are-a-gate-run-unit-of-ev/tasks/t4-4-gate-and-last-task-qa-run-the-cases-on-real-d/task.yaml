@@ -3,5 +3,5 @@ status: draft
 role: js-dev
 description: 'Scope: gate phase 2 and mission-execution''s QA+land phase plus the last-task convention. Out of scope: the DB guard (M5), the status write-back script (M6). Downstream: M5 adds the guard to the QA brief; M6 adds set-test-status.'
 acceptance_criteria:
-  - text: 'both skills carry: run every TC; RUN-YYYY-MM-DD-NNN.md; record per criterion; QA verification notes; tick exactly the evidenced criteria; BLOCKED if the browser/login cannot be driven (mission AC5); a conventions vitest asserts each required phrase'
+  - text: 'apps/vscode-extension/test/skill-conventions.test.ts asserts both skills carry: run every TC; RUN-YYYY-MM-DD-NNN.md; PASS/FAIL/BLOCKED/UNREACHABLE with UNREACHABLE written as blocked; record per criterion; QA verification notes; tick exactly the evidenced criteria; BLOCKED if the browser/login cannot be driven (mission AC5)'
     done: false

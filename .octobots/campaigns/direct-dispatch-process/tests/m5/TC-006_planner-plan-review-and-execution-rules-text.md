@@ -29,14 +29,14 @@ the real shipped SKILL.md files
 ## Commands
 
 ```bash
-cd $OCTO && pnpm --filter @octoshell/vscode-extension test -- skill-conventions
+cd $OCTO && pnpm --filter @octoshell/vscode-extension exec vitest run test/skill-conventions.test.ts --reporter=verbose
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run the conventions vitest | Green: planner has parallel ba+tech-lead read-only dispatch with model:, per-AC real-data evidence, blocking vs nits, the recorded `## Plan review (<roles>, <date>)` shape; execution has nohup+log redirect+curl -m 2, no-timeout/perl alarm, never background test commands (+exceptions), qa-env.mjs for QA servers/migrations/seeds; gate phase 1 calls scan-parked.js |
+| 1 | Run the conventions vitest | At least 1 test passed and none failed: planner has parallel ba+tech-lead read-only dispatch with model:, per-AC real-data evidence, blocking vs nits, the recorded plan-review shape; execution has nohup+log redirect+curl -m 2, no-timeout/perl alarm, never background test commands (+exceptions), qa-env.mjs for QA servers/migrations/seeds; gate phase 1 calls scan-parked.js |
 
 ## Expected Final State
 

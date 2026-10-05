@@ -31,7 +31,7 @@ a real workflow panel opened on octoshell's octograph m6 workflow with extension
 ```bash
 # manual (Extension Development Host): 1) install 0.0.51, open $OCTO, open the build-and-gate workflow panel; 2) leave it open, upgrade to the M3 build; 3) reload the window.
 # automated half:
-cd $OCTO && pnpm --filter @octoshell/vscode-extension test -- panel-serializer
+cd $OCTO && pnpm --filter @octoshell/vscode-extension exec vitest run test/panel-serializer.test.ts --reporter=verbose
 ```
 
 ## Steps
@@ -41,7 +41,7 @@ cd $OCTO && pnpm --filter @octoshell/vscode-extension test -- panel-serializer
 | 1 | On 0.0.51 open a workflow panel on octoshell's octograph campaign and leave it open | Panel visible |
 | 2 | Upgrade to the M3 build and reload the window | Panel is restored then disposed |
 | 3 | Look for notifications and the Developer console | No error notification; no unhandled error in the console |
-| 4 | Run the serializer unit test | Green: deserialize disposes the panel |
+| 4 | Run panel-serializer.test.ts | At least 1 test passed: deserialize disposes the panel |
 
 ## Expected Final State
 

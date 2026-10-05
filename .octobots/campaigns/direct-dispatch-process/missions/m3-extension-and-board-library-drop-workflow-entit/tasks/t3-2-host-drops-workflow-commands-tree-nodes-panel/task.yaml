@@ -1,13 +1,13 @@
 name: T3.2 - Host drops workflow commands, tree nodes, panel type, RPC and activation migration
 status: draft
 role: js-dev
-description: 'Scope: extension.ts:5,125,197-200,255,343-372 with the :197 serializer replaced by a disposing one; entity-panel-manager.ts:11,13,45-46,74-76,98-99,195; campaigns-tree.ts:3,10,79-86,103,110; rpc-contract.ts:3,140-155,211-217; rpc-dispatcher.ts:90-103; host-events.ts:10; board-host.ts:26-29,41-42,378-418; package.json:182-189,256-264; retitle the install command; delete board-host-workflow.test.ts and campaigns-tree-workflow.test.ts. Out of scope: board library. Downstream: T3.3 can remove the types.'
+description: 'Scope: extension.ts:5,125,197-200,255,343-372 with the :197 serializer replaced by a disposing one; entity-panel-manager.ts:11,13,45-46,74-76,98-99,195; campaigns-tree.ts:3,10,79-86,103,110; rpc-contract.ts:3,140-155,211-217; rpc-dispatcher.ts:90-103; host-events.ts:10; board-host.ts:26-29,41-42,378-418; package.json:182-189,256-264; retitle the install command (package.json:149) and say ''Octobots pack'' in package.json:4 and src/extension.ts:78,117; replace every ''Install Workflow Pack'' quote in the pack''s doctor.js (:70-167) with ''Install Octobots Pack''; delete board-host-workflow.test.ts and campaigns-tree-workflow.test.ts. New vitests read real boards per campaign notes § Test conventions rule 2 (OCTOBOTS_BOARD_COPIES, else a temp copy of the repo''s own .octobots/). Out of scope: board library. Downstream: T3.3 can remove the types.'
 acceptance_criteria:
-  - text: no workflow command/menu/tree node/RPC method/bind kind remains (mission AC4)
+  - text: apps/vscode-extension/test/manifest-no-workflows.test.ts asserts package.json has no workflow command or menu; apps/vscode-extension/test/campaigns-tree-real-board.test.ts builds the CampaignsTree over a real board copy and asserts every mission/task/bug node and 0 workflow nodes; the RPC contract has no workflow:* method and BindMessage.kind has no "workflow" (mission AC4)
     done: false
-  - text: a restored octoshell.workflow panel is disposed without an error notification (mission AC5)
+  - text: apps/vscode-extension/test/panel-serializer.test.ts proves a restored octoshell.workflow panel is disposed without an error notification (mission AC5)
     done: false
-  - text: activation modifies nothing under any workflows/ (mission AC2, sha256 before/after)
+  - text: apps/vscode-extension/test/activation-workflows-untouched.test.ts activates BoardHost over real board copies and asserts the sha256 of every file under any workflows/ is equal before and after (mission AC2)
     done: false
-  - text: 'the command id installOctobotsWorkflowSkill is unchanged and its title reads ''Octobots: Install Octobots Pack'''
+  - text: 'the command id octoshell.installOctobotsWorkflowSkill is unchanged and its title reads ''Octobots: Install Octobots Pack''; `grep -c ''Install Workflow Pack''` on the pack''s doctor.js prints 0; src/extension.ts and package.json:4 say ''Octobots pack'' (mission AC7)'
     done: false

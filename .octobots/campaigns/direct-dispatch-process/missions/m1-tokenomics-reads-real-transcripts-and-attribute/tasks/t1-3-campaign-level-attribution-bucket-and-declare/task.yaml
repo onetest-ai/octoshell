@@ -1,9 +1,13 @@
 name: T1.3 - Campaign-level attribution bucket and declared campaign branches
 status: draft
 role: js-dev
-description: 'Scope: rollup.mjs:350-363 and packages/tokenomics/src/rollup.ts:133-160 return a campaign match when no mission resolves; model `tokenomics` on campaign in BOTH entity-schema.ts:45,59,210 and entity-io.mjs:69,184 (dual-schema hazard, AGENTS.md); render the row in render.mjs, render.ts and the webview tokenomics view. Out of scope: apportioning campaign cost to missions. Downstream: M5 QA reads campaign rows; CLAUDE.md branch rule.'
+description: 'Scope: implement mission AC5''s precedence (steps 1-7) in BOTH rollup.mjs:350-363,513-519 (adding the worklog step 4) and packages/tokenomics/src/rollup.ts:79-82,133-160 (the campaign match must not shadow the worklog); emit the campaign row inside runs[] with the AC5 shape; model `tokenomics` on campaign in BOTH entity-schema.ts:45,59,210 and entity-io.mjs:69,184 (dual-schema hazard, AGENTS.md); render.mjs, render.ts and the webview tokenomics view (tokenomics-view.tsx:105,132) show campaign rows separately and leave them out of ''Missions measured'' and the missing-sizing note (rollup.mjs:834, render.mjs:226). Touches packages/board, so campaign notes § Test conventions rule 8 applies (payload regen after a root build; T1.4 has landed first). Out of scope: apportioning campaign cost to missions. Downstream: M1 TC-005..007, TC-009; campaign AC3; this campaign''s own feat/direct-dispatch-process row.'
 acceptance_criteria:
-  - text: 'runs.json carries a campaign-level row (mission: null) for campaign-level branches; rollup.mjs and rollup.ts agree on the same segments (mission AC5)'
+  - text: packages/tokenomics/test/rollup-parity.test.ts is table-driven over all 7 precedence steps, runs rollup.mjs (spawned) and rollup.ts on the same segments and board, and asserts identical runs[] (campaign and mission rows) and unattributed; it also asserts sum(runs[] cost and tokens) + unattributed equals the segments' total (verify.mjs invariant), and, when OCTOBOTS_TOKENOMICS_COPY=<dir> names a copy of a project's .octobots (raw/segments.jsonl + campaigns/), it runs the same comparison over that copy (mission AC5)
     done: false
-  - text: an entity round-trip test shows campaign tokenomics.branches survives add-doc.js and set-status.js writes
+  - text: packages/board/test/campaign-tokenomics-roundtrip.test.ts shows a campaign's tokenomics.branches (list and comma-string forms) survives add-doc.js and set-status.js writes and round-trips through entity-schema.ts
+    done: false
+  - text: packages/tokenomics/test/render.test.ts and apps/vscode-extension/test/tokenomics-view-campaign-rows.test.tsx assert that campaign rows are rendered under their own heading and are excluded from 'Missions measured' and the missing-sizing note
+    done: false
+  - text: after a root `pnpm build`, `pnpm --filter @octoshell/vscode-extension graph:payload:write` leaves graph-payload.mjs --verify green, and the 57 hash in graph-payload-versions.json is rewritten in a visible diff line if the bytes changed
     done: false

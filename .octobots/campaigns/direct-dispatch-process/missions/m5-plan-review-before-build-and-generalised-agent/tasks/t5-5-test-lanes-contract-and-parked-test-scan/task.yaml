@@ -1,9 +1,9 @@
 name: T5.5 - Test-lanes contract and parked-test scan
 status: draft
 role: js-dev
-description: 'Scope: a new pack script scan-parked.js; the doctor.js lanes check; gate phase 1 calling scan-parked.js; octoshell AGENTS.md § Test lanes and CLAUDE.md generalised rules (dogfood). Out of scope: making pnpm test parallel (already via turbo). Downstream: campaign AC7.'
+description: 'Scope: a new pack script skill/mission-execution/scripts/scan-parked.js with the file set, hit rules, signoff format, exit codes and --json shape of mission AC6 (a sibling package.json {"type":"module"} as in mission-planner/scripts if it is ESM); tests in packages/board/test/scan-parked.test.ts (coverage-gated by T5.4''s widened include); the doctor.js lanes check ({level: warn, area: lanes}); gate phase 1 calling scan-parked.js; octoshell AGENTS.md § Test lanes and CLAUDE.md generalised rules (dogfood). Out of scope: making pnpm test parallel (already via turbo). Downstream: campaign AC7 and M6-AC8 (scan on the release tree).'
 acceptance_criteria:
-  - text: scan-parked.js behaves per mission AC6 and exits 0 on octoshell listing vault-calibration.test.ts:10 as allowed
+  - text: packages/board/test/scan-parked.test.ts covers every clause of mission AC6, including `process.exit(` (as in packages/graph/bin/octograph.mjs:30) not being a hit, an imperative pytest.xfail( with a reason string being a hit, a signoff line exempting a hit, and its own fixtures being excluded; run at the octoshell root it exits 0 and lists vault-calibration.test.ts:10 as allowed
     done: false
-  - text: 'doctor.js warns on a repo with no `## Test lanes` and not on octoshell; octoshell AGENTS.md declares fast: and coverage: (mission AC7)'
+  - text: 'packages/board/test/scripts-cli-scenarios.test.ts covers `doctor.js --json` reporting {level: "warn", area: "lanes"} on a repo whose AGENTS.md has no `## Test lanes`, and no lanes finding on octoshell''s AGENTS.md, which declares fast: and coverage: (mission AC7)'
     done: false

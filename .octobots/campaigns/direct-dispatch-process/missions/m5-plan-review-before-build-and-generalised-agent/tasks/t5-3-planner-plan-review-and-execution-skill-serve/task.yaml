@@ -3,5 +3,5 @@ status: draft
 role: js-dev
 description: 'Scope: mission-planner § Plan review text (recorded shape, parallel read-only dispatch with model:, per-AC real-data evidence, blocking vs nits); mission-execution § Dispatch rules: nohup/curl -m 2, no-timeout/perl alarm, never background a test command (server/watcher exceptions), qa-env.mjs for QA servers/migrations/seeds. Out of scope: project CLAUDE.md beyond octoshell''s. Downstream: none.'
 acceptance_criteria:
-  - text: a conventions vitest asserts the phrases of mission AC3 and AC5 are present in the shipped skills
+  - text: apps/vscode-extension/test/skill-conventions.test.ts asserts the phrases of mission AC3 and AC5 are present in the shipped skills
     done: false

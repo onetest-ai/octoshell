@@ -19,40 +19,46 @@ CLAUDE_CONFIG_DIR and --projects-dir/env override the home root, in that order. 
 
 ## Preconditions
 
-- Suite prerequisites in `README.md` are met (variables SOLO, OCTO, PACK, WORK; copies made in $WORK; mission branch built).
+- Suite prerequisites in `README.md` are met (variables SOLO, OCTO, PACK, WORK, SLUG; the qa-m1 worktree from TC-001).
 - Originals under $SOLO and $OCTO are untouched; this case works on copies.
 
 ## Real data (pre-existing record)
 
-a `cp -R` COPY of the real solo slug dir (in $WORK) as the override root, so the result is comparable to TC-001
+`cp -R` copies of the real solo home slug dir in $WORK, used as override roots. The discriminator is the 3 home-only sessions (011deac1, 138ca3b0, 39d8025a): they appear only when the root under test is read. Solo's legacy main-checkout root is read in addition in every run, so it is never expected to be empty.
 
 ## Commands
 
 ```bash
-mkdir -p $WORK/cfg/projects && cp -R ~/.claude/projects/-Users-arozumenko-Development-auqanautica $WORK/cfg/projects/
-mkdir -p $WORK/other/ && cp -R ~/.claude/projects/-Users-arozumenko-Development-auqanautica $WORK/other/
 cd $SOLO/.claude/worktrees/qa-m1
-# (a) config dir replaces ~
-HOME=$WORK/emptyhome CLAUDE_CONFIG_DIR=$WORK/cfg node $PACK/tokenomics/collect.mjs --project-dir "$PWD"; wc -l .octobots/tokenomics/raw/segments.jsonl
-# (b) env override beats config dir; (c) --projects-dir beats env
-OCTOBOTS_TOKENOMICS_PROJECTS_DIR=$WORK/other CLAUDE_CONFIG_DIR=$WORK/cfg HOME=$WORK/emptyhome node $PACK/tokenomics/collect.mjs --project-dir "$PWD"
-HOME=$WORK/emptyhome node $PACK/tokenomics/collect.mjs --project-dir "$PWD" --projects-dir $WORK/other
+mkdir -p $WORK/emptyhome $WORK/cfg/projects $WORK/other $WORK/empty-projects
+cp -R $HOME/.claude/projects/$SLUG $WORK/cfg/projects/
+cp -R $HOME/.claude/projects/$SLUG $WORK/other/
+sessions() { node -e 'const l=require("fs").readFileSync(".octobots/tokenomics/raw/segments.jsonl","utf8").trim().split("\n").filter(Boolean).map(JSON.parse);const ids=new Set(l.map(s=>s.session_id.slice(0,8)));console.log("home-only:",["011deac1","138ca3b0","39d8025a"].filter(p=>ids.has(p)).join(" ")||"none","| sessions:",ids.size)'; }
+# (a) CLAUDE_CONFIG_DIR replaces ~/.claude
+rm -f .octobots/tokenomics/raw/segments.jsonl; HOME=$WORK/emptyhome CLAUDE_CONFIG_DIR=$WORK/cfg node $PACK/tokenomics/collect.mjs --project-dir "$PWD"; sessions
+# (a2) the same with the config dir's slug moved away
+mv $WORK/cfg/projects/$SLUG $WORK/cfg-slug.aside
+rm -f .octobots/tokenomics/raw/segments.jsonl; HOME=$WORK/emptyhome CLAUDE_CONFIG_DIR=$WORK/cfg node $PACK/tokenomics/collect.mjs --project-dir "$PWD"; sessions
+# (b) env beats CLAUDE_CONFIG_DIR
+rm -f .octobots/tokenomics/raw/segments.jsonl; HOME=$WORK/emptyhome CLAUDE_CONFIG_DIR=$WORK/cfg OCTOBOTS_TOKENOMICS_PROJECTS_DIR=$WORK/other node $PACK/tokenomics/collect.mjs --project-dir "$PWD"; sessions
+# (c) --projects-dir beats env
+rm -f .octobots/tokenomics/raw/segments.jsonl; HOME=$WORK/emptyhome OCTOBOTS_TOKENOMICS_PROJECTS_DIR=$WORK/empty-projects node $PACK/tokenomics/collect.mjs --project-dir "$PWD" --projects-dir $WORK/other; sessions
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Build the two override roots as copies of the real slug dir; make $WORK/emptyhome an empty HOME | Roots exist |
-| 2 | (a) Run with HOME=empty and CLAUDE_CONFIG_DIR=$WORK/cfg | Segments equal TC-001's segment count (the config dir's projects/<slug> replaced ~/.claude/projects) |
-| 3 | Delete $WORK/cfg/projects/<slug> and rerun (a) | 0 segments: proves the config dir, not the real home, was read |
-| 4 | (b) env OCTOBOTS_TOKENOMICS_PROJECTS_DIR=$WORK/other with CLAUDE_CONFIG_DIR still set | Segments come from $WORK/other (non-zero) even though cfg is now empty |
-| 5 | (c) `--projects-dir $WORK/other` with no env | Same segments as (b) |
+| 1 | Build the override roots as copies of the real slug dir; make $WORK/emptyhome an empty HOME | Roots exist |
+| 2 | (a) HOME=empty, CLAUDE_CONFIG_DIR=$WORK/cfg | home-only: 011deac1 138ca3b0 39d8025a (the config dir's projects/<slug> replaced ~/.claude/projects) |
+| 3 | (a2) move the config dir's slug away and rerun (a) | home-only: none, sessions > 0 (only the legacy root remains): the config dir, not the real home, was read |
+| 4 | (b) OCTOBOTS_TOKENOMICS_PROJECTS_DIR=$WORK/other with CLAUDE_CONFIG_DIR still set | home-only: all three (from $WORK/other), although the config dir now has no slug |
+| 5 | (c) `--projects-dir $WORK/other` while the env points at an empty root | home-only: all three: the flag beat the env |
 
 ## Expected Final State
 
-Each override root replaces the previous one in the stated order; results equal the real-home run when the root is a copy of the real slug dir.
+Each override replaces the previous root in the stated order (--projects-dir > env > CLAUDE_CONFIG_DIR > ~), and the legacy main-checkout root is read in addition every time.
 
 ## Teardown
 
-- `rm -rf $WORK/cfg $WORK/other $WORK/emptyhome`
+- `rm -rf $WORK/cfg $WORK/other $WORK/emptyhome $WORK/empty-projects $WORK/cfg-slug.aside`

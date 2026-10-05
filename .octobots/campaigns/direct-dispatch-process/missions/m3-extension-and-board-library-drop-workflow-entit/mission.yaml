@@ -2,7 +2,7 @@ name: M3 - Extension and board library drop Workflow entities
 status: draft
 description: 'Delete the Workflow entity from packages/board and every consumer in the extension: tree nodes, commands, panel, diagram, RPC, BoardHost API, the activation-time migrateLegacyWorkflows. Existing workflows/ folders are ignored by the model and left untouched on disk. validateBoard mirrors the pack''s warning. The octograph payload is regenerated because it inlines @octoshell/board. The ''Install Workflow Pack'' command is retitled ''Install Octobots Pack'' (id unchanged).'
 acceptance_criteria:
-  - text: '@octoshell/board exports no Workflow* type, parseWorkflowMeta, extractPhases, createWorkflow, deleteWorkflow, appendWorkflowRun or migrateLegacyWorkflows; EntityKind is campaign | mission | task | bug; acorn is no longer a dependency'
+  - text: '@octoshell/board exports no Workflow* type, parseWorkflowMeta, extractPhases, createWorkflow, deleteWorkflow, appendWorkflowRun or migrateLegacyWorkflows; EntityKind is campaign | mission | task | bug; acorn is no longer a dependency, pnpm-lock.yaml no longer resolves it for @octoshell/board, and `pnpm install --frozen-lockfile` succeeds'
     done: false
   - text: Given a board containing workflows/ folders, BoardModel loads every campaign, mission, task and bug it loaded before with identical ids and creates no workflow entity; activation modifies no file under any workflows/ (sha256 of every file equal before and after)
     done: false
@@ -14,7 +14,7 @@ acceptance_criteria:
     done: false
   - text: graph/octograph.mjs is regenerated, graph-payload.mjs --verify passes, and the 57 hash in graph-payload-versions.json is updated in a visible diff line; `octograph map` and `own` still run on the octoshell repo
     done: false
-  - text: 'pnpm lint/build/typecheck/test/coverage are green; README, CLAUDE.md and AGENTS.md no longer describe workflows; the command `octoshell.installOctobotsWorkflowSkill` keeps its id and is titled ''Octobots: Install Octobots Pack'' (and doctor.js quotes the new title)'
+  - text: 'pnpm lint/build/typecheck/test/coverage are green; `grep -n -i -E ''workflow\.js|WorkflowView|workflow-designer|workflow-diagram|workflow pack|Install Workflow Pack''` on README.md, apps/vscode-extension/README.md, CLAUDE.md, AGENTS.md, .agents/knowledge/architecture/pack-version-is-one-unit.md and .agents/knowledge/architecture/dual-schema-entity-io.md returns nothing; the command `octoshell.installOctobotsWorkflowSkill` keeps its id and is titled ''Octobots: Install Octobots Pack''; doctor.js quotes that title in every install hint (no ''Install Workflow Pack'' left); the install notification and activation prompt (src/extension.ts:78,117) and package.json''s description say ''Octobots pack'', not ''workflow pack'''
     done: false
 documents:
   - label: M3 functional test cases
@@ -30,3 +30,10 @@ notes: |-
   Kept ON PURPOSE: packages/tokenomics claude-source.ts / types.ts workflowId (old transcripts nest Workflow agents under subagents/workflows/wf_<id>/).
   graph-payload.test.ts goes red whenever packages/board changes: rewrite the 57 hash in graph-payload-versions.json in the same PR, as a visible diff line (allowed by that file's _why).
   Back-compat: a stub serializer for the old octoshell.workflow panel type disposes silently for one release; remove in 0.1.1. Keybindings to the removed commands report 'command not found' (noted in the release body).
+
+  ## Plan-review fixes (2026-10-05)
+
+  - Unowned touchpoints now owned: root README.md (:7,37,51,84,87,101,107), apps/vscode-extension/README.md, the knowledge notes pack-version-is-one-unit.md (says "all five" SKILL.md, omits statusline.sh) and dual-schema-entity-io.md:32 -> T3.4; src/extension.ts:78,117, package.json:4 and every 'Install Workflow Pack' quote in doctor.js (9 at :70-167) -> T3.2; the scripts/graph-payload.mjs:63 comment that cites workflow-meta.ts as precedent -> T3.3.
+  - T3.3 removes acorn, so pnpm-lock.yaml changes in the same PR (CI installs with --frozen-lockfile).
+  - QA harness for TC-003: apps/vscode-extension/scripts/qa/dump-ids.mjs (T3.3) with --board-dist, so the BEFORE snapshot runs main's built board library without needing the harness inside the main worktree.
+  - The extension has no production caller of validateBoard, so the AC3 warning is visible through validate.js/doctor.js only; whether to surface it in the UI is an open user question (no change here). TC-009 no longer expects it in Problems/Output.

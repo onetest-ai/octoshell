@@ -29,16 +29,20 @@ copy of solo's real `.claude/skills` with the two `version: 57-local` forks
 ## Commands
 
 ```bash
-cd $OCTO && pnpm --filter @octoshell/vscode-extension test -- octobots-skill
-# the case points packStatus at a copy of solo's real skills dir (read from the real tree at test time), before and after installPack
+cd $OCTO && pnpm --filter @octoshell/vscode-extension exec vitest run test/octobots-skill.test.ts --reporter=verbose
+# real-data half: a FRESH copy (TC-001 already upgraded $WORK/solo)
+mkdir -p $WORK/solo2 && cp -R $SOLO/.claude $WORK/solo2/
+grep -h "^version:" $WORK/solo2/.claude/skills/*/SKILL.md | sort | uniq -c
+node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs $WORK/solo2 | jq '{before: .before, after: .after}'
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | packStatus on the unmodified solo copy | installed: false / upToDate: false (57-local parses to null) |
-| 2 | installPack, then packStatus | upToDate: true; every skill version is 57 |
+| 1 | Run octobots-skill.test.ts | At least 1 test passed, incl. the 57-local before/after case |
+| 2 | `.before` on the fresh solo copy | upToDate: false (the `57-local` forks parse to null) |
+| 3 | `.after` | upToDate: true; every pack skill version is 57 |
 
 ## Expected Final State
 

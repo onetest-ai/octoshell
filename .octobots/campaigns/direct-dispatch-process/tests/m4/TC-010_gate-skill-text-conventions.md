@@ -29,14 +29,14 @@ the real shipped SKILL.md files of mission-completion-gate and mission-execution
 ## Commands
 
 ```bash
-cd $OCTO && pnpm --filter @octoshell/vscode-extension test -- skill-conventions
+cd $OCTO && pnpm --filter @octoshell/vscode-extension exec vitest run test/skill-conventions.test.ts --reporter=verbose
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run the conventions vitest | Green: each required phrase present in both skills (run every TC, RUN-*.md, record per criterion, QA verification notes via entity-io, tick exactly evidenced criteria, BLOCKED on browser/login failure) |
+| 1 | Run the conventions vitest | At least 1 test passed and none failed: each required phrase present in both skills (run every TC, RUN-*.md, PASS/FAIL/BLOCKED/UNREACHABLE with UNREACHABLE written as blocked, record per criterion, QA verification notes via entity-io, tick exactly evidenced criteria, BLOCKED on browser/login failure) |
 
 ## Expected Final State
 

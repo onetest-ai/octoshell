@@ -3,7 +3,7 @@ status: draft
 role: js-dev
 description: 'Scope: validate.js:4,14-42,92-106,123-237 replaced by a warning pass; doctor.js gains a `board` warn check. Out of scope: validate.ts (M3 mirrors it). Downstream: M3 T3.3 mirrors the same message text.'
 acceptance_criteria:
-  - text: validate.js prints one `warning:` per workflows/ folder (path + 'no longer read since pack v57'), exit code unchanged; validate.js <path>/workflow.js exits 2 'not an entity file' (mission AC3)
+  - text: 'packages/board/test/scripts-cli-scenarios.test.ts covers: validate.js prints one `warning:` per workflows/ folder (path + ''no longer read since pack v57''), exit code unchanged; validate.js <path>/workflow.js exits 2 ''not an entity file'' (mission AC3)'
     done: false
-  - text: doctor.js reports one `warn` with count and the fix, never `fail` (mission AC4); coverage:pack passes
+  - text: 'the same suite covers doctor.js reporting one finding {level: "warn"} with the count and the fix in `--json` output, never "fail" (mission AC4); `pnpm coverage:pack` passes'
     done: false

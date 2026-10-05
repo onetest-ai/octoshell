@@ -29,7 +29,11 @@ copies of the real AGENTS.md of solo (no `## Test lanes` section) and of octoshe
 ## Commands
 
 ```bash
-for r in solo octo; do mkdir -p $WORK/d-$r; cp $( [ $r = solo ] && echo $SOLO || echo $OCTO )/AGENTS.md $WORK/d-$r/; cp -R $WORK/$( [ $r = solo ] && echo solo-octobots || echo octo-octobots ) $WORK/d-$r/.octobots; (cd $WORK/d-$r && node $PACK/skill/mission-planner/scripts/doctor.js --json | jq '.checks[]|select(.name|test("lanes";"i"))'); done
+for r in solo octo; do
+  SRC=$( [ $r = solo ] && echo $SOLO || echo $OCTO ); BOARD=$( [ $r = solo ] && echo $WORK/solo-octobots || echo $WORK/octo-octobots )
+  mkdir -p $WORK/d-$r && cp $SRC/AGENTS.md $WORK/d-$r/ && cp -R $BOARD $WORK/d-$r/.octobots
+  (cd $WORK/d-$r && node $PACK/skill/mission-planner/scripts/doctor.js --json | jq -c '.findings[]|select(.area=="lanes")')
+done
 grep -n -A6 "^## Test lanes" $OCTO/AGENTS.md
 ```
 
@@ -37,8 +41,8 @@ grep -n -A6 "^## Test lanes" $OCTO/AGENTS.md
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | doctor.js on the solo copy | A `warn` about the missing `## Test lanes` (fast:/coverage:) |
-| 2 | doctor.js on the octoshell copy | No lanes warning; section declares fast: `pnpm --filter <pkg> test` and coverage: `pnpm coverage` |
+| 1 | doctor.js --json on the solo copy | One finding `{level: "warn", area: "lanes"}` about the missing `## Test lanes` (fast:/coverage:) |
+| 2 | doctor.js --json on the octoshell copy | No `lanes` finding; the section declares fast: `pnpm --filter <pkg> test` and coverage: `pnpm coverage` |
 | 3 | Check octoshell CLAUDE.md | Carries the generalised agent-ops rules (no timeout, nohup, qa-env) |
 
 ## Expected Final State

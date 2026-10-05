@@ -3,7 +3,7 @@ status: draft
 role: js-dev
 description: 'Scope: mission panel Tests section and AC coverage view (uncovered ACs in warning style, empty-state hint), campaign panel test summary (totals by status, uncovered AC count, rows link to missions); component tests over real board copies. Out of scope: tree/host (T6.3), write-back. Downstream: M6 QA.'
 acceptance_criteria:
-  - text: mission panel Tests section and AC coverage view per mission AC4, including uncovered-AC warning style and the no-tests empty state
+  - text: apps/vscode-extension/test/mission-tests-panel.test.tsx proves the mission panel Tests section and AC coverage view per mission AC4, including the uncovered-AC warning style and the no-tests empty state
     done: false
-  - text: campaign panel summary per mission AC5; webview build and tests green
+  - text: apps/vscode-extension/test/campaign-tests-summary.test.tsx proves the campaign panel summary per mission AC5; webview build and tests green
     done: false

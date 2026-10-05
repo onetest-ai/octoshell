@@ -29,14 +29,14 @@ $WORK/solo-octobots uwb m1, m2, m6 and a real TC (same inputs as TC-003..006)
 ## Commands
 
 ```bash
-cd $OCTO && OCTOBOTS_BOARD_COPIES=$WORK/solo-octobots pnpm --filter @octoshell/board test -- validate-tests-parity
+cd $OCTO && OCTOBOTS_BOARD_COPIES=$WORK/solo-octobots pnpm --filter @octoshell/board exec vitest run test/validate-tests-parity.test.ts --reporter=verbose
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run both implementations over the same real inputs and compare message text and severity | Identical sets (all `warning`) |
+| 1 | Run validate-tests-parity.test.ts: both implementations over the same real inputs, comparing message text (paths relative to .octobots/) and severity | At least 1 test passed; identical sets (all `warning`), incl. the README-map disagreement and TC format cases |
 
 ## Expected Final State
 

@@ -30,7 +30,8 @@ $WORK/solo (copy of solo's real board: 6 workflows/ folders)
 
 ```bash
 cd $WORK/solo && node .claude/skills/mission-planner/scripts/doctor.js --json > $WORK/doctor.json; echo "exit=$?"
-jq '.checks[]|select(.name|test("workflow";"i"))' $WORK/doctor.json
+jq -c '.findings[]|select(.msg|test("workflows/"))' $WORK/doctor.json
+jq '[.findings[]|select(.level=="fail")]|length' $WORK/doctor.json
 find $WORK/solo/.octobots -type d -name workflows | wc -l
 ```
 
@@ -39,8 +40,8 @@ find $WORK/solo/.octobots -type d -name workflows | wc -l
 | # | Action | Expected Result |
 |---|--------|----------------|
 | 1 | Count workflows/ folders in the copy | 6 (recorded 2026-10-05) |
-| 2 | Run doctor.js | Exactly one check about workflows with status `warn` (never `fail`), message contains the count and the fix (git rm -r or keep as history) |
-| 3 | Check overall status/exit code | Not failed because of this check |
+| 2 | Run doctor.js --json (`{root, packVersion, findings:[{level, area, msg, fix}]}`) | Exactly one finding whose msg mentions workflows/, with level `warn` (never `fail`); msg contains the count (6) and fix holds the remedy (git rm -r, or keep as history) |
+| 3 | Check the fail findings and exit code | No `fail` finding is about workflows/; the exit code is not failed because of it |
 
 ## Expected Final State
 

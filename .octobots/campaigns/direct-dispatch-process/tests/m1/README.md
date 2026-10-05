@@ -1,34 +1,37 @@
 # Suite: direct-dispatch-process-m1
 
-Functional cases for **M1 - Tokenomics reads real transcripts and attributes campaign branches**, campaign `direct-dispatch-process` (octoshell). 10 cases (8 cli, 1 ui, 1 unit), authored from the mission acceptance criteria (M1-AC1..AC7, numbered in board order) before the mission is built. Every case names a pre-existing record: copies of the real octoshell and solo boards and transcripts, never a self-made fixture (a case that is a synthetic unit check says so).
+Functional cases for **M1 - Tokenomics reads real transcripts and attributes campaign branches**, campaign `direct-dispatch-process` (octoshell). 11 cases (9 cli, 1 ui, 1 unit), authored from the mission acceptance criteria (M1-AC1..AC8, numbered in board order) before the mission is built. Every case names a pre-existing record: copies of the real octoshell and solo boards and transcripts, never a self-made fixture (a case that is a synthetic unit check says so).
 
 ## How to run
 
-Run the cases in numeric order from the octoshell checkout on the mission branch (`feat/direct-dispatch-process-m1`). Each case file holds its exact commands and an Expected Final State; the runner records PASS / FAIL / BLOCKED / UNREACHABLE per case with evidence and writes `runs/RUN-YYYY-MM-DD-NNN.md` (evidence screenshots under `evidence/`). After each case record the result on the board: `node $PACK/skill/mission-planner/scripts/set-test-status.js <TC file> <pass|fail|blocked> --evidence <runs/RUN file>` (available once M6 ships; until then edit the frontmatter `status`/`last_run` by hand).
+Run the cases in numeric order from the octoshell checkout on the mission branch (`feat/direct-dispatch-process-m1`). Each case file holds its exact commands and an Expected Final State; the runner records PASS / FAIL / BLOCKED / UNREACHABLE per case with evidence and writes `runs/RUN-YYYY-MM-DD-NNN.md` (evidence screenshots under `evidence/`). After each case record the result on the board: `node $PACK/skill/mission-planner/scripts/set-test-status.js <TC file> <pass|fail|blocked> --evidence <runs/RUN file>` (available once M6 ships; until then edit the frontmatter `status`/`last_run` by hand). Result words map to status: PASS -> pass, FAIL -> fail, BLOCKED -> blocked, UNREACHABLE -> blocked with the reason in the RUN file; a manual (F5) execution is noted as manual in the RUN file.
+A case that runs a vitest suite runs `pnpm --filter <pkg> exec vitest run <package-relative path> --reporter=verbose` and needs at least 1 test passed in that file (never `pnpm ... test -- <name>`: the extension's `--passWithNoTests` exits 0 when nothing matches). QA harnesses are the committed scripts under `apps/vscode-extension/scripts/qa/`; vitests that read real boards take `OCTOBOTS_BOARD_COPIES` (campaign notes § Test conventions).
 Cases of kind `ui` that need VS Code are manual Extension Development Host (F5) sessions: VS Code is Electron and not drivable by Playwright MCP, and the repo has no @vscode/test-electron harness. Record them as manual, with screenshots.
-TC frontmatter: id, title, mission, covers (list of M<n>-AC<k>), kind (api|ui|cli|unit), status (draft|ready|pass|fail|blocked), optional last_run.
+TC frontmatter follows M4's TC format contract (M4 mission notes): id, title, mission, covers (list of M<n>-AC<k>), kind (api|ui|cli|unit), status (draft|ready|pass|fail|blocked|unknown), optional last_run {date, evidence}; other keys (priority, size) are allowed.
 
 ## Prerequisites
 
-Shell variables used in the cases: `SOLO=/Users/arozumenko/Development/auqanautica`, `OCTO=/Users/arozumenko/Development/octoshell`, `PACK=$OCTO/apps/vscode-extension/resources/octobots-pack`, `WORK=$(mktemp -d)`.
+Shell variables used in the cases: `SOLO=/Users/arozumenko/Development/auqanautica`, `OCTO=/Users/arozumenko/Development/octoshell`, `PACK=$OCTO/apps/vscode-extension/resources/octobots-pack`, `WORK=$(mktemp -d)`, `SLUG=-Users-arozumenko-Development-auqanautica`, `OLD=$WORK/oldpack/apps/vscode-extension/resources/octobots-pack/tokenomics` (the v56 tokenomics, see below).
 
-- Node >= 20 and `pnpm install && pnpm build` done in $OCTO (octoshell checkout on the mission branch). `PACK=$OCTO/apps/vscode-extension/resources/octobots-pack`.
-- Solo is checked out at $SOLO (/Users/arozumenko/Development/auqanautica). Run the CLI cases from a disposable worktree: `git -C $SOLO worktree add $SOLO/.claude/worktrees/qa-m1 HEAD` (it unwinds to solo's own slug). Remove it afterwards. NEVER run collectors from $SOLO itself: its committed .octobots/tokenomics/ must stay byte-identical (`git -C $SOLO status --short .octobots/tokenomics` is empty before and after).
-- Real transcripts: ~/.claude/projects/-Users-arozumenko-Development-auqanautica (must exist and be non-empty). Real board: solo .octobots/campaigns/{sensor-assignment-uplift,uwb-ranging-ingest-vendor-v01}.
-- Capture baselines BEFORE building the mission branch's changes where a case compares before/after (TC-007): run solo's current runs.json copy aside as $WORK/runs.before.json.
-- `WORK=$(mktemp -d)`. Work only on copies inside $WORK.
+- Node >= 20 and `pnpm install && pnpm build` done in $OCTO (octoshell checkout on the mission branch).
+- Solo is checked out at $SOLO. Run the CLI cases from a disposable worktree: `git -C $SOLO worktree add $SOLO/.claude/worktrees/qa-m1 HEAD` (it unwinds to solo's own slug; artifacts are written into the worktree). Remove it afterwards. NEVER run collectors from $SOLO itself: its committed .octobots/tokenomics/ must stay byte-identical (`git -C $SOLO status --short .octobots/tokenomics` is empty before and after).
+- Transcript roots for solo's slug: the home root `$HOME/.claude/projects/$SLUG` and the legacy root of the MAIN checkout, `$SOLO/.claude/projects/$SLUG`. A worktree has no legacy root of its own: the collector always reads the main checkout's.
+- Every tokenomics command passes `--project-dir` (agent shells reset the cwd between calls; a bare rollup.mjs would write octoshell's own runs.json), and rollup.mjs also gets `--no-gh` so compared runs are deterministic. collect.mjs merges into an existing raw/segments.jsonl, so a case that inspects a fresh collection first runs `rm -f .octobots/tokenomics/raw/segments.jsonl` (inside the worktree only).
+- v56 tokenomics for before/after comparisons (TC-007): `mkdir -p $WORK/oldpack && git -C $OCTO archive origin/main apps/vscode-extension/resources/octobots-pack/tokenomics | tar -x -C $WORK/oldpack`.
+- Work only on copies inside $WORK or inside the disposable worktree.
 
 ## AC to test case map
 
 | AC | Summary | Test cases |
 |----|---------|------------|
-| M1-AC1 | Collector scans only this repo's slug dir under ~/.claude/projects | TC-001 |
-| M1-AC2 | Root precedence: --projects-dir / env > CLAUDE_CONFIG_DIR > ~ | TC-002 |
-| M1-AC3 | Home + legacy roots deduped, rerun byte-identical | TC-003 |
-| M1-AC4 | Extension report non-zero from home root; CLI/TS parity; worktree slug | TC-004, TC-009 |
-| M1-AC5 | Campaign-level branches get a campaign row (mission: null) | TC-005, TC-006, TC-007, TC-009 |
-| M1-AC6 | prices.local.json overrides survive refresh | TC-008 |
+| M1-AC1 | Collector reads ~/.claude/projects/<slug>, and only that repo's slug dir | TC-001 |
+| M1-AC2 | Root precedence: --projects-dir > env > CLAUDE_CONFIG_DIR > ~ | TC-002 |
+| M1-AC3 | Home + legacy roots deduped (more turns wins), rerun byte-identical | TC-003 |
+| M1-AC4 | Extension report includes home-only sessions, own slug only; CLI/TS parity; worktree slug | TC-004, TC-009 |
+| M1-AC5 | One attribution precedence in both rollups; campaign rows (work_item_level "campaign", parent_ref null, mission_id null); no mission row loses a segment | TC-005, TC-006, TC-007, TC-009 |
+| M1-AC6 | prices.local.json survives refresh, upstream wins, kept on re-install, in prices.data.ts | TC-008 |
 | M1-AC7 | Pack v57 everywhere | TC-010 |
+| M1-AC8 | doctor.js treats ~/.claude/projects as the default; no <repo>/.claude advice | TC-011 |
 
 ## Shared preconditions
 
@@ -38,11 +41,14 @@ Shell variables used in the cases: `SOLO=/Users/arozumenko/Development/auqanauti
 
 ## Pre-existing records
 
-- Slug dir `~/.claude/projects/-Users-arozumenko-Development-auqanautica` (real Claude Code transcripts, hundreds of sessions incl. worktree and subagent sessions).
-- 7 real segments on branch `campaign/sensor-assignment-uplift` (in solo runs.json 'unattributed').
-- 5 real segments on branch `chore/uwb-ranging-plan` (slug `uwb-ranging-ingest-vendor-v01` NOT contained; needs declared branches).
-- uwb-ranging-ingest-vendor-v01 M1..M6 mission rows in solo runs.json (must be identical before/after).
-- Solo prices.json entries for claude-opus-5-5 / claude-sonnet-5-5 (the pack lacks them in its own table).
+- Home slug dir `$HOME/.claude/projects/-Users-arozumenko-Development-auqanautica`: 3 top-level sessions (117 jsonl incl. subagents), all home-only: 011deac1 (the live planning session, still growing), 138ca3b0, 39d8025a.
+- Solo legacy root `$SOLO/.claude/projects/-Users-arozumenko-Development-auqanautica`: 6 other sessions (276MB) that today's extension already reads, so a non-zero solo report alone proves nothing.
+- Octoshell legacy root `$OCTO/.claude/projects`: other projects' slug dirs (-Users-arozumenko-Development-analysta, -private-tmp, ...) next to octoshell's own.
+- Unattributed campaign-level segments: `feat/edge-ops-ui` (28; campaign edge-ops-ui has 10 missions) and `campaign/emulator-arena-loop` (1; emulator-arena-loop has 7 missions).
+- `chore/uwb-ranging-plan` (5; slug uwb-ranging-ingest-vendor-v01 NOT contained; needs a declared campaign tokenomics.branches).
+- `campaign/sensor-assignment-uplift` (7): attributed today to sensor-assignment-uplift M1, whose mission.yaml:17 declares it in tokenomics.branches; it must stay there.
+- uwb mission rows M1-M4 and M6 in solo's runs.json (5 rows; M5 is cancelled and has no row).
+- Solo prices.json entries for claude-opus-5-5 / claude-sonnet-5-5 (the pack's own table lacks them).
 
 ## Data policy
 
@@ -50,6 +56,7 @@ Every case's "Real data" section names the pre-existing record that backs it. A 
 
 ## Assumptions to confirm
 
-- A1: the pack collector flags are `--project-dir <dir>`, `--projects-dir <dir>` and env OCTOBOTS_TOKENOMICS_PROJECTS_DIR as in solo's collect.mjs; confirm against the ported file before running (TC-001..003).
-- A2: TC-004's Extension Dev Host check is manual (not Playwright-drivable); the vitest half uses the real slug dir path injected into the roots resolver.
-- A3: segment attribution counts are taken from the real runs.json at QA time; the numbers 7 and 5 are from 2026-10-05 and may have grown. QA states the actual numbers.
+- A1: flags confirmed against solo's collect.mjs on 2026-10-05: `--project-dir`, `--projects-dir`, env OCTOBOTS_TOKENOMICS_PROJECTS_DIR; rollup.mjs takes `--project-dir`, `--no-gh`, `--quiet`. QA re-checks against the ported files before running.
+- A2: TC-004's Extension Dev Host half is manual (not Playwright-drivable); its CLI half runs apps/vscode-extension/scripts/qa/tokenomics-report.mjs (T1.2).
+- A3: segment counts (28, 1, 5, 7) are from 2026-10-05 and may have grown; QA states the actual numbers.
+- A4: step 4 of the precedence (worklog) is new in rollup.mjs, so a mission row may GAIN segments compared with the v56 rollup; it must never lose one (TC-007).

@@ -29,7 +29,7 @@ $WORK/solo-octobots (6 real workflows/ folders)
 ## Commands
 
 ```bash
-cd $OCTO && OCTOBOTS_BOARD_COPIES=$WORK/solo-octobots pnpm --filter @octoshell/board test -- validate-workflows-warning
+cd $OCTO && OCTOBOTS_BOARD_COPIES=$WORK/solo-octobots pnpm --filter @octoshell/board exec vitest run test/validate-workflows-warning.test.ts --reporter=verbose
 node $PACK/skill/mission-planner/scripts/validate.js $WORK/solo-octobots/campaigns/sensor-assignment-uplift/missions/m2-player-role-on-the-edge-match-roster-read-only | grep '^warning:'
 ```
 
@@ -37,7 +37,7 @@ node $PACK/skill/mission-planner/scripts/validate.js $WORK/solo-octobots/campaig
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run validateBoard on the copy | 6 findings with severity "warning" (one per workflows/ folder); 0 findings of severity error that mention a workflow |
+| 1 | Run validate-workflows-warning.test.ts on the copy (validateBoard) | At least 1 test passed; 6 findings with severity "warning" (one per workflows/ folder); 0 findings of severity error that mention a workflow |
 | 2 | For the sensor-assignment-uplift m2 folder, compare the finding's message with the validate.js warning line | Identical text |
 
 ## Expected Final State

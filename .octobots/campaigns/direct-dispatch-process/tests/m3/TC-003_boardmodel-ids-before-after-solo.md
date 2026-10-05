@@ -29,8 +29,9 @@ $WORK/solo-octobots (copy of solo's real board incl. 6 workflows/ folders)
 ## Commands
 
 ```bash
-node $WORK/main-build/.qa/dump-ids.mjs $WORK/solo-octobots > $WORK/ids.before   # main (pre-M3) build: all ids incl. workflow ids
-node $OCTO/.qa/dump-ids.mjs $WORK/solo-octobots > $WORK/ids.after       # mission-branch build
+Q=$OCTO/apps/vscode-extension/scripts/qa/dump-ids.mjs           # committed harness (T3.3); prints sorted "<kind><TAB><id>" lines
+node $Q $WORK/solo-octobots --board-dist $WORK/main-build/packages/board/dist/index.js > $WORK/ids.before   # main (pre-M3) library: incl. workflow ids
+node $Q $WORK/solo-octobots > $WORK/ids.after                                                                # mission-branch library
 grep -v '^workflow' $WORK/ids.before | sort > $WORK/a; sort $WORK/ids.after > $WORK/b; diff $WORK/a $WORK/b && echo IDS_IDENTICAL
 grep -c '^workflow' $WORK/ids.after   # 0
 ```
@@ -39,7 +40,7 @@ grep -c '^workflow' $WORK/ids.after   # 0
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Dump entity ids with the pre-change build over the solo copy | Ids list incl. 6 workflow ids |
+| 1 | Dump entity ids with main's board library (--board-dist) over the solo copy | Ids list incl. 6 workflow ids |
 | 2 | Dump ids with the M3 build | No workflow ids |
 | 3 | Diff before (minus workflow ids) with after | Identical: every campaign, mission, task and bug id unchanged |
 

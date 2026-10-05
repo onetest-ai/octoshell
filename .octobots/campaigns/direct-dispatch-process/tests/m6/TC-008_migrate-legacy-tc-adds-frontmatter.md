@@ -24,15 +24,16 @@ set-test-status.js --migrate adds the missing frontmatter to a real legacy uwb T
 
 ## Real data (pre-existing record)
 
-copy of real uwb m1 `TC-003_set-ranging-mode-persists.md` (legacy: requirements, type, no status/kind/mission)
+copy of real uwb m1 `TC-003_set-ranging-mode-persists.md` (legacy: `requirements: [M1-AC2, M1-AC5]`, `type: functional`, no status/kind/mission)
 
 ## Commands
 
 ```bash
 T=$WORK/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_set-ranging-mode-persists.md; cp $T $WORK/legacy.orig
-node $PACK/skill/mission-planner/scripts/set-test-status.js $T unknown --migrate; echo "exit=$?"
-head -14 $T
-diff <(sed '1,/^---$/d' $WORK/legacy.orig | sed '1,/^---$/d') <(sed '1,/^---$/d' $T | sed '1,/^---$/d') && echo BODY_IDENTICAL
+node $PACK/skill/mission-planner/scripts/set-test-status.js $T --migrate; echo "exit=$?"
+awk 'NR>1 && /^---$/{exit} NR>1' $T                                          # the new frontmatter
+awk 'c>=2{print} /^---$/{c++}' $WORK/legacy.orig > $WORK/legacy.body; awk 'c>=2{print} /^---$/{c++}' $T > $WORK/migrated.body
+cmp $WORK/legacy.body $WORK/migrated.body && echo BODY_IDENTICAL
 node $PACK/skill/mission-planner/scripts/validate.js $T | grep -ci migrate   # 0: suggestion gone
 ```
 
@@ -40,7 +41,7 @@ node $PACK/skill/mission-planner/scripts/validate.js $T | grep -ci migrate   # 0
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run --migrate on the legacy copy | Exit 0; frontmatter now has id TC-003, title from the H1, mission M1, covers [M1-AC3] (from requirements), status unknown (or the given status), kind |
+| 1 | Run `--migrate` (no status) on the legacy copy | Exit 0; frontmatter now has id TC-003, title from the H1, mission M1, covers [M1-AC2, M1-AC5] (from requirements), status unknown; kind from the type/steps heuristic or omitted; the legacy keys (priority, module, size, tags, type) kept |
 | 2 | Body diff | Identical |
 | 3 | Revalidate | The migrate suggestion is gone; no error |
 

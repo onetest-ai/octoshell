@@ -29,7 +29,7 @@ Activation leaves every file under the 11 real workflows/ folders byte-identical
 ## Commands
 
 ```bash
-cd $OCTO && OCTOBOTS_BOARD_COPIES="$WORK/solo-octobots:$WORK/octo-octobots" pnpm --filter @octoshell/vscode-extension test -- activation-workflows-untouched
+cd $OCTO && OCTOBOTS_BOARD_COPIES="$WORK/solo-octobots:$WORK/octo-octobots" pnpm --filter @octoshell/vscode-extension exec vitest run test/activation-workflows-untouched.test.ts --reporter=verbose
 find $WORK/solo-octobots $WORK/octo-octobots -path '*/workflows/*' -type f -exec shasum -a 256 {} + | sort > $WORK/wf.after; diff $WORK/wf.before $WORK/wf.after && echo UNTOUCHED
 ```
 
@@ -37,7 +37,7 @@ find $WORK/solo-octobots $WORK/octo-octobots -path '*/workflows/*' -type f -exec
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Activate BoardHost (as the extension does at startup) over both copies | No error; no migration runs |
+| 1 | Run the suite: it activates BoardHost (as the extension does at startup) over both copies | At least 1 test passed; no error; no migration runs |
 | 2 | Recompute sha256 of every file under any workflows/ folder | Identical to the baseline (UNTOUCHED), no file added or removed |
 
 ## Expected Final State

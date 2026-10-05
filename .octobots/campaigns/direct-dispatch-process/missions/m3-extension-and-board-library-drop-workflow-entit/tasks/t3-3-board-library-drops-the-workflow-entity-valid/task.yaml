@@ -1,13 +1,15 @@
 name: T3.3 - Board library drops the Workflow entity; validateBoard warns
 status: draft
 role: js-dev
-description: 'Scope: types.ts:73-127, index.ts:14 and managed-block.ts:1,23,106; board-model.ts (the 10 blocks) and write.ts (the 10 blocks); validate.ts:4,218-338,352,367-374 replaced by a warning pass mirroring validate.js text; delete workflow-meta.ts and extract-meta.ts and drop acorn; delete the 16 test and fixture files and modify the 5; regenerate the octograph payload and rewrite the 57 hash. Out of scope: tokenomics workflowId. Downstream: octograph bundle; M4 adds a validate.ts rule on top.'
+description: 'Scope: types.ts:73-127, index.ts:14 and managed-block.ts:1,23,106; board-model.ts (the 10 blocks) and write.ts (the 10 blocks); validate.ts:4,218-338,352,367-374 replaced by a warning pass mirroring validate.js text; delete workflow-meta.ts and extract-meta.ts and drop acorn (package.json AND pnpm-lock.yaml); delete the 16 test and fixture files and modify the 5; reword the scripts/graph-payload.mjs:63 comment that cites workflow-meta.ts; regenerate the octograph payload and rewrite the 57 hash (campaign notes § Test conventions rule 8). Add the QA harness apps/vscode-extension/scripts/qa/dump-ids.mjs <octobots-dir> [--board-dist <path to a built @octoshell/board dist/index.js>]: plain node; default board dist = this repo''s packages/board/dist/index.js; uses only the BoardModel API present on both main and this branch; prints one sorted `<kind>\t<id>` line per entity. Out of scope: tokenomics workflowId. Downstream: octograph bundle; M4 adds a validate.ts rule on top; M3 TC-003.'
 acceptance_criteria:
-  - text: no Workflow API exported; EntityKind has 4 kinds; acorn removed (mission AC1)
+  - text: no Workflow API exported; EntityKind has 4 kinds; acorn removed from packages/board/package.json and pnpm-lock.yaml; `pnpm install --frozen-lockfile` succeeds (mission AC1)
     done: false
-  - text: BoardModel loads identical ids on a board with workflows/ and creates no workflow entity (mission AC2)
+  - text: packages/board/test/board-model.test.ts proves BoardModel loads identical ids on a real board copy with workflows/ and creates no workflow entity (mission AC2)
     done: false
-  - text: validateBoard emits one warning per workflows/ folder with the same text as validate.js and no error (mission AC3)
+  - text: packages/board/test/validate-workflows-warning.test.ts proves validateBoard emits one severity "warning" finding per workflows/ folder with the same text as validate.js and no error, over a real board copy (mission AC3)
     done: false
   - text: graph payload regenerated, --verify passes, 57 hash rewritten in a visible diff line (mission AC6)
+    done: false
+  - text: apps/vscode-extension/scripts/qa/dump-ids.mjs exists with the contract above, and apps/vscode-extension/test/qa-dump-ids.test.ts runs it over a temp copy of the repo's .octobots/ and asserts one line per BoardModel entity
     done: false

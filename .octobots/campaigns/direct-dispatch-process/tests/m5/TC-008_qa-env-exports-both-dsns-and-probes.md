@@ -24,26 +24,37 @@ qa-env.mjs qa_m5 -- env exports BOTH vars at qa_m5; probe against local Postgres
 
 ## Real data (pre-existing record)
 
-a clone DB named qa_m5 on the local Postgres (created the way solo does: CREATE DATABASE qa_m5 TEMPLATE ...); UNREACHABLE for the probe half if no Postgres
+Solo's real var names in `$WORK/qa8/.octobots/qa-env.json`, and a clone DB named qa_m5 on the local Postgres (created the way solo does: `CREATE DATABASE qa_m5 TEMPLATE ...`). The probe halves are UNREACHABLE if no local Postgres; never stub the probe.
 
 ## Commands
 
 ```bash
-cd $WORK && node $PACK/skill/mission-execution/scripts/qa-env.mjs qa_m5 -- env | grep EDGESERVER_POSTGRES
-# probe half (config has "probe": "psql \"$EDGESERVER_POSTGRES_SYNC_DSN\" -Atc 'select current_database()'"):
+mkdir -p $WORK/qa8/.octobots && cd $WORK/qa8
+cat > .octobots/qa-env.json <<'JSON'
+{"vars":{"EDGESERVER_POSTGRES_DSN":"postgresql+asyncpg://localhost/{db}","EDGESERVER_POSTGRES_SYNC_DSN":"postgresql://localhost/{db}"},"name_pattern":"^qa_.+$"}
+JSON
+node $PACK/skill/mission-execution/scripts/qa-env.mjs qa_m5 -- env | grep EDGESERVER_POSTGRES
+# matching probe: prints the DB the sync DSN points at
+cat > .octobots/qa-env.json <<'JSON'
+{"vars":{"EDGESERVER_POSTGRES_DSN":"postgresql+asyncpg://localhost/{db}","EDGESERVER_POSTGRES_SYNC_DSN":"postgresql://localhost/{db}"},"name_pattern":"^qa_.+$","probe":"psql \"$EDGESERVER_POSTGRES_SYNC_DSN\" -Atc 'select current_database()'"}
+JSON
 node $PACK/skill/mission-execution/scripts/qa-env.mjs qa_m5 -- true; echo "exit=$?"
-node $PACK/skill/mission-execution/scripts/qa-env.mjs qa_other -- true; echo "exit=$?   (probe prints qa_m5 vs <db>=qa_other when DB qa_other missing -> exit 4 or psql error)"
+# mismatching probe: always prints postgres
+cat > .octobots/qa-env.json <<'JSON'
+{"vars":{"EDGESERVER_POSTGRES_DSN":"postgresql+asyncpg://localhost/{db}","EDGESERVER_POSTGRES_SYNC_DSN":"postgresql://localhost/{db}"},"name_pattern":"^qa_.+$","probe":"psql -d postgres -Atc 'select current_database()'"}
+JSON
+node $PACK/skill/mission-execution/scripts/qa-env.mjs qa_m5 -- touch $WORK/qa8/MARKER; echo "exit=$?"; test ! -e $WORK/qa8/MARKER && echo NOT_EXECUTED
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run with qa_m5 and `env` | Both EDGESERVER_POSTGRES_DSN and EDGESERVER_POSTGRES_SYNC_DSN printed, both ending in /qa_m5; target DB printed to stderr |
-| 2 | Run the probe against local Postgres | Probe prints qa_m5; command runs; exit 0 |
-| 3 | Probe returns a different name (point the template at another DB) | Exit 4 without exec |
-| 4 | No Postgres running | Probe half recorded UNREACHABLE; do NOT substitute a stub |
+| 1 | Run with qa_m5 and `env` (no probe) | Both EDGESERVER_POSTGRES_DSN and EDGESERVER_POSTGRES_SYNC_DSN printed, both ending in /qa_m5; `qa_m5` printed to stderr as the target DB |
+| 2 | Matching probe against local Postgres | The probe prints qa_m5; the command runs; exit 0 |
+| 3 | Mismatching probe: `psql -d postgres -Atc 'select current_database()'` prints `postgres`, not qa_m5 | Exit 4; MARKER absent (command not run) |
+| 4 | No Postgres running | Steps 2-3 recorded UNREACHABLE (status blocked, reason in the RUN file); do NOT substitute a stub |
 
 ## Expected Final State
 
-Both vars exported at the QA DB; mismatching probe exits 4.
+Both vars exported at the QA DB; a probe that names another DB exits 4 before exec.

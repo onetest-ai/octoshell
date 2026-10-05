@@ -1,6 +1,6 @@
 ---
 id: TC-007
-title: "uwb M1-M6 mission rows are identical before and after"
+title: "No mission row loses a segment: v56 vs v57 rollup over the same real segments"
 mission: M1
 covers: [M1-AC5]
 kind: cli
@@ -9,42 +9,56 @@ priority: critical
 size: S
 ---
 
-# TC-007: uwb M1-M6 mission rows are identical before and after
+# TC-007: No mission row loses a segment: v56 vs v57 rollup over the same real segments
 
 **Mission:** M1 | **Priority:** critical | **Kind:** cli | **Covers:** M1-AC5
 
 ## Objective
 
-uwb M1-M6 mission rows are identical before and after. Verifies M1-AC5 of M1 - Tokenomics reads real transcripts and attributes campaign branches.
+No mission row loses a segment: v56 vs v57 rollup over the same real segments. Verifies M1-AC5 ('no segment leaves the mission row it was attributed to before the change') of M1 - Tokenomics reads real transcripts and attributes campaign branches.
 
 ## Preconditions
 
-- Suite prerequisites in `README.md` are met (variables SOLO, OCTO, PACK, WORK; copies made in $WORK; mission branch built).
-- Originals under $SOLO and $OCTO are untouched; this case works on copies.
+- Suite prerequisites in `README.md` are met (variables SOLO, OCTO, PACK, WORK, OLD; the qa-m1 worktree from TC-001; the v56 tokenomics extracted to $OLD).
+- Originals under $SOLO and $OCTO are untouched; this case writes only inside the worktree and $WORK.
 
 ## Real data (pre-existing record)
 
-solo's real runs.json mission rows for uwb-ranging-ingest-vendor-v01 M1..M6 (pre-existing, committed baseline)
+Solo's real segments, collected once and rolled up by both the v56 rollup.mjs (origin/main) and the v57 one, so the comparison is attribution-only (same segments, same flags). Every solo mission row is in scope; the uwb rows are M1-M4 and M6 (5 rows; M5 is cancelled and has no row).
 
 ## Commands
 
 ```bash
 cd $SOLO/.claude/worktrees/qa-m1
-cp $SOLO/.octobots/tokenomics/runs.json $WORK/runs.before.json    # committed baseline
-node $PACK/tokenomics/collect.mjs --project-dir "$PWD" && node $PACK/tokenomics/rollup.mjs
-jq -S '[.runs[]?|select(.campaign|test("uwb-ranging")) |select(.mission!=null)]' $WORK/runs.before.json > $WORK/a.json
-jq -S '[.runs[]?|select(.campaign|test("uwb-ranging")) |select(.mission!=null)]' .octobots/tokenomics/runs.json > $WORK/b.json
-diff $WORK/a.json $WORK/b.json && echo MISSION_ROWS_IDENTICAL
+node $PACK/tokenomics/collect.mjs --project-dir "$PWD"                       # one collection shared by both rollups
+node $OLD/rollup.mjs --project-dir "$PWD" --no-gh && cp .octobots/tokenomics/runs.json $WORK/runs.v56.json
+node $PACK/tokenomics/rollup.mjs --project-dir "$PWD" --no-gh && cp .octobots/tokenomics/runs.json $WORK/runs.v57.json
+node -e '
+const a=require(process.argv[1]).runs, b=require(process.argv[2]).runs;
+const isMission=x=>x._octobots&&x._octobots.mission_id;
+const tok=x=>Object.values(x.tokens||{}).reduce((s,v)=>s+v,0);
+const nb=new Map(b.map(x=>[x.work_item_ref,x]));
+let lost=0; const grew=[];
+for (const x of a.filter(isMission)) {
+  const y=nb.get(x.work_item_ref);
+  if (!y||y.sessions<x.sessions||y.turns<x.turns||tok(y)<tok(x)) { lost++; console.log("LOST",x.work_item_ref); }
+  else if (y.turns>x.turns) grew.push(x.work_item_ref);
+}
+console.log("v56 mission rows:",a.filter(isMission).length,"| lost:",lost,"| grew:",grew.join(",")||"none");
+console.log("uwb mission rows:",b.filter(x=>x.parent_ref==="uwb-ranging-ingest-vendor-v01"&&isMission(x)).map(x=>x._octobots.mission_id).sort().join(" "));
+console.log("campaign rows:",b.filter(x=>x.work_item_level==="campaign").map(x=>x.work_item_ref).join(","));' $WORK/runs.v56.json $WORK/runs.v57.json
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Save solo's committed runs.json as the baseline | Baseline saved |
-| 2 | Rerun collect + rollup with the v57 pack in the worktree | Exit 0 |
-| 3 | Diff the uwb mission rows (mission != null), sorted | No difference. Only the new campaign-level (mission: null) rows may differ |
+| 1 | Collect once, then run the v56 and the v57 rollup over the same segments | Both exit 0 |
+| 2 | For every v56 mission row, compare sessions, turns and summed tokens with the v57 row of the same work_item_ref | lost: 0 (no row missing, none smaller) |
+| 3 | List rows that grew | Any growth comes from precedence step 4 (worklog); the run report names the worklog session(s) that explain each grown row |
+| 4 | List the uwb mission rows | M1 M2 M3 M4 M6 (5 rows) |
+| 5 | List the campaign rows | Only campaign-level rows were added (at least edge-ops-ui and emulator-arena-loop) |
 
 ## Expected Final State
 
-Mission rows are byte-identical; campaign-level attribution only adds campaign rows. If cost differs because new transcripts accrued since the baseline, QA re-runs the baseline with the OLD pack on the same worktree and diffs old-pack vs new-pack (state this in the run report).
+No segment left the mission it was attributed to under v56; v57 only adds campaign rows and worklog-attributed segments.

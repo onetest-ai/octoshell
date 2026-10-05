@@ -1,6 +1,6 @@
 ---
 id: TC-008
-title: "claude-opus-5-5 stays priced after update-prices.mjs, online and offline"
+title: "claude-opus-5-5 and claude-sonnet-5-5 stay priced after update-prices.mjs; prices.local.json kept on re-install"
 mission: M1
 covers: [M1-AC6]
 kind: cli
@@ -9,44 +9,47 @@ priority: high
 size: M
 ---
 
-# TC-008: claude-opus-5-5 stays priced after update-prices.mjs, online and offline
+# TC-008: claude-opus-5-5 and claude-sonnet-5-5 stay priced after update-prices.mjs; prices.local.json kept on re-install
 
 **Mission:** M1 | **Priority:** high | **Kind:** cli | **Covers:** M1-AC6
 
 ## Objective
 
-claude-opus-5-5 stays priced after update-prices.mjs, online and offline. Verifies M1-AC6 of M1 - Tokenomics reads real transcripts and attributes campaign branches.
+claude-opus-5-5 and claude-sonnet-5-5 stay priced after update-prices.mjs; prices.local.json kept on re-install. Verifies M1-AC6 of M1 - Tokenomics reads real transcripts and attributes campaign branches.
 
 ## Preconditions
 
-- Suite prerequisites in `README.md` are met (variables SOLO, OCTO, PACK, WORK; copies made in $WORK; mission branch built).
-- Originals under $SOLO and $OCTO are untouched; this case works on copies.
+- Suite prerequisites in `README.md` are met (variables SOLO, OCTO, PACK, WORK; the qa-m1 worktree from TC-001).
+- update-prices.mjs rewrites the prices.json next to itself, so it only ever runs on the $WORK/pricing copy, never on $PACK.
 
 ## Real data (pre-existing record)
 
-solo's real prices.json lines for claude-opus-5-5 and claude-sonnet-5-5 (the source of the seeded prices.local.json)
+Solo's real prices.json lines for claude-opus-5-5 and claude-sonnet-5-5 (the source of the seeded prices.local.json), and solo's real segments, many of which used claude-opus-5-5.
 
 ## Commands
 
 ```bash
-W=$WORK/pricing; mkdir -p $W/.octobots/tokenomics && cp $PACK/tokenomics/* $W/.octobots/tokenomics/ 2>/dev/null
-grep -n "claude-opus-5-5\|claude-sonnet-5-5" $SOLO/.octobots/tokenomics/prices.json | head
-jq 'has("claude-opus-5-5"), has("claude-sonnet-5-5")' $W/.octobots/tokenomics/prices.local.json
-cd $W && node .octobots/tokenomics/update-prices.mjs        # network (LiteLLM)
-node -e 'const r=require("./.octobots/tokenomics/prices.json");console.log(!!(r.models||r)["claude-opus-5-5"],!!(r.models||r)["claude-sonnet-5-5"])'
-node .octobots/tokenomics/update-prices.mjs --offline || true   # offline variant: refresh fails or no-ops, must not drop local prices
-node .octobots/tokenomics/rollup.mjs --price-check claude-opus-5-5 2>&1 | head -3
+W=$WORK/pricing; mkdir -p $W && cp -R $PACK/tokenomics/. $W/
+node -e 'const l=require(process.argv[1]),s=require(process.argv[2]);for(const m of ["claude-opus-5-5","claude-sonnet-5-5"])console.log(m,"local:",JSON.stringify((l.models||l)[m]),"solo:",JSON.stringify((s.models||s)[m]))' $W/prices.local.json $SOLO/.octobots/tokenomics/prices.json
+node $W/update-prices.mjs; echo "refresh exit=$?"          # network (LiteLLM); with no network this half is UNREACHABLE
+node -e 'const p=require(process.argv[1]);for(const m of ["claude-opus-5-5","claude-sonnet-5-5"])console.log(m,"in refreshed prices.json:",!!(p.models||p)[m])' $W/prices.json
+cd $SOLO/.claude/worktrees/qa-m1 && node $PACK/tokenomics/collect.mjs --project-dir "$PWD" && node $W/rollup.mjs --project-dir "$PWD" --no-gh
+node -e 'const r=require(process.argv[1]+"/.octobots/tokenomics/runs.json");const c={};for(const x of r.runs)for(const [m,v] of Object.entries(x.cost_by_model||{}))c[m]=(c[m]||0)+v;console.log(JSON.stringify({"claude-opus-5-5":c["claude-opus-5-5"],"claude-sonnet-5-5":c["claude-sonnet-5-5"]}))' "$PWD"
+cd $OCTO && pnpm --filter @octoshell/vscode-extension exec vitest run test/tokenomics-prices-local.test.ts --reporter=verbose
+grep -c "claude-opus-5-5\|claude-sonnet-5-5" packages/tokenomics/src/prices.data.ts
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Confirm the seeded prices.local.json carries both models, equal to solo's real prices.json values | Both present, values identical to solo's |
-| 2 | Run update-prices.mjs with network | prices.json refreshed; both models still priced (lookup returns a price, not undefined/0) |
-| 3 | Run the offline variant | No crash; both models still priced from prices.local.json |
-| 4 | If upstream also has claude-opus-5-5, compare | Upstream value wins over the local one |
+| 1 | Compare the shipped prices.local.json with solo's prices.json | Both models present, values identical to solo's |
+| 2 | Run the copy's update-prices.mjs | Exit 0 and prices.json refreshed; with no network, record this half UNREACHABLE (never stub LiteLLM) |
+| 3 | Roll solo's real segments up with the refreshed copy | cost_by_model for claude-opus-5-5 (and claude-sonnet-5-5 if solo used it) is > 0, not undefined/0 |
+| 4 | If the refreshed prices.json lists a model, recompute one segment's cost from prices.json's rates | It matches: upstream wins. If upstream lists neither model, this half is UNREACHABLE on real data (covered by T1.4's vitest) |
+| 5 | Run tokenomics-prices-local.test.ts | At least 1 test passed: re-install keeps an edited prices.local.json byte-identical |
+| 6 | grep prices.data.ts | Count >= 2: the extension's built-in table prices both models |
 
 ## Expected Final State
 
-Hand-added prices survive refresh in both online and offline modes; upstream wins on conflict. Network-less environments record the online half as UNREACHABLE (do not stub LiteLLM).
+Hand-added prices survive a refresh, upstream wins on conflict, a re-install keeps the workspace copy, and the extension's table carries both models.

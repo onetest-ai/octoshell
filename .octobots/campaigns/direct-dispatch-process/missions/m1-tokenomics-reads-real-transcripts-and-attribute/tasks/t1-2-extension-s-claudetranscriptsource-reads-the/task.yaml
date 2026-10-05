@@ -1,9 +1,11 @@
 name: T1.2 - Extension's ClaudeTranscriptSource reads the same roots
 status: draft
 role: js-dev
-description: 'Scope: packages/tokenomics/src/claude-source.ts:20-75 takes a roots resolver (home / config-dir / legacy, injectable for tests) plus worktree unwinding; update the doc comment :5-6; keep the recursive wf_ walk. Out of scope: rollup. Downstream: the extension''s Tokenomics view (rpc-dispatcher.ts:47).'
+description: 'Scope: packages/tokenomics/src/claude-source.ts:20-75 takes a roots resolver (home / config-dir / legacy main-checkout root, injectable for tests) plus worktree unwinding; update the doc comment :5-6; keep the recursive wf_ walk. Add the QA harness apps/vscode-extension/scripts/qa/tokenomics-report.mjs <workspace>: plain node, imports @octoshell/tokenomics from packages/tokenomics/dist, makes the same ClaudeTranscriptSource + rollup calls the tokenomics:report RPC makes (rpc-dispatcher.ts:42-47), writes nothing, and prints JSON {workspace, slug, roots[], segments, sessions[], slugs[]} (slugs = the project slug dirs that contributed). Out of scope: rollup. Downstream: the extension''s Tokenomics view; M1 TC-004 and TC-009.'
 acceptance_criteria:
-  - text: tokenomics:report on a repo whose transcripts exist only under the home root has non-zero segments (mission AC4)
+  - text: tokenomics:report includes sessions that exist only under the home root, and a repo-local root holding other projects' slug dirs contributes only the repo's own slug (mission AC4), covered by packages/tokenomics/test/claude-source.test.ts with injected roots
     done: false
-  - text: a parity vitest feeds one fixture root to both collect.mjs (spawned) and the TS source and compares segment ids; a /.claude/worktrees/ path resolves to the main checkout's slug
+  - text: packages/tokenomics/test/claude-source-parity.test.ts feeds one root set to both collect.mjs (spawned) and the TS source and asserts identical segment ids; a /.claude/worktrees/ path resolves to the main checkout's slug
+    done: false
+  - text: apps/vscode-extension/scripts/qa/tokenomics-report.mjs exists with the JSON contract above, and apps/vscode-extension/test/qa-tokenomics-report.test.ts runs it on a temp workspace with an injected home root and asserts the JSON shape and session ids
     done: false

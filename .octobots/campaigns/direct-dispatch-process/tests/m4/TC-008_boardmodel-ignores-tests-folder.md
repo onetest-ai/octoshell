@@ -1,6 +1,6 @@
 ---
 id: TC-008
-title: "BoardModel on the uwb copy: entity counts unchanged with tests/m1..m6, runs/ and evidence/ present"
+title: "BoardModel ignores tests/; the watcher skips runs/ and evidence/ but rebuilds once on a TC write"
 mission: M4
 covers: [M4-AC6]
 kind: unit
@@ -9,13 +9,13 @@ priority: high
 size: S
 ---
 
-# TC-008: BoardModel on the uwb copy: entity counts unchanged with tests/m1..m6, runs/ and evidence/ present
+# TC-008: BoardModel ignores tests/; the watcher skips runs/ and evidence/ but rebuilds once on a TC write
 
 **Mission:** M4 | **Priority:** high | **Kind:** unit | **Covers:** M4-AC6
 
 ## Objective
 
-BoardModel on the uwb copy: entity counts unchanged with tests/m1..m6, runs/ and evidence/ present. Verifies M4-AC6 of M4 - Functional test cases are a gate-run unit of every mission.
+BoardModel ignores tests/; the watcher skips runs/ and evidence/ but rebuilds once on a TC write. Verifies M4-AC6 of M4 - Functional test cases are a gate-run unit of every mission.
 
 ## Preconditions
 
@@ -29,17 +29,18 @@ $WORK/solo-octobots uwb campaign with its real tests/m1..m6 (hundreds of TC file
 ## Commands
 
 ```bash
-cd $OCTO && OCTOBOTS_BOARD_COPIES=$WORK/solo-octobots pnpm --filter @octoshell/board test -- tests-folder-ignored
-# plus: touch a file under tests/m1/runs/ and evidence/ while the watcher is running, assert exactly one debounced reload
+cd $OCTO && OCTOBOTS_BOARD_COPIES=$WORK/solo-octobots pnpm --filter @octoshell/board exec vitest run test/tests-folder-ignored.test.ts --reporter=verbose
+pnpm --filter @octoshell/vscode-extension exec vitest run test/board-watcher.test.ts --reporter=verbose
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Load the board with and without the tests/ folder | Identical campaign/mission/task/bug counts |
-| 2 | Write files under tests/m1/runs and evidence while the watcher is attached | No entity appears; no reconcile loop beyond the existing debounce (one reload at most) |
+| 1 | Run tests-folder-ignored.test.ts over the uwb copy (board with and without tests/) | At least 1 test passed; identical entity ids |
+| 2 | Run board-watcher.test.ts: writes under tests/m1/runs/ and tests/m1/evidence/ | At least 1 test passed; no rebuild is triggered |
+| 3 | Same suite: a write to tests/m1/TC-*.md | Exactly one debounced rebuild (no reconcile loop) |
 
 ## Expected Final State
 
-tests/ is invisible to the entity model.
+tests/ is invisible to the entity model; runs/ and evidence/ writes cost nothing; TC/README writes refresh the board once (M6 relies on it).

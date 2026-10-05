@@ -1,9 +1,9 @@
 name: 'T1.5 - Mission QA: run tests/m1 live on solo''s real transcripts and board'
 status: draft
 role: qa-engineer
-description: 'Scope: run TC-001..010 from a disposable solo worktree (<solo>/.claude/worktrees/qa-m1), which unwinds to solo''s slug and writes artifacts into the worktree, so solo''s committed .octobots/tokenomics/ is never touched. Name the record per AC, write `## QA verification` into task and mission notes, update each TC''s status, tick only the verified ACs. Out of scope: fixes (file bugs). Downstream: M1 gate.'
+description: 'Scope: run TC-001..011 from a disposable solo worktree (<solo>/.claude/worktrees/qa-m1), which unwinds to solo''s slug and writes artifacts into the worktree, so solo''s committed .octobots/tokenomics/ is never touched; TC-003 uses its own disposable project dir. Every tokenomics command passes --project-dir. Name the record per AC, write `## QA verification` into task and mission notes, update each TC''s status (campaign notes § Test conventions rule 4), tick only the verified ACs. Out of scope: fixes (file bugs). Downstream: M1 gate.'
 acceptance_criteria:
-  - text: every TC has PASS, FAIL or UNREACHABLE with evidence and a named pre-existing record
+  - text: every TC has PASS, FAIL, BLOCKED or UNREACHABLE with evidence and a named pre-existing record; its frontmatter status is pass, fail or blocked (UNREACHABLE recorded as blocked with the reason in the RUN file)
     done: false
   - text: solo's .octobots/tokenomics/ is byte-identical before and after (git status clean); the qa-m1 worktree is removed
     done: false

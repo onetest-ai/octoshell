@@ -29,18 +29,20 @@ the real shipped mission-completion-gate and mission-execution SKILL.md files
 ## Commands
 
 ```bash
-cd $OCTO && pnpm --filter @octoshell/vscode-extension test -- skill-conventions
-awk '/^[0-9]+\. \*\*/{print $1}' $PACK/skill/mission-execution/SKILL.md | sort | uniq -d   # duplicate rule numbers: must print nothing
-grep -nE 'make |edgeserver|uv run|Workflow\(' $PACK/skill/mission-execution/SKILL.md $PACK/skill/mission-completion-gate/SKILL.md
+cd $OCTO && pnpm --filter @octoshell/vscode-extension exec vitest run test/skill-conventions.test.ts --reporter=verbose
+# duplicate rule numbers inside § Dispatch rules only (the file has other numbered lists: phases, QA steps)
+awk '/^#+ /{s=($0 ~ /Dispatch rules/)} s && /^[0-9]+\. /{print $1}' $PACK/skill/mission-execution/SKILL.md | sort | uniq -d    # must print nothing
+awk '/^#+ /{s=($0 ~ /Dispatch rules/)} s && /^[0-9]+\. /{n++} END{print n" rules"}' $PACK/skill/mission-execution/SKILL.md      # > 0, so the section was found
+grep -nE '`make |make ci|make [A-Za-z0-9_-]+-test|edgeserver|uv run|Workflow\(' $PACK/skill/mission-execution/SKILL.md $PACK/skill/mission-completion-gate/SKILL.md
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run the conventions vitest | Green: Agent tool, foreground, model:, JSON verdict/BLOCKED, relay questions, resume from board+git, fast/coverage lanes; gate's 5 phases, blocking definition, one review + one fix round, residue as board bugs, green = 0 failed/0 xfailed|todo/no unexplained skip, coverage only on the coverage lane |
-| 2 | Check for duplicate rule numbers | None |
-| 3 | grep for project literals and Workflow( | No hits |
+| 1 | Run the conventions vitest | At least 1 test passed and none failed: Agent tool, foreground, model:, JSON verdict/BLOCKED, relay questions, resume from board+git, fast/coverage lanes; gate's 5 phases, blocking definition, one review + one fix round, residue as board bugs, green = 0 failed/0 xfailed|todo/no unexplained skip, coverage only on the coverage lane |
+| 2 | Check for duplicate rule numbers within § Dispatch rules | No duplicates printed, and the rule count is > 0 |
+| 3 | grep for project-specific commands (`make` invocations, edgeserver, uv run) and Workflow( | No hits |
 
 ## Expected Final State
 

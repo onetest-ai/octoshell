@@ -24,13 +24,19 @@ scan-parked.js on octoshell: exit 0, vault-calibration.test.ts:10 listed as allo
 
 ## Real data (pre-existing record)
 
-the real octoshell repo (one real parked test: packages/graph/test/vault-calibration.test.ts:10 describe.skipIf(!HAS_VAULT))
+The real octoshell repo: one real parked test, packages/graph/test/vault-calibration.test.ts:10 `describe.skipIf(!HAS_VAULT)` (allowed), and packages/graph/bin/octograph.mjs:30 `process.exit(` (the false-positive trap for a naive `xit(` pattern). Step 4's probe file is a copy of the real test file with one `it.skip(` added, in a throwaway clone (a synthetic negative control, derived from a real file).
 
 ## Commands
 
 ```bash
 cd $OCTO && node $PACK/skill/mission-execution/scripts/scan-parked.js; echo "exit=$?"
-node $PACK/skill/mission-execution/scripts/scan-parked.js --json | jq '.allowed[]|select(.file|test("vault-calibration"))'
+node $PACK/skill/mission-execution/scripts/scan-parked.js --json | jq -c '.allowed[]|select(.file|test("vault-calibration"))'
+node $PACK/skill/mission-execution/scripts/scan-parked.js --json | jq -c '[.unsigned[], .allowed[]]|map(select(.file|test("octograph[.]mjs")))'
+git clone -q $OCTO $WORK/octo-clone && cd $WORK/octo-clone
+awk '{print} NR==1{print "it.skip(\"parked by a QA probe\", () => {});"}' packages/graph/test/vault-calibration.test.ts > packages/graph/test/qa-parked-probe.test.ts && git add packages/graph/test/qa-parked-probe.test.ts
+node $PACK/skill/mission-execution/scripts/scan-parked.js --json | jq -c '.unsigned'; node $PACK/skill/mission-execution/scripts/scan-parked.js >/dev/null; echo "exit=$?"
+L=$(grep -n 'it.skip' packages/graph/test/qa-parked-probe.test.ts | cut -d: -f1); mkdir -p .octobots && echo "packages/graph/test/qa-parked-probe.test.ts:$L qa-engineer 2026-10-05" >> .octobots/parked-signoff.txt
+node $PACK/skill/mission-execution/scripts/scan-parked.js >/dev/null; echo "exit after signoff=$?"
 ```
 
 ## Steps
@@ -38,9 +44,11 @@ node $PACK/skill/mission-execution/scripts/scan-parked.js --json | jq '.allowed[
 | # | Action | Expected Result |
 |---|--------|----------------|
 | 1 | Run scan-parked.js at the octoshell root | Exit 0 |
-| 2 | Read the allowed list | Lists packages/graph/test/vault-calibration.test.ts:10 as allowed (skipIf with an environmental reason); no unsigned hit |
-| 3 | Add a copy of the file with `.skip(` and no signoff in a temp clone and rerun | Exit 1 listing the unsigned hit (then discard the clone) |
+| 2 | Read the allowed list | Lists packages/graph/test/vault-calibration.test.ts line 10 as allowed (skipIf); no unsigned hit |
+| 3 | Look for octograph.mjs in either list | `[]`: `process.exit(` is not a hit |
+| 4 | In a throwaway clone, add a git-tracked copy of the test with `it.skip(` and rerun | Exit 1; `.unsigned` lists qa-parked-probe.test.ts with its line |
+| 5 | Add a `<path>:<line> <who> <date>` line to .octobots/parked-signoff.txt and rerun | Exit 0: the signoff exempts the hit |
 
 ## Expected Final State
 
-0 unsigned; the one real skipIf is allowed.
+0 unsigned on octoshell; the one real skipIf is allowed; process.exit( is ignored; an unsigned skip fails the scan until signed off. Teardown: `rm -rf $WORK/octo-clone`.

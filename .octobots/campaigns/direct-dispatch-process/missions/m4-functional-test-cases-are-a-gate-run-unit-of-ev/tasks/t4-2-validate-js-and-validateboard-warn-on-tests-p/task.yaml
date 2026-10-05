@@ -1,9 +1,13 @@
 name: T4.2 - validate.js and validateBoard warn on tests pairing and TC format
 status: draft
 role: js-dev
-description: 'Scope: the pairing rule and TC file checks in both validate.js and validate.ts (dual implementation, identical messages), always severity warning; the tests/ ignore in board-model.ts and the watcher. Out of scope: running TCs; errors of any kind. Downstream: M6 builds the TestCase entity on this parse.'
+description: 'Scope: create the shared pack module skill/mission-planner/scripts/tc-io.mjs and its TS mirror in packages/board (M4 notes § TC format contract); the pairing rule, the README-map disagreement warning and the TC file checks in both validate.js and validate.ts (dual implementation, identical messages with .octobots/-relative paths), always severity warning; validate.js accepting a single TC file; the tests/ exclusion in board-model.ts; the watcher''s handler-side skip for tests/**/runs/** and tests/**/evidence/** (board-watcher.ts:58, RelativePattern cannot negate) while TC/README writes still rebuild. Touches packages/board: campaign notes § Test conventions rule 8 (payload regen). Out of scope: running TCs; errors of any kind. Downstream: M6 builds the TestCase entity and set-test-status.js on tc-io.'
 acceptance_criteria:
-  - text: pairing gaps and TC format problems are warnings with identical text in validate.js and validateBoard; validate.js exit code unchanged; set-status.js done not blocked (mission AC2, AC3)
+  - text: packages/board/test/validate-tests-parity.test.ts runs validate.js (spawned) and validateBoard over the same boards (OCTOBOTS_BOARD_COPIES, else a temp copy of the repo's .octobots/) and asserts identical warning text and severity for pairing gaps, README-map disagreements and TC format problems; validate.js exit code unchanged; packages/board/test/scripts-cli-scenarios.test.ts shows `set-status.js <campaign-dir> "M<n> - ..." done` succeeds on a mission with pairing warnings (mission AC2, AC3)
     done: false
-  - text: BoardModel and the watcher ignore tests/ (mission AC6); graph payload regenerated and the 57 hash rewritten if packages/board changed
+  - text: packages/board/test/tests-folder-ignored.test.ts proves BoardModel entity ids are identical with and without a campaign's tests/; apps/vscode-extension/test/board-watcher.test.ts proves writes under tests/**/runs/** and tests/**/evidence/** trigger no rebuild and a write to tests/m<n>/TC-*.md triggers exactly one debounced rebuild (mission AC6)
+    done: false
+  - text: skill/mission-planner/scripts/tc-io.mjs exists, validate.js imports it, and packages/board/test/tc-io.test.ts proves a frontmatter rewrite preserves the body byte-for-byte; `pnpm coverage:pack` passes
+    done: false
+  - text: after a root `pnpm build`, `pnpm --filter @octoshell/vscode-extension graph:payload:write` leaves graph-payload.mjs --verify green, and the 57 hash is rewritten in a visible diff line if the bytes changed
     done: false

@@ -29,14 +29,14 @@ $WORK/octo-octobots (copy of octoshell's real octograph campaign: 7 missions, 5 
 ## Commands
 
 ```bash
-cd $OCTO && OCTOBOTS_BOARD_COPY=$WORK/octo-octobots pnpm --filter @octoshell/vscode-extension test -- campaigns-tree-real-board
+cd $OCTO && OCTOBOTS_BOARD_COPIES=$WORK/octo-octobots pnpm --filter @octoshell/vscode-extension exec vitest run test/campaigns-tree-real-board.test.ts --reporter=verbose
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Load the copied board into BoardHost and build the CampaignsTree children for the octograph campaign | 7 mission nodes (m1..m7) with their task and bug children, matching the board-model counts |
+| 1 | Run the suite on the copied board (BoardHost + CampaignsTree children for the octograph campaign) | At least 1 test passed; 7 mission nodes (m1..m7) with their task and bug children, matching the board-model counts |
 | 2 | Walk every node type in the tree | 0 nodes of type `workflow` |
 
 ## Expected Final State

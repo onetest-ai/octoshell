@@ -1,9 +1,11 @@
 name: T2.2 - Gate as orchestrator-dispatched phases with a stopping rule
 status: draft
 role: js-dev
-description: 'Scope: replace pack gate :56-138,265-266 with solo''s version, generalised (solo :85-86). Update hooks/mission-gate.mjs:79-101 directive (phases 1-3 match the skill; relay wording) and the stale :8-12 ''git pre-commit hook (Layer 1)'' comment. Out of scope: TCs. Downstream: M4 T4.4 adds the TC run to phase 2.'
+description: 'Scope: replace pack gate :56-138,265-266 with solo''s version, generalised (solo :85-86). Update hooks/mission-gate.mjs:79-101 directive (phases 1-3 match the skill; relay wording) and the stale :8-12 ''git pre-commit hook (Layer 1)'' comment. Make hooks/mission-gate.mjs and hooks/work-log.mjs:85 re-read the target''s YAML (resolved the way set-status.js resolves <parent-dir> + title) and act only when its status now equals the requested state (mission AC8). Out of scope: TCs. Downstream: M4 T4.4 adds the TC run to phase 2; M5''s refused starts rely on AC8.'
 acceptance_criteria:
-  - text: the gate skill states the 5 dispatched phases, the blocking definition, one review + one fix round, and the green definition (mission AC6)
+  - text: apps/vscode-extension/test/skill-conventions.test.ts asserts the gate skill states the 5 dispatched phases, the blocking definition, one review + one fix round with residue filed as board bugs, the green definition, and coverage on the coverage lane only (mission AC6)
     done: false
-  - text: a hook vitest pipes a real `set-status.js ... done` command JSON into mission-gate.mjs and asserts relay wording and no 'directly' (mission AC7); pnpm coverage:pack passes
+  - text: apps/vscode-extension/test/octobots-mission-gate.test.ts pipes a real `set-status.js <campaign-dir> "M1 - ..." done` PostToolUse JSON into mission-gate.mjs and asserts relay wording and no 'directly' (mission AC7); `pnpm coverage:pack` passes
+    done: false
+  - text: apps/vscode-extension/test/octobots-mission-gate.test.ts and apps/vscode-extension/test/octobots-work-log.test.ts each feed a `set-status.js <campaign-dir> "M9 - no such mission" done; echo` command (exit 0 overall, no write) and assert no directive is printed and no work-log line is written; the same command for an existing mission whose YAML changed still acts (mission AC8)
     done: false

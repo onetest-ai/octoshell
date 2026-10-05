@@ -41,7 +41,7 @@ jq '.dependencies' apps/vscode-extension/package.json | diff - <(git show origin
 | 1 | Run every gate | All green; coverage:pack meets 90/90/90/70 |
 | 2 | Diff the versions json against the campaign branch | One changed line: the 57 hash |
 | 3 | Compare runtime dependencies | No new runtime dependency |
-| 4 | Run the validate parity test | Green |
+| 4 | Run `pnpm --filter @octoshell/board exec vitest run test/validate-tc-parity.test.ts --reporter=verbose` | At least 1 test passed |
 
 ## Expected Final State
 

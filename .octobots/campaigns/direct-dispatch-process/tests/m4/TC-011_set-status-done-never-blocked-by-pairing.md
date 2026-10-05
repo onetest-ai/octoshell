@@ -32,8 +32,9 @@ $WORK/solo-octobots uwb m6 (no README, no TCs) and uwb m1 (AC11 unmapped); both 
 C=$WORK/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01
 for m in "m6-receiver-port-configuration-file:M6 - Receiver port configuration file" "m1-venue-ingest-mode-and-vendor-integer-ids:M1 - Venue ingest mode and vendor integer ids"; do
   d=${m%%:*}; n=${m#*:}
-  node $PACK/skill/mission-planner/scripts/set-status.js $C/missions/$d "$n" active >/dev/null
-  node $PACK/skill/mission-planner/scripts/set-status.js $C/missions/$d "$n" done; echo "exit=$?"
+  node $PACK/skill/mission-planner/scripts/set-status.js $C "$n" active >/dev/null
+  node $PACK/skill/mission-planner/scripts/set-status.js $C "$n" done; echo "exit=$?"
+  grep -n "^status:" $C/missions/$d/mission.yaml
 done
 ```
 
@@ -41,7 +42,7 @@ done
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Move each copy to done (via active if a plan-review rule is present, using --force there) | exit 0 both times; the pairing warning never blocks |
+| 1 | Move each copy to active then done with `set-status.js <campaign-dir> "<title>" <state>` (on a build with M5's gate, the active move needs M5's override) | exit 0 both times and mission.yaml reads `status: done`; the pairing warning never blocks |
 
 ## Expected Final State
 

@@ -1,7 +1,7 @@
 name: T4.1 - add-tests.js scaffolds and links a mission's tests folder
 status: draft
 role: js-dev
-description: 'Scope: a new pack script using entity-io.mjs plus the add-doc.js linking rule (repo-relative target, idempotent on target); a TC template skill/mission-planner/templates/TC-template.md carrying the format frontmatter. Test cases go in scripts-cli-scenarios. Out of scope: writing TCs. Downstream: T4.3 tells the planner to run it.'
+description: 'Scope: a new pack script using entity-io.mjs plus the add-doc.js linking rule (repo-relative target .octobots/campaigns/<c>/tests/m<n>/README.md, idempotent on target); a TC template skill/mission-planner/templates/TC-template.md carrying the contract frontmatter (M4 notes § TC format contract) and the required sections. Test cases go in packages/board/test/scripts-cli-scenarios.test.ts. Out of scope: writing TCs. Downstream: T4.3 tells the planner to run it; M6 TC-011''s VSIX check expects add-tests.js.'
 acceptance_criteria:
-  - text: add-tests.js creates README with M<n>-AC1..ACk rows and the three sections, links the document, is idempotent and never overwrites an existing README (mission AC1)
+  - text: packages/board/test/scripts-cli-scenarios.test.ts proves add-tests.js creates README with M<n>-AC1..ACk rows and the three sections, links the document with target .octobots/campaigns/<c>/tests/m<n>/README.md, changes nothing and exits 0 on a second run, and never overwrites an existing README (mission AC1); `pnpm coverage:pack` passes
     done: false

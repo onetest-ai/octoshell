@@ -1,7 +1,9 @@
 name: 'T5.4 - qa-env.mjs: config-driven QA database guard'
 status: draft
 role: js-dev
-description: 'Scope: a new script in skill/mission-execution/scripts/ generalising solo .agents/manual-qa/qa-db.sh (which hard-codes EDGESERVER_*), a documented example config .octobots/qa-env.example.json and a vitest with a stub probe. Out of scope: DB creation. Downstream: the QA brief in the execution skill.'
+description: 'Scope: a new script skill/mission-execution/scripts/qa-env.mjs generalising solo .agents/manual-qa/qa-db.sh (which hard-codes EDGESERVER_*), with the config contract of mission AC4 ({vars, name_pattern, probe?} read from .octobots/qa-env.json or --config); a documented example skill/mission-execution/scripts/qa-env.example.json using exactly those keys; tests in packages/board/test/qa-env.test.ts with a stub probe. Widen the root package.json coverage:pack include from skill/mission-planner/scripts/** to apps/vscode-extension/resources/octobots-pack/skill/*/scripts/** (vendor/ still excluded) so qa-env.mjs and scan-parked.js are coverage-gated (today only mission-planner has a scripts/ dir). Out of scope: DB creation. Downstream: the QA brief in the execution skill; M5 TC-007..009; M6 TC-011''s VSIX check expects qa-env.mjs.'
 acceptance_criteria:
-  - text: exit 3 on a name that fails the pattern and on a template missing {db}, without executing the command (marker file absent); exit 4 when the probe does not print <db>; exports every declared var and prints the target DB to stderr (mission AC4)
+  - text: 'packages/board/test/qa-env.test.ts covers every clause of mission AC4 with a stub probe: exit 3 on a name failing name_pattern, on a template missing {db} (naming the var) and on a missing config, each without executing the command (marker file absent); exit 4 when the probe''s trimmed stdout differs from <db>, command not run; every declared var exported with {db} replaced; the target DB printed to stderr; the command''s exit code passed through'
+    done: false
+  - text: the root coverage:pack include covers skill/*/scripts/** and `pnpm coverage:pack` passes at 90/90/90/70 with qa-env.mjs in the report
     done: false

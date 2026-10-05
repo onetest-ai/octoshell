@@ -24,23 +24,26 @@ qa-env.mjs edgeserver -- true with solo's real DSN var config: exit 3, command n
 
 ## Real data (pre-existing record)
 
-a config naming solo's real vars EDGESERVER_POSTGRES_DSN + EDGESERVER_POSTGRES_SYNC_DSN (names copied from solo's real qa-db.sh)
+A config at `$WORK/qa7/.octobots/qa-env.json` (the path qa-env.mjs reads) naming solo's real vars EDGESERVER_POSTGRES_DSN and EDGESERVER_POSTGRES_SYNC_DSN (names copied from solo's real .agents/manual-qa/qa-db.sh), with the keys of T5.4's qa-env.example.json; `edgeserver` is solo's real dev DB name.
 
 ## Commands
 
 ```bash
-cat > $WORK/qa-env.json <<'EOF'
+mkdir -p $WORK/qa7/.octobots && cd $WORK/qa7
+cat > .octobots/qa-env.json <<'JSON'
 {"vars":{"EDGESERVER_POSTGRES_DSN":"postgresql+asyncpg://localhost/{db}","EDGESERVER_POSTGRES_SYNC_DSN":"postgresql://localhost/{db}"},"name_pattern":"^(qa_.+|.+_test)$"}
-EOF
-cd $WORK && node $PACK/skill/mission-execution/scripts/qa-env.mjs edgeserver -- touch $WORK/MARKER; echo "exit=$?"; test ! -e $WORK/MARKER && echo NOT_EXECUTED
+JSON
+node $PACK/skill/mission-execution/scripts/qa-env.mjs edgeserver -- touch $WORK/qa7/MARKER; echo "exit=$?"; test ! -e $WORK/qa7/MARKER && echo NOT_EXECUTED
+(cd $WORK && node $PACK/skill/mission-execution/scripts/qa-env.mjs qa_m5 -- touch $WORK/MARKER0; echo "no-config exit=$?"; test ! -e $WORK/MARKER0 && echo NOT_EXECUTED)
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run qa-env.mjs with the real DB name `edgeserver` (the dev DB) | Exit 3; stderr says the name fails the pattern; MARKER absent (NOT_EXECUTED) |
+| 1 | Run qa-env.mjs with the real dev DB name `edgeserver` | Exit 3; stderr says the name fails name_pattern; MARKER absent (NOT_EXECUTED) |
+| 2 | Run it from $WORK, which has no .octobots/qa-env.json | Exit 3 naming the expected path; MARKER0 absent |
 
 ## Expected Final State
 
-The dev DB name is refused before exec.
+The dev DB name is refused before exec, and a missing config refuses too.

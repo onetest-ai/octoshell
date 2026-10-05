@@ -1,9 +1,13 @@
 name: 'T6.1 - Board library: TestCase entity, coverage and validate warnings'
 status: draft
 role: js-dev
-description: 'Scope: packages/board TestCase type, a frontmatter parser (lenient: `requirements` alias, derived mission, `unknown` status), listTestCases and per-mission coverage on BoardModel (lazy per campaign, mtime cache), validate.ts warnings for malformed/legacy TCs and the pack validate.js mirror, parity vitest, graph payload regeneration + 57 hash. Out of scope: UI, write-back. Downstream: T6.3, T6.4.'
+description: 'Scope: packages/board TestCase type and a frontmatter parser built on the TS mirror of tc-io (M4 T4.2; lenient: `requirements` alias, derived mission, `unknown` status), listTestCases and per-mission coverage on BoardModel (lazy per campaign, mtime cache), validate.ts warnings for malformed/legacy TCs and the pack validate.js mirror (messages with .octobots/-relative paths), parity vitest, graph payload regeneration + 57 hash (campaign notes § Test conventions rule 8). Add the QA harness apps/vscode-extension/scripts/qa/dump-tests.mjs <octobots-dir> <campaign-slug> [--board-dist <path>]: plain node, prints the JSON array listTestCases returns ({id, title, mission, covers, kind, status, lastRun, path}). Out of scope: UI, write-back. Downstream: T6.3, T6.4; M6 TC-001/002.'
 acceptance_criteria:
-  - text: TestCase parsing and listTestCases/coverage behave per mission AC1 on this campaign's own tests and on a copy of solo's uwb tests (legacy)
+  - text: packages/board/test/test-cases-own-campaign.test.ts proves TestCase parsing and listTestCases/coverage per mission AC1 on this campaign's own tests (the repo's .octobots/) and, when OCTOBOTS_BOARD_COPIES is set, on a copy of solo's uwb tests (legacy)
     done: false
-  - text: malformed and legacy TCs warn with identical text in validate.ts and validate.js; a legacy file lists as unknown with the migrate suggestion (mission AC2, AC7 parity)
+  - text: packages/board/test/test-cases-malformed.test.ts and packages/board/test/validate-tc-parity.test.ts prove malformed and legacy TCs warn with identical text in validate.ts and validate.js and are still listed; a legacy file lists as unknown with the migrate suggestion (mission AC2, AC7 parity)
+    done: false
+  - text: apps/vscode-extension/scripts/qa/dump-tests.mjs exists with the contract above, and apps/vscode-extension/test/qa-dump-tests.test.ts runs it over the repo's .octobots/ and asserts one entry per TC-*.md of this campaign
+    done: false
+  - text: after a root `pnpm build`, `pnpm --filter @octoshell/vscode-extension graph:payload:write` leaves graph-payload.mjs --verify green, and the 57 hash is rewritten in a visible diff line if the bytes changed
     done: false

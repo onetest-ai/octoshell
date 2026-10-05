@@ -24,22 +24,23 @@ Config whose sync-DSN template lacks {db}: exit 3 before exec. Verifies M5-AC4 o
 
 ## Real data (pre-existing record)
 
-solo's real var names with the SYNC template deliberately missing {db} (the exact failure that migrated the real dev DB on M2/M3 QA: only one DSN overridden)
+Solo's real var names in `$WORK/qa9/.octobots/qa-env.json`, with the SYNC template deliberately missing {db}: the exact failure that migrated the real dev DB on M2/M3 QA (only one DSN overridden).
 
 ## Commands
 
 ```bash
-cat > $WORK/qa-env.bad.json <<'EOF'
+mkdir -p $WORK/qa9/.octobots && cd $WORK/qa9
+cat > .octobots/qa-env.json <<'JSON'
 {"vars":{"EDGESERVER_POSTGRES_DSN":"postgresql+asyncpg://localhost/{db}","EDGESERVER_POSTGRES_SYNC_DSN":"postgresql://localhost/edgeserver"},"name_pattern":"^qa_.+$"}
-EOF
-cd $WORK && cp qa-env.bad.json .octobots-qa-env.json; node $PACK/skill/mission-execution/scripts/qa-env.mjs qa_m5 -- touch $WORK/MARKER2; echo "exit=$?"; test ! -e $WORK/MARKER2 && echo NOT_EXECUTED
+JSON
+node $PACK/skill/mission-execution/scripts/qa-env.mjs qa_m5 -- touch $WORK/qa9/MARKER2; echo "exit=$?"; test ! -e $WORK/qa9/MARKER2 && echo NOT_EXECUTED
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run with a config whose sync template has no {db} | Exit 3 naming the offending var; MARKER2 absent |
+| 1 | Run with a config whose sync template has no {db} | Exit 3; stderr names EDGESERVER_POSTGRES_SYNC_DSN; MARKER2 absent |
 
 ## Expected Final State
 

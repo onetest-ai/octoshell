@@ -29,7 +29,7 @@ the real apps/vscode-extension/package.json after M3
 ## Commands
 
 ```bash
-cd $OCTO && pnpm --filter @octoshell/vscode-extension test -- manifest
+cd $OCTO && pnpm --filter @octoshell/vscode-extension exec vitest run test/manifest-no-workflows.test.ts --reporter=verbose
 jq '.contributes.commands[]|select(.command|test("orkflow"))' apps/vscode-extension/package.json
 jq '.contributes.commands[]|select(.command=="octoshell.installOctobotsWorkflowSkill")|.title' apps/vscode-extension/package.json
 jq '[.contributes.menus[]?[]?|select(.command|test("orkflow"))]|length' apps/vscode-extension/package.json
@@ -39,7 +39,7 @@ jq '[.contributes.menus[]?[]?|select(.command|test("orkflow"))]|length' apps/vsc
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Search the manifest commands for newWorkflow/deleteWorkflow/openWorkflowById | No match |
+| 1 | Run manifest-no-workflows.test.ts; search the manifest commands for newWorkflow/deleteWorkflow/openWorkflowById | At least 1 test passed; no match |
 | 2 | Search every menu contribution for workflow commands | 0 |
 | 3 | Read the install command | id `octoshell.installOctobotsWorkflowSkill` unchanged; title `Octobots: Install Octobots Pack` |
 

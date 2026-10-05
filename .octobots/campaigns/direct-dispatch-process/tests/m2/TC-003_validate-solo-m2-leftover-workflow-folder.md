@@ -30,7 +30,9 @@ copy of solo `sensor-assignment-uplift/missions/m2-player-role-on-the-edge-match
 
 ```bash
 M=$WORK/solo/.octobots/campaigns/sensor-assignment-uplift/missions/m2-player-role-on-the-edge-match-roster-read-only
+node $OCTO/.claude/skills/mission-planner/scripts/validate.js $M; echo "v56 exit=$?"      # octoshell's installed v56 copy, read-only, for reference
 node $WORK/solo/.claude/skills/mission-planner/scripts/validate.js $M; echo "exit=$?"     # run AFTER TC-001's install (v57 validate)
+mv $M/workflows $WORK/wf.aside; node $WORK/solo/.claude/skills/mission-planner/scripts/validate.js $M; echo "entity-only exit=$?"; mv $WORK/wf.aside $M/workflows
 find $M/workflows -type f | sort
 ```
 
@@ -38,11 +40,11 @@ find $M/workflows -type f | sort
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Record the exit code of the OLD (v56) validate.js on the same dir for reference | Exit code E0 recorded |
+| 1 | Record the exit code of octoshell's installed v56 validate.js on the same dir, for reference | Exit code E0 recorded |
 | 2 | Run the v57 validate.js on the mission dir | Exactly one line starting `warning:` that names `workflows/m2-execution` and `no longer read since pack v57` |
 | 3 | Compare the exit code with the entity alone (move workflows/ away and rerun) | Same exit code: the warning does not change it |
 | 4 | List files under workflows/ | Unchanged (validate never touches them) |
 
 ## Expected Final State
 
-One non-fatal warning line; exit code equals the entity-only result; no file touched.
+One non-fatal warning line; exit code equals the entity-only result; no file touched. The workflow.json half of M2-AC3 has no real record in either board and is recorded UNREACHABLE on real data.

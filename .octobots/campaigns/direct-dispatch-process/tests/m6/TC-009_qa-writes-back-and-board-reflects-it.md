@@ -32,7 +32,8 @@ this mission's own TC files (tests/m6/TC-*.md), run by the QA task on the missio
 # for each executed TC:
 node $PACK/skill/mission-planner/scripts/set-test-status.js $OCTO/.octobots/campaigns/direct-dispatch-process/tests/m6/TC-0NN_*.md <pass|fail|blocked> --evidence tests/m6/runs/RUN-<date>-001.md
 # then in the Dev Host (watcher running): observe the sidebar counts and the M6 mission panel update without a reload.
-grep -c "reload" <(cd $OCTO && git diff --stat) ; git -C $OCTO diff --stat -- .octobots/campaigns/direct-dispatch-process/tests/m6
+git -C $OCTO diff --stat -- .octobots/campaigns/direct-dispatch-process/tests/m6
+git -C $OCTO diff -U0 -- .octobots/campaigns/direct-dispatch-process/tests/m6 | grep '^[-+][^-+]' | grep -v -E '^[-+](status|last_run|  date|  evidence):' | wc -l     # 0: only frontmatter status/last_run lines changed
 ```
 
 ## Steps
@@ -40,8 +41,8 @@ grep -c "reload" <(cd $OCTO && git diff --stat) ; git -C $OCTO diff --stat -- .o
 | # | Action | Expected Result |
 |---|--------|----------------|
 | 1 | Execute TC-001..008 and TC-010 and record each result with set-test-status.js | Each TC's frontmatter shows status and last_run with the RUN file path |
-| 2 | With the Dev Host open, watch the Tests node and the M6 panel while the writes happen | Counts and statuses update via the watcher; no reload loop; no error notification |
-| 3 | Check the diff | Only frontmatter lines changed in tests/m6 TC files |
+| 2 | With the Dev Host open, watch the Tests node and the M6 panel while the writes happen | Counts and statuses update via the watcher within one debounce per write; no reload loop; no error notification |
+| 3 | Check the diff | Only status/last_run frontmatter lines changed in tests/m6 TC files (the count printed is 0) |
 | 4 | Check the gate/QA skill text | Instructs calling set-test-status.js for every TC run |
 
 ## Expected Final State

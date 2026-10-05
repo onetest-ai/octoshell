@@ -3,5 +3,5 @@ status: draft
 role: js-dev
 description: 'Scope: mission-planner/SKILL.md § Mission chat (:152+, after step 4 at :236) and the scripts list; ship the TC template. Out of scope: gate text. Downstream: T4.4.'
 acceptance_criteria:
-  - text: the skill documents TC format, {{base_url}}, execution modes, record-per-case/UNREACHABLE and 'authored before build' via add-tests.js (mission AC4); a conventions vitest asserts each phrase
+  - text: apps/vscode-extension/test/skill-conventions.test.ts asserts mission-planner documents the TC format contract fields and values, the PASS/FAIL/BLOCKED/UNREACHABLE -> status mapping, {{base_url}}, the execution modes, record-per-case/UNREACHABLE and 'authored before build' via add-tests.js (mission AC4)
     done: false

@@ -29,16 +29,18 @@ copies of real TC files from this campaign and from solo uwb m1, each broken one
 ## Commands
 
 ```bash
-cd $OCTO && pnpm --filter @octoshell/board test -- test-cases-malformed
-cp $OCTO/.octobots/campaigns/direct-dispatch-process/tests/m1/TC-001_*.md $WORK/ && sed -i '' 's/^status: draft/status: passing/' $WORK/TC-001_*.md
-node $PACK/skill/mission-planner/scripts/validate.js $WORK/TC-001_*.md; echo "exit=$?"
+cd $OCTO && pnpm --filter @octoshell/board exec vitest run test/test-cases-malformed.test.ts test/validate-tc-parity.test.ts --reporter=verbose
+T=$WORK/octo-octobots/campaigns/direct-dispatch-process/tests/m1/TC-001_collect-reads-home-slug-dir.md
+awk '{ if ($0=="status: draft") print "status: passing"; else print }' $T > $T.tmp && mv $T.tmp $T
+node $PACK/skill/mission-planner/scripts/validate.js $T; echo "exit=$?"
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Break a real TC in each of four ways and validate with both implementations | Four `warning` findings per implementation with identical text; no error; validate.js exit 0 |
+| 1 | Run the two suites (each breaks real TCs four ways: bad YAML, status: passing, kind: manual, id mismatch, and validates with both implementations) | At least 1 test passed in each; four `warning` findings per implementation with identical text; no error |
+| 1b | validate.js on the copied TC with `status: passing` | Exit 0; one warning naming the invalid status |
 | 2 | List them through the board library | Still listed (with their problems), not dropped |
 
 ## Expected Final State

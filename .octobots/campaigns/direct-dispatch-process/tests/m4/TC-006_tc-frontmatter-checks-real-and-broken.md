@@ -1,6 +1,6 @@
 ---
 id: TC-006
-title: "validate.js on a real uwb TC passes frontmatter checks; a copy with id TC-999 warns"
+title: "validate.js on a real uwb TC passes frontmatter checks; a copy whose id mismatches its filename warns"
 mission: M4
 covers: [M4-AC3]
 kind: cli
@@ -9,13 +9,13 @@ priority: high
 size: S
 ---
 
-# TC-006: validate.js on a real uwb TC passes frontmatter checks; a copy with id TC-999 warns
+# TC-006: validate.js on a real uwb TC passes frontmatter checks; a copy whose id mismatches its filename warns
 
 **Mission:** M4 | **Priority:** high | **Kind:** cli | **Covers:** M4-AC3
 
 ## Objective
 
-validate.js on a real uwb TC passes frontmatter checks; a copy with id TC-999 warns. Verifies M4-AC3 of M4 - Functional test cases are a gate-run unit of every mission.
+validate.js on a real uwb TC passes frontmatter checks; a copy whose id mismatches its filename warns. Verifies M4-AC3 of M4 - Functional test cases are a gate-run unit of every mission.
 
 ## Preconditions
 
@@ -24,27 +24,31 @@ validate.js on a real uwb TC passes frontmatter checks; a copy with id TC-999 wa
 
 ## Real data (pre-existing record)
 
-real solo uwb m1 `TC-003_set-ranging-mode-persists.md` (legacy `requirements:` frontmatter), and a copy of it with `id: TC-999`
+real solo uwb m1 `TC-003_set-ranging-mode-persists.md` (legacy frontmatter: `requirements: [M1-AC2, M1-AC5]`, `type: functional`, extra keys priority/module/size/tags), and two copies of it: `TC-097_id-mismatch.md` (still `id: TC-003`) and `TC-098_nosection.md` (no `## Expected Final State`)
 
 ## Commands
 
 ```bash
 T=$WORK/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1
 node $PACK/skill/mission-planner/scripts/validate.js $T/TC-003_set-ranging-mode-persists.md; echo "exit=$?"
-sed 's/^id: TC-003/id: TC-999/' $T/TC-003_set-ranging-mode-persists.md > $T/TC-999_broken.md
-node $PACK/skill/mission-planner/scripts/validate.js $T/TC-999_broken.md; echo "exit=$?"
-sed '/^## Expected Final State/,$d' $T/TC-003_set-ranging-mode-persists.md > $T/TC-998_nosection.md
-node $PACK/skill/mission-planner/scripts/validate.js $T/TC-998_nosection.md; echo "exit=$?"
+cp $T/TC-003_set-ranging-mode-persists.md $T/TC-097_id-mismatch.md           # frontmatter keeps id: TC-003
+node $PACK/skill/mission-planner/scripts/validate.js $T/TC-097_id-mismatch.md; echo "exit=$?"
+awk '/^## Expected Final State/{exit} {print}' $T/TC-003_set-ranging-mode-persists.md > $T/TC-098_nosection.md
+node $PACK/skill/mission-planner/scripts/validate.js $T/TC-098_nosection.md; echo "exit=$?"
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Validate the real TC-003 file | No id/mission/covers/section warnings (legacy `requirements: [M1-AC3]` accepted as covers) |
-| 2 | Validate the copy with id: TC-999 (filename TC-999_broken.md would match, so keep the filename TC-003-like if the check keys on filename: QA states which) | A warning that the frontmatter id does not match the filename / is not a TC of this mission |
-| 3 | Validate the copy without `## Expected Final State` | A warning naming the missing section |
+| 1 | Validate the real TC-003 file | Exit 0; no id/mission/covers/section warnings (legacy `requirements: [M1-AC2, M1-AC5]` accepted as covers; the extra keys and `type` are ignored) |
+| 2 | Validate TC-097_id-mismatch.md (frontmatter `id: TC-003`) | Exit 0; one warning that the frontmatter id TC-003 does not match the filename prefix TC-097 |
+| 3 | Validate TC-098_nosection.md | Exit 0; one warning naming the missing `## Expected Final State` section |
 
 ## Expected Final State
 
 Format problems are warnings; the real file is clean.
+
+## Teardown
+
+- `rm $T/TC-097_id-mismatch.md $T/TC-098_nosection.md` before TC-007, so the broken copies do not enter the parity inputs.

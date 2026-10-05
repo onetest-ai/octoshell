@@ -39,8 +39,7 @@ octoshell's real octograph campaign, mission m6-extension-bridge (has workflows/
 | 1 | Open the Octoshell sidebar; expand Octograph > M6 | Tasks and bugs listed; no workflow child although workflows/build-and-gate exists on disk |
 | 2 | Open the command palette and type 'Workflow' | No 'New Workflow'/'Delete Workflow'; 'Octobots: Install Octobots Pack' is present |
 | 3 | Open the M6 mission panel | Opens without error; documents, criteria and notes render |
-| 4 | Check the Problems/Output for the board | The 'no longer read' warning appears for build-and-gate (warning, not error) |
 
 ## Expected Final State
 
-No workflow surface remains; the leftover folder only yields a warning. Recorded as MANUAL.
+No workflow surface remains, and the leftover folder on disk does not surface in the tree or palette. Recorded as MANUAL. (The validate warning for the folder is M3-AC3, checked by TC-006; the extension does not show it.)

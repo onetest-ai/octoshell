@@ -1,9 +1,9 @@
 name: 'T6.5 - Mission QA: run tests/m6 live on this campaign''s tests and solo''s uwb campaign'
 status: draft
 role: qa-engineer
-description: 'Scope: TC-001..010; UI cases are manual Extension Development Host sessions with screenshots (recorded as manual). Uses set-test-status.js to record its own results on this mission''s TCs (dogfood). Out of scope: fixes. Downstream: M6 gate, then release.'
+description: 'Scope: TC-001..010; UI cases are manual Extension Development Host sessions with screenshots (noted as manual in the RUN file). Uses set-test-status.js to record its own results on this mission''s TCs (dogfood). TC-011 belongs to T6.6 (needs the VSIX). Out of scope: fixes. Downstream: M6 gate, then the release T6.6.'
 acceptance_criteria:
-  - text: every TC has PASS, FAIL or UNREACHABLE (manual recorded as manual) with evidence and a named pre-existing record
+  - text: every TC-001..010 has PASS, FAIL, BLOCKED or UNREACHABLE with evidence and a named pre-existing record (manual executions noted as manual in the RUN file); its frontmatter status is pass, fail or blocked (UNREACHABLE recorded as blocked with the reason in the RUN file)
     done: false
   - text: this mission's own TC files carry the QA results in status/last_run and the board shows them
     done: false

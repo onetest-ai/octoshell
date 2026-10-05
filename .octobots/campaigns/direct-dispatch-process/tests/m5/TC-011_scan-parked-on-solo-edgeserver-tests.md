@@ -24,24 +24,28 @@ scan-parked.js on solo edgeserver/tests lists the real xfail/skip with path:line
 
 ## Real data (pre-existing record)
 
-solo `edgeserver/tests` (real pytest suite; M1 notes recorded 1 xfailed, M6 recorded 0; QA reports whatever exists now)
+Solo's real pytest suite as of commit f2e7812d^ (extracted read-only with `git archive`), which contains `edgeserver/tests/test_m6_solve_over_the_wire_e2e.py:474 pytest.xfail(` (an imperative xfail with a reason string), plus today's solo `edgeserver/tests` (0 parked markers on 2026-10-05).
 
 ## Commands
 
 ```bash
-cd $SOLO && node $PACK/skill/mission-execution/scripts/scan-parked.js --root edgeserver/tests --json | jq '.unsigned, .allowed'
-grep -rnE 'xfail|pytest\.mark\.skip\b|pytest\.skip\(' edgeserver/tests | head -20     # independent cross-check
-# optional (cheap lane only): cd $SOLO/edgeserver && make edgeserver-test-fast ... | grep -E 'xfailed|skipped'
+mkdir -p $WORK/solo-hist && git -C $SOLO archive f2e7812d^ edgeserver/tests | tar -x -C $WORK/solo-hist
+cd $WORK/solo-hist && git init -q && git add -A          # scan-parked lists files with git ls-files
+node $PACK/skill/mission-execution/scripts/scan-parked.js --root edgeserver/tests --json | jq -c '.unsigned'
+node $PACK/skill/mission-execution/scripts/scan-parked.js --root edgeserver/tests >/dev/null; echo "history exit=$?"
+grep -rnE 'pytest\.(xfail|skip)\(|@pytest\.mark\.(xfail|skip)([^a-z_]|$)' edgeserver/tests | head -20     # independent cross-check
+cd $SOLO && node $PACK/skill/mission-execution/scripts/scan-parked.js --root edgeserver/tests --json | jq -c '{unsigned: (.unsigned|length), allowed: (.allowed|length)}'   # today's tree, read-only
 ```
 
 ## Steps
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run scan-parked.js against solo's tests (read-only) | Reports every xfail/skip marker lacking reason= with path:line; skipif-with-reason listed as allowed |
-| 2 | Cross-check with an independent grep | Same set of hits (QA explains any difference) |
-| 3 | Optional pytest -rxs cross-check | Counts consistent, or recorded 'not run' |
+| 1 | Scan the f2e7812d^ extraction | `.unsigned` includes edgeserver/tests/test_m6_solve_over_the_wire_e2e.py line 474 (`pytest.xfail(`); exit 1 |
+| 2 | Cross-check with the independent grep | Same set of hits (QA explains any difference) |
+| 3 | Scan today's solo tree (read-only) | 0 unsigned (recorded 2026-10-05); exit 0 |
+| 4 | Optional pytest -rxs cross-check | Counts consistent, or recorded 'not run' |
 
 ## Expected Final State
 
-Scan agrees with the real suite's parked tests.
+The scan finds the real historical xfail and agrees with today's clean suite.

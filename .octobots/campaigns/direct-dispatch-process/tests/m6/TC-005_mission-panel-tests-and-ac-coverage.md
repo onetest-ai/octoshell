@@ -30,7 +30,7 @@ solo uwb `m1-venue-ingest-mode-and-vendor-integer-ids` (real: 11 ACs; one AC is 
 
 ```bash
 # automated half (component test over real copies):
-cd $OCTO && OCTOBOTS_BOARD_COPIES="$OCTO/.octobots:$WORK/solo-octobots" pnpm --filter @octoshell/vscode-extension test -- mission-tests-panel
+cd $OCTO && OCTOBOTS_BOARD_COPIES="$WORK/octo-octobots:$WORK/solo-octobots" pnpm --filter @octoshell/vscode-extension exec vitest run test/mission-tests-panel.test.tsx --reporter=verbose
 # manual: F5, open the three mission panels, screenshots.
 ```
 
@@ -38,6 +38,7 @@ cd $OCTO && OCTOBOTS_BOARD_COPIES="$OCTO/.octobots:$WORK/solo-octobots" pnpm --f
 
 | # | Action | Expected Result |
 |---|--------|----------------|
+| 0 | Run mission-tests-panel.test.tsx | At least 1 test passed |
 | 1 | Open uwb m1's mission panel | Tests section lists the TCs with status `unknown`; AC coverage lists M1-AC1..AC11 with their covering TCs and M1-AC11 highlighted in warning style (not error style) as uncovered |
 | 2 | Open this campaign's M6 panel | Every AC has covering TCs; no highlight |
 | 3 | Open octograph m6 | Empty state with the `add-tests.js` hint, no crash |

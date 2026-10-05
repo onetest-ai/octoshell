@@ -1,9 +1,11 @@
 name: T1.1 - Collector reads Claude Code's real transcript roots
 status: draft
 role: js-dev
-description: 'Scope: port solo''s collect.mjs root resolution, slug rule and dedupe, plus its selftest.mjs roots suite (isolated HOME) and README section, into resources/octobots-pack/tokenomics/. Out of scope: prices.json (T1.4; solo''s copy is older, never copy wholesale) and the TS source (T1.2). Downstream: T1.2 mirrors the rules; T1.3 consumes segments.'
+description: 'Scope: port solo''s collect.mjs root resolution, slug rule and dedupe, plus its selftest.mjs roots suite (isolated HOME) and README section, into resources/octobots-pack/tokenomics/. Wrap selftest.mjs in a vitest so CI runs it. Rewrite doctor.js''s config-dir check (mission AC8): ~/.claude/projects is the default root and is ok; never recommend CLAUDE_CONFIG_DIR=<repo>/.claude. Out of scope: prices.json (T1.4; solo''s copy is older, never copy wholesale) and the TS source (T1.2). Downstream: T1.2 mirrors the rules; T1.3 consumes segments; TC-001..003 and TC-011.'
 acceptance_criteria:
-  - text: node tokenomics/selftest.mjs roots suite is green and shows mission AC1-AC3 (slug filter, root precedence, dedupe + byte-identical rerun)
+  - text: apps/vscode-extension/test/tokenomics-selftest.test.ts spawns `node resources/octobots-pack/tokenomics/selftest.mjs`, asserts exit 0, and asserts the roots suite ran and covered mission AC1-AC3 (slug filter, root precedence, dedupe + byte-identical rerun)
     done: false
-  - text: a test fails if the developer's real CLAUDE_CONFIG_DIR leaks into the selftest (HOME and CLAUDE_CONFIG_DIR are isolated)
+  - text: the selftest fails if the developer's real HOME or CLAUDE_CONFIG_DIR leaks into it (HOME and CLAUDE_CONFIG_DIR are isolated), proven by a case in the same suite
+    done: false
+  - text: doctor.js config-dir check per mission AC8, covered by cases in packages/board/test/scripts-cli-scenarios.test.ts whose names contain "config-dir" (unset -> ok naming ~/.claude/projects/<slug>, no CLAUDE_CONFIG_DIR=<repo>/.claude advice; set -> names $CLAUDE_CONFIG_DIR/projects/<slug>); `pnpm coverage:pack` passes
     done: false

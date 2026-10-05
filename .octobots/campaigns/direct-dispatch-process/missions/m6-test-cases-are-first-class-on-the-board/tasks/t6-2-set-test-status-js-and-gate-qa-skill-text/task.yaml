@@ -1,9 +1,9 @@
 name: T6.2 - set-test-status.js and gate/QA skill text
 status: draft
 role: js-dev
-description: 'Scope: a new pack script set-test-status.js (status + last_run, --evidence, --date, --migrate, body untouched, idempotent, exit 2 on invalid input) using entity-io frontmatter helpers; the gate phase 2 and the last-QA-task text in mission-completion-gate and mission-execution call it per TC (conventions vitest). Out of scope: the extension. Downstream: T6.5 QA uses it.'
+description: 'Scope: a new pack script set-test-status.js (status + last_run, --evidence, --date, --migrate with no status by default, body untouched, idempotent, exit 2 on invalid input incl. status `unknown`) built on tc-io.mjs from M4 T4.2 (entity-io.mjs has no frontmatter helpers); the gate phase 2 and the last-QA-task text in mission-completion-gate and mission-execution call it per TC with the result-word mapping (conventions vitest). Out of scope: the extension. Downstream: T6.5 QA uses it; M6 TC-011''s VSIX check expects it.'
 acceptance_criteria:
-  - text: set-test-status.js passes its cli scenarios incl. body-preserving bytes, idempotence, invalid status exit 2 and --migrate on a legacy uwb TC copy (mission AC6)
+  - text: packages/board/test/scripts-cli-scenarios.test.ts proves set-test-status.js body-preserving bytes, idempotence, exit 2 on an invalid status (incl. `unknown`) and on a non-TC path, and `--migrate` (no status) on a copy of a legacy TC yielding status unknown (mission AC6); `pnpm coverage:pack` passes
     done: false
-  - text: the skills tell QA to call it for every TC run (conventions vitest)
+  - text: apps/vscode-extension/test/skill-conventions.test.ts asserts both skills tell QA to call set-test-status.js for every TC run, with PASS -> pass, FAIL -> fail, BLOCKED/UNREACHABLE -> blocked
     done: false

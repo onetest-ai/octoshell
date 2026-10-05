@@ -29,7 +29,7 @@ $WORK/solo-octobots uwb tests/m1 (22+ real TC files, legacy frontmatter) and m6 
 ## Commands
 
 ```bash
-node $OCTO/.qa/dump-tests.mjs $WORK/solo-octobots uwb-ranging-ingest-vendor-v01 | jq '[.[]|select(.mission=="M1")]|{n:length,status:(group_by(.status)|map({(.[0].status):length})),first:.[0]}'
+node $OCTO/apps/vscode-extension/scripts/qa/dump-tests.mjs $WORK/solo-octobots uwb-ranging-ingest-vendor-v01 | jq '[.[]|select(.mission=="M1")]|{n:length,status:(group_by(.status)|map({(.[0].status):length})),first:.[0]}'
 node $PACK/skill/mission-planner/scripts/validate.js $WORK/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_set-ranging-mode-persists.md | grep -i "migrate\|set-test-status"
 ```
 

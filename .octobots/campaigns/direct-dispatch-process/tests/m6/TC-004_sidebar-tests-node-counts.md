@@ -30,7 +30,7 @@ this campaign (direct-dispatch-process, new frontmatter) and solo's uwb campaign
 
 ```bash
 # automated half:
-cd $OCTO && OCTOBOTS_BOARD_COPIES="$OCTO/.octobots:$WORK/solo-octobots" pnpm --filter @octoshell/vscode-extension test -- campaigns-tree-tests
+cd $OCTO && OCTOBOTS_BOARD_COPIES="$WORK/octo-octobots:$WORK/solo-octobots" pnpm --filter @octoshell/vscode-extension exec vitest run test/campaigns-tree-tests.test.ts --reporter=verbose
 # manual half: F5; screenshots to tests/m6/evidence/.
 ```
 
@@ -38,7 +38,8 @@ cd $OCTO && OCTOBOTS_BOARD_COPIES="$OCTO/.octobots:$WORK/solo-octobots" pnpm --f
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Expand the direct-dispatch-process campaign | A `Tests` node exists, with child groups m1..m6 labelled with counts (e.g. `m2 · 10 · 10 draft`) |
+| 0 | Run campaigns-tree-tests.test.ts | At least 1 test passed |
+| 1 | Expand the direct-dispatch-process campaign | A `Tests` node exists, with child groups m1..m6 labelled with counts equal to the TC files on disk (e.g. `m2 · 12 · 12 draft` on 2026-10-05) |
 | 2 | After QA flips some TCs, reopen | Counts reflect pass/fail/blocked (`30✓ 1✗ 1 blocked` style) |
 | 3 | Expand the solo uwb campaign | Tests node with m1..m6; legacy TCs counted under unknown; m6 shows 0 or is omitted |
 | 4 | Expand octoshell's octograph campaign | No Tests node (no TCs) |
