@@ -1,5 +1,5 @@
 name: M2 - Pack runs missions by direct sub-agent dispatch
-status: draft
+status: executing
 description: Upstream solo's 57-local mission-execution and mission-completion-gate, with solo-specifics replaced by project-declared test lanes (declaration format lands in M5; until then 'the project's documented commands'). Delete workflow-designer and the 7 workflow scripts (incl. mission-input.js) from the pack, and retire them on install. Protecting locally changed skills during an install is M7 (campaign decision 13, revised); until M7 lands, installPack overwrites them as it does today. Replace workflow validation in validate.js with a non-fatal 'no longer read' warning. Fix the gate hook's directive, and make the gate and work-log hooks act only on a status change that actually happened. Board library and extension are untouched (M3), except the board test that imports a deleted pack script.
 acceptance_criteria:
   - text: Given the v57 pack, skill/workflow-designer/ and scripts/{add-workflow,sync-meta,add-run,mission-input}.js, scripts/{extract-meta,workflow-meta}.mjs and scripts/vendor/acorn.mjs do not exist; OCTOBOTS_SKILLS (octobots-skill.ts:14) and doctor.js:63 list 4 skills
