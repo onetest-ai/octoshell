@@ -53,6 +53,16 @@ describe("mission-gate.mjs", () => {
     expect(ctx).toMatch(/Tokenomics/);
   });
 
+  it("numbers the phases the way the skill does: tokenomics is phase 4, merge/complete is phase 5", () => {
+    const b = makeStatusBoard("octo-gate-");
+    const ctx = directiveOf(pipe(b.repo, runAndPost(b.repo, setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done"))));
+    expect(ctx).toMatch(/^ {2}4\. Tokenomics capture/m);
+    expect(ctx).toMatch(/^ {2}5\. Merge\/complete ONLY when phases 1-3 are green/m);
+    const skill = readFileSync(join(__dirname, "..", "resources", "octobots-pack", "skill", "mission-completion-gate", "SKILL.md"), "utf8");
+    expect(skill).toMatch(/^4\. \*\*Tokenomics capture/m);
+    expect(skill).toMatch(/^5\. \*\*Merge \/ complete\*\*/m);
+  });
+
   it("names the project's own mechanical gate, not a hard-coded build command", () => {
     const b = makeStatusBoard("octo-gate-");
     const ctx = directiveOf(pipe(b.repo, runAndPost(b.repo, setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done"))));
@@ -148,7 +158,7 @@ describe("mission-gate.mjs", () => {
       expect(pipe(b.repo, postToolUseWithOutput(b.repo, cmd, FORGED + "\n"))).toBe("");
     });
 
-    it("(d2) a forged echo is silent even after the mission was already done (no real transition)", () => {
+    it("(d2) on an already-done mission, stdout that holds no transition line (only the word 'unchanged') is silent", () => {
       const b = makeStatusBoard("octo-gate-");
       runAndPost(b.repo, setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done"));
       const cmd = setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");

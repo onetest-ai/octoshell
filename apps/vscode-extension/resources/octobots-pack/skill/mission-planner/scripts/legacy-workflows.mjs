@@ -3,7 +3,8 @@
 // here — never touched. (Deleting one is octobots-doctor's job, with the user's OK.)
 //
 // One rule, one message: validate.js and doctor.js both go through this file. The board library's
-// validateBoard mirrors the exact warning text — keep the two in step.
+// validateBoard is to mirror the exact warning text once it drops the Workflow entity (M3 T3.3) —
+// from then on, keep the two in step.
 
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, parse, relative, resolve, sep } from "node:path";

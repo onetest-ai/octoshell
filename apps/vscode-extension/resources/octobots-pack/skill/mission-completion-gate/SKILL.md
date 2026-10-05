@@ -20,6 +20,10 @@ done until this gate is green.
 > with `set-status.js` does **not** drive the app's displayed mission status — that comes from the
 > run lifecycle — but it **does** fire this hook. Flipping the mission `done` is therefore the
 > intended way to launch this gate, not a no-op; don't skip it thinking the marker is "ignored".
+>
+> The hook fires only on a **real transition** to `done`: re-running `set-status.js … done` on a
+> mission that is already `done` prints `unchanged` and launches nothing. To recover a gate that was
+> skipped, run this skill by hand, or flip the mission to `executing` and then `done` again.
 
 ## Hard rules (non-negotiable)
 

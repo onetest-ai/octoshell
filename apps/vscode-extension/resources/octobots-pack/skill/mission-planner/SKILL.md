@@ -432,6 +432,8 @@ layers, and this is a common trip-up:
   `set-status.js <campaign-dir> "<M<n> - name>" done`: the `.octobots/hooks/mission-gate.mjs`
   PostToolUse hook watches that invocation and launches the **mission-completion-gate** skill. So the
   command is emphatically **not** a no-op on a mission — it is the intended trigger for the gate.
+  Only a real transition fires it: re-running `done` on a mission that is already `done` writes
+  nothing and launches nothing (see **mission-completion-gate** for recovering a skipped gate).
 
 **How to act:** to complete a mission, run `set-status.js … done` on it. That fires the gate, which
 must pass green before the mission is truly done — fix and re-verify if it surfaces blocking findings
