@@ -7,7 +7,7 @@
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { parseManagedBlock, mapBoardStatus, boardLineEntityName, type EntityKind } from "./managed-block.js";
 import { loadEntity, ENTITY_STATUSES, type AcceptanceCriterion, type Tokenomics } from "./entity-schema.js";
 import type { Campaign, Mission, Task, Bug, BugSeverity } from "./types.js";
@@ -459,6 +459,15 @@ interface EntityRead {
     tokenomics?: Tokenomics;
     notes?: string;
   };
+}
+
+/**
+ * True when `dir` is a campaign folder as BoardModel sees it: it holds a `campaign.yaml` or
+ * `campaign.md`. BoardModel skips any other directory under `campaigns/`. Not part of the package
+ * API (index.ts exports only BoardModel from this module).
+ */
+export function isCampaignDir(dir: string): boolean {
+  return readEntity(dirname(dir), basename(dir), "campaign") !== null;
 }
 
 /** Read an entity from `<kind>.yaml`, falling back to a legacy `<kind>.md`. Null if neither exists. */

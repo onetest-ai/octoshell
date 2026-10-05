@@ -16,7 +16,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
-import { findLegacyWorkflowFolders, NO_LONGER_READ } from "./legacy-workflows.mjs";
+import { findLegacyWorkflowFolders, isCampaignDir, NO_LONGER_READ } from "./legacy-workflows.mjs";
 import { parseSkillMarker } from "./skill-marker.mjs";
 import { readPending, readRegularFile, MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX } from "./pending-io.mjs";
 
@@ -201,7 +201,7 @@ else {
   // Workflow support was removed in pack v57. These folders are ignored, never touched: warn only.
   const base = join(ROOT, ".octobots");
   const leftovers = readdirSync(campaigns, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
+    .filter((e) => e.isDirectory() && isCampaignDir(join(campaigns, e.name))) // a dir with no campaign.yaml/.md is no campaign
     .flatMap((e) => findLegacyWorkflowFolders(join(campaigns, e.name), base));
   if (leftovers.length) {
     warn("board",

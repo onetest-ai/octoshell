@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { cpSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -35,4 +36,24 @@ export function campaignDirs(board: string): string[] {
   return readdirSync(campaigns, { withFileTypes: true })
     .filter((e) => e.isDirectory())
     .map((e) => join(campaigns, e.name));
+}
+
+/**
+ * Boards built from what a CI checkout has: only TRACKED files. `git archive HEAD .octobots` into a
+ * scratch directory (the working-tree `.octobots/` is gitignored, so it holds campaigns and files a
+ * fresh checkout never sees), plus every `.octobots` named in OCTOBOTS_BOARD_COPIES. Each is a fresh
+ * scratch copy named `.octobots`, so a test may add to it freely. Never empty.
+ */
+export function trackedBoardCopies(): string[] {
+  const repoRoot = join(REPO_OCTOBOTS, "..");
+  const extract = scratchDir("tracked-board-");
+  const archive = execFileSync("git", ["archive", "HEAD", ".octobots"], { cwd: repoRoot, maxBuffer: 256 * 1024 * 1024 });
+  execFileSync("tar", ["-x", "-C", extract], { input: archive });
+  const named = (process.env.OCTOBOTS_BOARD_COPIES ?? "").split(":").filter(Boolean);
+  const extra = named.map((src, i) => {
+    const dest = join(scratchDir(`named-board-${i}-`), ".octobots");
+    cpSync(src, dest, { recursive: true });
+    return dest;
+  });
+  return [join(extract, ".octobots"), ...extra];
 }

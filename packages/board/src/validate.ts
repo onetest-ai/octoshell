@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, parse, relative, resolve, sep } from "node:path";
 import type { EntityKind } from "./managed-block.js";
+import { isCampaignDir } from "./board-model.js";
 import { loadEntity, KIND_KEYS, KNOWN_KEYS, type EntityFields } from "./entity-schema.js";
 
 export interface BoardFinding {
@@ -281,7 +282,10 @@ export function validateBoard(root: string): BoardFinding[] {
 
     // campaign.md
     findings.push(...validateFile(join(campaignDir, "campaign.md"), "campaign"));
-    findings.push(...legacyWorkflowFindings(campaignDir, "campaign"));
+    // only a real campaign (campaign.yaml/.md, the BoardModel rule) has workflows/ worth reporting
+    if (isCampaignDir(campaignDir)) {
+      findings.push(...legacyWorkflowFindings(campaignDir, "campaign"));
+    }
 
     // campaign-level bugs
     const campaignBugs = join(campaignDir, "bugs");
@@ -296,7 +300,7 @@ export function validateBoard(root: string): BoardFinding[] {
 
       // mission.md
       findings.push(...validateFile(join(missionDir, "mission.md"), "mission"));
-      findings.push(...legacyWorkflowFindings(missionDir, "mission"));
+      if (isCampaignDir(campaignDir)) findings.push(...legacyWorkflowFindings(missionDir, "mission"));
 
       // mission tasks
       const tasksDir = join(missionDir, "tasks");
