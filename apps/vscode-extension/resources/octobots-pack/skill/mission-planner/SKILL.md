@@ -74,7 +74,8 @@ notes: |
 
 Fields, by kind:
 - **campaign.yaml** — `name`, `status` (settable; a non-`draft` value overrides the mission
-  rollup), `target`, `description`, `acceptance_criteria[]`, `documents[]`, optional `notes`.
+  rollup), `target`, `description`, `acceptance_criteria[]`, `documents[]`, optional `tokenomics`
+  (only `branches` is read there — see *Where it goes* below), optional `notes`.
 - **mission.yaml** — `name`, `status`, `description`, `acceptance_criteria[]`, `documents[]`,
   optional `tokenomics`, optional `notes`. (Mission status is driven by the app run lifecycle + task
   rollup — see *Setting status on a mission* below.)
@@ -299,6 +300,12 @@ tokenomics:
 Optional keys: `self_size` (your own label, kept to measure estimation drift),
 `story_points`, `maturity` (`production` | `pilot` | `experimental`), and on a
 mission `branches` when its branches don't follow the naming convention.
+
+A **campaign** carries no estimate, but its `campaign.yaml` may declare
+`tokenomics: { branches: [...] }` (a list or a comma string) for campaign-level
+work that names no mission — its planning or hand-off branch. Those branches get a
+campaign-level row in the cost report instead of landing in `unattributed`; a
+mission's own `branches` and a recorded work-log entry still win over them.
 
 There is no dedicated script — add the `tokenomics` map by hand to the entity's
 own `mission.yaml` / `task.yaml` (a plain key→value map). The app surfaces it
