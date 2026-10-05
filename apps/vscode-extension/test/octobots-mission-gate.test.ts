@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { SET_STATUS, createMissionNamed, makeStatusBoard, postToolUse, postToolUseWithOutput, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
@@ -161,6 +161,22 @@ describe("mission-gate.mjs", () => {
       const cmd = setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");
       runAndPost(b.repo, cmd);
       expect(pipe(b.repo, postToolUse(b.repo, cmd))).toBe("");
+    });
+
+    it("acts on a real transition from a hand-written non-canonical status (`awaiting approval` -> done)", () => {
+      const b = makeStatusBoard("octo-gate-");
+      const file = join(b.campaignDir, "missions", readdirSync(join(b.campaignDir, "missions"))[0]!, "mission.yaml");
+      writeFileSync(file, readFileSync(file, "utf8").replace(/^status:.*$/m, "status: awaiting approval"), "utf8");
+      const cmd = setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");
+      expect(directiveOf(pipe(b.repo, runAndPost(b.repo, cmd)))).toContain("M1 - Venue ingest");
+    });
+
+    it("parses a transition line whose before-state contains a space (an older set-status.js)", () => {
+      const b = makeStatusBoard("octo-gate-");
+      const cmd = setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");
+      runAndPost(b.repo, cmd); // the YAML now holds done
+      const line = 'octobots: status mission "M1 - Venue ingest" awaiting approval -> done';
+      expect(directiveOf(pipe(b.repo, postToolUseWithOutput(b.repo, cmd, line)))).toContain("M1 - Venue ingest");
     });
 
     it("reads a plain-string tool_response too", () => {

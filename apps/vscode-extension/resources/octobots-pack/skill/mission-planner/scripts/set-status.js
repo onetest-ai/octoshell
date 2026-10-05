@@ -34,7 +34,10 @@ if (!match) {
 
 const resolved = resolveEntityFile(match.dir, [match.kind]);
 const fields = readEntity(resolved.file, resolved.format);
-const from = fields.status ?? "unset";
+// The before-state as the board shows it (BoardModel's resolveStatus): a hand-written `awaiting approval`
+// or `Done` is the canonical `awaitingApproval` / `done`, so `Done` -> done is no transition, and the
+// printed `from` never contains a space the hooks' parser would have to guess around.
+const from = mapBoardStatus(fields.status ?? "") ?? "draft";
 if (from === mapped) {
   // Already there: write nothing (same bytes). The PostToolUse hooks read this line to tell a re-run
   // from a real transition.

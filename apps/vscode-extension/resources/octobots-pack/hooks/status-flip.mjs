@@ -122,7 +122,8 @@ export function parseSetStatusAll(command) {
  */
 export function parseTransitionLines(stdout) {
   const out = [];
-  const re = /^octobots: status (\w+) ("(?:[^"\\]|\\.)*") (\S+) -> (\S+)$/;
+  // `from` may hold a space (`awaiting approval`, from a set-status.js that printed the raw YAML value).
+  const re = /^octobots: status (\w+) ("(?:[^"\\]|\\.)*") (\S(?:.*\S)?) -> (\S+)$/;
   for (const line of String(stdout).split(/\r?\n/)) {
     const m = re.exec(line.trim());
     if (!m) continue;
