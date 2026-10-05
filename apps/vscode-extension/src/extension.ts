@@ -9,6 +9,7 @@ import { CampaignsTree } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
 import { packStatus, installPack, OCTOBOTS_PACK_VERSION } from "./host/octobots-skill.js";
+import { loadShippedStore } from "./host/pack-deviations.js";
 import { claudeHookStatus } from "./host/octobots-hooks.js";
 import { toolsStatus } from "./host/octobots-tools.js";
 import { launchSdlcBundleInstall } from "./host/sdlc-bundles-command.js";
@@ -109,7 +110,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Explicit-only: on open, if the pack (skill + planning agents) is missing/outdated, PROMPT —
   // never write without the user's click. Shown at most once per activation.
   void (async () => {
-    const st = packStatus(repoRoot);
+    const store = loadShippedStore(vscode.Uri.joinPath(context.extensionUri, "resources", "shipped-skills.json.br").fsPath);
+    const st = packStatus(repoRoot, OCTOBOTS_PACK_VERSION, store);
     if (st.installed && st.upToDate) return;
     const verb = st.installed ? "update" : "install";
     const Verb = `${verb[0]!.toUpperCase()}${verb.slice(1)}`;
