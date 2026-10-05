@@ -131,6 +131,36 @@ describe("ClaudeTranscriptSource / collect.mjs parity (mission AC4)", () => {
     expect(theirs.length).toBeGreaterThan(0);
   });
 
+  // The tie rule is invisible to `view` (ids and turns are equal by definition), so this case gives the two
+  // equal-turn copies different token counts and compares those: a ">=" on either side flips the winner.
+  it("a duplicate with EQUAL turns keeps the earlier root's copy, on both sides", () => {
+    const w = world();
+    const write = (projectsRoot: string, output: number): void => {
+      const dir = join(projectsRoot, w.slug);
+      mkdirSync(dir, { recursive: true });
+      const line = (i: number): string =>
+        JSON.stringify({
+          type: "assistant",
+          gitBranch: "feat/p",
+          requestId: `tie-r${i}`,
+          timestamp: "2026-07-01T10:00:00.000Z",
+          message: { model: "claude-sonnet-5", usage: { input_tokens: 1, output_tokens: output }, content: [] },
+        });
+      writeFileSync(join(dir, "tie-s.jsonl"), [line(0), line(1)].join("\n") + "\n");
+    };
+    write(join(w.home, ".claude", "projects"), 111); // earlier root
+    write(join(w.project, ".claude", "projects"), 999); // legacy root, read later
+    const theirs = cli(w.project, { HOME: w.home }) as unknown as {
+      segment_id: string;
+      tokens_by_model: Record<string, { output_tokens: number }>;
+    }[];
+    const ours = new ClaudeTranscriptSource(w.project, { homeDir: w.home, env: {} }).collect();
+    const cliTie = theirs.find((s) => s.segment_id === "tie-s:main:feat/p");
+    const tsTie = ours.find((s) => s.segmentId === "tie-s:main:feat/p");
+    expect(cliTie?.tokens_by_model["claude-sonnet-5"]?.output_tokens).toBe(222);
+    expect(tsTie?.tokensByModel["claude-sonnet-5"]?.output).toBe(222);
+  });
+
   it("a trailing slash or a relative project path yields the same slug and the same ids", () => {
     const w = world();
     const theirsSlash = cli(`${w.project}/`, { HOME: w.home });
