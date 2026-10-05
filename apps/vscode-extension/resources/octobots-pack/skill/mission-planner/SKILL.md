@@ -1,6 +1,6 @@
 ---
 name: mission-planner
-description: Use when planning or recording work on an Octobots board in a repo with an .octobots/ directory — decomposing an intent into campaigns, missions and tasks; reading or editing campaign.yaml / mission.yaml / task.yaml / bug.yaml; setting acceptance criteria or statuses; filing or reporting a bug or defect (record it on the board, not only as a GitHub issue or external tracker ticket); or importing work from an external planning system (Epic/Story/Task/defect in Jira, GitHub, Azure DevOps, onetest-tms) onto the board and mirroring board items back out. Not for designing how a mission runs — which agents in what order (that is workflow-designer) — and not for building a planned task through to a merged PR (that is mission-execution).
+description: Use when planning or recording work on an Octobots board in a repo with an .octobots/ directory — decomposing an intent into campaigns, missions and tasks; reading or editing campaign.yaml / mission.yaml / task.yaml / bug.yaml; setting acceptance criteria or statuses; filing or reporting a bug or defect (record it on the board, not only as a GitHub issue or external tracker ticket); or importing work from an external planning system (Epic/Story/Task/defect in Jira, GitHub, Azure DevOps, onetest-tms) onto the board and mirroring board items back out. Not for building a planned task through to a merged PR (that is mission-execution).
 version: 57
 ---
 
@@ -238,10 +238,7 @@ are `T<missionNumber>.<taskNumber>` within their mission (`T3.1`, `T3.2`, …). 
    plan under `docs/superpowers/plans/`, or a sibling `design.md`), record it as a document — see
    **Documents** below. The tasks come from the plan; without the plan linked, a resumed mission
    can't reconstruct why the tasks are what they are.
-5. Consider whether the mission needs an **execution workflow** — see **Workflows** below. If its
-   tasks have a real shape (a gate, a fan-out, work that can run concurrently), say so and point the
-   user at the `workflow-designer` skill rather than designing it here.
-6. Run `validate` and fix any well-formedness errors before you finish.
+5. Run `validate` and fix any well-formedness errors before you finish.
 
 Principles: YAGNI — the fewest tasks that satisfy the mission's acceptance criteria. Every task is
 verifiable: someone can tell when it's done. Stay within the mission's scope; if the mission itself
@@ -444,28 +441,13 @@ act of setting it `done` is exactly what launches the gate. So `set-status.js` a
 too — for a task or bug it *sets* the entity's status; for a mission it *triggers that mission's
 completion gate*. See **mission-completion-gate**.
 
-## Workflows (how the work runs — see the **workflow-designer** skill)
+## Legacy `workflows/` folders
 
-A **workflow** is the plan of execution that sits beside the work: the order of the steps and the
-agents to call. A **campaign** workflow orchestrates its missions; a **mission** workflow
-orchestrates its tasks. **Either may hold several** — a mission normally has one per execution loop,
-`implementation`, `testing` and `fixing`, since those iterate different things and run at different
-times. The **workflow-designer** skill owns that decision.
-
-```
-.octobots/campaigns/<campaign>/workflows/<slug>/workflow.js     # the script (meta = name/description/phases + body)
-.octobots/campaigns/<campaign>/workflows/<slug>/runs.jsonl      # append-only run log (created on first run)
-```
-
-**That is not your job here.** Designing or editing a workflow — choosing phases, agents and what
-runs in parallel, and authoring the script — belongs to the **workflow-designer** skill. Running one
-belongs to **mission-execution**. Your job is the board: missions, tasks and acceptance criteria.
-
-When you finish decomposing a mission and its shape is worth recording — a review gate, a fan-out,
-work that can run concurrently — **say so and point the user at `workflow-designer`**. Don't
-hand-edit `workflow.js`: its `export const meta` is **generated from the script body** by
-`sync-meta.js`, so an edit there is overwritten on the next regenerate — and a hand-written picture
-that drifts from the program is exactly what generating it prevents.
+Older boards may hold `.octobots/campaigns/<campaign>/workflows/<slug>/workflow.js` (and a
+`runs.jsonl` run log) under a campaign or mission. Octobots no longer authors, validates or runs
+workflows: treat a leftover `workflow.js` as **historical reference only**, and never edit, move or
+delete those folders — they are the user's files. Missions are executed by **mission-execution**,
+which dispatches sub-agents directly.
 
 ## Naming the agent on a task — the `role` field
 
@@ -477,21 +459,11 @@ role: implementer
 status: draft
 ```
 
-`role` is an **agent name** — the same vocabulary a workflow step's `agent` field uses, and
-normally a `.claude/agents/<name>` directory. Run `ls .claude/agents` to see what the repo has.
+`role` is an **agent name**, normally a `.claude/agents/<name>` directory. Run `ls .claude/agents` to see what the repo has.
 
 Write it at creation with `add-task.js <mission-dir> "<title>" --role <name>`; the role is stored as
 a field, so the task name stays `T1.1 - Add JWT validation to /login`. `set-status.js` and other
 edits preserve it, so a task keeps its agent as it moves through the board.
-
-This works **with or without a workflow**, and the two answer different questions:
-
-- `role` says **who** should do this one task.
-- A workflow says **in what order** the steps run and **which agent** each one calls.
-
-Use `role` when the assignment is per-task and situational; use a workflow when the whole
-sequence is worth writing down and running. A mission can sensibly have both — the workflow drives
-the run, and `role` records who owns an individual task.
 
 > The `role` field is read by agents from the task's YAML; Octoshell does not currently surface it
 > in the task panel.
@@ -565,11 +537,4 @@ Run from the repo root:
 - `node .claude/skills/mission-planner/scripts/set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>` — manage the entity's own `acceptance_criteria`.
 - `node .claude/skills/mission-planner/scripts/set-status.js <parent-dir|entity.yaml> "<entity title>" <state>` — set the `status` field in the named child's own YAML (or the parent's, for a campaign/mission self-status); idempotent, preserves the entity's other fields. On a **mission** the field doesn't drive the app's status, but setting it `done` fires the mission-completion-gate hook — see *Setting status on a mission* above.
 - `node .claude/skills/mission-planner/scripts/migrate.js [--root <dir>]` — one-time, idempotent md→yaml conversion for a board still on the legacy Markdown files (the app runs the same sweep on activation; use this for a CLI-first board opened before the app). It parses each `<kind>.md`, folds the old parent `[status:]`/`[role:]`/`[severity:]` markers and `## Tokenomics` into the child's YAML, writes `<kind>.yaml`, and trashes the `.md`. A folder already on YAML is skipped.
-These are the **workflow-designer** skill's tools — they live here because every board writer
-shares one `scripts/` directory, but that skill owns the doctrine for using them:
-
-- `node .claude/skills/mission-planner/scripts/add-workflow.js --campaign <slug> [--mission <slug>] --name "<name>" [--description "<text>"]` — scaffold a workflow folder with a runnable `workflow.js` (name/description in its `meta`, phases generated from the body). Either parent may hold several.
-- `node .claude/skills/mission-planner/scripts/sync-meta.js <workflow-dir> | --all` — regenerate a workflow's `export const meta` from its own script body. The body is the source of truth; run this after every edit to it.
-- `node .claude/skills/mission-planner/scripts/mission-input.js M<n> [--campaign <slug>] [--pretty]` — emit one mission's board data as JSON, for handing to a shared pipeline as its `args` (a workflow script has no filesystem access, so it cannot discover its own mission).
-- `node .claude/skills/mission-planner/scripts/add-run.js --workflow <workflow-dir> --status <state> --summary "<text>" [--at YYYY-MM-DD]` — append a run entry (one JSON line) to the workflow's `runs.jsonl`.
-- `node .claude/skills/mission-planner/scripts/validate.js <entity-dir|entity.yaml>` — check an entity is well-formed AND meets the contract: a descriptive (non-placeholder) name, for missions/tasks at least one acceptance criterion, and no acceptance criteria stranded as `- [ ]` prose inside `notes`. Given a `workflow.js` (or a workflow folder) it checks the workflow's script instead (meta present and literal, name matches the folder, the body parses, `meta` is up to date with the body, and every `agent()` call names an `agentType`); given a campaign/mission it also checks every workflow beneath it. Run it after editing and fix every problem.
+- `node .claude/skills/mission-planner/scripts/validate.js <entity-dir|entity.yaml>` — check an entity is well-formed AND meets the contract: a descriptive (non-placeholder) name, for missions/tasks at least one acceptance criterion, and no acceptance criteria stranded as `- [ ]` prose inside `notes`. Run it after editing and fix every problem.

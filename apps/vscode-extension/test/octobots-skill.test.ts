@@ -30,7 +30,7 @@ describe("octobots-skill helpers", () => {
 
   it("ships no agents at all — planning lives in the skills, agent rosters belong to the repo", () => {
     // Guards the payload, not just a constant: an `agents/` dir would ride along in every VSIX and
-    // reintroduce the names workflow-designer tells agents never to invent.
+    // reintroduce agent names the skills tell agents never to invent.
     expect(existsSync(join(PACK_SRC, "agents"))).toBe(false);
   });
 });
@@ -66,7 +66,7 @@ describe("bundled pack payloads", () => {
   // other four each hit at a different moment — before decomposing, before the first edit, at the QA
   // phase, before parallelising tasks — so each of them names it. A pointer, not a gate: the reader
   // decides whether the question is worth a query, which is the skill's own first rule.
-  it.each(["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate"])(
+  it.each(["mission-planner", "mission-execution", "mission-completion-gate"])(
     "%s points at knowledge-explorer",
     (name) => {
       const skill = readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
@@ -112,6 +112,52 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
     writeFileSync(stale, "// old", "utf8");
     installPack(PACK_SRC, repo);
     expect(existsSync(stale)).toBe(false);
+  });
+
+  it("removes the retired workflow-designer skill and workflow scripts, keeps a user's own script, and never touches .octobots workflows", () => {
+    const repo = mkdtempClean("octobots-pack-");
+    const skills = join(repo, ".claude", "skills");
+    const scripts = join(skills, "mission-planner", "scripts");
+    mkdirSync(join(skills, "workflow-designer"), { recursive: true });
+    writeFileSync(join(skills, "workflow-designer", "SKILL.md"), "---\nname: workflow-designer\nversion: 56\n---\nold");
+    mkdirSync(join(scripts, "vendor"), { recursive: true });
+    const retired = ["add-workflow.js", "sync-meta.js", "add-run.js", "mission-input.js", "extract-meta.mjs", "workflow-meta.mjs", "vendor/acorn.mjs"];
+    for (const f of retired) writeFileSync(join(scripts, f), "// old\n");
+    writeFileSync(join(scripts, "create-team.js"), "// the user's own script\n");
+    const wf = join(repo, ".octobots", "campaigns", "c", "workflows", "ship", "workflow.js");
+    mkdirSync(join(wf, ".."), { recursive: true });
+    writeFileSync(wf, "// user data: historical, never touched\n");
+
+    installPack(PACK_SRC, repo);
+
+    expect(existsSync(join(skills, "workflow-designer"))).toBe(false);
+    for (const f of retired) expect(existsSync(join(scripts, f)), f).toBe(false);
+    expect(readFileSync(join(scripts, "create-team.js"), "utf8")).toBe("// the user's own script\n");
+    expect(readFileSync(wf, "utf8")).toBe("// user data: historical, never touched\n");
+  });
+
+  it("overwrites a skill forked as `version: 57-local`: not up to date before, up to date after (until M7 makes this an explicit choice)", () => {
+    const repo = mkdtempClean("octobots-pack-");
+    installPack(PACK_SRC, repo);
+    const skill = join(repo, ".claude", "skills", "mission-execution", "SKILL.md");
+    const original = readFileSync(skill, "utf8");
+    writeFileSync(skill, original.replace(/^version:\s*57\s*$/m, "version: 57-local") + "\nLOCAL EDIT\n");
+    expect(packStatus(repo).upToDate).toBe(false);
+
+    installPack(PACK_SRC, repo);
+
+    expect(readFileSync(skill, "utf8")).toBe(original);
+    expect(packStatus(repo).upToDate).toBe(true);
+  });
+
+  it("ships exactly four skills and none of the retired workflow payload", () => {
+    expect([...OCTOBOTS_SKILLS]).toEqual(["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"]);
+    expect(readdirSync(join(PACK_SRC, "skill")).sort()).toEqual([...OCTOBOTS_SKILLS].sort());
+    const scripts = join(PACK_SRC, "skill", "mission-planner", "scripts");
+    for (const f of ["add-workflow.js", "sync-meta.js", "add-run.js", "mission-input.js", "extract-meta.mjs", "workflow-meta.mjs", "vendor/acorn.mjs"]) {
+      expect(existsSync(join(scripts, f)), f).toBe(false);
+    }
+    expect(existsSync(join(__dirname, "..", "..", "..", "packages", "board", "test", "extract-meta-parity.test.ts"))).toBe(false);
   });
 
   it.each(OCTOBOTS_SKILLS)("reports not-installed when %s has no version field", (name) => {

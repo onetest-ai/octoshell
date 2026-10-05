@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
+import { createCampaign, createMission, createTask } from "../src/write.js";
 import { BoardModel } from "../src/board-model.js";
 
 // Absolute path to the canonical (in-repo) skill scripts — the source of truth the extension
@@ -383,123 +383,5 @@ describe("migrate script — md → yaml entity migration", () => {
 
     // Idempotent: a second run migrates nothing.
     expect(runScript("migrate.js", [], projectDir).trim()).toContain("migrated 0 entity file(s) to yaml");
-  });
-});
-
-describe("workflow scripts", () => {
-  /** Slug of a folderPath's last segment (the scripts take slugs, the library returns paths). */
-  function slugOf(folderPath: string): string {
-    return folderPath.split("/").pop()!;
-  }
-
-  it("add-workflow.js scaffolds a workflow the BoardModel parses cleanly", () => {
-    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    runScript("add-workflow.js", ["--campaign", slugOf(c.folderPath), "--name", "Ship Missions"], projectDir);
-
-    const board = new BoardModel(boardRoot);
-    board.rebuild();
-    const [wf] = board.listWorkflows({ campaignId: c.id });
-    expect(wf).toBeDefined();
-    expect(wf!.name).toBe("ship-missions");
-    expect(wf!.parseError).toBeNull();
-    expect(wf!.phases).toHaveLength(1);
-  });
-
-  // A mission's three execution loops each get their own workflow — see #60 and
-  // the canonical slugs in workflow-designer's "The three loops" section. The
-  // script used to refuse the second one while `BoardModel` happily stored an
-  // array, so the storage layer and the writing layer disagreed.
-  it("add-workflow.js accepts several workflows on one mission, one per loop", () => {
-    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
-    const cs = slugOf(c.folderPath);
-    const ms = slugOf(m.folderPath);
-    for (const name of ["implementation", "testing", "fixing"]) {
-      runScript("add-workflow.js", ["--campaign", cs, "--mission", ms, "--name", name], projectDir);
-    }
-    const board = new BoardModel(boardRoot);
-    board.rebuild();
-    expect(board.listWorkflows({ missionId: m.id }).map((w) => w.name).sort()).toEqual([
-      "fixing",
-      "implementation",
-      "testing",
-    ]);
-  });
-
-  // What sync-meta.js writes must be exactly what BoardModel can read back — the whole feature is
-  // that meta is generated from the body, so a step with agent/parallel/dependsOn fields set by the
-  // extractor has to round-trip through the real parser, not just look right as a string.
-  it("sync-meta.js writes a body-driven meta the BoardModel parses cleanly (agent/parallel/dependsOn)", () => {
-    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    const cs = slugOf(c.folderPath);
-    runScript("add-workflow.js", ["--campaign", cs, "--name", "ship"], projectDir);
-    const wfDir = join(boardRoot, "campaigns", cs, "workflows", "ship");
-    const jsPath = join(wfDir, "workflow.js");
-    writeFileSync(
-      jsPath,
-      [
-        'export const meta = { name: "ship", description: "", phases: [{ title: "Build", steps: [] }] }',
-        "",
-        "phase('Build')",
-        "await agent(p, { phase: 'Build', label: 'first', agentType: 'js-dev' })",
-        "await agent(p, { phase: 'Build', label: 'second', agentType: 'js-dev' })",
-        "await parallel([",
-        "  () => agent(p, { phase: 'Build', label: 'third', agentType: 'qa-engineer' }),",
-        "])",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-
-    runScript("sync-meta.js", [wfDir], projectDir);
-
-    const board = new BoardModel(boardRoot);
-    board.rebuild();
-    const [wf] = board.listWorkflows({ campaignId: c.id });
-    expect(wf!.parseError).toBeNull();
-    const build = wf!.phases.find((p) => p.title === "Build")!;
-    expect(build.steps.map((s) => s.id)).toEqual(["build-1", "build-2", "build-3"]);
-    expect(build.steps[0]!.agent).toBe("js-dev");
-    expect(build.steps[1]!.dependsOn).toEqual(["build-1"]);
-    expect(build.steps[2]!.agent).toBe("qa-engineer");
-    expect(build.steps[2]!.parallel).toBeTruthy();
-    expect(build.steps[2]!.dependsOn).toEqual(["build-2"]);
-  });
-
-  it("add-run.js drives lastRunStatus", () => {
-    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    const cs = slugOf(c.folderPath);
-    runScript("add-workflow.js", ["--campaign", cs, "--name", "ship"], projectDir);
-    const wfDir = join(".octobots", "campaigns", cs, "workflows", "ship");
-    runScript("add-run.js", ["--workflow", wfDir, "--status", "done", "--summary", "4 agents", "--at", "2026-07-23"], projectDir);
-    runScript("add-run.js", ["--workflow", wfDir, "--status", "failed", "--summary", "review", "--at", "2026-07-24"], projectDir);
-
-    const board = new BoardModel(boardRoot);
-    board.rebuild();
-    expect(board.listWorkflows({ campaignId: c.id })[0]!.lastRunStatus).toBe("failed");
-  });
-
-  it("validate.js fails a workflow whose meta.name disagrees with its folder", () => {
-    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    const cs = slugOf(c.folderPath);
-    runScript("add-workflow.js", ["--campaign", cs, "--name", "ship"], projectDir);
-    const jsPath = join(boardRoot, "campaigns", cs, "workflows", "ship", "workflow.js");
-    writeFileSync(jsPath, readFileSync(jsPath, "utf8").replace('"ship"', '"other"'), "utf8");
-
-    expect(() =>
-      runScript("validate.js", [join(".octobots", "campaigns", cs, "workflows", "ship", "workflow.js")], projectDir),
-    ).toThrow();
-  });
-
-  it("validate.js passes a well-formed workflow", () => {
-    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    const cs = slugOf(c.folderPath);
-    runScript("add-workflow.js", ["--campaign", cs, "--name", "ship"], projectDir);
-    const out = runScript(
-      "validate.js",
-      [join(".octobots", "campaigns", cs, "workflows", "ship", "workflow.js")],
-      projectDir,
-    );
-    expect(out).toMatch(/^OK /);
   });
 });
