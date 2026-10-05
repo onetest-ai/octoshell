@@ -4,7 +4,8 @@ title: "Gate and work-log hooks stay silent when set-status.js wrote nothing, ev
 mission: M2
 covers: [M2-AC8]
 kind: cli
-status: draft
+status: fail
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m2/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---

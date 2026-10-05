@@ -4,7 +4,8 @@ title: "validate.js on octoshell octograph m6-extension-bridge: one warning for 
 mission: M2
 covers: [M2-AC3]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m2/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---

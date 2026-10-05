@@ -4,7 +4,8 @@ title: "Install into a copy of solo .claude: workflow-designer gone, forks repla
 mission: M2
 covers: [M2-AC1, M2-AC2]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m2/runs/RUN-2026-10-05-001.md}
 priority: critical
 size: M
 ---

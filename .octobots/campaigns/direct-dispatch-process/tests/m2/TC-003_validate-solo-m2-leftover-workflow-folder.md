@@ -4,7 +4,8 @@ title: "validate.js on solo's sensor-assignment-uplift m2 (has workflows/m2-exec
 mission: M2
 covers: [M2-AC3]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m2/runs/RUN-2026-10-05-001.md}
 priority: critical
 size: S
 ---
