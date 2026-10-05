@@ -267,7 +267,7 @@
     }
   },
   "scripts": {
-    "build": "node scripts/graph-payload.mjs --verify && node esbuild.mjs && vite build",
+    "build": "node scripts/graph-payload.mjs --verify && node scripts/shipped-skills.mjs --verify && node esbuild.mjs && vite build",
     "build:host": "node esbuild.mjs",
     "build:webview": "vite build",
     "watch:host": "node esbuild.mjs --watch",
