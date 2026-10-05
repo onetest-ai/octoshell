@@ -70,16 +70,29 @@ They are decoupled on purpose:
 
 ## How missions get their numbers
 
-**Attribution is by branch name.** Every transcript record carries `gitBranch`,
-and our branches already encode the work (`feat/edgeserver-auth-t4`,
-`feat/edge-ops-ui-m9-t3`). The rollup matches the longest campaign slug in the
-branch, then disambiguates by an `m<n>` token — or takes the single mission if the
-campaign has only one. **Branch discipline is what makes this work**; a mission
-can override it explicitly with a `branches:` line.
+**Attribution is by branch name, then by what was recorded.** Every transcript record carries
+`gitBranch`, and our branches already encode the work (`feat/edgeserver-auth-t4`,
+`feat/edge-ops-ui-m9-t3`). The first step that hits wins:
 
-Work that maps to no mission (planning on `main`, detached `HEAD`,
-campaign-wide branches) goes to the `unattributed` bucket — reported, never
-dropped, and flagged in the report when it exceeds 10% of spend.
+1. A mission declares the branch (`tokenomics: branches:` in its `mission.yaml`).
+2. The longest campaign slug in the branch plus an `-m<n>` token: that campaign's mission *n*. An
+   `-m<n>` naming no mission falls through to the later steps.
+3. That slug alone, when the campaign has exactly one mission.
+4. The work log recorded this exact session on this exact branch against a task id that belongs to
+   one mission. (The session alone never attributes a mission - it follows a session across
+   branches.)
+5. A campaign declares the branch (`tokenomics: branches:` in its `campaign.yaml`, a list or a
+   comma string).
+6. The longest campaign slug in the branch: a **campaign-level row**.
+7. Otherwise it is unattributed.
+
+**Branch discipline is what makes this work**; steps 1, 4 and 5 are the explicit overrides. A
+campaign-level row (`work_item_level: "campaign"`) is spend that belongs to a campaign but to none
+of its missions - its planning or hand-off branches. It sits in `runs.json` beside the mission rows,
+so every total still adds up, and it is reported apart from them.
+
+Work that maps to nothing (planning on `main`, detached `HEAD`) goes to the `unattributed` bucket -
+reported, never dropped, and flagged in the report when it exceeds 10% of spend.
 
 ### Collect AFTER the mission PR exists
 

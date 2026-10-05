@@ -33,13 +33,18 @@ const mtok = (n) => `${(n / 1e6).toFixed(1)}M`;
 const pct = (n) => n === null || n === undefined ? "—" : `${n}%`;
 
 const runs = d.runs ?? [];
+// Every row is attributed spend, so cost, token, turn, dispatch and model totals cover them all.
+// Only the mission-shaped sections (tile, tables, sizing findings) read `missions`: a campaign-level
+// row (work_item_level "campaign") has no sizing, tasks or PR, and counting it would skew all three.
+const missions = runs.filter((r) => r.work_item_level !== "campaign");
+const campaignRows = runs.filter((r) => r.work_item_level === "campaign");
 const totalCost = runs.reduce((n, r) => n + r.cost_api_equivalent_usd, 0);
 const totalTurns = runs.reduce((n, r) => n + r.turns, 0);
 const totalDisp = runs.reduce((n, r) => n + r.subagent_dispatches, 0);
 const totalTokens = runs.reduce((n, r) => n + Object.values(r.tokens).reduce((a, b) => a + b, 0), 0);
 const unattr = d.unattributed ?? { cost_api_equivalent_usd: 0, branches: [], turns: 0 };
 const grandCost = totalCost + unattr.cost_api_equivalent_usd;
-const maxCost = Math.max(1, ...runs.map((r) => r.cost_api_equivalent_usd));
+const maxCost = Math.max(1, ...missions.map((r) => r.cost_api_equivalent_usd));
 
 // Weighted cache-read share and orchestrator share across the whole segment.
 const wCache = totalCost ? Math.round(runs.reduce((n, r) => n + r.cache_read_share_pct * r.cost_api_equivalent_usd, 0) / totalCost) : 0;
@@ -60,11 +65,11 @@ const SERIES = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--
 
 // --- data-quality findings (icon + label, never color alone) -----------------
 const findings = [];
-const noSizing = runs.filter((r) => r.effort_days === null);
+const noSizing = missions.filter((r) => r.effort_days === null);
 if (noSizing.length) {
   findings.push({
     level: "warning",
-    title: `${noSizing.length} of ${runs.length} missions have no authored sizing`,
+    title: `${noSizing.length} of ${missions.length} missions have no authored sizing`,
     body: `Effort is the rubric's sizing key and cannot be derived from transcripts. Add a <code>## Tokenomics</code> block (<code>effort_days</code>, <code>size_tshirt</code>) to: ${noSizing.map((r) => esc(r._octobots.mission_id + " " + r._octobots.campaign)).join(", ")}.`,
   });
 }
@@ -76,15 +81,15 @@ if (unattrPct >= 10) {
     body: `${usd(unattr.cost_api_equivalent_usd)} across ${unattr.branches.length} branches (${unattr.branches.map(esc).join(", ")}). This is planning on <code>main</code>, detached <code>HEAD</code>, and campaign-wide branches. It is reported, not dropped — but per-mission rows understate true cost by this much.`,
   });
 }
-const retro = runs.filter((r) => r._octobots.estimated_retrospectively);
+const retro = missions.filter((r) => r._octobots.estimated_retrospectively);
 if (retro.length) {
   findings.push({
     level: "warning",
-    title: `${retro.length} of ${runs.length} missions were estimated retrospectively`,
+    title: `${retro.length} of ${missions.length} missions were estimated retrospectively`,
     body: `Their effort was reconstructed from lane signals (churn, files, dispatches) after the work shipped, not recorded at planning time. That inverts the rubric — the lane is meant to <em>audit</em> an effort estimate, not produce one — so these sizes are weaker evidence than a planned estimate and the cost-per-size figures inherit that weakness. <code>mission-planner</code> now requires estimates up front, so this should not recur.`,
   });
 }
-const ghRows = runs.filter((r) => (r._octobots.diff_source ?? "").startsWith("gh-pr"));
+const ghRows = missions.filter((r) => (r._octobots.diff_source ?? "").startsWith("gh-pr"));
 if (ghRows.length) {
   findings.push({
     level: "good",
@@ -223,7 +228,7 @@ table cached <code>${esc(d.pricing_fetched_at)}</code>, and are API-equivalent, 
 
 <div class="tiles">
   <div class="tile"><div class="v">${usd(grandCost)}</div><div class="k">Total metered cost</div></div>
-  <div class="tile"><div class="v">${runs.length}</div><div class="k">Missions measured</div></div>
+  <div class="tile"><div class="v">${missions.length}</div><div class="k">Missions measured</div></div>
   <div class="tile"><div class="v">${mtok(totalTokens)}</div><div class="k">Tokens (attributed)</div></div>
   <div class="tile"><div class="v">${num(totalTurns)}</div><div class="k">Turns</div></div>
   <div class="tile"><div class="v">${totalDisp}</div><div class="k">Subagent dispatches</div></div>
@@ -240,7 +245,7 @@ table cached <code>${esc(d.pricing_fetched_at)}</code>, and are API-equivalent, 
     <th>Tokens</th><th class="l">Build / Iterate</th>
   </tr></thead>
   <tbody>
-  ${runs.map((r) => {
+  ${missions.map((r) => {
     const o = r._octobots;
     const tok = Object.values(r.tokens).reduce((a, b) => a + b, 0);
     const w = Math.max(2, Math.round(100 * r.cost_api_equivalent_usd / maxCost));
@@ -270,6 +275,29 @@ table cached <code>${esc(d.pricing_fetched_at)}</code>, and are API-equivalent, 
 </table>
 </div>
 
+${campaignRows.length ? `<h2>Campaign-level work</h2>
+<p class="sub" style="margin:-4px 0 12px">Work attributed to a campaign rather than to one of its missions — the
+campaign's own planning or hand-off branches. Included in the totals above; it is not a mission, so it
+carries no sizing.</p>
+<div class="card scroll">
+<table>
+  <thead><tr>
+    <th class="l">Campaign</th><th class="l">Branches</th><th class="l">Cost (API-equiv)</th>
+    <th>Sessions</th><th>Turns</th><th>Tokens</th>
+  </tr></thead>
+  <tbody>
+  ${campaignRows.map((r) => `<tr>
+      <td class="l"><span class="mission">${esc(r._octobots.campaign_name ?? r.work_item_ref)}</span> <span class="cmp">${esc(r.work_item_ref)}</span></td>
+      <td class="l cmp">${r._octobots.branches.map(esc).join(", ")}</td>
+      <td class="l n">${usd(r.cost_api_equivalent_usd)}</td>
+      <td class="n">${r.sessions}</td>
+      <td class="n">${num(r.turns)}</td>
+      <td class="n">${mtok(Object.values(r.tokens).reduce((a, b) => a + b, 0))}</td>
+    </tr>`).join("\n  ")}
+  </tbody>
+</table>
+</div>
+` : ""}
 <h2>Per-task breakdown</h2>
 <p class="sub" style="margin:-4px 0 12px">Tasks within each mission, costliest first. <strong>Mission-level</strong> is work on the
 mission branch itself — planning, integration, the completion gate — not attributable to one task.
@@ -282,7 +310,7 @@ in the latter, and a line written in one task and rewritten in another counts tw
 once in the mission. Both are correct at their own level; reconciling them would mean inventing an
 allocation. The mission-level row reports no churn of its own, since that <em>is</em> the mission
 diff shown in the table above.</p>
-${runs.map((r) => {
+${missions.map((r) => {
   const o = r._octobots;
   const tasks = o.tasks ?? [];
   const maxTask = Math.max(1, ...tasks.map((t) => t.cost_api_equivalent_usd));
@@ -337,7 +365,7 @@ bands, so this comparison stays non-circular.</p>
   <th>Effort days</th><th class="l">$ / effort-day</th></tr></thead>
   <tbody>
   ${["XS", "S", "M", "L", "XL"].map((sz) => {
-    const rs = runs.filter((r) => r.size_tshirt === sz);
+    const rs = missions.filter((r) => r.size_tshirt === sz);
     if (!rs.length) return "";
     const costs = rs.map((r) => r.cost_api_equivalent_usd).sort((a, b) => a - b);
     const total = costs.reduce((a, b) => a + b, 0);
@@ -401,4 +429,4 @@ bands, so this comparison stays non-circular.</p>
 `;
 
 writeFileSync(join(TOK_DIR, "report.html"), html);
-if (!quiet) console.error(`tokenomics: wrote ${join(TOK_DIR, "report.html")} (${runs.length} missions, ${usd(grandCost)})`);
+if (!quiet) console.error(`tokenomics: wrote ${join(TOK_DIR, "report.html")} (${missions.length} missions${campaignRows.length ? `, ${campaignRows.length} campaign rows` : ""}, ${usd(grandCost)})`);

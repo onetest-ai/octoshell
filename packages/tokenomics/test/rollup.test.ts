@@ -136,4 +136,44 @@ describe("rollup", () => {
     expect(r.unpricedModels).toEqual(["mystery"]);
     expect(r.runs[0]!.costUsd).toBe(0);
   });
+
+  describe("campaign-level bucket", () => {
+    // `demo` has TWO missions here, so a slug-only branch has no single mission to land on.
+    function twoMissionRun(segments: Segment[], declared = "") {
+      board();
+      const c = join(root, "campaigns", "demo");
+      writeBrief("campaign", c, { name: "Demo", description: "", acceptanceCriteria: "", status: "draft", target: "" }, declared);
+      writeBrief("mission", join(c, "missions", "m2"), { name: "M2 - Other", description: "d", acceptanceCriteria: "- [ ] ac" });
+      const b = new BoardModel(root);
+      b.rebuild();
+      return rollup({ repoRoot: root, artifactsRoot: root, board: b, source: source(segments), prices: PRICES, now: () => new Date(0) });
+    }
+
+    it("campaign row has scope campaign, missionId null, tasks []", () => {
+      const r = twoMissionRun([seg({ segmentId: "a", branch: "chore/demo-planning" })]);
+      expect(r.runs).toHaveLength(1);
+      expect(r.runs[0]).toMatchObject({ scope: "campaign", missionId: null, missionTitle: "Demo", tasks: [], costUsd: 1, sessions: 1 });
+    });
+
+    it("campaign branches leave unattributed.branches", () => {
+      const r = twoMissionRun(
+        [seg({ segmentId: "a", branch: "release/q4" }), seg({ segmentId: "b", branch: "main" })],
+        "\n## Tokenomics\nbranches: release/q4\n",
+      );
+      expect(r.runs.map((x) => [x.scope, x.branches])).toEqual([["campaign", ["release/q4"]]]);
+      expect(r.unattributed.branches).toEqual(["main"]);
+    });
+
+    it("bare-session worklog never attributes a mission", () => {
+      mkdirSync(join(root, ".octobots", "tokenomics"), { recursive: true });
+      // Recorded on another branch: only the bare session key could match `main`.
+      appendFileSync(
+        join(root, ".octobots", "tokenomics", "worklog.jsonl"),
+        JSON.stringify({ session_id: "sess-1", task: "T1.2", state: "done", branch: "feat/demo-m1-t2" }) + "\n",
+      );
+      const r = run([seg({ segmentId: "a", branch: "main", sessionId: "sess-1" })]);
+      expect(r.runs).toHaveLength(0);
+      expect(r.unattributed.branches).toEqual(["main"]);
+    });
+  });
 });

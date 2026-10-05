@@ -175,8 +175,9 @@ describe("dumpEntity emits only the keys each kind uses", () => {
     expect(io.dumpEntity("task", { ...base, role: "python-dev" })).toContain("role: python-dev");
     expect(io.dumpEntity("task", { ...base, tokenomics: {} })).not.toContain("tokenomics:");
     expect(io.dumpEntity("task", { ...base, tokenomics: { effort_days: 1 } })).toContain("effort_days: 1");
-    // Tokenomics is a mission/task concern — a campaign never carries it.
-    expect(io.dumpEntity("campaign", { ...base, tokenomics: { effort_days: 1 } })).not.toContain("tokenomics:");
+    // A campaign carries `tokenomics.branches` (its campaign-level branches); a bug never does.
+    expect(io.dumpEntity("campaign", { ...base, tokenomics: { branches: ["a/b"] } })).toContain("tokenomics:");
+    expect(io.dumpEntity("bug", { ...base, tokenomics: { effort_days: 1 } })).not.toContain("tokenomics:");
   });
 });
 

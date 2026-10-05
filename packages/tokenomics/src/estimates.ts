@@ -97,7 +97,7 @@ export function estimateFromTokenomics(map: Record<string, unknown> | null | und
  * (`<folderPath>/<kind>.yaml`, the `tokenomics` field), falling back to a legacy Markdown
  * `<kind>.md` `## Tokenomics` block for boards not yet migrated.
  */
-export function readEstimate(folderPath: string, kind: "mission" | "task"): Estimate {
+export function readEstimate(folderPath: string, kind: "campaign" | "mission" | "task"): Estimate {
   const yamlPath = join(folderPath, `${kind}.yaml`);
   if (existsSync(yamlPath)) {
     try {
