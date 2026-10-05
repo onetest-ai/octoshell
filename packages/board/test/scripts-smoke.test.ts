@@ -198,7 +198,10 @@ describe("set-status script", () => {
     const missionDir = join(boardRoot, m.folderPath);
 
     const out = runScript("set-status.js", [missionDir, "T1.1 - My Task", "done"], projectDir);
-    expect(out.trim()).toBe('set status of "T1.1 - My Task" to done');
+    expect(out.trim().split("\n")).toEqual([
+      'set status of "T1.1 - My Task" to done',
+      'octobots: status task "T1.1 - My Task" draft -> done',
+    ]);
 
     // Status lives in the task's OWN yaml — the BoardModel reads it back.
     const board = new BoardModel(boardRoot);

@@ -23,7 +23,8 @@
 //
 // DESIGN RULES
 //   * Inert unless it recognises a status flip — exits 0 on all other Bash calls.
-//   * Logs a flip only once the target's YAML shows the requested status (status-flip.mjs).
+//   * Logs a flip only when set-status.js reported a real transition AND the target's YAML shows the
+//     requested status (status-flip.mjs). Needs the payload's tool_response; without it, logs nothing.
 //   * Self-gates on `.octobots/`, so it does nothing in a non-Octobots repo.
 //   * Writes only; emits nothing on stdout and never influences the agent.
 //   * Never fails the tool call. A work log is analytics; analytics must not
@@ -31,7 +32,7 @@
 import { existsSync, appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { parseSetStatusAll, statusNowEquals } from "./status-flip.mjs";
+import { confirmedTransitions, parseSetStatusAll } from "./status-flip.mjs";
 
 const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.env.OCTOBOTS_PROJECT_DIR ?? process.cwd();
 if (!existsSync(join(projectDir, ".octobots"))) process.exit(0);
@@ -61,18 +62,21 @@ if (!sessionId) process.exit(0);
 // inference gets wrong most often; mission links make the session -> mission
 // join a recorded fact too, rather than depending on branch naming. Every call
 // in a chained command counts (`… "T1.3 - …" done && … "M1 - …" done`).
-const flips = [];
+const candidates = [];
 for (const call of parseSetStatusAll(command)) {
   const taskId = call.title.match(/^(T\d+\.\d+)\b/)?.[1] ?? null;
   const missionId = taskId ? null : (call.title.match(/^(M\d+)\b/)?.[1] ?? null);
   if (!taskId && !missionId) continue;
   if (!["active", "done"].includes(call.state)) continue;
-  // Log only a flip that landed: re-read the target's YAML and require its status to be the one asked
-  // for. `set-status.js … "M9 - no such mission" active; echo` exits 0 but writes nothing, and logging
-  // it would attribute this session's planning to a mission it never started.
-  if (!(await statusNowEquals(call, typeof evt.cwd === "string" ? evt.cwd : projectDir, projectDir))) continue;
-  flips.push(taskId ? { task: taskId, state: call.state } : { mission: missionId, state: call.state });
+  candidates.push({ ...call, taskId, missionId });
 }
+// Log only a flip that really happened: set-status.js printed a transition line (the status moved and
+// the file was written) and the target's YAML holds the requested status. `… "M9 - no such mission"
+// active; echo` exits 0 but writes nothing; re-running `done` prints `unchanged`; a refused start
+// prints nothing. Logging any of those would attribute this session to work it never did.
+const flips = (await confirmedTransitions(candidates, evt, projectDir)).map((c) =>
+  c.taskId ? { task: c.taskId, state: c.state } : { mission: c.missionId, state: c.state },
+);
 if (flips.length === 0) process.exit(0);
 
 let branch = null;

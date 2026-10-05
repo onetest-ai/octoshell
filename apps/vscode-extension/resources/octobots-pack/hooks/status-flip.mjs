@@ -115,6 +115,80 @@ export function parseSetStatusAll(command) {
 }
 
 /**
+ * The transition lines set-status.js printed, parsed from a Bash tool's stdout:
+ *   octobots: status <kind> "<title>" <from> -> <to>      (the status changed; the file was written)
+ *   octobots: status <kind> "<title>" unchanged (<state>) (already there; nothing was written)
+ * Only the first form is returned, as `{ kind, title, from, to }`. The title is a JSON string literal.
+ */
+export function parseTransitionLines(stdout) {
+  const out = [];
+  // `from` may hold a space (`awaiting approval`, from a set-status.js that printed the raw YAML value).
+  const re = /^octobots: status (\w+) ("(?:[^"\\]|\\.)*") (\S(?:.*\S)?) -> (\S+)$/;
+  for (const line of String(stdout).split(/\r?\n/)) {
+    const m = re.exec(line.trim());
+    if (!m) continue;
+    try {
+      out.push({ kind: m[1], title: JSON.parse(m[2]), from: m[3], to: m[4] });
+    } catch {
+      // not a valid JSON string literal: not ours
+    }
+  }
+  return out;
+}
+
+/**
+ * The Bash tool's stdout from a PostToolUse payload, or null when the payload carries none (an older
+ * harness): the caller must then act on nothing. Claude Code sends `tool_response` as
+ * `{ stdout, stderr, interrupted, isImage }`; a bare string and a camelCase `toolResponse` are accepted
+ * defensively.
+ */
+export function responseStdout(evt) {
+  const r = evt?.tool_response ?? evt?.toolResponse;
+  if (typeof r === "string") return r;
+  if (r && typeof r === "object") {
+    const o = r.stdout ?? r.output;
+    if (typeof o === "string") return o;
+  }
+  return null;
+}
+
+/**
+ * The `set-status.js` calls in `evt`'s command that REALLY transitioned an entity: set-status.js
+ * printed a transition line whose title and target state match the parsed call (each printed line
+ * accounts for one call), AND the entity's YAML now holds that state. The line proves the before-state
+ * differed and the write happened; the YAML check stops an `echo` of the line from standing in for it.
+ * No tool_response means no proof, so nothing is returned (fail closed).
+ */
+export async function confirmedTransitions(calls, evt, projectDir) {
+  const stdout = responseStdout(evt);
+  if (stdout === null) return [];
+  const lines = parseTransitionLines(stdout);
+  if (lines.length === 0) return [];
+  const cwd = typeof evt.cwd === "string" ? evt.cwd : projectDir;
+  const out = [];
+  for (const call of calls) {
+    const wanted = await mappedState(call.state, projectDir);
+    if (!wanted) continue;
+    const at = lines.findIndex((l) => l.title === call.title && l.to === wanted);
+    if (at === -1) continue;
+    if (!(await statusNowEquals(call, cwd, projectDir))) continue;
+    lines.splice(at, 1); // one printed transition authorises one call
+    out.push(call);
+  }
+  return out;
+}
+
+async function mappedState(state, projectDir) {
+  try {
+    const helper = join(resolve(projectDir), ENTITY_IO);
+    if (!existsSync(helper)) return null;
+    return (await import(pathToFileURL(helper).href)).mapBoardStatus(state) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * True when the entity set-status.js resolves for `parsed` now has the status `parsed.state` maps to.
  * `cwd` is the Bash tool's working directory (relative paths in the command resolve against it);
  * `projectDir` is the project root whose installed pack supplies the resolver.

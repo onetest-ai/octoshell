@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { makeStatusBoard, postToolUse, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
+import { makeStatusBoard, postToolUse, postToolUseWithOutput, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
 
 const WORK_LOG = join(__dirname, "..", "resources", "octobots-pack", "hooks", "work-log.mjs");
 const LOG = (repo: string) => join(repo, ".octobots", "tokenomics", "worklog.jsonl");
@@ -120,6 +120,56 @@ describe("work-log.mjs", () => {
     it("writes nothing when the pack's resolver is not installed in the project (fail closed)", () => {
       const b = makeStatusBoard("octo-worklog-", { install: false });
       run(b.repo, runAndPost(b.repo, setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done")));
+      expect(entries(b.repo)).toHaveLength(0);
+    });
+  });
+
+
+  describe("logs only a REAL transition, not a status that merely equals the request (B3)", () => {
+    const FORGED = 'octobots: status mission "M1 - Venue ingest" draft -> done';
+
+    it("(a) logs the first done", () => {
+      const b = makeStatusBoard("octo-worklog-");
+      run(b.repo, runAndPost(b.repo, setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done")));
+      expect(entries(b.repo)).toHaveLength(1);
+    });
+
+    it("(b) writes no duplicate line when done is re-run on an already-done mission", () => {
+      const b = makeStatusBoard("octo-worklog-");
+      const cmd = setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");
+      run(b.repo, runAndPost(b.repo, cmd));
+      run(b.repo, runAndPost(b.repo, cmd));
+      expect(entries(b.repo)).toHaveLength(1);
+    });
+
+    it("(b2) writes no line for a start on a mission that is already executing", () => {
+      const b = makeStatusBoard("octo-worklog-");
+      const cmd = setStatusCommand(b.campaignDir, "M1 - Venue ingest", "active");
+      run(b.repo, runAndPost(b.repo, cmd));
+      run(b.repo, runAndPost(b.repo, cmd));
+      expect(entries(b.repo)).toHaveLength(1);
+    });
+
+    it("(c) in a chain, logs only the call that changed", () => {
+      const b = makeStatusBoard("octo-worklog-");
+      runAndPost(b.repo, setStatusCommand(b.missionDir, "T1.1 - Parse ids", "done")); // T1.1 already done
+      const cmd = setStatusCommand(b.missionDir, "T1.1 - Parse ids", "done") + " && " + setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");
+      run(b.repo, runAndPost(b.repo, cmd));
+      expect(entries(b.repo).map((e) => `${e.task ?? e.mission}:${e.state}`)).toEqual(["M1:done"]);
+    });
+
+    it("(d) a forged echo of the transition line logs nothing while the YAML is unchanged", () => {
+      const b = makeStatusBoard("octo-worklog-");
+      const cmd = `echo '${FORGED}'; ` + setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");
+      run(b.repo, postToolUseWithOutput(b.repo, cmd, FORGED + "\n"));
+      expect(entries(b.repo)).toHaveLength(0);
+    });
+
+    it("(e) logs nothing when tool_response is absent (fail closed), even though the YAML says done", () => {
+      const b = makeStatusBoard("octo-worklog-");
+      const cmd = setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");
+      runAndPost(b.repo, cmd);
+      run(b.repo, postToolUse(b.repo, cmd));
       expect(entries(b.repo)).toHaveLength(0);
     });
   });

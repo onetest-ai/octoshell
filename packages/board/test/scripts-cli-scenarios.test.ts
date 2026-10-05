@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
@@ -336,6 +336,51 @@ describe("set-status.js guards", () => {
     expect(board().getMission(m.id)?.status).toBe("executing");
     runScript("set-status.js", [dir, "M1 - Auth", "awaiting", "approval"], projectDir);
     expect(board().getMission(m.id)?.status).toBe("awaitingApproval");
+  });
+
+  it("prints a machine-readable transition line and writes the file on a real change", () => {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    createMission(boardRoot, c.id, { title: "M1 - Auth" });
+    const dir = join(boardRoot, c.folderPath);
+    const out = runScript("set-status.js", [dir, "M1 - Auth", "done"], projectDir);
+    expect(out).toContain('octobots: status mission "M1 - Auth" draft -> done\n');
+  });
+
+  it("is a byte-for-byte no-op that prints `unchanged` when the status is already the target (B3)", () => {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
+    const dir = join(boardRoot, c.folderPath);
+    runScript("set-status.js", [dir, "M1 - Auth", "done"], projectDir);
+    const file = join(boardRoot, m.folderPath, "mission.yaml");
+    const before = readFileSync(file);
+    const mtime = statSync(file).mtimeMs;
+    const out = runScript("set-status.js", [dir, "M1 - Auth", "done"], projectDir);
+    expect(out).toContain('octobots: status mission "M1 - Auth" unchanged (done)');
+    expect(out).not.toContain("->");
+    expect(readFileSync(file).equals(before)).toBe(true);
+    expect(statSync(file).mtimeMs).toBe(mtime);
+  });
+
+  it("reports `from` as the canonical status the board shows, so a hand-written `awaiting approval` still yields a parsable transition (B3 review)", () => {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
+    const file = join(boardRoot, m.folderPath, "mission.yaml");
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^status:.*$/m, "status: awaiting approval"), "utf8");
+    expect(board().getMission(m.id)?.status).toBe("awaitingApproval"); // a legitimate on-disk value
+    const out = runScript("set-status.js", [join(boardRoot, c.folderPath), "M1 - Auth", "done"], projectDir);
+    expect(out).toContain('octobots: status mission "M1 - Auth" awaitingApproval -> done\n');
+  });
+
+  it("treats a non-canonical spelling of the target (`Done`) as already there: no write, `unchanged` (B3 review)", () => {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
+    const file = join(boardRoot, m.folderPath, "mission.yaml");
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^status:.*$/m, "status: Done"), "utf8");
+    const before = readFileSync(file);
+    const out = runScript("set-status.js", [join(boardRoot, c.folderPath), "M1 - Auth", "done"], projectDir);
+    expect(out).toContain('octobots: status mission "M1 - Auth" unchanged (done)');
+    expect(out).not.toContain("->");
+    expect(readFileSync(file).equals(before)).toBe(true);
   });
 
   it("refuses an invalid state before touching disk", () => {

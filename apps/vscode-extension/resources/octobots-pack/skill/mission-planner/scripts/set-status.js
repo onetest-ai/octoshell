@@ -34,6 +34,19 @@ if (!match) {
 
 const resolved = resolveEntityFile(match.dir, [match.kind]);
 const fields = readEntity(resolved.file, resolved.format);
+// The before-state as the board shows it (BoardModel's resolveStatus): a hand-written `awaiting approval`
+// or `Done` is the canonical `awaitingApproval` / `done`, so `Done` -> done is no transition, and the
+// printed `from` never contains a space the hooks' parser would have to guess around.
+const from = mapBoardStatus(fields.status ?? "") ?? "draft";
+if (from === mapped) {
+  // Already there: write nothing (same bytes). The PostToolUse hooks read this line to tell a re-run
+  // from a real transition.
+  console.log(`set status of "${title}" to ${mapped} (already)`);
+  console.log(`octobots: status ${match.kind} ${JSON.stringify(title)} unchanged (${mapped})`);
+  process.exit(0);
+}
 fields.status = mapped;
 writeFileSync(join(match.dir, `${match.kind}.yaml`), dumpEntity(match.kind, fields), "utf8");
 console.log(`set status of "${title}" to ${mapped}`);
+// Machine-readable, one per call: the hooks (hooks/status-flip.mjs) act only on a line like this.
+console.log(`octobots: status ${match.kind} ${JSON.stringify(title)} ${from} -> ${mapped}`);
