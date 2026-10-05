@@ -1,0 +1,9 @@
+name: B1 - campaign-view.test.tsx:46 flakes in the full parallel run (target textarea empty)
+status: draft
+severity: minor
+description: 'apps/vscode-extension/test/campaign-view.test.tsx:46 failed once during a full root `pnpm test` run (parallel): the target textarea was still empty when asserted. It passed 5/5 in isolation and in the full re-run. Pre-existing and unrelated to T2.1; likely an async render not awaited (findBy/waitFor). A flaky suite undermines the gate''s ''green means green''.'
+steps_to_reproduce: Run `pnpm test` from the root several times on feat/direct-dispatch-process-m2 and watch campaign-view.test.tsx:46.
+expected: 'Deterministic: the test awaits the textarea''s populated state; it passes in every run, parallel or isolated.'
+actual: 'Intermittent failure: the target textarea is empty at assertion time.'
+rca: ''
+environment: 'seen by the T2.1 review gate (PR #120, 2026-10-05)'
