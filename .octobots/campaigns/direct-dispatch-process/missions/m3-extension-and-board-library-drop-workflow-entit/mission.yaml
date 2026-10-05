@@ -1,21 +1,21 @@
 name: M3 - Extension and board library drop Workflow entities
-status: executing
+status: done
 description: 'Delete the Workflow entity from packages/board and every consumer in the extension: tree nodes, commands, panel, diagram, RPC, BoardHost API, the activation-time migrateLegacyWorkflows. Existing workflows/ folders are ignored by the model and left untouched on disk. validateBoard mirrors the pack''s warning. The octograph payload is regenerated because it inlines @octoshell/board. The ''Install Workflow Pack'' command is retitled ''Install Octobots Pack'' (id unchanged).'
 acceptance_criteria:
   - text: '@octoshell/board exports no Workflow* type, parseWorkflowMeta, extractPhases, createWorkflow, deleteWorkflow, appendWorkflowRun or migrateLegacyWorkflows; EntityKind is campaign | mission | task | bug; acorn is no longer a dependency, pnpm-lock.yaml no longer resolves it for @octoshell/board, and `pnpm install --frozen-lockfile` succeeds'
-    done: false
+    done: true
   - text: Given a board containing workflows/ folders, BoardModel loads every campaign, mission, task and bug it loaded before with identical ids and creates no workflow entity; activation modifies no file under any workflows/ (sha256 of every file equal before and after)
-    done: false
+    done: true
   - text: 'validateBoard returns a severity: "warning" finding per workflows/ folder (the finding severity type widens to "error" | "warning") with the same message text as validate.js, and no error findings for them'
-    done: false
+    done: true
   - text: package.json contributes no octoshell.newWorkflow, octoshell.deleteWorkflow or octoshell.openWorkflowById command or menu; CampaignsTree yields no workflow node; the RPC contract has no workflow:* method; BindMessage.kind has no "workflow"
-    done: false
+    done: true
   - text: Given VS Code restoring a panel serialized as octoshell.workflow from a previous session, the panel is disposed without an error notification (one release of back-compat; remove in 0.1.1)
     done: false
   - text: graph/octograph.mjs is regenerated, graph-payload.mjs --verify passes, and the 57 hash in graph-payload-versions.json is updated in a visible diff line; `octograph map` and `own` still run on the octoshell repo
-    done: false
+    done: true
   - text: 'pnpm lint/build/typecheck/test/coverage are green; `grep -n -i -E ''workflow\.js|WorkflowView|workflow-designer|workflow-diagram|workflow pack|Install Workflow Pack''` on README.md, apps/vscode-extension/README.md, CLAUDE.md, AGENTS.md, .agents/knowledge/architecture/pack-version-is-one-unit.md and .agents/knowledge/architecture/dual-schema-entity-io.md returns nothing; the command `octoshell.installOctobotsWorkflowSkill` keeps its id and is titled ''Octobots: Install Octobots Pack''; doctor.js quotes that title in every install hint (no ''Install Workflow Pack'' left); the install notification and activation prompt (src/extension.ts:78,117) and package.json''s description say ''Octobots pack'', not ''workflow pack'''
-    done: false
+    done: true
 documents:
   - label: M3 functional test cases
     target: .octobots/campaigns/direct-dispatch-process/tests/m3/README.md
@@ -23,7 +23,7 @@ tokenomics:
   effort_days: 3
   size_tshirt: L
   complexity_score: 16
-notes: |-
+notes: |
   ## Planning notes (Rio, 2026-10-05)
 
   Footprint (counted 2026-10-05 on octoshell main d1c83cc): 32 locations in 9 files in packages/board (types.ts, index.ts, managed-block.ts, workflow-meta.ts, extract-meta.ts [imports acorn], board-model.ts, write.ts, validate.ts, package.json) and 40 locations in 14 files in apps/vscode-extension (board-host.ts, extension.ts, rpc-contract.ts, host-events.ts, rpc-dispatcher.ts, campaigns-tree.ts, entity-panel-manager.ts, octoshell-shim.ts, chat-entry.tsx, workflow-view.tsx, workflow-diagram.tsx, octobots-skill.ts, package.json, README.md); 27 test files (delete 20, modify 7).
@@ -37,3 +37,42 @@ notes: |-
   - T3.3 removes acorn, so pnpm-lock.yaml changes in the same PR (CI installs with --frozen-lockfile).
   - QA harness for TC-003: apps/vscode-extension/scripts/qa/dump-ids.mjs (T3.3) with --board-dist, so the BEFORE snapshot runs main's built board library without needing the harness inside the main worktree.
   - The extension has no production caller of validateBoard, so the AC3 warning is visible through validate.js/doctor.js only; the user decided on 2026-10-05 not to surface it in the UI (campaign decision 12: no Problems-panel entry, notification or output-channel line for workflow-folder, TC or pairing warnings). TC-009 no longer expects it in Problems/Output.
+
+  ## Completion gate (2026-10-05): GREEN
+
+  - **Base:** feat/direct-dispatch-process.
+  - **Mission branch:** feat/direct-dispatch-process-m3.
+  - **PRs:**
+    - #135 M7 mission PR (merged into the base; M3 is cut after it)
+    - #136 T3.1 webview drops WorkflowView and the diagram
+    - #137 T3.2 host drops workflow commands, tree nodes, panel type and RPC
+    - #138 T3.3 board library drops the Workflow entity; validateBoard warns
+    - #139 T3.4 docs reflect a workflow-free product
+    - #140 M2 B1 (flaky campaign-view: Field syncs its prop during render), landed here
+    - #141 M3 B1 (a focused Field saved its stale text over a newer value; also covered ChecklistField)
+    - #142 M3 B2 (NotesBlock Save overwrote a newer notes value)
+    - #143 T3.5 mission QA run (tests/m3; RUN-2026-10-05-001)
+    - #144 M3 B3 (validate-workflows-warning test counts a baseline on real board copies)
+    - #145 GATE-1 (B3's baseline count was one too high when a campaign already held an EMPTY workflows/; test only)
+
+  1. **Tests + coverage:** 0 failed, 0 skipped. build, typecheck, lint and test all exit 0 (re-run by Sage on #145 head e5257867).
+     - Counts: board 294 (293 before the GATE-1 fix), tokenomics 102, extension 947, graph 653.
+     - Changed-line coverage 97.58% (202/207). Below 80%: extension.ts 0/3 (activate() glue; openBoard is tested directly) and entity-panel-manager.ts 0/1 (live webview branch).
+     - Leftover workflow hits: every hit is intended. No code path deletes or moves workflows/ on activation, install or openBoard (every rm, unlink and rename was read). The three UI fixes do not interact. The graph payload is byte-identical (the sha matches the 57 line).
+  2. **Black-box QA (Sage):** T3.5 RUN-001 (7 pass, 1 fail, 2 manual-blocked), then RUN-002: M3 B3 re-run (TC-006 pass) and the GATE-1 addendum. Net: 8 pass, 2 manual-blocked (TC-005, TC-009).
+     - GATE-1 reproduced on a copy with an empty campaign workflows/: #144's test file is RED ("expected 2 to be 3"), #145's is GREEN (7 passed). #145's file also passes on fresh copies of solo and octoshell and with OCTOBOTS_BOARD_COPIES unset. TC-006 as written passes, validateBoard and validate.js agree on all three boards. Evidence: tests/m3/evidence/GATE-1-*.txt; the addendum is in tests/m3/runs/RUN-2026-10-05-002.md.
+     - Data safety: solo was read only (git status identical before and after); every run used cp -R copies.
+  3. **Critical review (Rio):** AC1, 2, 3, 4, 6 and 7 met; AC5 manual-pending.
+     - GATE-1 found and fixed in #145: the #144 test expected baseline + planted warnings, but planting into an existing empty workflows/ replaces that folder's own warning. The test now asserts the exact message set, the exact count, and that validate.js agrees; a regression test goes red on #144's logic.
+     - Bugs found during the mission: M3 B1 (stale focused Field; the fix also covered ChecklistField, and a regression in it was caught in review), M3 B2 (NotesBlock overwrite), M3 B3 (warning-test baseline), and M2 B1 landed here.
+  4. **Tokenomics:** M3 cost $45.33 API-equivalent, 723 turns, orchestrator 45% (48 sub-agent dispatches).
+     - Command (shipped v57 scripts, because the installed .octobots/tokenomics copy is still v56 and reads only the repo-local .claude/projects, which gives no M3 row and $0 per mission): for s in collect rollup render; do node apps/vscode-extension/resources/octobots-pack/tokenomics/$s.mjs --project-dir /Users/arozumenko/Development/octoshell; done. Read from runs.json row direct-dispatch-process/M3.
+     - Attributed by branch: the M3 row holds feat/direct-dispatch-process-m3, its t1-t4 branches, the three bug branches, qa/...-m3-t5, and the gate branch. Collected at the moment of the gate, so the turns after that (this record, the mission PR) are not in it. The same run re-prices M7 at $64.27 / 1243 turns / 32% (the M7 record says $63.83 / 1241 / 31%: later turns on its branches).
+
+  **Open, not blocking:**
+  - AC5 (VS Code restores an octoshell.workflow panel and disposes it without an error) and the in-app half of AC4: manual F5 items TC-005 and TC-009, in tests/m7/manual/T7.4-F5-script.md Part B. AC5 stays unchecked for that reason; the mission is done on the M7 precedent (gate GREEN with a manual F5 item open).
+  - Stale untracked packages/board/dist/{workflow-meta,extract-meta}.* and old media/assets chunks would ship if a local package build ran from a dirty tree. T6.6 already has a clean-build AC.
+  - A ChecklistField add-criterion row that was never focused ignores outside changes (pre-existing).
+  - Field keeps the user's edit while NotesBlock shows a conflict prompt, so the two behave inconsistently.
+  - B2's 4 follow-ups.
+  - `octograph own` prints "(no owner found)" and exits 0.
