@@ -91,22 +91,22 @@ describe("decideLocalChanges", () => {
 describe("installCompletionMessage", () => {
   const base = { written: 120, hooksRegistered: true, tools: "skipped" as const, pending: [] as string[] };
   it("unchanged when nothing was staged", () => {
-    expect(installCompletionMessage(base, 57)).toBe("Octobots: workflow pack installed (120 files) with session hooks.");
+    expect(installCompletionMessage(base, 57)).toBe("Octobots: pack installed (120 files) with session hooks.");
   });
   it("after Reconcile with the SessionStart hook registered", () => {
     expect(installCompletionMessage({ ...base, pending: ["mission-execution", "mission-completion-gate"] }, 57)).toBe(
-      "Octobots: workflow pack installed (120 files) with session hooks. Staged mission-execution, mission-completion-gate for reconcile in .octobots/pack-updates/v57/. The next agent session will be asked to run the octobots-doctor skill.",
+      "Octobots: pack installed (120 files) with session hooks. Staged mission-execution, mission-completion-gate for reconcile in .octobots/pack-updates/v57/. The next agent session will be asked to run the octobots-doctor skill.",
     );
   });
   it("adds that the hook is off when it is not registered", () => {
     expect(installCompletionMessage({ ...base, hooksRegistered: false, pending: ["mission-execution"] }, 57)).toBe(
-      "Octobots: workflow pack installed (120 files). Staged mission-execution for reconcile in .octobots/pack-updates/v57/. The next agent session will be asked to run the octobots-doctor skill. The SessionStart hook is off, so ask your agent to run octobots-doctor.",
+      "Octobots: pack installed (120 files). Staged mission-execution for reconcile in .octobots/pack-updates/v57/. The next agent session will be asked to run the octobots-doctor skill. The SessionStart hook is off, so ask your agent to run octobots-doctor.",
     );
   });
   it("keeps the tokenomics notes", () => {
-    expect(installCompletionMessage({ ...base, hooksRegistered: false, tools: "installed" }, 57)).toBe("Octobots: workflow pack installed (120 files) with tokenomics CLI.");
+    expect(installCompletionMessage({ ...base, hooksRegistered: false, tools: "installed" }, 57)).toBe("Octobots: pack installed (120 files) with tokenomics CLI.");
     expect(installCompletionMessage({ ...base, hooksRegistered: false, tools: "failed" }, 57)).toBe(
-      "Octobots: workflow pack installed (120 files). (the tokenomics CLI could not be downloaded — the npx fallback still works)",
+      "Octobots: pack installed (120 files). (the tokenomics CLI could not be downloaded — the npx fallback still works)",
     );
   });
 });

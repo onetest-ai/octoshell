@@ -34,7 +34,7 @@ Install the extension, open a folder, and use the Command Palette.
 | First run | |
 |---|---|
 | `Octobots: New Campaign` | Creates `.octobots/campaigns/<slug>/campaign.yaml` |
-| `Octobots: Install Workflow Pack` | Installs the skills and hooks that let CLI agents drive the board |
+| `Octobots: Install Octobots Pack` | Installs the skills and hooks that let CLI agents drive the board |
 
 The **Octobots** icon in the activity bar shows the campaign tree. Clicking any entity opens a
 detail panel where you can edit its status, acceptance criteria, notes and attached documents.
@@ -84,7 +84,7 @@ closed chat is lost work; attached, it is what makes a mission resumable months 
 | `New Workflow` · `Delete Workflow` | Author an execution graph for a mission or campaign |
 | `Refresh Campaigns` | Re-read the tree from disk |
 | `Delete Campaign` / `Mission` / `Task` / `Bug` | Remove an entity and its folder |
-| `Install Workflow Pack` | Install the agent-facing skills and hooks |
+| `Install Octobots Pack` | Install the agent-facing skills and hooks |
 | `Install SDLC Team Bundle` · `Update SDLC Team Bundle` | Install role agents (tech-lead, QA, devs…) |
 | `Install Graph` · `Rebuild Graph` | Build the architecture map — see [octograph](docs/octograph.md) |
 | `Tokenomics` · `Export Tokenomics Report` | What the work cost |
@@ -98,7 +98,7 @@ half-read states.
 
 ## Driving it from a CLI agent
 
-`Octobots: Install Workflow Pack` copies a set of skills and hooks into `.claude/`, teaching an
+`Octobots: Install Octobots Pack` copies a set of skills and hooks into `.claude/`, teaching an
 agent how to read and drive the board. Four skills, each for a different moment:
 
 | Skill | When |

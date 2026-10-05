@@ -44,7 +44,7 @@ describe("installOctobotsPack in extension.ts", () => {
     const act = src.slice(src.indexOf("export async function activate"));
     const status = act.indexOf("shouldPromptOnActivation(");
     const check = act.indexOf("prepareInstall(", status);
-    const prompt = act.indexOf("Octobots workflow pack isn't", status);
+    const prompt = act.indexOf("Octobots pack isn't", status);
     expect(status).toBeGreaterThan(-1);
     expect(check).toBeGreaterThan(status);
     expect(prompt).toBeGreaterThan(-1);
