@@ -43,7 +43,7 @@ if (!ccd) {
 }
 
 // ── 2. Pack payload ──────────────────────────────────────────────────────────────────────────
-const SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
+const SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
 const versionOf = (text) => { const m = String(text).match(/^version:\s*(\d+)\s*$/m); return m ? Number(m[1]) : null; };
 const markerOf = (text) => { const m = String(text).match(/^(?:\/\/|#)\s*octobots-pack-version:\s*(\d+)\s*$/m); return m ? Number(m[1]) : null; };
 

@@ -120,10 +120,10 @@ Two details that dominate correctness, both covered by `selftest.mjs`:
 - **`requestId` dedupe.** Streaming re-emits the same `usage` payload across
   several records; without deduping, every token count roughly doubles.
 - **Subagents are separate files**, and the tree is walked **recursively**. Plain
-  Task subagents sit in `<session>/subagents/`; Workflow-tool agents nest under
-  `<session>/subagents/workflows/wf_<id>/`. Since `mission-execution` leans
-  heavily on workflows, those nested files are the large majority — a flat read
-  finds ~10% of subagent work and silently reports `orchestrator_cost_pct: 100`.
+  Task subagents sit in `<session>/subagents/`; older runs nested Workflow-tool agents under
+  `<session>/subagents/workflows/wf_<id>/`. Those runs drove missions through
+  workflows, so the nested files are the large majority of their subagent work —
+  a flat read finds ~10% of it and silently reports `orchestrator_cost_pct: 100`.
 
 Code churn is reported as **`lines_added` / `lines_removed`** alongside `net_loc`
 (their difference). Net alone hides the shape of the work: a 600-added/580-removed
