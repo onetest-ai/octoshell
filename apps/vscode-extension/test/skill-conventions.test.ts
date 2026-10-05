@@ -438,4 +438,13 @@ describe("octobots-doctor: the tests-pairing paragraph (M4-AC4)", () => {
   it("never resolves it by deleting an AC, a TC or a README row", () => {
     expect(para).toMatch(/never[^.]*deleting an AC, a TC or a README row/i);
   });
+
+  it("is reachable: §1 routes tests-pairing warnings to it, and it comes before the closing reply", () => {
+    const n = /^## (\d+)\. Tests pairing/m.exec(doctor)?.[1];
+    const reply = /^## (\d+)\. Your reply/m.exec(doctor)?.[1];
+    expect(n).toBeDefined();
+    expect(Number(n)).toBeLessThan(Number(reply));
+    const find = sectionUnder(doctor, /^## 1\. Find what to act on/m).replace(/\s+/g, " ");
+    expect(find).toContain(`tests-pairing warnings (§${n})`);
+  });
 });
