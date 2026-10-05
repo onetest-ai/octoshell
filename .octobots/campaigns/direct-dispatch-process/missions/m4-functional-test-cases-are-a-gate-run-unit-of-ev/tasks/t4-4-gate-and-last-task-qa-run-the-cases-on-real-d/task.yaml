@@ -1,7 +1,17 @@
 name: T4.4 - Gate and last-task QA run the cases on real data
-status: draft
+status: done
 role: js-dev
 description: 'Scope: gate phase 2 and mission-execution''s QA+land phase plus the last-task convention. Out of scope: the DB guard (M5), the status write-back script (M6). Downstream: M5 adds the guard to the QA brief; M6 adds set-test-status.'
 acceptance_criteria:
   - text: 'apps/vscode-extension/test/skill-conventions.test.ts asserts both skills carry: run every TC; RUN-YYYY-MM-DD-NNN.md; PASS/FAIL/BLOCKED/UNREACHABLE with UNREACHABLE written as blocked; record per criterion; QA verification notes; tick exactly the evidenced criteria; BLOCKED if the browser/login cannot be driven (mission AC5)'
-    done: false
+    done: true
+notes: |-
+  ## QA verification
+
+  Verdict: PASS (PR #151, commit 63ca0aac, base feat/direct-dispatch-process-m4).
+  Pre-existing record: /Users/arozumenko/Development/auqanautica (read-only), shared-cloned to scratchpad t44qa/aq; the branch pack installed with install-pack.mjs --local-changes=overwrite (46 written, pendingReconcile empty).
+  AC1 (skill-conventions.test.ts asserts both skills carry the 7 terms) - INSTALLED copies, line numbers:
+  - gate (mission-completion-gate/SKILL.md): run every TC L140; RUN-YYYY-MM-DD-NNN.md L141; PASS/FAIL/BLOCKED/UNREACHABLE with UNREACHABLE as blocked L144-146; record per criterion L150-151; QA verification notes L152-155; tick exactly the evidenced criteria L156-158; BLOCKED if browser/login cannot be driven L147.
+  - execution (mission-execution/SKILL.md): run every TC L223; RUN file L224; PASS/FAIL/BLOCKED/UNREACHABLE as blocked L225; record per criterion L228; QA verification L229 (and L177-183); tick exactly L230; BLOCKED browser/login L226.
+  Store: shipped-skills.mjs --verify "store is current". pnpm build, typecheck, lint, test (vscode-extension 1000, graph 655, 424 passed), coverage:pack all exit 0. gh pr checks 151: both build jobs pass. Solo git status unchanged.
+  Remaining wording inconsistencies (non-blocking, reported): (1) execution L452 "ONE dynamic gate per mission" and L14 vs the last-task live run (L219, L540-542); (2) execution L516-520 "never write board state for a different task" vs last task writing mission notes (L229, gate L152); (3) execution L511 mission criteria checked off before done vs gate phase 5 L121-122 ticking after green; (4) gate L152 vs execution L229 both write the mission's QA verification block (possible duplicate heading).
