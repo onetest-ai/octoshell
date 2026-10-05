@@ -12,6 +12,8 @@ acceptance_criteria:
     done: false
   - text: The VSIX is built so that scripts/package-vsix.mjs:38-44 (which runs both update-prices.mjs scripts) leaves tracked files unchanged, or the refreshed prices are committed deliberately in their own commit before the release commit; and the package path runs shipped-skills.mjs --verify (package-vsix.mjs bypasses the build script today) (input from the T7.1 review)
     done: false
+  - text: The release verification asserts the VSIX contains extension/resources/shipped-skills.json.br and that it decompresses and passes shipped-skills.mjs --verify against the packaged pack (input from the T7.2 review)
+    done: false
 tokenomics:
   effort_days: 0.5
   size_tshirt: XS

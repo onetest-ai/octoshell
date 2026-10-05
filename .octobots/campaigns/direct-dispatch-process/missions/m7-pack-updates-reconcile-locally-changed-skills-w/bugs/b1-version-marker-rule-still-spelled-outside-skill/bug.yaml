@@ -1,0 +1,14 @@
+name: B1 - version-marker rule still spelled outside skill-marker (generator frontmatterVersion, dead parseVersion) and isNewInVersion exempts only the current version
+status: draft
+severity: minor
+description: |-
+  Leftovers found in the T7.2 review:
+  (1) apps/vscode-extension/scripts/shipped-skills.mjs:81 frontmatterVersion is a second spelling of the version rule. It does not strip a BOM, and it takes the first integer-form version line rather than the first version line. It should use skill-marker.mjs.
+  (2) octobots-skill.ts:42 parseVersion is now dead in src; only tests use it.
+  (3) isNewInVersion exempts only a skill introduced in exactly the current version, so at v58 a v56 workspace missing octobots-doctor (new in 57) reports installed:false.
+  (4) doctor.js:48 still has its own regex; T7.5 replaces it.
+steps_to_reproduce: Read the cited lines. For (3), call packStatus at pack version 58 on a v56 workspace without octobots-doctor.
+expected: One version rule (skill-marker) everywhere. A skill new since the workspace's installed version does not make installed false.
+actual: Two spellings of the rule. installed is false in case (3).
+rca: ''
+environment: 'found by the T7.2 review gate (PR #128, 2026-10-05)'

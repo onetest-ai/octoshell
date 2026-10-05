@@ -14,3 +14,5 @@ acceptance_criteria:
     done: false
   - text: Retiring a skill whose directory holds files the pack never shipped (e.g. .claude/skills/workflow-designer/my-notes.md) keeps those files in place, removes only the files the pack shipped for that skill, and reports the kept paths in the install result; apps/vscode-extension/test/octobots-skill.test.ts proves it (input from the M2 T2.3 review, 2026-10-05)
     done: false
+  - text: installPack computes ONE git deadline per install (Date.now() + GIT_BUDGET_MS from pack-deviations.ts) and passes it as opts.gitDeadline to every recoverBase call, so rule-2 git blocks the extension host at most 2 s per install; and when the shipped-skill store is missing or unreadable, installPack writes NOTHING and reports 'shipped-skill store missing' instead of falling back to overwriting; both proven in apps/vscode-extension/test/octobots-skill.test.ts (input from the T7.2 review)
+    done: false
