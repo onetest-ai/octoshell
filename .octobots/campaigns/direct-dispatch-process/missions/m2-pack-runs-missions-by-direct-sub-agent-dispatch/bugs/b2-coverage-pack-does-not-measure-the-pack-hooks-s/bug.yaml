@@ -1,0 +1,9 @@
+name: B2 - coverage:pack does not measure the pack hooks (status-flip.mjs, mission-gate.mjs, work-log.mjs)
+status: draft
+severity: minor
+description: '`pnpm coverage:pack` instruments only skill/mission-planner/scripts/**. The pack hooks (hooks/status-flip.mjs, mission-gate.mjs, work-log.mjs, primer.mjs) run on every session and every Bash command, yet have no coverage number, so the gate''s coverage bar does not apply to them.'
+steps_to_reproduce: Run `pnpm coverage:pack` and read the report's file list.
+expected: The hooks are covered by coverage:pack (include widened, since the hook tests spawn them as subprocesses with NODE_V8_COVERAGE passed through) and meet the same threshold.
+actual: The hooks are absent from the report.
+rca: ''
+environment: 'found by the T2.2 review gate (PR #121, 2026-10-05), confirmed by QA'

@@ -1,9 +1,32 @@
 name: T2.4 - validate.js and doctor.js warn on leftover workflows/ folders
-status: draft
+status: done
 role: js-dev
 description: 'Scope: validate.js:4,14-42,92-106,123-237 replaced by a warning pass; doctor.js gains a `board` warn check. Out of scope: validate.ts (M3 mirrors it). Downstream: M3 T3.3 mirrors the same message text.'
 acceptance_criteria:
   - text: 'packages/board/test/scripts-cli-scenarios.test.ts covers: validate.js prints one `warning:` per workflows/ folder (path + ''no longer read since pack v57''), exit code unchanged; validate.js <path>/workflow.js exits 2 ''not an entity file'' (mission AC3)'
-    done: false
+    done: true
   - text: 'the same suite covers doctor.js reporting one finding {level: "warn"} with the count and the fix in `--json` output, never "fail" (mission AC4); `pnpm coverage:pack` passes'
-    done: false
+    done: true
+notes: |-
+  ## QA verification
+
+  Verdict: PASS. PR #123 at 75eda2d, CI build green (2 runs). Verified by QA from scratch on 2026-10-05.
+
+  Real records (COPIES of the boards, the packaged mission-planner skill from resources/ installed into scratch workspaces; sources read-only):
+  - octoshell .octobots copy: 5 folders (octograph m3..m7 workflows/build-and-gate). sha256 of the 5 files under workflows/ (list hash 2f7e3925a943...) identical before and after.
+  - solo (auqanautica) .octobots copy: 6 folders (sensor-assignment-uplift m2 workflows/m2-execution with runs.jsonl, plus session-replay m1..m5), 7 files, list hash 6854110a90f5...; identical after. Renamed copy solo-octobots: list hash 144ce2c59a43..., identical after. solo's git status --short unchanged (6 pre-existing lines).
+
+  AC1 (test: scripts-cli-scenarios.test.ts "leftover workflows/ folders" block, 7 tests + the legacy-folder test, all verbose-passed; file 54 passed):
+  - validate.js on solo m2 -> exit 0, one warning "campaigns/sensor-assignment-uplift/missions/m2-.../workflows/m2-execution: no longer read since pack v57".
+  - validate.js on octoshell m6 -> one warning naming build-and-gate. Per campaign: octograph 5, sensor-assignment-uplift 1 + session-replay 5 = 6.
+  - validate.js on .../workflows/m2-execution/workflow.js -> exit 2 "not an entity file".
+  - Renamed solo-octobots copy prints identical 6 root-relative lines (diff empty).
+
+  AC2 (test: "leftover workflows/ folders produce one board warn ..." and "no workflows/ folders: no board warn"):
+  - doctor.js --json: exactly one {level:warn, area:board}, "5 leftover workflows/ folder(s)..." (octoshell) and "6 ..." (solo), all paths listed. Fix: "nothing to do - they are ignored and harmless, so you can leave them; to tidy up, move them aside by hand (the doctor never changes them)" - never says delete. No board fail. Other fails in the scratch run are only partial pack installs (missing skills, primer v56) - not board.
+  - pnpm build, typecheck, lint, test (board 375, extension 554, tokenomics 102, graph 653, 0 skipped) and coverage:pack all exit 0; legacy-workflows.mjs 98% lines, validate.js 98%, doctor.js 97%.
+
+  Non-blocking notes:
+  - Test "an invalid entity still exits 1 and still lists the warnings" asserts only status and stderr, not the warnings (its name over-promises).
+  - doctor message lists every path on one line (long for many folders).
+  - Folders are only ever reported; none touched.

@@ -11,19 +11,30 @@ import { parsePackVersionMarker } from "./pack-version-marker.js";
 export const OCTOBOTS_PACK_VERSION = 57;
 
 /** The skills the pack ships, by directory name under `skill/` and `.claude/skills/`. */
-export const OCTOBOTS_SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate", "knowledge-explorer"] as const;
+export const OCTOBOTS_SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"] as const;
 
 /**
  * Skill dirs earlier pack versions installed that no longer exist. Removed on install so an
  * agent never sees a renamed skill twice (v18's `octobots` is now `mission-planner`).
  */
-const RETIRED_SKILLS = ["octobots"] as const;
+const RETIRED_SKILLS = ["octobots", "workflow-designer"] as const;
 
 /**
  * Files earlier pack versions installed that no longer exist. Removed on install, so an upgraded
  * workspace never keeps a script the skills no longer mention. Paths are relative to `.claude`.
  */
-const RETIRED_FILES = ["skills/mission-planner/scripts/set-step.js"] as const;
+const RETIRED_FILES = [
+  "skills/mission-planner/scripts/set-step.js",
+  // Workflow support was removed (direct sub-agent dispatch replaced the Workflow tool). Only pack
+  // files are listed: a user's `.octobots/**/workflows/` folders are data and are never touched.
+  "skills/mission-planner/scripts/add-workflow.js",
+  "skills/mission-planner/scripts/sync-meta.js",
+  "skills/mission-planner/scripts/add-run.js",
+  "skills/mission-planner/scripts/mission-input.js",
+  "skills/mission-planner/scripts/extract-meta.mjs",
+  "skills/mission-planner/scripts/workflow-meta.mjs",
+  "skills/mission-planner/scripts/vendor/acorn.mjs",
+] as const;
 
 /** Skill ids an agent needs to drive Octobots. Today every agent needs the whole pack. */
 export function requiredSkillsForAgent(_agent: string): string[] {

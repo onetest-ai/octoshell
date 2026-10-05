@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { existsSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { childDirs, dumpEntity, entityName, mapBoardStatus, readEntity, resolveEntityFile } from "./entity-io.mjs";
+import { existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { dumpEntity, mapBoardStatus, readEntity, resolveEntityFile, resolveStatusTarget } from "./entity-io.mjs";
 
 // Set an entity's status in its OWN `<kind>.yaml` — status is a field in the child's file, never a
 // marker on a parent board line (children are folder-derived). Resolve the target by name within the
@@ -26,25 +26,27 @@ if (!mapped) {
 }
 if (!existsSync(arg)) { console.error(`set-status: path not found: ${arg}`); process.exit(2); }
 
-const parentDir = statSync(arg).isDirectory() ? arg : dirname(arg);
-const titleKey = title.toLowerCase();
-
-// Build the candidate list: the parent entity itself (self-status), then children by folder scan.
-const candidates = [];
-const self = resolveEntityFile(parentDir);
-if (self) candidates.push({ dir: parentDir, kind: self.kind });
-for (const [sub, kind] of [["missions", "mission"], ["tasks", "task"], ["bugs", "bug"]]) {
-  for (const slug of childDirs(join(parentDir, sub))) candidates.push({ dir: join(parentDir, sub, slug), kind });
-}
-
-const match = candidates.find((c) => entityName(c.dir, c.kind).toLowerCase() === titleKey);
+const match = resolveStatusTarget(arg, title);
 if (!match) {
-  console.error(`set-status: no entity named "${title}" found under ${parentDir} (self, missions/, tasks/, or bugs/)`);
+  console.error(`set-status: no entity named "${title}" found under ${arg} (self, missions/, tasks/, or bugs/)`);
   process.exit(1);
 }
 
 const resolved = resolveEntityFile(match.dir, [match.kind]);
 const fields = readEntity(resolved.file, resolved.format);
+// The before-state as the board shows it (BoardModel's resolveStatus): a hand-written `awaiting approval`
+// or `Done` is the canonical `awaitingApproval` / `done`, so `Done` -> done is no transition, and the
+// printed `from` never contains a space the hooks' parser would have to guess around.
+const from = mapBoardStatus(fields.status ?? "") ?? "draft";
+if (from === mapped) {
+  // Already there: write nothing (same bytes). The PostToolUse hooks read this line to tell a re-run
+  // from a real transition.
+  console.log(`set status of "${title}" to ${mapped} (already)`);
+  console.log(`octobots: status ${match.kind} ${JSON.stringify(title)} unchanged (${mapped})`);
+  process.exit(0);
+}
 fields.status = mapped;
 writeFileSync(join(match.dir, `${match.kind}.yaml`), dumpEntity(match.kind, fields), "utf8");
 console.log(`set status of "${title}" to ${mapped}`);
+// Machine-readable, one per call: the hooks (hooks/status-flip.mjs) act only on a line like this.
+console.log(`octobots: status ${match.kind} ${JSON.stringify(title)} ${from} -> ${mapped}`);

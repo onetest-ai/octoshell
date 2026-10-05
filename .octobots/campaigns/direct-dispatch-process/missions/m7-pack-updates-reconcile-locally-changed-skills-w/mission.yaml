@@ -25,7 +25,7 @@ tokenomics:
   effort_days: 4
   size_tshirt: L
   complexity_score: 19
-notes: |
+notes: |-
   ## Planning notes (Rio, 2026-10-05)
 
   Why a mission of its own, not M2: the reconcile is a separate capability with its own eight ACs, a new skill, a hook change and four behavioural micro-tests, about 4 days on top of M2's 2.5; folded into M2 it would give a 10-task mission whose gate reviews two unrelated features at once. It cannot run before M2: it extends the RETIRED_SKILLS/RETIRED_FILES lists and the install-pack.mjs harness that T2.3 creates, the validate.js/doctor.js passes T2.4 rewrites, and its real-data case needs the upstreamed v57 mission-execution and mission-completion-gate that T2.1/T2.2 ship. It runs before M3 so that M5 can add its lanes finding and M4/M5 can extend octobots-doctor. Same campaign branch, one tree: sequential, never parallel to M3. Pack payload under the single v57 bump (M1 T1.4); intermediate v57 builds are appended to the store, never replaced, and a `57+local` skill whose reconciled-from is an earlier v57 build is re-staged (AC1 d), so M4-M6's skill changes still reach a reconciled workspace.
@@ -87,3 +87,11 @@ notes: |
   - Behavioural cases are non-deterministic and cost tokens (3 cases x 5 reps plus 2 x 3 reps on 200-560-line files). The escalation case is the safety property and must be 5/5; a miss files a bug against the skill wording.
   - A workspace that declined the hooks never sees the primer: the completion message says so, and doctor.js/validate.js still list the pending entries.
   - `git clone --shared` QA copies break if solo prunes unreachable objects while they exist; solo itself is never written.
+
+
+  ## Inputs from M2 (T2.3 review, 2026-10-05)
+
+  These must be settled in M7 tasks (T7.3 installPack, T7.6 octobots-doctor):
+  1. **Retired skill dirs.** installPack's RETIRED_SKILLS removes a retired skill's WHOLE directory, so any extra file a user added there (e.g. .claude/skills/workflow-designer/my-notes.md) is deleted. M7's "files the pack never shipped are kept" rule covers only still-shipped skills. Decide and state what happens to unshipped files in a RETIRED skill dir: keep them in place or move them to the staging folder and report. The recommendation is to keep them and report them, since nothing should be silently lost.
+  2. **The legacy-folder paragraph conflicts with decision 13(d).** mission-planner/SKILL.md (T2.3) says legacy workflows/ folders are never edited, moved or deleted, but octobots-doctor may delete one after the user says yes for that folder. M7 must update that paragraph to: "never by the installer or tooling; octobots-doctor only with the user's explicit OK per folder".
+  3. **Campaign AC2 VSIX allowlist.** mission-execution/SKILL.md's heading "No `Workflow` tool, no `workflow.js`" matches the workflow.js grep. T6.6's allowlist must name it explicitly (or the heading is reworded and the conventions test updated).

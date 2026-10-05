@@ -16,6 +16,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
+import { findLegacyWorkflowFolders, NO_LONGER_READ } from "./legacy-workflows.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
@@ -43,7 +44,7 @@ if (!ccd) {
 }
 
 // ── 2. Pack payload ──────────────────────────────────────────────────────────────────────────
-const SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
+const SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
 const versionOf = (text) => { const m = String(text).match(/^version:\s*(\d+)\s*$/m); return m ? Number(m[1]) : null; };
 const markerOf = (text) => { const m = String(text).match(/^(?:\/\/|#)\s*octobots-pack-version:\s*(\d+)\s*$/m); return m ? Number(m[1]) : null; };
 
@@ -156,6 +157,16 @@ if (!existsSync(campaigns)) note("board", "no .octobots/campaigns yet — nothin
 else {
   const n = readdirSync(campaigns, { withFileTypes: true }).filter((e) => e.isDirectory()).length;
   ok("board", `${n} campaign(s)`);
+  // Workflow support was removed in pack v57. These folders are ignored, never touched: warn only.
+  const base = join(ROOT, ".octobots");
+  const leftovers = readdirSync(campaigns, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .flatMap((e) => findLegacyWorkflowFolders(join(campaigns, e.name), base));
+  if (leftovers.length) {
+    warn("board",
+      `${leftovers.length} leftover workflows/ folder(s), ${NO_LONGER_READ}: ${leftovers.join(", ")}`,
+      "nothing to do — they are ignored and harmless, so you can leave them; to tidy up, move them aside by hand (the doctor never changes them)");
+  }
 }
 
 // ── Report ───────────────────────────────────────────────────────────────────────────────────

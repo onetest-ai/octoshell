@@ -9,10 +9,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createCampaign, createMission, createTask, createBug, createWorkflow } from "../src/write.js";
+import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
 import { loadEntity, dumpEntity, type EntityFields, type EntityKind } from "../src/entity-schema.js";
 import { BoardModel } from "../src/board-model.js";
 
@@ -338,6 +338,51 @@ describe("set-status.js guards", () => {
     expect(board().getMission(m.id)?.status).toBe("awaitingApproval");
   });
 
+  it("prints a machine-readable transition line and writes the file on a real change", () => {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    createMission(boardRoot, c.id, { title: "M1 - Auth" });
+    const dir = join(boardRoot, c.folderPath);
+    const out = runScript("set-status.js", [dir, "M1 - Auth", "done"], projectDir);
+    expect(out).toContain('octobots: status mission "M1 - Auth" draft -> done\n');
+  });
+
+  it("is a byte-for-byte no-op that prints `unchanged` when the status is already the target (B3)", () => {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
+    const dir = join(boardRoot, c.folderPath);
+    runScript("set-status.js", [dir, "M1 - Auth", "done"], projectDir);
+    const file = join(boardRoot, m.folderPath, "mission.yaml");
+    const before = readFileSync(file);
+    const mtime = statSync(file).mtimeMs;
+    const out = runScript("set-status.js", [dir, "M1 - Auth", "done"], projectDir);
+    expect(out).toContain('octobots: status mission "M1 - Auth" unchanged (done)');
+    expect(out).not.toContain("->");
+    expect(readFileSync(file).equals(before)).toBe(true);
+    expect(statSync(file).mtimeMs).toBe(mtime);
+  });
+
+  it("reports `from` as the canonical status the board shows, so a hand-written `awaiting approval` still yields a parsable transition (B3 review)", () => {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
+    const file = join(boardRoot, m.folderPath, "mission.yaml");
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^status:.*$/m, "status: awaiting approval"), "utf8");
+    expect(board().getMission(m.id)?.status).toBe("awaitingApproval"); // a legitimate on-disk value
+    const out = runScript("set-status.js", [join(boardRoot, c.folderPath), "M1 - Auth", "done"], projectDir);
+    expect(out).toContain('octobots: status mission "M1 - Auth" awaitingApproval -> done\n');
+  });
+
+  it("treats a non-canonical spelling of the target (`Done`) as already there: no write, `unchanged` (B3 review)", () => {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
+    const file = join(boardRoot, m.folderPath, "mission.yaml");
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^status:.*$/m, "status: Done"), "utf8");
+    const before = readFileSync(file);
+    const out = runScript("set-status.js", [join(boardRoot, c.folderPath), "M1 - Auth", "done"], projectDir);
+    expect(out).toContain('octobots: status mission "M1 - Auth" unchanged (done)');
+    expect(out).not.toContain("->");
+    expect(readFileSync(file).equals(before)).toBe(true);
+  });
+
   it("refuses an invalid state before touching disk", () => {
     const c = createCampaign(boardRoot, { name: "Camp" });
     const campaignYaml = join(boardRoot, c.folderPath, "campaign.yaml");
@@ -377,19 +422,111 @@ describe("validate.js contract checks", () => {
     expect(runFailing("validate.js", [campaignYaml], projectDir).stderr).toContain("missing a `name`");
   });
 
-  it("validates every workflow beneath a campaign", () => {
+  it("ignores a legacy workflows/ folder: it is the user's data, not something validate reads", () => {
     const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    const slug = c.folderPath.split("/").pop()!;
-    runScript("add-workflow.js", ["--campaign", slug, "--name", "ship"], projectDir);
-    const jsPath = join(boardRoot, c.folderPath, "workflows", "ship", "workflow.js");
-    writeFileSync(jsPath, readFileSync(jsPath, "utf8").replace('"ship"', '"drift"'), "utf8");
-
-    const { stderr } = runFailing("validate.js", [join(boardRoot, c.folderPath)], projectDir);
-    expect(stderr).toContain('workflow "ship"');
-    expect(stderr).toContain("does not match its folder");
+    const dir = join(boardRoot, c.folderPath, "workflows", "ship");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "workflow.js"), "this is not even javascript {{{\n", "utf8");
+    const out = runScript("validate.js", [join(boardRoot, c.folderPath)], projectDir);
+    expect(out).toContain("OK");
+    // ...but it says so, once, relative to .octobots/, and never touches the folder.
+    expect(out).toContain(`warning: ${c.folderPath}/workflows`);
+    expect(out).toContain("no longer read since pack v57");
+    expect(readFileSync(join(dir, "workflow.js"), "utf8")).toBe("this is not even javascript {{{\n");
   });
 
-  it("exits 2 for a folder holding neither an entity nor a workflow", () => {
+  describe("leftover workflows/ folders (the real-data shape: several at mission level, one with runs)", () => {
+    const warningLines = (out: string) => out.split("\n").filter((l) => l.startsWith("warning:"));
+
+    function seedMissions(): { campaign: string; missions: string[]; ids: string[] } {
+      const c = createCampaign(boardRoot, { name: "Octograph" });
+      const missions: string[] = [];
+      const ids: string[] = [];
+      for (const n of ["M3", "M4", "M5", "M6", "M7"]) {
+        const m = createMission(boardRoot, c.id, { title: `${n} - Part ${n}`, acceptanceCriteria: "- [ ] it works" });
+        missions.push(m.folderPath);
+        ids.push(m.id);
+        const wf = join(boardRoot, m.folderPath, "workflows", "run");
+        mkdirSync(wf, { recursive: true });
+        writeFileSync(join(wf, "workflow.js"), "export const meta = {}\n", "utf8");
+        if (n === "M5") writeFileSync(join(wf, "runs.jsonl"), '{"run":1}\n', "utf8");
+      }
+      return { campaign: c.folderPath, missions, ids };
+    }
+
+    it("a campaign folder gets one warning per workflows/ folder under it, exit 0, files untouched", () => {
+      const { campaign, missions } = seedMissions();
+      const out = runScript("validate.js", [join(boardRoot, campaign)], projectDir);
+      const lines = warningLines(out);
+      expect(lines).toHaveLength(5);
+      for (const m of missions) {
+        expect(lines.filter((l) => l.includes(`${m}/workflows`) && l.includes("no longer read since pack v57"))).toHaveLength(1);
+      }
+      expect(out).toContain("OK");
+      expect(existsSync(join(boardRoot, missions[2]!, "workflows", "run", "runs.jsonl"))).toBe(true);
+    });
+
+    it("also finds a campaign-level workflows/ alongside the mission-level ones", () => {
+      const { campaign } = seedMissions();
+      mkdirSync(join(boardRoot, campaign, "workflows", "x"), { recursive: true });
+      expect(warningLines(runScript("validate.js", [join(boardRoot, campaign)], projectDir))).toHaveLength(6);
+    });
+
+    it("a mission or a task validates only what is under it", () => {
+      const { missions, ids } = seedMissions();
+      const mission = join(boardRoot, missions[0]!);
+      expect(warningLines(runScript("validate.js", [mission], projectDir))).toHaveLength(1);
+      const t = createTask(boardRoot, ids[0]!, { name: "T3.1 - Do a thing", acceptanceCriteria: "- [ ] it works" });
+      expect(warningLines(runScript("validate.js", [join(boardRoot, t.folderPath)], projectDir))).toHaveLength(0);
+    });
+
+    it("an invalid entity still exits 1 and still lists the warnings", () => {
+      const { campaign } = seedMissions();
+      seed(join(boardRoot, campaign, "campaign.yaml"), "campaign", { name: "" });
+      const { status, stderr } = runFailing("validate.js", [join(boardRoot, campaign)], projectDir);
+      expect(status).toBe(1);
+      expect(stderr).toContain("missing a `name`");
+    });
+
+    it("names each workflows/<slug>/ folder (M2 TC-003/TC-004); a workflows/ with no sub-folder names itself", () => {
+      const { campaign, missions } = seedMissions();
+      const m = join(boardRoot, missions[0]!);
+      mkdirSync(join(m, "workflows", "m2-execution"), { recursive: true });
+      expect(warningLines(runScript("validate.js", [m], projectDir))).toEqual([
+        `warning: ${missions[0]}/workflows/m2-execution: no longer read since pack v57`,
+        `warning: ${missions[0]}/workflows/run: no longer read since pack v57`,
+      ]);
+      mkdirSync(join(boardRoot, campaign, "workflows"));
+      writeFileSync(join(boardRoot, campaign, "workflows", "stray.txt"), "x\n", "utf8");
+      const lines = warningLines(runScript("validate.js", [join(boardRoot, campaign)], projectDir));
+      expect(lines).toHaveLength(7);
+      expect(lines).toContain(`warning: ${campaign}/workflows: no longer read since pack v57`);
+    });
+
+    it("a board copy not named .octobots still reports paths from the board root (validateBoard parity)", () => {
+      const { missions } = seedMissions();
+      const expected = warningLines(runScript("validate.js", [join(boardRoot, missions[1]!)], projectDir));
+      expect(expected).toEqual([`warning: ${missions[1]}/workflows/run: no longer read since pack v57`]);
+      const copy = join(projectDir, "solo-octobots");
+      execFileSync("cp", ["-R", boardRoot, copy]);
+      expect(warningLines(runScript("validate.js", [join(copy, missions[1]!)], projectDir))).toEqual(expected);
+    });
+
+    it("a board without workflows/ folders prints no warning", () => {
+      const c = createCampaign(boardRoot, { name: "Clean" });
+      expect(warningLines(runScript("validate.js", [join(boardRoot, c.folderPath)], projectDir))).toHaveLength(0);
+    });
+
+    it("validate.js on a workflow.js exits 2 'not an entity file'", () => {
+      const { missions } = seedMissions();
+      const wf = join(boardRoot, missions[0]!, "workflows", "run", "workflow.js");
+      const { status, stderr } = runFailing("validate.js", [wf], projectDir);
+      expect(status).toBe(2);
+      expect(stderr).toContain("not an entity file");
+    });
+  });
+
+  it("exits 2 for a folder holding no entity", () => {
     const empty = join(boardRoot, "campaigns", "empty");
     mkdirSync(empty, { recursive: true });
     const { status, stderr } = runFailing("validate.js", [empty], projectDir);
@@ -397,222 +534,14 @@ describe("validate.js contract checks", () => {
     expect(stderr).toContain("no entity");
   });
 
-  it("exits 2 for a file that is not an entity or workflow", () => {
+  it("exits 2 for a file that is not an entity", () => {
     const stray = join(boardRoot, "notes.txt");
     writeFileSync(stray, "hello\n", "utf8");
     expect(runFailing("validate.js", [stray], projectDir).status).toBe(2);
   });
 });
 
-describe("workflow script guards", () => {
-  function workflowDir(): string {
-    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    const slug = c.folderPath.split("/").pop()!;
-    runScript("add-workflow.js", ["--campaign", slug, "--name", "ship"], projectDir);
-    return join(boardRoot, c.folderPath, "workflows", "ship");
-  }
-
-  it("add-run.js refuses a directory that is not a workflow folder", () => {
-    const notAWorkflow = join(boardRoot, "campaigns", "q3");
-    mkdirSync(notAWorkflow, { recursive: true });
-    const { status, stderr } = runFailing(
-      "add-run.js",
-      ["--workflow", notAWorkflow, "--status", "done", "--summary", "x"],
-      projectDir,
-    );
-    expect(status).toBe(2);
-    expect(stderr).toContain("workflow.js not found");
-  });
-
-  it("add-run.js refuses a non-directory and missing args", () => {
-    expect(
-      runFailing("add-run.js", ["--workflow", join(boardRoot, "nope"), "--status", "done", "--summary", "x"], projectDir)
-        .stderr,
-    ).toContain("not a directory");
-    expect(runFailing("add-run.js", [], projectDir).status).toBe(2);
-  });
-
-  it("add-run.js defaults the date to today when --at is omitted", () => {
-    const dir = workflowDir();
-    runScript("add-run.js", ["--workflow", dir, "--status", "done", "--summary", "green"], projectDir);
-    const line = JSON.parse(readFileSync(join(dir, "runs.jsonl"), "utf8").trim()) as { at: string };
-    expect(line.at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  });
-
-  // sync-meta.js rewrites source files in bulk (--all can touch every workflow under a board), so
-  // its refusals matter as much as add-run.js's — a silent write on a file it could not fully read
-  // is how a bad rewrite reaches disk.
-  it("sync-meta.js refuses when invoked with no arguments", () => {
-    const { status, stderr } = runFailing("sync-meta.js", [], projectDir);
-    expect(status).toBe(2);
-    expect(stderr).toContain("usage: sync-meta.js");
-  });
-
-  it("sync-meta.js refuses a workflow directory that does not exist, and writes nothing", () => {
-    const missing = join(boardRoot, "campaigns", "nope");
-    const { status, stderr } = runFailing("sync-meta.js", [missing], projectDir);
-    expect(status).toBe(2);
-    expect(stderr).toContain("no workflow.js at");
-    expect(existsSync(missing)).toBe(false);
-  });
-
-  it("sync-meta.js refuses a workflow.js with no `export const meta` literal, leaving it untouched", () => {
-    const dir = workflowDir();
-    const jsPath = join(dir, "workflow.js");
-    writeFileSync(jsPath, "// no meta here\nexport default 1;\n", "utf8");
-    const before = readFileSync(jsPath, "utf8");
-
-    const { status, stderr } = runFailing("sync-meta.js", [dir], projectDir);
-    expect(status).toBe(2);
-    expect(stderr).toContain("no `export const meta` literal");
-    expect(readFileSync(jsPath, "utf8")).toBe(before);
-  });
-
-  it("sync-meta.js refuses a meta that is not a pure object literal, leaving the file untouched", () => {
-    const dir = workflowDir();
-    const jsPath = join(dir, "workflow.js");
-    writeFileSync(jsPath, "export const meta = { name: someVar }\nphase('Run')\n", "utf8");
-    const before = readFileSync(jsPath, "utf8");
-
-    const { status, stderr } = runFailing("sync-meta.js", [dir], projectDir);
-    expect(status).toBe(2);
-    expect(stderr).toContain("refusing to rewrite the script");
-    expect(readFileSync(jsPath, "utf8")).toBe(before);
-  });
-
-  it("sync-meta.js refuses a body that fails to parse, leaving the file untouched", () => {
-    const dir = workflowDir();
-    const jsPath = join(dir, "workflow.js");
-    writeFileSync(jsPath, 'export const meta = { name: "ship", description: "", phases: [] }\nphase(\'Run\'\n', "utf8");
-    const before = readFileSync(jsPath, "utf8");
-
-    const { status, stderr } = runFailing("sync-meta.js", [dir], projectDir);
-    expect(status).toBe(2);
-    expect(stderr).toContain("body does not parse");
-    expect(readFileSync(jsPath, "utf8")).toBe(before);
-  });
-
-  it("sync-meta.js --all updates every workflow it finds under .octobots/campaigns", () => {
-    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    const slug = c.folderPath.split("/").pop()!;
-    runScript("add-workflow.js", ["--campaign", slug, "--name", "ship"], projectDir);
-    runScript("add-workflow.js", ["--campaign", slug, "--name", "gate"], projectDir);
-    const shipPath = join(boardRoot, c.folderPath, "workflows", "ship", "workflow.js");
-    const gatePath = join(boardRoot, c.folderPath, "workflows", "gate", "workflow.js");
-    // Drift both from what their (unchanged) bodies actually produce, so --all has real work to do.
-    writeFileSync(shipPath, readFileSync(shipPath, "utf8").replace('title: "Run"', 'title: "Old"'), "utf8");
-    writeFileSync(gatePath, readFileSync(gatePath, "utf8").replace('title: "Run"', 'title: "Old"'), "utf8");
-
-    const out = runScript("sync-meta.js", ["--all"], projectDir);
-
-    expect(out).toContain("2 of 2 workflow(s) updated");
-    expect(readFileSync(shipPath, "utf8")).not.toContain('"Old"');
-    expect(readFileSync(gatePath, "utf8")).not.toContain('"Old"');
-    expect(readFileSync(shipPath, "utf8")).toContain('title: "Run"');
-    expect(readFileSync(gatePath, "utf8")).toContain('title: "Run"');
-  });
-
-  // A phase's `detail` is AUTHORED, not derived — nothing in the body carries it, and it is the one
-  // meta.phases field Claude Code's own Workflow runtime consumes. Extraction never emits it, so
-  // before `mergeAuthoredPhases` a detail-bearing workflow reported "meta is out of date" on every
-  // validate and sync-meta.js "fixed" that by DELETING the caption. Data loss, silently, on the one
-  // field the runtime reads.
-  it("sync-meta.js regenerates the graph without losing an authored phase detail", () => {
-    const dir = workflowDir();
-    const jsPath = join(dir, "workflow.js");
-    writeFileSync(
-      jsPath,
-      [
-        "export const meta = {",
-        '  name: "ship",',
-        '  description: "",',
-        "  phases: [",
-        '    { title: "Run", detail: "build every task, then gate", steps: [] },',
-        "  ],",
-        "}",
-        "",
-        "phase('Run')",
-        "await agent(p, { phase: 'Run', label: 'build', agentType: 'js-dev' })",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-
-    const out = runScript("sync-meta.js", [dir], projectDir);
-    expect(out).toContain("1 of 1 workflow(s) updated");
-
-    const updated = readFileSync(jsPath, "utf8");
-    // The graph was regenerated from the body…
-    expect(updated).toContain('"id":"run-1"');
-    expect(updated).toContain('"agent":"js-dev"');
-    // …and the caption survived it.
-    expect(updated).toContain('detail: "build every task, then gate"');
-
-    // Idempotent: the file it just wrote is the file it would write again.
-    expect(runScript("sync-meta.js", [dir], projectDir)).toContain("unchanged");
-    // And a detail-bearing workflow validates clean, rather than reporting "meta is out of date"
-    // forever because the extractor cannot produce a field no body carries.
-    expect(runScript("validate.js", [dir], projectDir)).toContain("OK");
-  });
-
-  // The pack's validate.js mirrors packages/board's validateWorkflow, so the two corrected messages
-  // are asserted on this side too — a mirror that drifts on wording is a mirror that drifts.
-  it("validate.js names an unreadable { phase } as such, not as a missing label", () => {
-    const dir = workflowDir();
-    writeFileSync(
-      join(dir, "workflow.js"),
-      [
-        'export const meta = { name: "ship", description: "", phases: [{ title: "Build", steps: [] }] }',
-        "const ph = 'Build'",
-        "await agent(p, { phase: ph, label: 'unresolvable', agentType: 'js-dev' })",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-    const { stderr } = runFailing("validate.js", [dir], projectDir);
-    expect(stderr).toContain("not a string literal");
-    expect(stderr).not.toContain("no readable label");
-  });
-
-  it("validate.js tells a malformed pointer file apart from one missing its `uses` key", () => {
-    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    const m = createMission(boardRoot, c.id, { title: "M1 - Auth", acceptanceCriteria: "- [ ] ships" });
-    const missionDir = join(boardRoot, m.folderPath);
-    mkdirSync(join(missionDir, "workflows", "implementation"), { recursive: true });
-    writeFileSync(
-      join(missionDir, "workflows", "implementation", "workflow.json"),
-      '{ "uses": "../../../../workflows/implementation" ',
-      "utf8",
-    );
-
-    const { stderr } = runFailing("validate.js", [missionDir], projectDir);
-    expect(stderr).toContain("not valid JSON");
-    expect(stderr).not.toContain("no `uses` string");
-  });
-
-  // The two scaffolds — the pack's add-workflow.js and packages/board's createWorkflow, which the
-  // VS Code "new workflow" command calls — are the same command from an author's point of view, so
-  // they must hand out the same file. The retired "keep meta.phases in step with the body" doctrine
-  // survived in the TS one for a whole branch because nothing compared them.
-  it("add-workflow.js scaffolds byte-for-byte what the app's createWorkflow scaffolds", () => {
-    const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-    const slug = c.folderPath.split("/").pop()!;
-    runScript("add-workflow.js", ["--campaign", slug, "--name", "ship"], projectDir);
-    const fromScript = readFileSync(join(boardRoot, c.folderPath, "workflows", "ship", "workflow.js"), "utf8");
-
-    const { folderPath } = createWorkflow(boardRoot, { campaignId: c.id }, { name: "ship" });
-    const fromApp = readFileSync(join(boardRoot, folderPath, "workflow.js"), "utf8");
-
-    // The slug differs (the app de-duplicates against the sibling the script just made), so compare
-    // everything else — including the comment block, which is the half that drifted.
-    expect(fromApp.replace(/"ship-2"/g, '"ship"')).toBe(fromScript);
-    expect(fromApp).toContain("sync-meta.js");
-    expect(fromApp).not.toContain("Keep `meta.phases`");
-  });
-
-  // doctor.js config-dir check (M1 AC8). Claude Code writes transcripts to
-  // $CLAUDE_CONFIG_DIR/projects/<slug> (default ~/.claude/projects/<slug>) and the tokenomics
-  // collector reads exactly that, so the default is healthy and a per-repo config dir is not advice.
+describe("pack doctor.js", () => {
   describe("doctor.js config-dir", () => {
     // The slug rule is restated here on purpose: the check must agree with the rule, not with doctor.js.
     const slugOf = (p: string) => p.replace(/[^A-Za-z0-9]/g, "-");
@@ -687,7 +616,7 @@ describe("workflow script guards", () => {
     }
     const findings = (root: string) =>
       (JSON.parse(run(root).out) as { findings: { level: string; area: string; msg: string }[] }).findings;
-    const SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
+    const SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
     function installSkills(versions: Record<string, number> = {}): void {
       for (const sk of SKILLS) {
         const dir = join(projectDir, ".claude", "skills", sk);
@@ -732,6 +661,39 @@ describe("workflow script guards", () => {
       expect(f.find((x) => x.area === "board")?.msg).toContain("1 campaign(s)");
     });
 
+    it("leftover workflows/ folders produce one board warn with the count and a fix that never says delete; never fail", () => {
+      installSkills();
+      installPrimer(57);
+      mkdirSync(join(projectDir, ".octobots", "tokenomics"), { recursive: true });
+      const c = createCampaign(boardRoot, { name: "Octograph" });
+      for (const n of ["M3", "M4", "M5", "M6", "M7"]) {
+        const m = createMission(boardRoot, c.id, { title: `${n} - Part ${n}`, acceptanceCriteria: "- [ ] it works" });
+        const wf = join(boardRoot, m.folderPath, "workflows", "run");
+        mkdirSync(wf, { recursive: true });
+        writeFileSync(join(wf, "workflow.js"), "x\n", "utf8");
+        if (n === "M4") writeFileSync(join(wf, "runs.jsonl"), "{}\n", "utf8");
+      }
+      mkdirSync(join(boardRoot, c.folderPath, "workflows"), { recursive: true });
+      const board = findings(projectDir).filter((x) => x.area === "board");
+      const warns = board.filter((x) => x.level === "warn") as { level: string; msg: string; fix?: string }[];
+      expect(warns).toHaveLength(1);
+      expect(warns[0]!.msg).toContain("6");
+      expect(warns[0]!.msg).toContain("no longer read since pack v57");
+      expect(warns[0]!.msg).toContain(`${c.folderPath}/workflows`);
+      expect(warns[0]!.fix).toMatch(/leave|move/i);
+      expect(warns[0]!.fix).not.toMatch(/delet|remove|rm /i);
+      expect(board.some((x) => x.level === "fail")).toBe(false);
+      expect(board.some((x) => x.level === "ok" && x.msg.includes("1 campaign(s)"))).toBe(true);
+      expect(existsSync(join(boardRoot, c.folderPath, "workflows"))).toBe(true);
+      // The leftover folders alone never turn the run into a failure.
+      expect(JSON.parse(run(projectDir).out).findings.filter((x: { level: string }) => x.level === "fail").map((x: { area: string }) => x.area)).not.toContain("board");
+    });
+
+    it("no workflows/ folders: no board warn", () => {
+      createCampaign(boardRoot, { name: "Clean" });
+      expect(findings(projectDir).filter((x) => x.area === "board" && x.level === "warn")).toHaveLength(0);
+    });
+
     it("skills that disagree on version, or a primer behind the skills, fail", () => {
       installSkills({ "mission-execution": 56 });
       installPrimer(55);
@@ -760,40 +722,6 @@ describe("workflow script guards", () => {
 
       writeFileSync(join(projectDir, ".octobots", "statusline.sh"), "# octobots-pack-version: 57\n");
       expect(findings(projectDir).find((x) => x.area === "statusline")?.level).toBe("ok");
-    });
-  });
-
-  // mission-input.js hands a pipeline everything about one mission as JSON.
-  describe("mission-input.js", () => {
-    function seedBoard(): void {
-      const c = createCampaign(boardRoot, { name: "Q3 Rollout" });
-      const m = createMission(boardRoot, c.id, { title: "M1 - Auth", acceptanceCriteria: "- [ ] login works\n- [ ] logout works" });
-      createTask(boardRoot, m.id, { name: "T1.10 - Late", acceptanceCriteria: "- [ ] late" });
-      createTask(boardRoot, m.id, { name: "T1.2 - Early", acceptanceCriteria: "- [ ] early" });
-      createTask(boardRoot, m.id, { name: "T1.3 - QA verification", acceptanceCriteria: "- [ ] verified" });
-    }
-
-    it("emits the mission, its criteria, tasks in numeric order and the QA task", () => {
-      seedBoard();
-      const out = JSON.parse(runScript("mission-input.js", ["m1"], projectDir));
-      expect(out.mission).toBe("M1");
-      expect(out.criteria).toEqual(["login works", "logout works"]);
-      expect(out.tasks.map((t: { id: string }) => t.id)).toEqual(["T1.2", "T1.3", "T1.10"]);
-      expect(out.qaTask.id).toBe("T1.3");
-      expect(runScript("mission-input.js", ["M1", "--pretty"], projectDir)).toContain("\n  ");
-    });
-
-    it("refuses a malformed id, an unknown mission, and an ambiguous one", () => {
-      seedBoard();
-      expect(runFailing("mission-input.js", ["nope"], projectDir).status).toBe(2);
-      expect(runFailing("mission-input.js", ["M9"], projectDir).stderr).toContain("not on the board");
-      expect(runFailing("mission-input.js", ["M1", "--campaign", "other"], projectDir).stderr).toContain('under campaign "other"');
-      const c2 = createCampaign(boardRoot, { name: "Q4 Rollout" });
-      createMission(boardRoot, c2.id, { title: "M1 - Billing" });
-      expect(runFailing("mission-input.js", ["M1"], projectDir).stderr).toContain("ambiguous");
-      const slug = (n: string) => n.toLowerCase().replace(/\s+/g, "-");
-      const picked = JSON.parse(runScript("mission-input.js", ["M1", "--campaign", slug("Q4 Rollout")], projectDir));
-      expect(picked.missionName).toContain("Billing");
     });
   });
 });

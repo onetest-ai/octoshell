@@ -4,7 +4,8 @@ title: "Behavioural micro-test: 5 fresh sub-agents plan Agent dispatches, none i
 mission: M2
 covers: [M2-AC5]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m2/runs/RUN-2026-10-05-001.md}
 priority: high
 size: L
 ---

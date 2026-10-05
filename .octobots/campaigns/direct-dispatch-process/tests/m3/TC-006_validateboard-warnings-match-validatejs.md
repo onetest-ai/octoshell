@@ -37,8 +37,8 @@ node $PACK/skill/mission-planner/scripts/validate.js $WORK/solo-octobots/campaig
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Run validate-workflows-warning.test.ts on the copy (validateBoard) | At least 1 test passed; 6 findings with severity "warning" (one per workflows/ folder); 0 findings of severity error that mention a workflow |
-| 2 | For the sensor-assignment-uplift m2 folder, compare the finding's message with the validate.js warning line | Identical text |
+| 1 | Run validate-workflows-warning.test.ts on the copy (validateBoard) | At least 1 test passed; 6 findings with severity "warning" (one per workflows/<slug>/ folder; a workflows/ with no sub-folder counts as one), each message `<path relative to the board root, /-separated>: no longer read since pack v57`; 0 findings of severity error that mention a workflow |
+| 2 | For the sensor-assignment-uplift m2 folder, compare the finding's message with the validate.js warning line | `warning: ` + the finding message is identical to the validate.js line; across the whole copy, the set of validateBoard warnings equals the union of validate.js warning lines over every campaign dir |
 
 ## Expected Final State
 

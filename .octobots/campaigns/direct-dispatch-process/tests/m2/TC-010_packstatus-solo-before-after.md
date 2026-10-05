@@ -4,7 +4,8 @@ title: "packStatus on the solo copy: not up to date before the install; up to da
 mission: M2
 covers: [M2-AC2]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m2/runs/RUN-2026-10-05-001.md}
 priority: medium
 size: S
 ---

@@ -7,7 +7,7 @@
  * wait loop makes up to fifteen calls, so that is ~12 seconds of resolution per session, paid
  * forever, for a tool that never changes between calls.
  *
- * WHY NOT VENDOR IT, like js-yaml and acorn? Because `ccusage` is a 5KB launcher whose real payload
+ * WHY NOT VENDOR IT, like js-yaml? Because `ccusage` is a 5KB launcher whose real payload
  * is a PLATFORM-SPECIFIC native binary (`@ccusage/ccusage-{darwin,linux,win32}-{arm64,x64}`, ~3.2MB
  * each). Vendoring the launcher alone would still resolve the binary at run time; vendoring all six
  * would put ~19MB of native code into the VSIX; vendoring one would break every other platform.

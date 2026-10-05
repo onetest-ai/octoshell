@@ -4,7 +4,8 @@ title: "Gate and mission-execution skill text: 5 dispatched phases, blocking def
 mission: M2
 covers: [M2-AC5, M2-AC6]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m2/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---

@@ -4,7 +4,8 @@ title: "doctor.js on a copy of solo: one warn for 6 workflows/ folders, overall 
 mission: M2
 covers: [M2-AC4]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m2/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---
@@ -40,7 +41,7 @@ find $WORK/solo/.octobots -type d -name workflows | wc -l
 | # | Action | Expected Result |
 |---|--------|----------------|
 | 1 | Count workflows/ folders in the copy | 6 (recorded 2026-10-05) |
-| 2 | Run doctor.js --json (`{root, packVersion, findings:[{level, area, msg, fix}]}`) | Exactly one finding whose msg mentions workflows/, with level `warn` (never `fail`); msg contains the count (6) and fix holds the remedy (git rm -r, or keep as history) |
+| 2 | Run doctor.js --json (`{root, packVersion, findings:[{level, area, msg, fix}]}`) | Exactly one finding whose msg mentions workflows/, with level `warn` (never `fail`); msg contains the count (6) and each workflows/<slug> path; fix says the folders are ignored and can be left, and never suggests deleting them (removal is octobots-doctor's, with the user's OK per folder) |
 | 3 | Check the fail findings and exit code | No `fail` finding is about workflows/; the exit code is not failed because of it |
 
 ## Expected Final State
