@@ -332,6 +332,15 @@ function runRootsSuite() {
   segs = collectSegments(wt, isolatedEnv(home));
   check("[roots] worktree path resolves to the main checkout's slug", ids(segs).join() === "home-session,legacy-session", ids(segs).join());
 
+  // AC3, the other direction: the EARLIER root (home) holds the richer copy. The case above has the
+  // richer copy in the later (legacy) root, so "last root read wins" would pass it; this one would not.
+  writeSession(join(home, ".claude", "projects"), slug, "rich-home-session", 6);
+  writeSession(legacy, slug, "rich-home-session", 3);
+  segs = collectSegments(root, isolatedEnv(home));
+  const rich = segs.filter((s) => s.session_id === "rich-home-session");
+  check("[roots][AC3] more turns wins even when the richer copy is in the earlier root, not just the last one read",
+    rich.length === 1 && rich[0].turns === 6, JSON.stringify(rich.map((s) => s.turns)));
+
   // Isolation: the PARENT process env holds a decoy HOME and CLAUDE_CONFIG_DIR, each with a session
   // under this project's own slug. A child built with isolatedEnv must see neither. If it did, a
   // developer's real transcripts would leak into this selftest and make it machine-dependent.

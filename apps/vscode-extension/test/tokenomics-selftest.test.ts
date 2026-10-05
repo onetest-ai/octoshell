@@ -57,6 +57,7 @@ describe("tokenomics selftest.mjs", () => {
     ["M1 AC2 root precedence: env override replaces both", /\[roots\]\[AC2\].*env override/],
     ["M1 AC2 root precedence: --projects-dir replaces both", /\[roots\]\[AC2\].*--projects-dir/],
     ["M1 AC3 dedupe: a session in two roots counts once", /\[roots\]\[AC3\].*not double-counted/],
+    ["M1 AC3 dedupe: more turns wins regardless of root order", /\[roots\]\[AC3\].*more turns wins even when the richer copy is in the earlier root/],
     ["M1 AC3 dedupe: rerun is byte-identical", /\[roots\]\[AC3\].*byte-identical/],
     ["worktree path unwinds to the main checkout's slug", /\[roots\].*worktree/],
   ])("covers %s", (_name, pattern) => {
