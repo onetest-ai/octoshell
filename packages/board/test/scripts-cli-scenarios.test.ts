@@ -864,6 +864,26 @@ describe("pack doctor.js", () => {
         expect(f.find((x) => /installed at v57/.test(x.msg))?.level).toBe("ok");
       });
 
+      it("a newer skill with NO pending.json is still left out: the installed pack version is primer.mjs's marker", () => {
+        // The installer leaves a skill newer than the pack alone and writes no pending.json for it.
+        installSkills({ "knowledge-explorer": 58 });
+        installPrimer(57);
+        const r = JSON.parse(run(projectDir).out) as { packVersion: number | null; findings: F[] };
+        const f = r.findings.filter((x) => x.area === "pack");
+        expect(f.filter((x) => x.level === "fail")).toEqual([]);
+        expect(f.find((x) => x.level === "note")?.msg).toMatch(/knowledge-explorer \(newer: 58\)/);
+        expect(f.find((x) => /installed at v57/.test(x.msg))?.level).toBe("ok");
+        expect(r.packVersion).toBe(57);
+      });
+
+      it("with no record, a primer behind every skill is the stale file: nothing is called newer", () => {
+        installSkills({ "mission-planner": 58, "mission-execution": 58, "mission-completion-gate": 58, "knowledge-explorer": 58 });
+        installPrimer(57);
+        const f = packFindings(projectDir);
+        expect(f.find((x) => /primer.mjs is v57, skills are v58/.test(x.msg))?.level).toBe("fail");
+        expect(f.some((x) => /newer/.test(x.msg))).toBe(false);
+      });
+
       it("a version line below the frontmatter is prose, not the skill's version (skill-marker rule)", () => {
         installSkills();
         installPrimer(57);

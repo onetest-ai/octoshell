@@ -2,7 +2,7 @@
 // Shared Octobots session primer. Registered as a SessionStart/compaction hook in each backend
 // (Claude/Copilot/Codex). Emits the routing primer as additionalContext in the calling backend's
 // JSON shape, but ONLY in an Octobots repo. Self-gates on .octobots/ so it is inert elsewhere.
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const PRIMER = [
@@ -183,13 +183,23 @@ function validReconcileEntry(v) {
   return true;
 }
 
+// pending.json and doctor-acks.json are user-editable and read at EVERY session start: only a regular
+// file (not a symlink, so nothing outside .octobots/ is read through it; not a FIFO, whose read would
+// block the session start) of at most MAX_READ bytes is read.
+const MAX_READ = 256 * 1024;
+function readSmallJson(file) {
+  const st = lstatSync(file); // throws when absent
+  if (!st.isFile() || st.size > MAX_READ) throw new Error(`${file}: not a small regular file`);
+  return JSON.parse(readFileSync(file, "utf8"));
+}
+
 /** `{packVersion, skills}` for the skills pending.json asks to reconcile, or null when it is not a well-formed record. */
 function readReconciles(projectDir) {
   let raw;
   try {
-    raw = JSON.parse(readFileSync(join(projectDir, ".octobots", "pack-updates", "pending.json"), "utf8"));
+    raw = readSmallJson(join(projectDir, ".octobots", "pack-updates", "pending.json"));
   } catch {
-    return null; // absent, unreadable or not JSON
+    return null; // absent, unreadable, too large, not a regular file or not JSON
   }
   if (!isObj(raw) || !isInt(raw.packVersion) || !Array.isArray(raw.skills) || !Array.isArray(raw.kept)) return null;
   const seen = new Set();
@@ -204,12 +214,23 @@ function readReconciles(projectDir) {
   return { packVersion: raw.packVersion, skills: raw.skills.map((s) => s.skill) };
 }
 
-/** The `{finding, path}` pairs `.octobots/doctor-acks.json` acknowledges; empty when it is absent or malformed. */
+/**
+ * The acknowledgements in `.octobots/doctor-acks.json`, `{acknowledged: [{finding, path, date}]}` (written
+ * by the octobots-doctor skill when the user declines a finding); empty when it is absent or malformed.
+ * The keys the primer matches (T7.6 writes exactly these):
+ *   {finding: "workflows",  path: "campaigns/<c>/workflows" | "campaigns/<c>/missions/<m>/workflows"}
+ *       one per declined workflows/ folder; `path` is relative to `.octobots/`, `/`-separated
+ *   {finding: "config-dir", path: ".claude"}   any `path` (or none) acknowledges it
+ * A pending reconcile is never acknowledgeable. `path` is compared after dropping a leading `./`,
+ * trailing `/` and turning `\` into `/`; `date` is not read.
+ */
 function readAcks(projectDir) {
   try {
-    const raw = JSON.parse(readFileSync(join(projectDir, ".octobots", "doctor-acks.json"), "utf8"));
+    const raw = readSmallJson(join(projectDir, ".octobots", "doctor-acks.json"));
     if (!isObj(raw) || !Array.isArray(raw.acknowledged)) return [];
-    return raw.acknowledged.filter((a) => isObj(a) && typeof a.finding === "string" && typeof a.path === "string");
+    return raw.acknowledged
+      .filter((a) => isObj(a) && typeof a.finding === "string")
+      .map((a) => ({ finding: a.finding, path: typeof a.path === "string" ? a.path.replace(/\\/g, "/").replace(/^(\.\/)+/, "").replace(/\/+$/, "") : null }));
   } catch {
     return [];
   }

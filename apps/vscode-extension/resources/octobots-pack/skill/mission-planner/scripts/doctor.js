@@ -59,15 +59,26 @@ const keptSkills = new Set(record ? record.kept.map((k) => k.skill) : []);
 // Version agreement uses the pack's one marker rule (skill-marker.mjs). Only a plain integer
 // version takes part; pending, kept, reconciled (`<N>+local`) and newer skills are excluded and
 // reported by state in one line instead.
-const skillVersions = new Map();
-const excluded = [];
+const primer = join(ROOT, ".octobots", "hooks", "primer.mjs");
+const primerVersion = existsSync(primer) ? markerOf(readFileSync(primer, "utf8")) : null;
+const installed = [];
 for (const s of SKILLS) {
   const p = join(ROOT, ".claude", "skills", s, "SKILL.md");
   if (!existsSync(p)) { fail("pack", `skill missing: ${s}`, 'run "Octobots: Install Workflow Pack"'); continue; }
-  const m = parseSkillMarker(readFileSync(p, "utf8"));
+  installed.push({ s, m: parseSkillMarker(readFileSync(p, "utf8")) });
+}
+// "Newer" is newer than the installed pack: the record's version, else primer.mjs's marker, which
+// every install writes (pending.json exists only once a skill was changed locally, and the installer
+// leaves a newer skill alone without recording it). With no record, a primer behind EVERY integer
+// skill is itself the stale file, so nothing is called newer and the checks below report it.
+let newerThan = record ? record.packVersion : primerVersion;
+if (!record && newerThan !== null && !installed.some(({ m }) => m.kind === "integer" && m.n <= newerThan)) newerThan = null;
+const skillVersions = new Map();
+const excluded = [];
+for (const { s, m } of installed) {
   if (pendingSkills.has(s)) excluded.push(`${s} (pending reconcile)`);
   else if (keptSkills.has(s)) excluded.push(`${s} (kept: ${m.label ?? "no version"})`);
-  else if (record && m.n !== null && m.n > record.packVersion) excluded.push(`${s} (newer: ${m.label})`);
+  else if (newerThan !== null && m.n !== null && m.n > newerThan) excluded.push(`${s} (newer: ${m.label})`);
   else if (m.kind === "plus-local") excluded.push(`${s} (reconciled: ${m.label})`);
   else skillVersions.set(s, m.kind === "integer" ? m.n : null);
 }
@@ -90,10 +101,9 @@ if (record && record.skills.length) {
   warn("pack", MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX);
 }
 
-const primer = join(ROOT, ".octobots", "hooks", "primer.mjs");
 if (!existsSync(primer)) fail("pack", "primer.mjs is missing", 'run "Octobots: Install Workflow Pack"');
 else {
-  const v = markerOf(readFileSync(primer, "utf8"));
+  const v = primerVersion;
   if (packVersion !== null && v !== packVersion) {
     fail("pack", `primer.mjs is v${v}, skills are v${packVersion}`, 'run "Octobots: Install Workflow Pack"');
   } else ok("pack", `primer.mjs v${v}`);

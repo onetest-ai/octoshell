@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { PRE_MISSION_PRIMER, PRE_MISSION_PRIMER_LINES } from "./fixtures/pre-mission-primer.js";
@@ -311,6 +311,7 @@ function healthContext(ws: string, opts: { event?: string; configDir?: string } 
     env,
     input: JSON.stringify({ hook_event_name: opts.event ?? "SessionStart" }),
     encoding: "utf8",
+    timeout: 15_000, // a primer that blocks on a read fails here instead of hanging the suite
   });
   return JSON.parse(out).hookSpecificOutput.additionalContext as string;
 }
@@ -450,6 +451,59 @@ describe("primer.mjs health line (octobots-doctor)", () => {
       expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 1.`);
     },
   );
+
+  describe("user-controlled files cannot hang, bloat or redirect the primer (it runs at every session start)", () => {
+    it.skipIf(process.platform === "win32")("a FIFO at pending.json or doctor-acks.json is skipped, not read", () => {
+      const ws = repoWithOctobots();
+      workflowsDir(ws, "campaigns/c1/workflows");
+      mkdirSync(join(ws, ".octobots", "pack-updates"), { recursive: true });
+      execFileSync("mkfifo", [join(ws, ".octobots", "pack-updates", "pending.json"), join(ws, ".octobots", "doctor-acks.json")]);
+      expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 1.`);
+    });
+
+    it("a pending.json or doctor-acks.json over 256 KiB is not read", () => {
+      const ws = repoWithOctobots();
+      workflowsDir(ws, "campaigns/c1/workflows");
+      const rec = JSON.parse(caseText("valid")) as { pad?: string };
+      rec.pad = "x".repeat(300 * 1024);
+      pendingJson(ws, JSON.stringify(rec));
+      write(ws, ".octobots/doctor-acks.json", JSON.stringify({
+        acknowledged: [{ finding: "workflows", path: "campaigns/c1/workflows", date: "2026-10-05" }],
+        pad: "x".repeat(300 * 1024),
+      }));
+      expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 1.`);
+    });
+
+    it.skipIf(process.platform === "win32")("a symlinked pending.json is not followed", () => {
+      const ws = repoWithOctobots();
+      const outside = join(mkdtempClean("primer-outside-"), "pending.json");
+      writeFileSync(outside, caseText("valid"));
+      mkdirSync(join(ws, ".octobots", "pack-updates"), { recursive: true });
+      symlinkSync(outside, join(ws, ".octobots", "pack-updates", "pending.json"));
+      expect(healthLine(healthContext(ws))).toBeNull();
+    });
+  });
+
+  describe("doctor-acks.json keys (the contract T7.6's octobots-doctor writes)", () => {
+    it("a config-dir acknowledgement needs no path", () => {
+      const ws = repoWithOctobots();
+      write(ws, ".octobots/doctor-acks.json", JSON.stringify({ acknowledged: [{ finding: "config-dir", date: "2026-10-05" }] }));
+      expect(healthLine(healthContext(ws, { configDir: join(ws, ".claude") }))).toBeNull();
+    });
+
+    it("a workflows path with ./, a trailing / or backslashes is the same folder; a slug inside it is not", () => {
+      const ws = repoWithOctobots();
+      workflowsDir(ws, "campaigns/c1/workflows");
+      workflowsDir(ws, "campaigns/c1/missions/m1/workflows");
+      acks(ws, [
+        { finding: "workflows", path: "./campaigns/c1/workflows/" },
+        { finding: "workflows", path: "campaigns\\c1\\missions\\m1\\workflows" },
+      ]);
+      expect(healthLine(healthContext(ws))).toBeNull();
+      acks(ws, [{ finding: "workflows", path: "campaigns/c1/workflows/run" }]);
+      expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 2.`);
+    });
+  });
 
   it("nothing to report: no line at all", () => {
     const ws = repoWithOctobots();

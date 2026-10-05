@@ -60,6 +60,39 @@ describe("pending.json fixture cases", () => {
       // The pack version only shows when there is a sentence to carry it.
       expect(read.packVersion).toBe(c.expected.reconcile.length ? c.expected.packVersion : null);
     });
+
+    // A case with no pending entry looks the same to the primer whether it is well formed or not (no
+    // sentence either way), so each case is also read with one valid entry added: then the primer
+    // shows a sentence exactly when pack-updates.ts accepts the record, which catches a primer that
+    // stopped rejecting what makes such a case malformed (a bad kept entry, say).
+    const PROBE = {
+      skill: "knowledge-explorer",
+      action: "reconcile",
+      localVersion: "57-local",
+      localSha256: "d".repeat(64),
+      base: null,
+      upstreamSha256: "e".repeat(64),
+      retired: false,
+      dir: ".octobots/pack-updates/v57/knowledge-explorer",
+    };
+    const probed = cases.flatMap((c) => {
+      let raw: unknown;
+      try { raw = JSON.parse(c.text); } catch { return []; }
+      if (typeof raw !== "object" || raw === null || !Array.isArray((raw as { skills?: unknown }).skills)) return [];
+      const r = raw as { skills: unknown[] };
+      return [{ name: c.name, text: JSON.stringify({ ...r, skills: [...r.skills, PROBE] }) }];
+    });
+
+    it("probes every case the primer would otherwise see as silent", () => {
+      expect(probed.map((p) => p.name)).toEqual(expect.arrayContaining(["kept-only", "malformed-kept-skill-name-is-a-path"]));
+    });
+
+    it.each(probed)("reads $name plus one valid entry as pack-updates.ts does", (p) => {
+      const host = pendingSummary(p.text);
+      const read = primerReads(p.text);
+      expect(read.reconcile).toEqual(host.reconcile);
+      expect(read.packVersion).toBe(host.reconcile.length ? host.packVersion : null);
+    });
   });
 
   it("round-trips every valid case byte for byte (stable key order, one trailing newline)", () => {
