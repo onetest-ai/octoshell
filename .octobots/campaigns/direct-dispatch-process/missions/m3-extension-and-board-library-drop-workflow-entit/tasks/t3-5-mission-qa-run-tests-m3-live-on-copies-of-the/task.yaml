@@ -1,9 +1,40 @@
 name: 'T3.5 - Mission QA: run tests/m3 live on copies of the real octoshell and solo boards'
-status: draft
+status: done
 role: qa-engineer
 description: 'Scope: TC-001..010. TC-005 and TC-009 need the Extension Development Host: a manual F5 session with screenshots in tests/m3/evidence/, recorded as manual. TC-003 runs apps/vscode-extension/scripts/qa/dump-ids.mjs against main''s and the branch''s board dist. Update each TC''s status (campaign notes § Test conventions rule 4); write `## QA verification`. Out of scope: fixes. Downstream: M3 gate.'
 acceptance_criteria:
   - text: every TC has PASS, FAIL, BLOCKED or UNREACHABLE with evidence and a named pre-existing record (manual executions noted as manual in the RUN file); its frontmatter status is pass, fail or blocked (UNREACHABLE recorded as blocked with the reason in the RUN file)
-    done: false
+    done: true
   - text: no original board file changed (sha256/git status)
-    done: false
+    done: true
+notes: |
+  ## QA verification
+
+  Run: tests/m3/runs/RUN-2026-10-05-001.md, branch feat/direct-dispatch-process-m3 at c53c9dcc (T3.1-T3.4 + M2 B1, M3 B1, M3 B2), built with pnpm build. Evidence: tests/m3/evidence/. Black-box: commands, built dist, VSIX/package.json; source read only where a step said to, and for TC-006 after its command failed.
+
+  | TC | Verdict | Status | Pre-existing record |
+  |----|---------|--------|---------------------|
+  | TC-001 | PASS | pass | real apps/vscode-extension/package.json (17 commands, 0 workflow, install title "Octobots: Install Octobots Pack") |
+  | TC-002 | PASS | pass | copy of octoshell's real octograph campaign (7 missions); 0 workflow nodes |
+  | TC-003 | PASS | pass | copies of solo (575 ids) and octoshell (170) boards; main d1c83ccb vs branch dist; ids identical; main sees 6 + 5 workflows, branch 0 |
+  | TC-004 | PASS | pass | the 11 real workflows/ folders (12 files), sha256 identical after activation |
+  | TC-005 | BLOCKED (manual) | blocked | octoshell octograph m6 build-and-gate workflow panel; F5 + two VSIXes needed |
+  | TC-006 | FAIL | fail | solo copy (6 workflows/ folders), octoshell copy (5): the vitest fails (51 vs 45, 13 vs 8); validateBoard itself correct, parity with validate.js verified directly; bug M3 B3 |
+  | TC-007 | PASS | pass | real regenerated octograph.mjs + versions json (57 hash line); lint, typecheck, build, test, coverage green; docs grep empty |
+  | TC-008 | PASS | pass | octoshell repo (shared clone of the branch head) + copy of its board; map=0, own=0 |
+  | TC-009 | BLOCKED (manual) | blocked | octoshell octograph m6-extension-bridge copy; F5 needed |
+  | TC-010 | PASS | pass | real built packages/board dist, package.json, pnpm-lock.yaml; 0 workflow exports, acorn gone, EntityKind 4 kinds |
+
+  7 pass, 1 fail, 2 blocked (manual F5, not PASS), 0 unreachable.
+
+  ### Bug filed
+  M3 B3 (minor): packages/board/test/validate-workflows-warning.test.ts fails whenever OCTOBOTS_BOARD_COPIES points at a real board that already has workflows/ folders (asserts warnings === planted). Product behaviour is correct. Not fixed (QA).
+
+  ### Data-safety proof (AC2)
+  - Solo .octobots (1209 files incl. all workflows/ files): sha256 manifest before/after identical; solo git status --short identical (same 6 untracked .agents/memory lines).
+  - Octoshell .octobots excluding tests/m3 and this task: 415 files before, 416 after; the only differences are the two authorised writes (new bug B3 file; Part B appended to tests/m7/manual/T7.4-F5-script.md). The 5 real workflows/ files are byte-identical.
+  - octograph map (which writes .octobots/graph) and every board-reading vitest ran on copies / a shared clone in the scratchpad.
+  Files: evidence/data-safety.txt and the *.manifest.* / *.status.* files.
+
+  ### Manual items pending (user)
+  TC-005 and TC-009 need an Extension Development Host session. Steps are in tests/m7/manual/T7.4-F5-script.md Part B (B1 = TC-009, B2 = TC-005). Prebuilt pre-upgrade and M3 VSIXes (both 0.0.51, install with --force) and the copy to open are in the scratchpad m3qa/ (vsix/, octo-clone); the file lists the rebuild commands. Their automatable halves passed (panel-serializer.test.ts 3/3, serializer registered in dist/extension.js, manifest/palette checks, CampaignsTree on the real copy). Record each result in a manual RUN and set the TC status.

@@ -1,15 +1,31 @@
 name: T3.3 - Board library drops the Workflow entity; validateBoard warns
-status: draft
+status: done
 role: js-dev
 description: 'Scope: types.ts:73-127, index.ts:14 and managed-block.ts:1,23,106; board-model.ts (the 10 blocks) and write.ts (the 10 blocks); validate.ts:4,218-338,352,367-374 replaced by a warning pass mirroring validate.js text; delete workflow-meta.ts and extract-meta.ts and drop acorn (package.json AND pnpm-lock.yaml); delete the 16 test and fixture files and modify the 5; reword the scripts/graph-payload.mjs:63 comment that cites workflow-meta.ts; regenerate the octograph payload and rewrite the 57 hash (campaign notes § Test conventions rule 8). Add the QA harness apps/vscode-extension/scripts/qa/dump-ids.mjs <octobots-dir> [--board-dist <path to a built @octoshell/board dist/index.js>]: plain node; default board dist = this repo''s packages/board/dist/index.js; uses only the BoardModel API present on both main and this branch; prints one sorted `<kind>\t<id>` line per entity. Out of scope: tokenomics workflowId. Downstream: octograph bundle; M4 adds a validate.ts rule on top; M3 TC-003.'
 acceptance_criteria:
   - text: no Workflow API exported; EntityKind has 4 kinds; acorn removed from packages/board/package.json and pnpm-lock.yaml; `pnpm install --frozen-lockfile` succeeds (mission AC1)
-    done: false
+    done: true
   - text: packages/board/test/board-model.test.ts proves BoardModel loads identical ids on a real board copy with workflows/ and creates no workflow entity (mission AC2)
-    done: false
+    done: true
   - text: 'packages/board/test/validate-workflows-warning.test.ts proves validateBoard emits one severity "warning" finding per workflows/ folder with the same text as validate.js and no error, over a real board copy (mission AC3), message `<rel>: no longer read since pack v57` with rel relative to the validateBoard root (so `warning: ` + message equals the validate.js line, including on a copy not named .octobots); the same test also asserts union parity by running the pack''s validate.js over every campaign dir of the same copy. The pack side is apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/legacy-workflows.mjs (T2.4): one workflows/<slug>/ per finding, board root = nearest .octobots, else the parent of the nearest campaigns/'
-    done: false
+    done: true
   - text: graph payload regenerated, --verify passes, 57 hash rewritten in a visible diff line (mission AC6)
-    done: false
+    done: true
   - text: apps/vscode-extension/scripts/qa/dump-ids.mjs exists with the contract above, and apps/vscode-extension/test/qa-dump-ids.test.ts runs it over a temp copy of the repo's .octobots/ and asserts one line per BoardModel entity
-    done: false
+    done: true
+notes: |
+  ## QA verification
+
+  Verdict: PASS (re-verify after the CI fix round). PR #138, head 4dcc612b (checks green: both build jobs SUCCESS). Records: 78fea377 (isCampaignDir gate in validateBoard + test board built from git archive HEAD .octobots), 0b61df34 (payload regenerated), 4dcc612b (v57 sha recorded).
+
+  CI-red history: the first QA run passed locally but CI was red. CI checkout lacks the gitignored octograph campaign.yaml, so validateBoard warned under a dir BoardModel does not treat as a campaign while validate.js refused it (exit 2 "no entity"). Fix: validateBoard warns only under isCampaignDir dirs; pack doctor.js and the primer twin skip non-campaign dirs too (isCampaignDir in legacy-workflows.mjs + inline twin in primer.mjs).
+
+  Evidence:
+  - AC1: pnpm install --frozen-lockfile OK; no Workflow API; 4 kinds; acorn/parseWorkflowMeta grep count 0 in resources/octobots-pack/graph/octograph.mjs and packages/graph/dist/octograph.mjs.
+  - AC2: BoardModel ids diff vs merge-base b61bf2f8: octoshell 168 ids, solo 575 ids, sha1 of sorted ids identical old vs new, no workflow entity.
+  - AC3: CI parity over git archive HEAD .octobots (no octograph campaign.yaml): validateBoard 0 warnings = validate.js union 0 (octograph dir exits 2 no entity); planted campaigns/stray/missions/m1/workflows/x: validateBoard 0, validate.js exit 2 "no entity", doctor.js --json 0, primer 0. Real data: solo (read-only copy) validateBoard 6 = validate.js union 6 = doctor 6 = primer 6; octoshell working tree (octograph campaign.yaml present locally) 5 = 5 = 5 = 5. Message text matches validate.js line minus "warning: " prefix.
+  - AC4: graph-payload.mjs --verify "payload is current"; shipped-skills.mjs --verify "store is current"; v57 sha in visible diff.
+  - AC5: dump-ids.mjs + qa-dump-ids test pass inside the full suite.
+  - Full run: pnpm install --frozen-lockfile, build, typecheck, lint, test (board 293, tokenomics 102, extension 925, graph 653 passed), coverage all exit 0; 0 skips. Solo git status --short unchanged (6 entries, same md5).
+
+  Non-blocking: doctor.js counts per workflows/<slug> folder while the primer counts per workflows/ dir (agree on current data, 1 slug per dir); validate.js run on a campaign dir lacking campaign.yaml exits 2 by design.

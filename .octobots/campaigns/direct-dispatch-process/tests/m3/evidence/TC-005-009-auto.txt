@@ -1,0 +1,43 @@
+$ TC-005 automated half
+[33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/panel-serializer.test.ts > restored octoshell.workflow panel > uses the retired view type id
+ ✓ test/panel-serializer.test.ts > restored octoshell.workflow panel > is disposed with no error notification, whatever state it carried
+ ✓ test/panel-serializer.test.ts > restored octoshell.workflow panel > does not throw when the panel is already gone
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  21:41:17
+   Duration  260ms (transform 18ms, setup 45ms, collect 10ms, tests 2ms, environment 0ms, prepare 31ms)
+
+$ activation event + serializer registration in built dist (black-box on shipped artefacts)
+["onWebviewPanel:octoshell.campaign","onWebviewPanel:octoshell.mission","onWebviewPanel:octoshell.task","onWebviewPanel:octoshell.bug","onWebviewPanel:octoshell.workflow"]
+   1 registerWebviewPanelSerializer(LEGACY_WORKFLOW_VIEW_TYPE, legacyWorkflowPanelSerializer)
+$ TC-009 automated half: palette commands (titles) in manifest
+octoshell.openSettings	Octobots: Open Settings
+octoshell.newMissionInCampaign	Octobots: New Mission in this Campaign
+octoshell.newCampaign	Octobots: New Campaign
+octoshell.refreshCampaigns	Octobots: Refresh Campaigns
+octoshell.addFileToCampaign	Octobots: Add File to Campaign
+octoshell.deleteCampaign	Octobots: Delete Campaign
+octoshell.deleteMission	Octobots: Delete Mission
+octoshell.deleteTask	Octobots: Delete Task
+octoshell.deleteBug	Octobots: Delete Bug
+octoshell.installOctobotsWorkflowSkill	Octobots: Install Octobots Pack
+octoshell.doctor	Octobots: Doctor
+octoshell.installSdlcBundle	Octobots: Install SDLC Team Bundle
+octoshell.updateSdlcBundle	Octobots: Update SDLC Team Bundle
+octoshell.installGraph	Octobots: Install Graph
+octoshell.rebuildGraph	Octobots: Rebuild Graph
+octoshell.openTokenomics	Octobots: Tokenomics
+octoshell.exportTokenomicsReport	Octobots: Export Tokenomics Report
+titles matching /workflow/i:
+0
+$ M6 on the octo copy: mission dir and workflows folder on disk
+mission.yaml
+tasks
+workflows
+build-and-gate
+$ CampaignsTree walk on the copy: mission m6 children

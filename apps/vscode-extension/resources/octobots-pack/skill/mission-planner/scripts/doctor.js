@@ -16,7 +16,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
-import { findLegacyWorkflowFolders, NO_LONGER_READ } from "./legacy-workflows.mjs";
+import { findLegacyWorkflowFolders, isCampaignDir, NO_LONGER_READ } from "./legacy-workflows.mjs";
 import { parseSkillMarker } from "./skill-marker.mjs";
 import { readPending, readRegularFile, MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX } from "./pending-io.mjs";
 
@@ -66,9 +66,9 @@ const primerVersion = existsSync(primer) ? markerOf(readSmall(primer) ?? "") : n
 const installed = [];
 for (const s of SKILLS) {
   const p = join(ROOT, ".claude", "skills", s, "SKILL.md");
-  if (!existsSync(p)) { fail("pack", `skill missing: ${s}`, 'run "Octobots: Install Workflow Pack"'); continue; }
+  if (!existsSync(p)) { fail("pack", `skill missing: ${s}`, 'run "Octobots: Install Octobots Pack"'); continue; }
   const text = readSmall(p);
-  if (text === null) { fail("pack", `skill unreadable: ${s} (SKILL.md is not a readable regular file)`, 'run "Octobots: Install Workflow Pack"'); continue; }
+  if (text === null) { fail("pack", `skill unreadable: ${s} (SKILL.md is not a readable regular file)`, 'run "Octobots: Install Octobots Pack"'); continue; }
   installed.push({ s, m: parseSkillMarker(text) });
 }
 // "Newer" is newer than the installed pack: the record's version, else primer.mjs's marker, which
@@ -90,7 +90,7 @@ const versions = [...skillVersions.values()].filter((v) => v !== null);
 const packVersion = versions.length ? Math.max(...versions) : (record ? record.packVersion : null);
 if (versions.length && new Set(versions).size > 1) {
   fail("pack", `skills disagree on version: ${[...skillVersions].map(([k, v]) => `${k}=${v}`).join(", ")}`,
-    'run "Octobots: Install Workflow Pack" to bring them to one version');
+    'run "Octobots: Install Octobots Pack" to bring them to one version');
 } else if (versions.length) {
   ok("pack", `${skillVersions.size} skills installed at v${packVersion}`);
 }
@@ -105,11 +105,11 @@ if (record && record.skills.length) {
   warn("pack", MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX);
 }
 
-if (!existsSync(primer)) fail("pack", "primer.mjs is missing", 'run "Octobots: Install Workflow Pack"');
+if (!existsSync(primer)) fail("pack", "primer.mjs is missing", 'run "Octobots: Install Octobots Pack"');
 else {
   const v = primerVersion;
   if (packVersion !== null && v !== packVersion) {
-    fail("pack", `primer.mjs is v${v}, skills are v${packVersion}`, 'run "Octobots: Install Workflow Pack"');
+    fail("pack", `primer.mjs is v${v}, skills are v${packVersion}`, 'run "Octobots: Install Octobots Pack"');
   } else ok("pack", `primer.mjs v${v}`);
 }
 
@@ -139,7 +139,7 @@ for (const [event, entries] of Object.entries(hooks)) {
 }
 if (dupes.length) {
   fail("hooks", `duplicate hook registrations — each fires ${dupes.length > 1 ? "multiple times" : "twice"} per event:\n    ${dupes.join("\n    ")}`,
-    'run "Octobots: Install Workflow Pack" with a current Octobots extension — the de-duplication is in the installer, so an older extension will re-create the pair');
+    'run "Octobots: Install Octobots Pack" with a current Octobots extension — the de-duplication is in the installer, so an older extension will re-create the pair');
 } else if (ourHookCount === 0) {
   note("hooks", "no Octobots hooks registered — they are opt-in, so this is only a problem if you wanted them");
 } else {
@@ -156,10 +156,10 @@ if (!sl?.command) {
   note("statusline", `a non-Octobots status line is configured; left alone: ${String(sl.command).slice(0, 60)}`);
 } else if (!existsSync(slScript)) {
   fail("statusline", "settings point at .octobots/statusline.sh but the script is missing",
-    'run "Octobots: Install Workflow Pack"');
+    'run "Octobots: Install Octobots Pack"');
 } else {
   const v = markerOf(readFileSync(slScript, "utf8"));
-  if (packVersion !== null && v !== packVersion) warn("statusline", `statusline.sh is v${v}, pack is v${packVersion}`, 'run "Octobots: Install Workflow Pack"');
+  if (packVersion !== null && v !== packVersion) warn("statusline", `statusline.sh is v${v}, pack is v${packVersion}`, 'run "Octobots: Install Octobots Pack"');
   else ok("statusline", `installed and registered (v${v})`);
   if (String(sl.command).includes("/Users/") || /^[A-Za-z]:\\/.test(String(sl.command))) {
     fail("statusline", `the registration uses an ABSOLUTE path — it breaks on another machine or a fresh clone`,
@@ -175,7 +175,7 @@ if (!sl?.command) {
 
 // ── 5. Tokenomics + ccusage ──────────────────────────────────────────────────────────────────
 if (!existsSync(join(ROOT, ".octobots", "tokenomics"))) {
-  fail("tokenomics", "the tokenomics CLI is missing", 'run "Octobots: Install Workflow Pack"');
+  fail("tokenomics", "the tokenomics CLI is missing", 'run "Octobots: Install Octobots Pack"');
 } else ok("tokenomics", "CLI installed");
 // ccusage: the workspace's own copy first — that is the one the pack installs and the scripts use.
 const localCcusage = join(ROOT, ".octobots", "tools", "node_modules", ".bin", "ccusage");
@@ -189,7 +189,7 @@ if (existsSync(localCcusage)) {
     "ccusage is not installed for this workspace, so every usage call falls back to `npx` — which " +
       "re-resolves a platform-specific native package each time. Measured: 823ms per call against " +
       "29ms for an installed binary, and the usage wait loop makes up to fifteen calls.",
-    'run "Octobots: Install Workflow Pack" and accept the tools step (installs once, ~340ms, into .octobots/tools)');
+    'run "Octobots: Install Octobots Pack" and accept the tools step (installs once, ~340ms, into .octobots/tools)');
 }
 
 // ── 6. Board ─────────────────────────────────────────────────────────────────────────────────
@@ -201,7 +201,7 @@ else {
   // Workflow support was removed in pack v57. These folders are ignored, never touched: warn only.
   const base = join(ROOT, ".octobots");
   const leftovers = readdirSync(campaigns, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
+    .filter((e) => e.isDirectory() && isCampaignDir(join(campaigns, e.name))) // a dir with no campaign.yaml/.md is no campaign
     .flatMap((e) => findLegacyWorkflowFolders(join(campaigns, e.name), base));
   if (leftovers.length) {
     warn("board",

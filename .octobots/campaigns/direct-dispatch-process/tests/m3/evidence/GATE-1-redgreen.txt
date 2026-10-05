@@ -1,0 +1,42 @@
+### GATE-1 repro. OCTOBOTS_BOARD_COPIES=/private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m3gate/octo-empty/.octobots (tracked octoshell board + an EMPTY campaigns/direct-dispatch-process/workflows/)
+## 1. #144 test file (git show origin/feat/direct-dispatch-process-m3:packages/board/test/validate-workflows-warning.test.ts)
+    7744 packages/board/test/validate-workflows-warning.test.ts
+ ❯ test/validate-workflows-warning.test.ts  (6 tests | 1 failed) 965ms
+   × validateBoard: leftover workflows/ folders > over every real board copy: one warning per workflows/ folder, no error for them, union equals validate.js
+     → expected 2 to be 3 // Object.is equality
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > over every real board copy: one warning per workflows/ folder, no error for them, union equals validate.js
+AssertionError: expected 2 to be 3 // Object.is equality
+- Expected
++ Received
+- 3
++ 2
+ ❯ test/validate-workflows-warning.test.ts:65:31
+     63|         expect(warnings.map((w) => w.message)).toContain(`${path}: ${S…
+     64|       }
+     65|       expect(warnings.length).toBe(baseline.length + planted.length); …
+       |                               ^
+     66|       const messages = warnings.map((w) => w.message);
+     67|       for (const b of baseline) expect(messages).toContain(b.message);…
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  22:22:27
+   Duration  1.13s (transform 34ms, setup 0ms, collect 41ms, tests 965ms, environment 0ms, prepare 32ms)
+undefined
+/Users/arozumenko/Development/octoshell/packages/board:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/validate-workflows-warning.test.ts
+restored:    10013 bytes; git status:        0 changed
+## 2. #145 test file (e5257867), empty workflows/ copy
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/board
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > over every real board copy: one warning per workflows/ folder, no error for them, union equals validate.js
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > counts exactly when a campaign and its first mission already hold an empty workflows/
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > agrees with validate.js on a copy not named .octobots, and counts an empty workflows/ as one
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > reports from the .octobots root even when a campaign folder is itself named campaigns
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > emits nothing for a campaigns/ dir with no campaign.yaml, as validate.js does
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > emits nothing for a board with no workflows/ folder
+ ✓ test/validate-workflows-warning.test.ts > validateBoard: leftover workflows/ folders > keeps working when the board sits in <workspace>/.octobots
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  22:22:29
+   Duration  1.40s (transform 34ms, setup 0ms, collect 40ms, tests 1.22s, environment 0ms, prepare 26ms)

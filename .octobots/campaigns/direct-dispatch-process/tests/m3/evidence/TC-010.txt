@@ -1,0 +1,41 @@
+$ build board
+> tsc -p tsconfig.json
+
+exit 
+$ exports
+workflow exports: [] total exports: 34
+exit 0
+$ acorn in package.json (expect none)
+grep exit 1
+$ acorn in src (expect none)
+grep exit 
+$ acorn in lock importer packages/board (expect none)
+(end)
+$ importer block exists?
+115:  packages/board:
+$ frozen lockfile
+LOCKFILE_OK
+$ EntityKind
+packages/board/src/managed-block.ts:1:export type EntityKind = "campaign" | "mission" | "task" | "bug";
+packages/board/src/managed-block.ts:97:  kind: EntityKind,
+$ dist types EntityKind
+packages/board/dist/entity-schema.d.ts:1:export type EntityKind = "campaign" | "mission" | "task" | "bug";
+packages/board/dist/managed-block.d.ts:1:export type EntityKind = "campaign" | "mission" | "task" | "bug";
+$ exts typecheck
+> @octoshell/vscode-extension@0.0.51 typecheck /Users/arozumenko/Development/octoshell/apps/vscode-extension
+> tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit
+
+exit 
+$ any workflow files in board src/dist
+workflow-meta.d.ts
+workflow-meta.js
+workflow-meta.js.map
+(end)
+stale dist artifact check:
+       0
+.gitignore:2:dist/	packages/board/dist/workflow-meta.js
+-rw-r--r--@ 1 arozumenko  staff  7258 Oct  5 21:39 packages/board/dist/workflow-meta.js
+index references workflow-meta:
+0
+clean-clone build (main-less): clone branch head, tsc, list workflow files
+(clean clone dist workflow files above; none expected)

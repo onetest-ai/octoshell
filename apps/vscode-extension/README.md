@@ -6,7 +6,7 @@ project board with **no database and no server**: the markdown files on disk are
 of truth, so your plan is diffable, reviewable in pull requests, and safe for multiple agents (and
 humans) to edit at the same time.
 
-It also installs a **workflow pack** that teaches CLI coding agents — Claude Code, OpenAI Codex,
+It also installs an **Octobots pack** that teaches CLI coding agents — Claude Code, OpenAI Codex,
 GitHub Copilot CLI — how to read and drive the very same board.
 
 ## Features
@@ -15,15 +15,14 @@ GitHub Copilot CLI — how to read and drive the very same board.
   activity‑bar view; open any item in its own editor tab.
 - **Status, acceptance criteria, and docs.** Set statuses from dropdowns, manage a task's
   acceptance‑criteria checklist, and attach documents.
-- **Workflows.** Plan how the work runs: a workflow is a folder holding a `workflow.md` brief and a
-  `workflow.js` Claude Code dynamic‑workflow script. The extension draws its phases, agents and
-  parallel branches as a diagram and lets you edit the steps; Claude Code runs the script. A
-  campaign's workflows orchestrate its missions; a mission's single workflow orchestrates its tasks.
 - **Disk is authoritative.** Every change is written to markdown and the board is rebuilt from
   disk. A single debounced, git‑aware watcher keeps the UI in sync through
   `git checkout` / `stash` / `rebase` without churn.
-- **Workflow pack installer.** One command drops the Octobots skill and planning agents into
-  `<workspace>/.claude` so your CLI agents understand the board model.
+- **Octobots pack installer.** One command drops the Octobots skills (mission-planner,
+  mission-execution, mission-completion-gate, knowledge-explorer, octobots-doctor) and session hooks
+  into the workspace so your CLI agents understand the board model. Skills, the graph payload and
+  the hook registration go under `.claude`; hook scripts go to `.octobots/hooks` and tokenomics to
+  `.octobots/tokenomics`. Skills you changed locally are staged for an agent to merge rather than overwritten.
 
 ## Getting started
 
@@ -31,7 +30,7 @@ GitHub Copilot CLI — how to read and drive the very same board.
 2. Open the **Octobots** view from the activity bar.
 3. Create a **campaign**, then add **missions** and **tasks** under it. Every task gets at least
    one acceptance criterion.
-4. *(Optional)* Run **“Octobots: Install Workflow Pack”** from the Command Palette to let your CLI
+4. *(Optional)* Run **“Octobots: Install Octobots Pack”** from the Command Palette to let your CLI
    coding agents drive the board too.
 
 ## How the board is organized
@@ -51,9 +50,8 @@ up in normal git diffs.
 
 - **Octobots: New Campaign**
 - **Octobots: New Mission in this Campaign**
-- **Octobots: New Workflow**
-- **Octobots: Delete Workflow**
-- **Octobots: Install Workflow Pack**
+- **Octobots: Install Octobots Pack**
+- **Octobots: Doctor**
 - … plus per‑item status and delete actions in the tree context menus.
 
 ## Requirements

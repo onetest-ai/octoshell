@@ -19,7 +19,7 @@ and writable by both an editor UI and the agents themselves.
 Octobots is a **VS Code extension** that turns a workspace's `.octobots/` directory into a
 markdown project board — **campaigns → missions → tasks**, plus **bugs**. The files on disk are
 the single source of truth (no database, no server), so the board is diffable and safe for
-concurrent edits. The extension renders and edits the board, and ships a **workflow pack** that
+concurrent edits. The extension renders and edits the board, and ships the **Octobots pack** that
 teaches CLI agents to read and drive the same files.
 
 ## Object model
@@ -58,7 +58,7 @@ Each entity has a **status**: `draft → executing → awaitingApproval → done
 
 ### Driving the board from CLI agents
 
-10. As a user, I want to install a workflow pack into my workspace, so my CLI agents understand
+10. As a user, I want to install the Octobots pack into my workspace, so my CLI agents understand
     the board model.
 11. As an agent, I want small scripts to create and update board entities
     (`add-task.js`, `add-bug.js`, `set-status.js`, `set-criterion.js`, `add-doc.js`, …), so I can
@@ -75,9 +75,9 @@ Each entity has a **status**: `draft → executing → awaitingApproval → done
   edits. Light host state (appearance) lives in VS Code `globalState`.
 - **Monorepo:** `packages/board` (parse/validate/write), `packages/tokenomics` (transcript pricing),
   `apps/vscode-extension` (host + React/Vite webview on VS Code theme tokens).
-- **Workflow pack** (`resources/octobots-pack`): the `mission-planner` skill + command scripts,
-  the `workflow-designer` / `mission-execution` / `mission-completion-gate` skills, and a
-  `hooks/primer.mjs` session hook, installed into `<workspace>/.claude` on demand. No agents — agent
+- **Octobots pack** (`resources/octobots-pack`): the `mission-planner` skill + command scripts,
+  the `mission-execution` / `mission-completion-gate` / `knowledge-explorer` / `octobots-doctor` skills, and
+  session hooks (`hooks/primer.mjs`, work‑log, mission‑gate), installed on demand (skills under `<workspace>/.claude`, hook scripts in `.octobots/hooks`, registration in `.claude/settings.json`). No agents — agent
   rosters belong to the repo.
 - See `docs/tech-stack.md` for the full stack and `CLAUDE.md` for the architecture tour.
 

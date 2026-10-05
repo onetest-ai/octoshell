@@ -1,0 +1,42 @@
+
+> octoshell@0.0.0 typecheck /Users/arozumenko/Development/octoshell
+> turbo run typecheck
+
+• Packages in scope: @octoshell/board, @octoshell/graph, @octoshell/tokenomics, @octoshell/vscode-extension
+• Running typecheck in 4 packages
+• Remote caching disabled
+@octoshell/board:typecheck: cache hit, replaying logs d15b9601a89cd0dc
+@octoshell/board:typecheck: 
+@octoshell/board:typecheck: > @octoshell/board@0.0.0 typecheck /Users/arozumenko/Development/octoshell/packages/board
+@octoshell/board:typecheck: > tsc -p tsconfig.json --noEmit
+@octoshell/board:typecheck: 
+@octoshell/board:build: cache hit, replaying logs b0a117c169c2fa40
+@octoshell/board:build: 
+@octoshell/board:build: > @octoshell/board@0.0.0 build /Users/arozumenko/Development/octoshell/packages/board
+@octoshell/board:build: > tsc -p tsconfig.json
+@octoshell/board:build: 
+@octoshell/graph:typecheck: cache hit, replaying logs 8063e6b6cf0b92e7
+@octoshell/graph:typecheck: 
+@octoshell/graph:typecheck: > @octoshell/graph@0.0.0 typecheck /Users/arozumenko/Development/octoshell/packages/graph
+@octoshell/graph:typecheck: > tsc -p tsconfig.json --noEmit
+@octoshell/graph:typecheck: 
+@octoshell/tokenomics:typecheck: cache hit, replaying logs 5c7b7a18581f21f2
+@octoshell/tokenomics:typecheck: 
+@octoshell/tokenomics:typecheck: > @octoshell/tokenomics@0.0.0 typecheck /Users/arozumenko/Development/octoshell/packages/tokenomics
+@octoshell/tokenomics:typecheck: > tsc -p tsconfig.json --noEmit
+@octoshell/tokenomics:typecheck: 
+@octoshell/tokenomics:build: cache hit, replaying logs a93059138b80f5aa
+@octoshell/tokenomics:build: 
+@octoshell/tokenomics:build: > @octoshell/tokenomics@0.0.0 build /Users/arozumenko/Development/octoshell/packages/tokenomics
+@octoshell/tokenomics:build: > tsc -p tsconfig.json
+@octoshell/tokenomics:build: 
+@octoshell/vscode-extension:typecheck: cache hit, replaying logs f29f0cabcbdff66f
+@octoshell/vscode-extension:typecheck: 
+@octoshell/vscode-extension:typecheck: > @octoshell/vscode-extension@0.0.51 typecheck /Users/arozumenko/Development/octoshell/apps/vscode-extension
+@octoshell/vscode-extension:typecheck: > tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit
+@octoshell/vscode-extension:typecheck: 
+
+ Tasks:    6 successful, 6 total
+Cached:    6 cached, 6 total
+  Time:    64ms >>> FULL TURBO
+

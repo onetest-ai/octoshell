@@ -31,6 +31,15 @@ export function boardRootOf(dir) {
 }
 
 /**
+ * True when `dir` is a campaign as the board model sees it: it holds a campaign.yaml or campaign.md.
+ * BoardModel (packages/board) skips any other directory under campaigns/, so a leftover workflows/
+ * folder inside one is not on the board and is not reported (mirrors `isCampaignDir` in board-model.ts).
+ */
+export function isCampaignDir(dir) {
+  return existsSync(join(dir, "campaign.yaml")) || existsSync(join(dir, "campaign.md"));
+}
+
+/**
  * Leftover workflow folders belonging to the campaign or mission folder `dir`: those in its own
  * `workflows/`, plus those of every mission under `dir/missions/`. Each `workflows/<slug>/` is one
  * folder; a `workflows/` holding no sub-folder is reported as itself. Returned as paths relative to

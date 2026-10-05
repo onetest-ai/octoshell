@@ -23,10 +23,6 @@ import {
   deleteMission,
   deleteTask,
   deleteBug,
-  createWorkflow as createWorkflowFile,
-  deleteWorkflow as deleteWorkflowFile,
-  appendWorkflowRun as appendWorkflowRunFile,
-  migrateLegacyWorkflows as migrateLegacyWorkflowsFile,
   migrateEntitiesToYaml as migrateEntitiesToYamlFile,
   parseDocumentLinks,
   loadEntity,
@@ -38,8 +34,6 @@ import {
   type Bug,
   type BugParent,
   type BugSeverity,
-  type Workflow,
-  type WorkflowParent,
 } from "@octoshell/board";
 import { rollupCampaign, type Rollup } from "./board-rollup.js";
 import type { DocLink, DocFile, CampaignSummary, MissionProposal } from "../protocol/index.js";
@@ -375,32 +369,6 @@ export class BoardHost {
   deleteTask(id: string): void { deleteTask(this.octobotsDir, id); this.reconcile(); }
   deleteBug(id: string): void { deleteBug(this.octobotsDir, id); this.reconcile(); }
 
-  // ── Workflows API ───────────────────────────────────────────────────────────
-
-  listWorkflows(parent: WorkflowParent): Workflow[] { return this.model.listWorkflows(parent); }
-  getWorkflow(id: string): Workflow | null { return this.model.getWorkflow(id); }
-
-  createWorkflow(parent: WorkflowParent, input: { name: string }): { id: string; folderPath: string } {
-    const res = createWorkflowFile(this.octobotsDir, parent, input);
-    this.reconcile();
-    return res;
-  }
-
-  appendWorkflowRun(id: string, entry: { status: string; summary: string; at: string }): void {
-    appendWorkflowRunFile(this.octobotsDir, id, entry);
-    this.reconcile();
-  }
-
-  deleteWorkflow(id: string): void {
-    deleteWorkflowFile(this.octobotsDir, id);
-    this.reconcile();
-  }
-
-  /** One-time migration to the js-only workflow layout. Returns how many workflow.md were retired. */
-  migrateLegacyWorkflows(): number {
-    return migrateLegacyWorkflowsFile(this.octobotsDir);
-  }
-
   /**
    * One-time, idempotent migration of every entity file from Markdown to YAML: parse each
    * `<kind>.md`, fold parent `[status:]`/`[role:]`/`[severity:]` markers and a `## Tokenomics` block
@@ -408,13 +376,6 @@ export class BoardHost {
    */
   migrateEntitiesToYaml(): number {
     return migrateEntitiesToYamlFile(this.octobotsDir);
-  }
-
-  /** Absolute path of a workflow's script, for opening it in a normal editor tab. */
-  workflowScriptPath(id: string): string {
-    const wf = this.model.getWorkflow(id);
-    if (!wf) throw new Error(`Workflow not found: ${id}`);
-    return join(this.octobotsDir, wf.scriptPath);
   }
 
   // ── Private helpers (documents) ──────────────────────────────────────────────
@@ -464,3 +425,14 @@ export class BoardHost {
   }
 }
 
+
+/**
+ * What activation does to a workspace's board: open it, run the one-time entity migration, load it.
+ * A user's `workflows/` folders are data this extension no longer reads or writes.
+ */
+export function openBoard(octobotsDir: string): BoardHost {
+  const board = new BoardHost(octobotsDir);
+  board.migrateEntitiesToYaml();
+  board.reconcile();
+  return board;
+}

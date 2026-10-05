@@ -33,7 +33,7 @@ it, and rebuilds its in‑memory model from disk on every change.
 - `rpc-dispatcher.ts` is the canonical RPC table routing webview calls to host services.
 - A single **debounced, git‑quiescence‑gated** board watcher re‑parses the whole `.octobots`
   tree after it settles, so bulk git operations don't churn state.
-- `octobots-skill` / `octobots-hooks` install the bundled workflow pack into `<workspace>/.claude`.
+- `octobots-skill` / `octobots-hooks` install the bundled Octobots pack into `<workspace>/.claude`.
 - Light host state (appearance) is kept in VS Code `globalState` — not a DB.
 
 ## Webview (`apps/vscode-extension/src/webview`)
@@ -42,7 +42,7 @@ it, and rebuilds its in‑memory model from disk on every change.
   variables — never hardcoded colors), plus `@vscode-elements/elements` web components.
 - The entry routes on the host's `bind` message to the entity detail editors (`CampaignView`,
   `MissionView`, `TaskView`, `BugView`) with status dropdowns, acceptance‑criteria checklists,
-  document links, and team sections.
+  document links, and notes.
 - Host↔webview communication is `postMessage` request/response (`rpc` → `rpc:result`).
 
 ## Board model (`packages/board`)
@@ -56,14 +56,13 @@ it, and rebuilds its in‑memory model from disk on every change.
 - **Disk‑authoritative**: reads are a pure rebuild with additive id back‑fill, never a
   cascade‑mutate, which is what makes concurrent agent + human edits safe.
 
-## The workflow pack (`resources/octobots-pack`)
+## The Octobots pack (`resources/octobots-pack`)
 
 Shipped inside the extension and copied into a workspace on demand:
 
 - the **`mission-planner` skill** with command scripts (`add-task.js`, `add-bug.js`, `set-status.js`,
-  `set-criterion.js`, `validate.js`, `list.js`, `show.js`, `add-doc.js`, `add-workflow.js`,
-  `set-step.js`, `add-run.js`, …);
-- the **`workflow-designer`**, **`mission-execution`** and **`mission-completion-gate`** skills;
+  `set-criterion.js`, `validate.js`, `list.js`, `show.js`, `add-doc.js`, `doctor.js`, …);
+- the **`mission-execution`**, **`mission-completion-gate`**, **`knowledge-explorer`** and **`octobots-doctor`** skills (missions run by dispatching sub-agents directly, with no workflow scripts);
 - **no agents** — the pack ships skills and a hook only;
 - a **session hook** (`hooks/primer.mjs`) that primes a CLI agent with the board model and is
   inert outside an `.octobots/` repo.

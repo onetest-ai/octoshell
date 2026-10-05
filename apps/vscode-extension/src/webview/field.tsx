@@ -1,13 +1,28 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 export function Field(
   { label, value, onSave }: { label: string; value: string; onSave: (v: string) => void },
 ): JSX.Element {
   const [v, setV] = useState(value);
-  const editing = useRef(false);
+  const [editing, setEditing] = useState(false);
+  const [seen, setSeen] = useState(value);
+  // The text at the moment of focus. Blur saves only if the user changed it since: an untouched
+  // field must adopt the newest prop (an external edit that arrived while focused), not save its
+  // stale text over it. An edit reverted to this value counts as untouched.
+  const focusText = useRef(value);
+  // The prop at the moment of focus. An untouched field adopts the prop only if it changed since:
+  // right after this field saved, the prop still holds the pre-save text until the host echoes the
+  // write back, and adopting it then would revert the user's own just-saved edit.
+  const focusValue = useRef(value);
   // Autosave on blur (below). While the field is focused, ignore background reloads (spine events)
   // so they don't clobber an in-progress edit; re-sync from the server only when not editing.
-  useEffect(() => { if (!editing.current) setV(value); }, [value]);
+  // The sync happens during render (React's "adjust state when a prop changes" pattern) rather than
+  // in an effect: an effect leaves one committed frame where the new prop is in the DOM everywhere
+  // else but this textarea is still empty.
+  if (value !== seen) {
+    setSeen(value);
+    if (!editing) setV(value);
+  }
   const id = `field-${label.toLowerCase().replace(/\s+/g, "-")}`;
   return (
     <div className="space-y-1">
@@ -18,8 +33,13 @@ export function Field(
         rows={2}
         value={v}
         onChange={(e) => setV(e.target.value)}
-        onFocus={() => { editing.current = true; }}
-        onBlur={() => { editing.current = false; if (v !== value) onSave(v); }}
+        onFocus={() => { focusText.current = v; focusValue.current = value; setEditing(true); }}
+        onBlur={() => {
+          setEditing(false);
+          if (v === focusText.current) {
+            if (value !== focusValue.current) setV(value);
+          } else if (v !== value) onSave(v);
+        }}
       />
     </div>
   );

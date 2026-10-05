@@ -1,0 +1,13 @@
+import { validateBoard } from "/Users/arozumenko/Development/octoshell/packages/board/dist/index.js";
+import { spawnSync } from "node:child_process"; import { readdirSync, existsSync } from "node:fs"; import { join } from "node:path";
+const board = process.argv[2];
+const f = validateBoard(board);
+const warns = f.filter(x=>x.severity==="warning").map(x=>"warning: "+x.message).sort();
+const wfErr = f.filter(x=>x.severity==="error" && /workflow/i.test(x.message));
+const V = "/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/validate.js";
+const camps = readdirSync(join(board,"campaigns"),{withFileTypes:true}).filter(e=>e.isDirectory()).map(e=>join(board,"campaigns",e.name));
+const pack = camps.flatMap(c=>spawnSync("node",[V,c],{encoding:"utf8"}).stdout.split("\n").filter(l=>l.startsWith("warning: ") && l.endsWith("no longer read since pack v57"))).sort();
+console.log("validateBoard warnings:", warns.length, " errors mentioning workflow:", wfErr.length, " total findings:", f.length);
+warns.forEach(w=>console.log("  "+w));
+console.log("validate.js workflow warnings over", camps.length, "campaign dirs:", pack.length);
+console.log("SETS_EQUAL:", JSON.stringify(warns)===JSON.stringify(pack));

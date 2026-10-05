@@ -14,6 +14,9 @@ describe("resolveBound", () => {
   it("maps a bug bind", () => {
     expect(resolveBound({ type: "bind", kind: "bug", id: "bug1" })).toEqual({ kind: "bug", id: "bug1" });
   });
+  it("resolves a retired workflow bind to none, so no view renders for it", () => {
+    expect(resolveBound({ type: "bind", kind: "workflow", id: "folder:campaigns/a/workflows/w" })).toEqual({ kind: "none" });
+  });
   it("defaults unknown/missing kind to none", () => {
     expect(resolveBound(undefined)).toEqual({ kind: "none" });
     expect(resolveBound({ type: "bind" })).toEqual({ kind: "none" });

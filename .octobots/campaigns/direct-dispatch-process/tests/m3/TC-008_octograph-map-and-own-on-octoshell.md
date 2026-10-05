@@ -4,7 +4,8 @@ title: "octograph map and own run on the octoshell repo with the regenerated bun
 mission: M3
 covers: [M3-AC6]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m3/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---

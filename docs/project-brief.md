@@ -8,8 +8,8 @@ Octobots (codename **Octoshell**) is a VS Code extension that turns a workspace'
 is **no database and no server**: the files on disk are the single source of truth, so the board
 is diffable, code‑reviewable, and safe for multiple agents (and humans) to edit at the same time.
 
-Alongside the editor, Octobots ships a **workflow pack** — a skill, planning agents, and a
-session hook — that teaches CLI coding agents (Claude Code, OpenAI Codex, GitHub Copilot CLI)
+Alongside the editor, Octobots ships the **Octobots pack** — skills and
+session hooks — that teaches CLI coding agents (Claude Code, OpenAI Codex, GitHub Copilot CLI)
 how to read and drive the same board. The board is the shared contract between the human in the
 editor and the agents on the command line.
 
@@ -33,12 +33,11 @@ plan a first‑class, in‑repo, markdown artifact that both the editor UI and t
 
 - **In the editor.** The Octobots activity‑bar view lists campaigns, missions, tasks, and bugs.
   Opening any entity gives a detail panel with a status dropdown, an acceptance‑criteria
-  checklist, attached documents, and team assignments. Every change is written straight to
+  checklist, attached documents, and notes. Every change is written straight to
   markdown; the board is rebuilt from disk and a debounced, git‑quiescence‑gated watcher keeps the
   UI honest through `git checkout` / `stash` / `rebase`.
-- **For agents.** Installing the workflow pack drops the Octobots skills (`mission-planner`,
-  `workflow-designer`, `mission-execution`, `mission-completion-gate`) and a session‑primer hook into
-  `<workspace>/.claude`. It installs **no agents** — planning and execution run under whatever agent
+- **For agents.** Installing the Octobots pack drops the Octobots skills (`mission-planner`, `mission-execution`, `mission-completion-gate`, `knowledge-explorer` and `octobots-doctor`) and session hooks (primer, work‑log, mission‑gate) into
+  the workspace: skills under `.claude`, hook scripts in `.octobots/hooks`, registration in `.claude/settings.json`. Skills the user changed locally are staged for an agent to merge rather than overwritten. It installs **no agents** — planning and execution run under whatever agent
   the user is already in, and agent rosters belong to the repo. Agents create and update board entities through small scripts
   (`add-task.js`, `set-status.js`, `set-criterion.js`, `validate.js`, …) and the same files the
   editor renders.

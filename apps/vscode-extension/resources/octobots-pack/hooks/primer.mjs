@@ -252,6 +252,8 @@ function listWorkflowDirs(projectDir) {
     if (subdirs(join(projectDir, ".octobots", ...rel.split("/"))).includes("workflows")) found.push(`${rel}/workflows`);
   };
   for (const c of subdirs(campaigns)) {
+    // a dir with no campaign.yaml/.md is no campaign to the board model (twin of isCampaignDir)
+    if (!existsSync(join(campaigns, c, "campaign.yaml")) && !existsSync(join(campaigns, c, "campaign.md"))) continue;
     check(`campaigns/${c}`);
     for (const m of subdirs(join(campaigns, c, "missions"))) check(`campaigns/${c}/missions/${m}`);
   }

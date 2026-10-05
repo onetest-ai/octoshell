@@ -14,6 +14,10 @@ acceptance_criteria:
     done: false
   - text: The release verification asserts the VSIX contains extension/resources/shipped-skills.json.br and that it decompresses and passes shipped-skills.mjs --verify against the packaged pack (input from the T7.2 review)
     done: false
+  - text: 'The VSIX is packaged from a clean webview build: media/assets holds only the files media/index.html references plus committed assets (vite emptyOutDir:false otherwise leaves stale hashed bundles, e.g. an older one still containing workflow-diagram code, which a working-copy package would ship and which the campaign-AC2 grep would hit); proven by listing the VSIX''s extension/media/assets (input from the T3.1 review)'
+    done: false
+  - text: 'The 0.1.0 release notes state that 0.0.51 (and earlier, since a192780c) deleted any legacy workflows/<slug>/workflow.md on every activation (migrateLegacyWorkflows: runs.jsonl derived from its ## Runs section, then the file permanently removed), and that 0.1.0 no longer touches workflows/ at all (input from the T3.2 review)'
+    done: false
 tokenomics:
   effort_days: 0.5
   size_tshirt: XS
