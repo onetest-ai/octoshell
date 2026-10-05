@@ -7,7 +7,7 @@ acceptance_criteria:
     done: false
   - text: packages/board/test/board-model.test.ts proves BoardModel loads identical ids on a real board copy with workflows/ and creates no workflow entity (mission AC2)
     done: false
-  - text: packages/board/test/validate-workflows-warning.test.ts proves validateBoard emits one severity "warning" finding per workflows/ folder with the same text as validate.js and no error, over a real board copy (mission AC3)
+  - text: 'packages/board/test/validate-workflows-warning.test.ts proves validateBoard emits one severity "warning" finding per workflows/ folder with the same text as validate.js and no error, over a real board copy (mission AC3), message `<rel>: no longer read since pack v57` with rel relative to the validateBoard root (so `warning: ` + message equals the validate.js line, including on a copy not named .octobots); the same test also asserts union parity by running the pack''s validate.js over every campaign dir of the same copy. The pack side is apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/legacy-workflows.mjs (T2.4): one workflows/<slug>/ per finding, board root = nearest .octobots, else the parent of the nearest campaigns/'
     done: false
   - text: graph payload regenerated, --verify passes, 57 hash rewritten in a visible diff line (mission AC6)
     done: false
