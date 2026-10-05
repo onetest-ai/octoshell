@@ -64,6 +64,11 @@ export function ChecklistField(
   // since; an untouched list adopts the newest `value` (an external edit that arrived while focused)
   // instead of saving its stale items over it. An edit reverted to this text counts as untouched.
   const focusSnapshot = useRef<string | null>(null);
+  // The `value` prop at the moment of focus. An untouched list adopts `value` only if it changed
+  // since: right after another item saved, `value` still holds the pre-save text until the host
+  // echoes the write back, and adopting it then would revert (and a following tick would re-save
+  // over) the user's own just-saved edit.
+  const focusValue = useRef(value);
 
   // Re-sync from the source string when it changes externally and we're not mid-edit.
   useEffect(() => {
@@ -108,14 +113,15 @@ export function ChecklistField(
                 onFocus={() => {
                   editing.current = true;
                   focusSnapshot.current = serialize(items);
+                  focusValue.current = value;
                 }}
                 onChange={(v) => setItems((cur) => cur.map((x, i) => (i === idx ? { ...x, text: v } : x)))}
                 onCommit={() => {
                   editing.current = false;
                   const atFocus = focusSnapshot.current;
                   focusSnapshot.current = null;
-                  if (atFocus !== null && serialize(items) === atFocus && value !== atFocus) {
-                    setItems(parse(value));
+                  if (atFocus !== null && serialize(items) === atFocus) {
+                    if (value !== focusValue.current) setItems(parse(value));
                     return;
                   }
                   commit(items);
