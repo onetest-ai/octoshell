@@ -1,9 +1,19 @@
 name: 'T7.7 - Mission QA: run tests/m7 live on copies of solo''s real forks'
-status: draft
+status: done
 role: qa-engineer
 description: 'Scope: M7 TC-001..017 against the git copies (README gitcopy) or `cp -R` copies each TC names, in a temp dir (never the originals); installPack runs through install-pack.mjs; TC-011..013 and TC-015 are behavioural micro-tests (5 fresh sub-agents each, 3 for TC-015 on TC-013''s escalated copies, each on its own copy, following M2 TC-009''s convention: score programmatically, then read every flagged output); TC-007 is a manual Extension Development Host (F5) session with screenshots. Update each TC''s status (campaign notes § Test conventions rule 4); write `## QA verification` into task and mission notes. Out of scope: fixes. Downstream: M7 gate.'
 acceptance_criteria:
   - text: every TC has PASS, FAIL, BLOCKED or UNREACHABLE with evidence and a named pre-existing record; its frontmatter status is pass, fail or blocked (UNREACHABLE recorded as blocked with the reason in the RUN file)
-    done: false
+    done: true
   - text: '`git -C $SOLO status --short` and `git -C $OCTO status --short` equal the baseline recorded before the run (tests/m7 README § Prerequisites), the sha256 list of octoshell''s gitignored .claude equals its baseline, and solo''s CLAUDE.md and AGENTS.md sha256 are unchanged'
-    done: false
+    done: true
+notes: |-
+  ## QA verification
+
+  Run 2026-10-05 (qa-engineer), record: `.octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md`, evidence: `.octobots/campaigns/direct-dispatch-process/tests/m7/evidence/`. All cases ran on `git clone --shared` or `cp -R` copies of solo and octoshell; the originals were not written (AC2 baselines equal: solo status, octoshell `.claude` sha256 list, solo CLAUDE.md and AGENTS.md; `evidence/ac2-baselines.txt`).
+
+  Result: 15 pass, 0 fail, 1 blocked, 0 unreachable. TC-007 (ui, F5) is blocked: pending user F5 run (tests/m7/manual/T7.4-F5-script.md). Micro-tests: TC-011 5/5, TC-012 5/5, TC-013 5/5 (cited: scratchpad/wskill/WITH-SKILL-RESULTS.md), TC-015 3/3.
+
+  TC text re-anchored by orchestrator ruling: TC-001/TC-014 (mission-execution/scripts ship with M6, derived placeholder check instead), TC-005 (closest-by-diff contrast now picks a v57 body), TC-011 (escalation is correct only on a policy-list item; the green rule and the land-step rule are), TC-015 (pass criteria). Command corrections: TC-004, TC-008 (bash), TC-009, TC-010. Judgement call flagged in the RUN file: TC-011 step 8's DSN statement in DECISIONS.md (0/5 reps; invariant held by sha).
+
+  No bug filed: no product defect found. Observation: the land-step escalation was raised by 2 of 5 reps.

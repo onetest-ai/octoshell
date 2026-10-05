@@ -4,7 +4,8 @@ title: "Base recovery picks solo's true v56 base from git, the earliest v57 buil
 mission: M7
 covers: [M7-AC2]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md}
 priority: high
 size: M
 ---
@@ -44,7 +45,7 @@ for s in mission-execution mission-completion-gate; do node $SCRATCH/reconcile-s
 | 1 | Run pack-deviations.test.ts | At least 1 test passed, none failed (rule order 1-5) |
 | 2 | Git copy | Both entries: base {version 56, source workspace-git}, sha256 9af2c928b831... and 008de10a952f... |
 | 3 | Plain copy (no git) | Both entries: base {version 57, source declared}; base.md equals the 800c62c file (the earliest v57 body, not a later intermediate v57 build) |
-| 4 | Run the spike for contrast | rule4_closest_v50plus is v50 / v51: the reason closest-by-diff is the last rule |
+| 4 | Run the spike for contrast | Closest-by-diff alone does NOT pick the true v56 base: rule4_closest_v50plus is a later body (observed 2026-10-05: v57, distance 61 for mission-execution and 27 for the gate; at planning time, before the v57 builds were in the history, v50 / v51); only rule 2 (workspace git) finds v56. That is why closest-by-diff is the last rule |
 
 ## Expected Final State
 

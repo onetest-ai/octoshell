@@ -4,7 +4,8 @@ title: "`57+local` counts as current at v57 (no staging, no nag) and as deviated
 mission: M7
 covers: [M7-AC1, M7-AC2, M7-AC3, M7-AC5]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---
@@ -33,7 +34,7 @@ gitcopy solo14; W=$WORK/solo14; F=$W/.claude/skills/mission-execution/SKILL.md; 
 $IP $W > /dev/null 2>&1; printf '## Kept local\n\n## Taken from upstream\n\n## Conflicts\n' > $W/.octobots/pack-updates/v57/mission-execution/DECISIONS.md   # derived: a finished reconcile's log
 awk -v up=$UP '!d&&/^version:/{print "version: 57+local"; print "reconciled-from: " up; d=1; next} {print}' $F > $F.new && mv $F.new $F; head -6 $F
 shasum -a 256 $F > $WORK/f14.sha
-$IP $W 2>/dev/null | jq -c '{dev: [.deviations[] | {skill, reason}], reconciled: .after.reconciled, pending: .result.pending}'; shasum -a 256 -c $WORK/f14.sha; ls $W/.claude/skills/mission-execution/scripts
+$IP $W 2>/dev/null | jq -c '{dev: [.deviations[] | {skill, reason}], reconciled: .after.reconciled, pending: .result.pending}'; shasum -a 256 -c $WORK/f14.sha; # mission-execution/scripts: the M7-branch pack has none (see TC-001's derived check)
 ls $W/.octobots/pack-updates/v57; jq -c '[.skills[].skill]' $W/.octobots/pack-updates/pending.json
 $IP $W --pack-version 58 2>/dev/null | jq -c '[.deviations[] | {skill, version, reason}]'
 jq -c '.skills[] | select(.skill=="mission-execution") | .base' $W/.octobots/pack-updates/pending.json
@@ -50,7 +51,7 @@ $IP $W2 2>/dev/null | jq -c '[.deviations[] | select(.skill=="mission-execution"
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Install at 57 (after a first install staged both and mission-execution was then marked reconciled) | Deviations: only mission-completion-gate (label); reconciled: [mission-execution]; pending: [mission-completion-gate]; pending.json lists only mission-completion-gate (the installer drops the entry of a skill that is no longer deviated); v57/ still holds both folders; the `57+local` SKILL.md is `OK` (not overwritten) while mission-execution/scripts is installed |
+| 1 | Install at 57 (after a first install staged both and mission-execution was then marked reconciled) | Deviations: only mission-completion-gate (label); reconciled: [mission-execution]; pending: [mission-completion-gate]; pending.json lists only mission-completion-gate (the installer drops the entry of a skill that is no longer deviated); v57/ still holds both folders; the `57+local` SKILL.md is `OK` (not overwritten) and the pack's non-SKILL.md files for that skill install beside the untouched fork (verified with a derived pack root holding placeholder scripts; the real qa-env.mjs and scan-parked.js ship with M6 and are verified at release by M6 TC-011) |
 | 2 | Install with --pack-version 58 | mission-execution deviated with version `57+local`, reason reconciled-older; mission-completion-gate still label |
 | 3 | Read mission-execution's base | {version 57, source reconciled-from, sha256 = UP}; "base = reconciled-from body" |
 | 4 | Check the audit trail | "resolved v57 folder kept"; "DECISIONS.md not ignored" and "base.md ignored" (the logs are committed, the inputs are not) |

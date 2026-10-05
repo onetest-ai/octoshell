@@ -4,7 +4,8 @@ title: "The shipped-skill store indexes every shipped SKILL.md since v18 and hol
 mission: M7
 covers: [M7-AC1]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---

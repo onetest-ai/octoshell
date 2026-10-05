@@ -4,7 +4,8 @@ title: "Behavioural micro-test: an open escalation is asked again without re-mer
 mission: M7
 covers: [M7-AC6, M7-AC7, M7-AC8]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md}
 priority: critical
 size: M
 ---
@@ -55,8 +56,8 @@ echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR=$W node $W/.octob
 | 1 | Re-ask run on 3 escalated copies | merged.md and the live SKILL.md unchanged (both `OK`); each reply asks the xfail question again |
 | 2 | Answer run on the same 3 copies | 3 replies |
 | 3 | DECISIONS.md | The entry now reads `- RESOLVED (user, <date>): ...xfail...`; 0 `- ESCALATED:` entries left |
-| 4 | Live gate skill | `version: 57+local`; `0 xfailed` present (the user kept local); Gate timing present (taken from upstream) |
-| 5 | Record and primer | 0 reconcile entries; the primer mentions pack-updates 0 times |
+| 4 | Live gate skill | equals merged.md apart from the marker lines; `version: 57+local` with `reconciled-from:` = sha256 of upstream.md; `0 xfailed` present (the user kept local); Gate timing present (taken from upstream) |
+| 5 | Record and primer | no reconcile entry for the gate; the primer names only skills whose escalation is still open (0 mentions of pack-updates when nothing else is pending, and never mission-completion-gate) |
 | 6 | done again | exit 0, prints `no pending reconcile for mission-completion-gate`; pending.json unchanged |
 | 7 | Read each answer-run reply | It names the reconciled skill and its DECISIONS.md path |
 | 8 | Score | PASS only 3/3 in both runs |

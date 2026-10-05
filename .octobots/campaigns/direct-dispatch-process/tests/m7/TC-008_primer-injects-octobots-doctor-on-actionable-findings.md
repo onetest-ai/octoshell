@@ -4,7 +4,8 @@ title: "SessionStart primer tells the agent to run octobots-doctor while a findi
 mission: M7
 covers: [M7-AC6]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md}
 priority: critical
 size: S
 ---
@@ -30,6 +31,7 @@ A git copy of solo staged by the real install (TC-001's state; solo has 6 real w
 
 ```bash
 cd $OCTO && pnpm --filter @octoshell/vscode-extension exec vitest run test/octobots-primer.test.ts --reporter=verbose
+# run under bash: zsh aborts `ls -d a b` when one glob has no match
 gitcopy solo8; W=$WORK/solo8; $IP $W > /dev/null 2>&1; unset CLAUDE_CONFIG_DIR
 primer() { echo "{\"hook_event_name\":\"$2\"}" | CLAUDE_PROJECT_DIR=$1 node $1/.octobots/hooks/primer.mjs | jq -r '.hookSpecificOutput.additionalContext'; }
 NWF=$(cd $W/.octobots/campaigns && ls -d */workflows */missions/*/workflows 2>/dev/null | wc -l | tr -d ' '); echo "workflows=$NWF"

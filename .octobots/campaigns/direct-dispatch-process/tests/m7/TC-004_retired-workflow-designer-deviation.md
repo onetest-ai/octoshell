@@ -4,7 +4,8 @@ title: "Retired workflow-designer: solo's unchanged copy is deleted silently; a 
 mission: M7
 covers: [M7-AC1, M7-AC3, M7-AC7]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---
@@ -40,7 +41,7 @@ $IP $WORK/wd-c --local-changes=overwrite > /dev/null 2>&1; test ! -e $WORK/wd-c/
 # (d) the user's answer 'delete' applied by hand (derived, stated), then done
 PR=$WORK/wd-b/.claude/skills/octobots-doctor/scripts/pack-reconcile.mjs; (cd $WORK/wd-b && node $PR done workflow-designer); echo "open exit=$?"
 rm -rf $WORK/wd-b/.claude/skills/workflow-designer; printf '## Kept local\n\n## Taken from upstream\n\n## Conflicts\n\n- RESOLVED (user, 2026-10-05): workflow-designer: retired upstream; delete it\n' > $WORK/wd-b/.octobots/pack-updates/v57/workflow-designer/DECISIONS.md
-(cd $WORK/wd-b && node $PR done workflow-designer); echo "done exit=$?"; jq '.skills | length' $WORK/wd-b/.octobots/pack-updates/pending.json
+(cd $WORK/wd-b && node $PR done workflow-designer); echo "done exit=$?"; jq '[.skills[] | select(.skill=="workflow-designer")] | length' $WORK/wd-b/.octobots/pack-updates/pending.json
 ```
 
 ## Steps
@@ -50,7 +51,7 @@ rm -rf $WORK/wd-b/.claude/skills/workflow-designer; printf '## Kept local\n\n## 
 | 1 | (a) Default install on the real copy | Deviations are the two forks only; "a: deleted" |
 | 2 | (b) Derived changed copy, default | workflow-designer listed with version "56", reason content, retired true; "b: kept byte-identical"; its staging folder has base.md, local.md and RECONCILE.md and no upstream.md; the brief says it was retired and the user decides |
 | 3 | (c) Derived changed copy, overwrite | "c: deleted" |
-| 4 | (d) done on (b) before and after the user's 'delete' is applied | open exit=3; after removing the folder and writing a closed DECISIONS.md, done exit=0 and 0 entries remain (the retired-skill done condition of M7-AC7) |
+| 4 | (d) done on (b) before and after the user's 'delete' is applied | open exit=3; after removing the folder and writing a closed DECISIONS.md, done exit=0 and 0 `workflow-designer` entries remain (the copy's 2 unreconciled forks stay pending; the retired-skill done condition of M7-AC7) |
 
 ## Expected Final State
 

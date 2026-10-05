@@ -4,7 +4,8 @@ title: "octobots-doctor states the reconcile rules, and pack-reconcile.mjs done 
 mission: M7
 covers: [M7-AC7]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m7/runs/RUN-2026-10-05-001.md}
 priority: high
 size: S
 ---
@@ -35,6 +36,7 @@ grep -v -E '^import ' $PACK/skill/octobots-doctor/scripts/pack-reconcile.mjs | g
 gitcopy solo10; W=$WORK/solo10; $IP $W > /dev/null 2>&1; PR=$W/.claude/skills/octobots-doctor/scripts/pack-reconcile.mjs
 (cd $OCTO && node $PR list)
 (cd $W && node $PR done mission-execution); echo "exit=$?"; jq '.skills | length' $W/.octobots/pack-updates/pending.json
+printf '## Kept local\n\n## Taken from upstream\n\n## Conflicts\n' > $W/.octobots/pack-updates/v57/mission-execution/DECISIONS.md; (cd $W && node $PR done mission-execution); echo "exit=$? (marker refusal)"
 shasum -a 256 $W/.octobots/pack-updates/pending.json > $WORK/p10.sha; (cd $W && node $PR done knowledge-explorer); echo "exit=$?"; shasum -a 256 -c $WORK/p10.sha
 ```
 
@@ -46,7 +48,7 @@ shasum -a 256 $W/.octobots/pack-updates/pending.json > $WORK/p10.sha; (cd $W && 
 | 2 | Read the lines the grep points at | The classification, the full policy-conflict list with 'when unsure, escalate', ESCALATED with the whole live file untouched, never merge by lines, the DECISIONS.md sections and entry forms, the no-upstream-change line, the UPSTREAM-CANDIDATES.md form, `<N>+local` + `reconciled-from:`, workflows/ deleted only on a per-folder yes, the config-dir advice, doctor-acks.json for declined findings (keys {finding: "workflows", path: "campaigns/.../workflows"} relative to .octobots/, and {finding: "config-dir", path: ".claude"}) |
 | 3 | Grep the script for skill names | 0 (it names no skill) |
 | 4 | list run from octoshell's checkout | Prints the solo copy's two entries (the script resolves its workspace from its own location, not the cwd) |
-| 5 | done on an unreconciled skill | exit 3 naming the marker (`57-local`, not `57+local`); pending.json still has 2 entries |
+| 5 | done on an unreconciled skill | exit 3; pending.json still has 2 entries. Without a DECISIONS.md the refusal names the missing log; with one written (command below) it names the marker (`57-local`, not `57+local`) |
 | 6 | done on a skill with no entry | exit 0, prints `no pending reconcile for knowledge-explorer`; pending.json `OK` (unchanged) |
 
 ## Expected Final State

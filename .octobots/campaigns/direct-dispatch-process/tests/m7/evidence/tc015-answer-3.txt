@@ -1,0 +1,10 @@
+15:- RESOLVED (user, 2026-10-05): what counts as green: keep local; 0 xfailed blocks the merge. Local's rule is installed as written: 0 failed, 0 xfailed, no skip without a stated environmental reason; an xfail or bare skip is a parked defect unless the user signs it off.
+ESCALATED left (0 expected): 0
+version: 57+local
+0 xfailed (>=1): 1
+Gate timing (>=1): 1
+reconcile entries left for the gate (0 expected; mission-execution may also be 0): 0
+primer mentions of pack-updates (0 expected): 0
+no pending reconcile for mission-completion-gate
+exit=0 (0 expected, 'no pending reconcile for mission-completion-gate')
+pending.json unchanged by second done
