@@ -382,7 +382,79 @@ describe("validate.js contract checks", () => {
     const dir = join(boardRoot, c.folderPath, "workflows", "ship");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "workflow.js"), "this is not even javascript {{{\n", "utf8");
-    expect(runScript("validate.js", [join(boardRoot, c.folderPath)], projectDir)).toContain("OK");
+    const out = runScript("validate.js", [join(boardRoot, c.folderPath)], projectDir);
+    expect(out).toContain("OK");
+    // ...but it says so, once, relative to .octobots/, and never touches the folder.
+    expect(out).toContain(`warning: ${c.folderPath}/workflows`);
+    expect(out).toContain("no longer read since pack v57");
+    expect(readFileSync(join(dir, "workflow.js"), "utf8")).toBe("this is not even javascript {{{\n");
+  });
+
+  describe("leftover workflows/ folders (the real-data shape: several at mission level, one with runs)", () => {
+    const warningLines = (out: string) => out.split("\n").filter((l) => l.startsWith("warning:"));
+
+    function seedMissions(): { campaign: string; missions: string[]; ids: string[] } {
+      const c = createCampaign(boardRoot, { name: "Octograph" });
+      const missions: string[] = [];
+      const ids: string[] = [];
+      for (const n of ["M3", "M4", "M5", "M6", "M7"]) {
+        const m = createMission(boardRoot, c.id, { title: `${n} - Part ${n}`, acceptanceCriteria: "- [ ] it works" });
+        missions.push(m.folderPath);
+        ids.push(m.id);
+        const wf = join(boardRoot, m.folderPath, "workflows", "run");
+        mkdirSync(wf, { recursive: true });
+        writeFileSync(join(wf, "workflow.js"), "export const meta = {}\n", "utf8");
+        if (n === "M5") writeFileSync(join(wf, "runs.jsonl"), '{"run":1}\n', "utf8");
+      }
+      return { campaign: c.folderPath, missions, ids };
+    }
+
+    it("a campaign folder gets one warning per workflows/ folder under it, exit 0, files untouched", () => {
+      const { campaign, missions } = seedMissions();
+      const out = runScript("validate.js", [join(boardRoot, campaign)], projectDir);
+      const lines = warningLines(out);
+      expect(lines).toHaveLength(5);
+      for (const m of missions) {
+        expect(lines.filter((l) => l.includes(`${m}/workflows`) && l.includes("no longer read since pack v57"))).toHaveLength(1);
+      }
+      expect(out).toContain("OK");
+      expect(existsSync(join(boardRoot, missions[2]!, "workflows", "run", "runs.jsonl"))).toBe(true);
+    });
+
+    it("also finds a campaign-level workflows/ alongside the mission-level ones", () => {
+      const { campaign } = seedMissions();
+      mkdirSync(join(boardRoot, campaign, "workflows", "x"), { recursive: true });
+      expect(warningLines(runScript("validate.js", [join(boardRoot, campaign)], projectDir))).toHaveLength(6);
+    });
+
+    it("a mission or a task validates only what is under it", () => {
+      const { missions, ids } = seedMissions();
+      const mission = join(boardRoot, missions[0]!);
+      expect(warningLines(runScript("validate.js", [mission], projectDir))).toHaveLength(1);
+      const t = createTask(boardRoot, ids[0]!, { name: "T3.1 - Do a thing", acceptanceCriteria: "- [ ] it works" });
+      expect(warningLines(runScript("validate.js", [join(boardRoot, t.folderPath)], projectDir))).toHaveLength(0);
+    });
+
+    it("an invalid entity still exits 1 and still lists the warnings", () => {
+      const { campaign } = seedMissions();
+      seed(join(boardRoot, campaign, "campaign.yaml"), "campaign", { name: "" });
+      const { status, stderr } = runFailing("validate.js", [join(boardRoot, campaign)], projectDir);
+      expect(status).toBe(1);
+      expect(stderr).toContain("missing a `name`");
+    });
+
+    it("a board without workflows/ folders prints no warning", () => {
+      const c = createCampaign(boardRoot, { name: "Clean" });
+      expect(warningLines(runScript("validate.js", [join(boardRoot, c.folderPath)], projectDir))).toHaveLength(0);
+    });
+
+    it("validate.js on a workflow.js exits 2 'not an entity file'", () => {
+      const { missions } = seedMissions();
+      const wf = join(boardRoot, missions[0]!, "workflows", "run", "workflow.js");
+      const { status, stderr } = runFailing("validate.js", [wf], projectDir);
+      expect(status).toBe(2);
+      expect(stderr).toContain("not an entity file");
+    });
   });
 
   it("exits 2 for a folder holding no entity", () => {
@@ -518,6 +590,39 @@ describe("pack doctor.js", () => {
       expect(f.find((x) => x.area === "hooks")?.level).toBe("ok");
       expect(f.filter((x) => x.area === "tokenomics").every((x) => x.level === "ok")).toBe(true);
       expect(f.find((x) => x.area === "board")?.msg).toContain("1 campaign(s)");
+    });
+
+    it("leftover workflows/ folders produce one board warn with the count and a fix that never says delete; never fail", () => {
+      installSkills();
+      installPrimer(57);
+      mkdirSync(join(projectDir, ".octobots", "tokenomics"), { recursive: true });
+      const c = createCampaign(boardRoot, { name: "Octograph" });
+      for (const n of ["M3", "M4", "M5", "M6", "M7"]) {
+        const m = createMission(boardRoot, c.id, { title: `${n} - Part ${n}`, acceptanceCriteria: "- [ ] it works" });
+        const wf = join(boardRoot, m.folderPath, "workflows", "run");
+        mkdirSync(wf, { recursive: true });
+        writeFileSync(join(wf, "workflow.js"), "x\n", "utf8");
+        if (n === "M4") writeFileSync(join(wf, "runs.jsonl"), "{}\n", "utf8");
+      }
+      mkdirSync(join(boardRoot, c.folderPath, "workflows"), { recursive: true });
+      const board = findings(projectDir).filter((x) => x.area === "board");
+      const warns = board.filter((x) => x.level === "warn") as { level: string; msg: string; fix?: string }[];
+      expect(warns).toHaveLength(1);
+      expect(warns[0]!.msg).toContain("6");
+      expect(warns[0]!.msg).toContain("no longer read since pack v57");
+      expect(warns[0]!.msg).toContain(`${c.folderPath}/workflows`);
+      expect(warns[0]!.fix).toMatch(/leave|move/i);
+      expect(warns[0]!.fix).not.toMatch(/delet|remove|rm /i);
+      expect(board.some((x) => x.level === "fail")).toBe(false);
+      expect(board.some((x) => x.level === "ok" && x.msg.includes("1 campaign(s)"))).toBe(true);
+      expect(existsSync(join(boardRoot, c.folderPath, "workflows"))).toBe(true);
+      // The leftover folders alone never turn the run into a failure.
+      expect(JSON.parse(run(projectDir).out).findings.filter((x: { level: string }) => x.level === "fail").map((x: { area: string }) => x.area)).not.toContain("board");
+    });
+
+    it("no workflows/ folders: no board warn", () => {
+      createCampaign(boardRoot, { name: "Clean" });
+      expect(findings(projectDir).filter((x) => x.area === "board" && x.level === "warn")).toHaveLength(0);
     });
 
     it("skills that disagree on version, or a primer behind the skills, fail", () => {
