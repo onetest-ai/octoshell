@@ -287,6 +287,29 @@ function segmentCost(dir: string): number {
   return t.input * m.input_cost_per_token! + t.output * m.output_cost_per_token! + t.cacheRead * m.cache_read_input_token_cost!;
 }
 
+/**
+ * rollup.mjs keys a mission row by `<campaign>/<id>` where the id is the title's `M<n>` token, so a
+ * campaign with missions titled `M2a` and `M2b` (both `M2`) gets ONE row; rollup.ts keeps one row per
+ * mission folder. Real boards do this (solo's epic-005), so a real copy is compared per shared id.
+ */
+function mergeSharedIds(rows: NRow[]): Array<NRow & { rows: number }> {
+  const out = new Map<string, NRow & { rows: number }>();
+  for (const r of rows) {
+    const cur = out.get(r.target);
+    if (!cur) {
+      out.set(r.target, { ...r, tokens: { ...r.tokens }, rows: 1 });
+      continue;
+    }
+    cur.rows += 1;
+    cur.branches = [...new Set([...cur.branches, ...r.branches])].sort();
+    cur.turns += r.turns;
+    cur.sessions += r.sessions;
+    cur.costUsd += r.costUsd;
+    for (const k of ["input", "output", "cacheRead", "cacheCreate"] as const) cur.tokens[k] += r.tokens[k];
+  }
+  return [...out.values()];
+}
+
 // Environmental: needs a real project's data, which the repo does not carry.
 describe.skipIf(!process.env.OCTOBOTS_TOKENOMICS_COPY)("real copy (OCTOBOTS_TOKENOMICS_COPY)", () => {
   it("rollup.mjs and rollup.ts agree on a copy of a real .octobots, and the totals invariant holds", () => {
@@ -301,8 +324,19 @@ describe.skipIf(!process.env.OCTOBOTS_TOKENOMICS_COPY)("real copy (OCTOBOTS_TOKE
     installPackYaml(dir);
     const mjs = runMjs(dir);
     const ts = runTs(dir, pricesOf(dir));
-    expect(ts).toEqual(mjs);
     invariant(mjs, dir);
     invariant(ts, dir);
+    expect(ts.unattributed).toEqual(mjs.unattributed);
+    expect(ts.branchToTarget).toEqual(mjs.branchToTarget);
+    const merged = mergeSharedIds(ts.rows);
+    expect(merged.map((r) => r.target)).toEqual(mjs.rows.map((r) => r.target));
+    merged.forEach((t, i) => {
+      const m = mjs.rows[i]!;
+      expect(t.branches, t.target).toEqual(m.branches);
+      expect(t.turns, t.target).toBe(m.turns);
+      expect(t.tokens, t.target).toEqual(m.tokens);
+      expect(Math.abs(t.costUsd - m.costUsd), t.target).toBeLessThanOrEqual(0.01 * t.rows);
+      if (t.rows === 1) expect(t.sessions, t.target).toBe(m.sessions); // sessions are not summable across rows
+    });
   });
 });
