@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { existsSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, relative } from "node:path";
 import { dumpEntity, readEntity, resolveEntityFile } from "./entity-io.mjs";
 
 // Scaffold a mission's functional-test folder and link it: creates
@@ -12,7 +12,8 @@ import { dumpEntity, readEntity, resolveEntityFile } from "./entity-io.mjs";
 // Usage:  add-tests.js <mission-dir|mission.yaml>
 // Idempotent: a second run changes nothing. An existing README is NEVER overwritten (it is still linked
 // when unlinked). The document link is idempotent on target, as add-doc.js's is.
-// Exit codes: 0 done (or nothing to do); 2 usage error / path not found / not a mission / no M<n> id.
+// Exit codes: 0 done (or nothing to do); 2 usage error / path not found / not a mission / no M<n> id /
+// tests/, tests/m<n>/ or README.md is a symlink or the wrong file type (nothing is written).
 const arg = process.argv[2];
 if (!arg) {
   console.error("usage: add-tests.js <mission-dir|mission.yaml>");
@@ -77,6 +78,23 @@ function readme() {
     "- ",
     "",
   ].join("\n");
+}
+
+// The tests folder is repo content, so treat it as untrusted: a planted symlink at tests/, tests/m<n>/
+// or README.md would send the scaffold write outside the workspace (a dangling README.md symlink is
+// "absent" to existsSync and writeFileSync creates its target). Every existing step must be a real
+// directory, and an existing README a regular file; anything else is refused before any write.
+const lstatOrNull = (p) => { try { return lstatSync(p); } catch { return null; } };
+const testsDir = join(campaignDir, "tests");
+for (const [p, want] of [[testsDir, "dir"], [dirname(readmePath), "dir"], [readmePath, "file"]]) {
+  const st = lstatOrNull(p);
+  if (!st) continue;
+  const ok = want === "dir" ? st.isDirectory() : st.isFile();
+  if (!ok) {
+    const what = st.isSymbolicLink() ? "a symlink" : want === "dir" ? "not a directory" : "not a regular file";
+    console.error(`add-tests: refusing to write: ${relative(campaignDir, p)} is ${what} (${p})`);
+    process.exit(2);
+  }
 }
 
 const did = [];

@@ -9,9 +9,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
 import { loadEntity, dumpEntity, type EntityFields, type EntityKind } from "../src/entity-schema.js";
 import { BoardModel } from "../src/board-model.js";
@@ -1080,6 +1080,57 @@ describe("add-tests.js — scaffolding a mission's tests folder", () => {
     for (const h of ["## Objective", "## Preconditions", "## Real data", "## Commands", "## Steps", "## Expected Final State", "## Teardown"]) {
       expect(tpl).toContain(h);
     }
+  });
+
+  describe("never writes through the tests folder (it is repo content, so untrusted)", () => {
+    function refused(mission: string): void {
+      const before = readFileSync(join(mission, "mission.yaml"));
+      const r = runFailing("add-tests.js", [mission], projectDir);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain("refusing to write");
+      expect(readFileSync(join(mission, "mission.yaml")).equals(before)).toBe(true); // not linked either
+    }
+
+    it("refuses a dangling README.md symlink (it would create the file outside the workspace)", () => {
+      const { dir, campaign } = missionWith("M1 - Gate", ["one"]);
+      const outside = mkdtempSync(join(tmpdir(), "add-tests-outside-"));
+      try {
+        mkdirSync(join(campaign, "tests", "m1"), { recursive: true });
+        symlinkSync(join(outside, "pwned.md"), join(campaign, "tests", "m1", "README.md"));
+        refused(dir);
+        expect(existsSync(join(outside, "pwned.md"))).toBe(false);
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    });
+
+    it("refuses a symlinked tests/ or tests/m<n>/ directory", () => {
+      for (const link of ["tests", join("tests", "m1")]) {
+        const { dir, campaign } = missionWith("M1 - Gate", ["one"]);
+        const outside = mkdtempSync(join(tmpdir(), "add-tests-outside-"));
+        try {
+          mkdirSync(dirname(join(campaign, link)), { recursive: true });
+          symlinkSync(outside, join(campaign, link));
+          refused(dir);
+          expect(readdirSync(outside)).toEqual([]);
+        } finally {
+          rmSync(outside, { recursive: true, force: true });
+          rmSync(campaign, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("refuses a README.md that is a directory, and a tests/m<n> that is a file", () => {
+      const a = missionWith("M1 - Gate", ["one"]);
+      mkdirSync(join(a.campaign, "tests", "m1", "README.md"), { recursive: true });
+      refused(a.dir);
+      rmSync(a.campaign, { recursive: true, force: true });
+
+      const b = missionWith("M1 - Gate", ["one"]);
+      mkdirSync(join(b.campaign, "tests"), { recursive: true });
+      writeFileSync(join(b.campaign, "tests", "m1"), "");
+      refused(b.dir);
+    });
   });
 
   it("points the README at the template", () => {
