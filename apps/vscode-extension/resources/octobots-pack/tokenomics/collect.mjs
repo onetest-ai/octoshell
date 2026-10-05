@@ -22,7 +22,7 @@
 // Usage: node .octobots/tokenomics/collect.mjs [--project-dir DIR] [--projects-dir DIR] [--quiet]
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join, basename, resolve } from "node:path";
 import { homedir } from "node:os";
 
 const args = process.argv.slice(2);
@@ -35,7 +35,8 @@ const log = (...a) => { if (!quiet) console.error(...a); };
 // ---------------------------------------------------------------------------
 function resolveProjectDir() {
   const i = args.indexOf("--project-dir");
-  return i !== -1 ? args[i + 1] : (process.env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  // resolve(): a relative path or a trailing slash must not change the slug.
+  return resolve(i !== -1 ? args[i + 1] : (process.env.CLAUDE_PROJECT_DIR ?? process.cwd()));
 }
 
 // Artifacts are written to the CURRENT checkout (so a worktree stays isolated);

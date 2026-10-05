@@ -22,9 +22,9 @@
 //
 // Usage: node .octobots/tokenomics/selftest.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, existsSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
@@ -331,6 +331,17 @@ function runRootsSuite() {
   mkdirSync(wt, { recursive: true });
   segs = collectSegments(wt, isolatedEnv(home));
   check("[roots] worktree path resolves to the main checkout's slug", ids(segs).join() === "home-session,legacy-session", ids(segs).join());
+
+  // The project path is resolved first: a trailing slash or a relative --project-dir must not change the slug.
+  segs = collectSegments(`${root}/`, isolatedEnv(home));
+  check("[roots] a trailing slash on --project-dir does not change the slug", ids(segs).join() === "home-session,legacy-session", ids(segs).join());
+  // Relative case: the cwd is a realpath (macOS tmpdir is a symlink), so key the transcript by that.
+  const relProj = mk("rel_proj");
+  const relSlug = slugOf(realpathSync(relProj));
+  writeSession(join(home, ".claude", "projects"), relSlug, "rel-session", 1);
+  execFileSync(process.execPath, [join(HERE, "collect.mjs"), "--project-dir", basename(relProj), "--quiet"], { stdio: ["ignore", "ignore", "inherit"], env: isolatedEnv(home), cwd: base });
+  segs = parseSegments(readFileSync(join(relProj, ".octobots", "tokenomics", "raw", "segments.jsonl"), "utf8"));
+  check("[roots] a relative --project-dir resolves against the cwd", ids(segs).join() === "rel-session", ids(segs).join());
 
   // AC3, the other direction: the EARLIER root (home) holds the richer copy. The case above has the
   // richer copy in the later (legacy) root, so "last root read wins" would pass it; this one would not.
