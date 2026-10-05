@@ -1,0 +1,9 @@
+name: B1 - packages/graph e2e-gate test teardown flakes with ENOTEMPTY removing its temp .git
+status: draft
+severity: minor
+description: 'packages/graph/test/e2e-gate.test.ts (''end-to-end: a one-module change confines the map.md and clusters.json diff...'') failed in CI with ENOTEMPTY: directory not empty, rmdir ''/tmp/octograph-*/.git'', thrown from the onTestFinished cleanup in test/fixtures/tmpdir.ts:31 (rmSync recursive+force). The assertions themselves did not fail: the teardown raced with something still writing into .git (likely a background git process: auto-gc/maintenance or an un-awaited child). packages/graph is unchanged by this campaign, so this is a pre-existing flake; it turned the M3 mission PR''s push CI red on a board-only commit (run 37363971883, 2026-10-05). A red cleanup step makes CI red for an unrelated change, which erodes the gate.'
+steps_to_reproduce: 'Seen once in CI (ubuntu runner, run 37363971883 job 111955505661). Likely repro: loop `pnpm --filter @octoshell/graph exec vitest run test/e2e-gate.test.ts` under CPU load.'
+expected: 'Test cleanup never fails the test: every git child the test spawns is awaited before teardown, git runs with gc.auto=0 / maintenance.auto=false in fixtures, and rmSync uses maxRetries (or the fixture tolerates ENOTEMPTY with a retry).'
+actual: The cleanup rmSync throws ENOTEMPTY and fails the test.
+rca: ''
+environment: GitHub Actions ubuntu runner, push CI on feat/direct-dispatch-process-m3 at 9f9c2519
