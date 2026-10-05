@@ -4,7 +4,8 @@ title: "add-tests.js on solo uwb m1 (README exists, doc linked): no change, exit
 mission: M4
 covers: [M4-AC1]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m4/runs/RUN-2026-10-06-001.md}
 priority: high
 size: S
 ---

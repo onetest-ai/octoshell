@@ -1,0 +1,24 @@
+19:`config-dir` finding (§5) and validate.js's tests-pairing warnings (§7). Skip a finding that
+188:## 7. Tests pairing
+191:covers, or a TC that breaks the format. You act on that `validate.js` output; a tests-pairing
+193:`add-tests.js <mission-dir>` and authoring the missing TCs with the mission's owner (see the
+doctor's path after `workflows`.
+
+## 7. Tests pairing
+
+`validate.js` also warns when a mission has no linked `tests/m<n>/README.md`, an AC that no TC
+covers, or a TC that breaks the format. You act on that `validate.js` output; a tests-pairing
+warning is not a primer finding, and the SessionStart notice never names it. Resolve it by running
+`add-tests.js <mission-dir>` and authoring the missing TCs with the mission's owner (see the
+mission-planner skill). Never resolve it by deleting an AC, a TC or a README row; that hides the gap
+instead of closing it.
+
+## 8. Your reply
+
+End your reply with this block, filled in:
+
+```
+Reconciled: <skill>, <skill> (or: none)
+Decision logs:
+- .octobots/pack-updates/v<N>/<skill>/DECISIONS.md   (one line per skill you worked on)
+Waiting for your answer:

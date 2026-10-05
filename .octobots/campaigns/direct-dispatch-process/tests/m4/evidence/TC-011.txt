@@ -1,0 +1,16 @@
+== M6 - Receiver port configuration file (before: status: done)
+active exit=0
+status: executing
+set status of "M6 - Receiver port configuration file" to done
+octobots: status mission "M6 - Receiver port configuration file" executing -> done
+done exit=0
+2:status: done
+1
+== M1 - Venue ingest mode and vendor integer ids (before: status: done)
+active exit=0
+status: executing
+set status of "M1 - Venue ingest mode and vendor integer ids" to done
+octobots: status mission "M1 - Venue ingest mode and vendor integer ids" executing -> done
+done exit=0
+2:status: done
+1
