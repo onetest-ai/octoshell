@@ -1,5 +1,5 @@
 name: M2 - Pack runs missions by direct sub-agent dispatch
-status: executing
+status: done
 description: Upstream solo's 57-local mission-execution and mission-completion-gate, with solo-specifics replaced by project-declared test lanes (declaration format lands in M5; until then 'the project's documented commands'). Delete workflow-designer and the 7 workflow scripts (incl. mission-input.js) from the pack, and retire them on install. Protecting locally changed skills during an install is M7 (campaign decision 13, revised); until M7 lands, installPack overwrites them as it does today. Replace workflow validation in validate.js with a non-fatal 'no longer read' warning. Fix the gate hook's directive, and make the gate and work-log hooks act only on a status change that actually happened. Board library and extension are untouched (M3), except the board test that imports a deleted pack script.
 acceptance_criteria:
   - text: Given the v57 pack, skill/workflow-designer/ and scripts/{add-workflow,sync-meta,add-run,mission-input}.js, scripts/{extract-meta,workflow-meta}.mjs and scripts/vendor/acorn.mjs do not exist; OCTOBOTS_SKILLS (octobots-skill.ts:14) and doctor.js:63 list 4 skills
@@ -16,7 +16,7 @@ acceptance_criteria:
     done: false
   - text: Given `set-status.js ... "M1 - ..." done`, hooks/mission-gate.mjs emits a directive that says the orchestrator relays Rio's questions to the devs and does not say 'directly'; `pnpm coverage:pack` still passes (90/90/90/70)
     done: false
-  - text: 'Given a set-status.js command whose write did not happen (for example `set-status.js <campaign-dir> "M9 - no such mission" done; echo`, which exits 0 as a whole, or a start that set-status.js refused), hooks/mission-gate.mjs and hooks/work-log.mjs re-read the target entity''s YAML and act only when its status now equals the requested state: no gate directive is printed and no work-log line is written'
+  - text: 'Given a set-status.js command whose write did not happen (for example `set-status.js <campaign-dir> "M9 - no such mission" done; echo`, which exits 0 as a whole, or a start that set-status.js refused), hooks/mission-gate.mjs and hooks/work-log.mjs act only on a real transition: set-status.js reports each call on stdout (`octobots: status <kind> "<title>" <from> -> <to>`, or `... unchanged (<state>)` with no write), and the hooks act only for a call whose transition line they read from the PostToolUse tool_response AND whose YAML now holds the target state (so a re-run on an already-done mission, a forged echo of either line alone, or an absent tool_response is silent): no gate directive is printed and no work-log line is written'
     done: false
 documents:
   - label: M2 functional test cases
@@ -25,7 +25,7 @@ tokenomics:
   effort_days: 2.5
   size_tshirt: L
   complexity_score: 15
-notes: |
+notes: |-
   ## Planning notes (Rio, 2026-10-05)
 
   M2 goes before M3: the pack's scripts are dependency-free .mjs with no import edge to packages/board, so the extension keeps compiling while it still reads workflows; M3 then removes the board types and every consumer together.
@@ -59,3 +59,8 @@ notes: |
   - M2-AC8 (hooks act only on a real status change): TC-012 FAIL. The no-such-mission and control cases pass, but the hooks act when the status EQUALS the request: a repeated `done` re-prints the gate directive and a repeated `active` appends a duplicate work-log line. This is bug B3 (already filed, not re-filed). The AC's literal text (acts when status now equals the requested state) is implemented; the case's Expected Final State (a call that changed nothing is silent) is not.
 
   Mission ACs are not ticked by this task. Open bugs: B1, B2, B3 (B3 decides AC8).
+
+
+  ## AC8 tightened (2026-10-05)
+
+  AC8 originally read 'act only when its status now equals the requested state'. M2 TC-012 expected a real transition, and bug B3 (PR #125) delivered that, so AC8 now states the transition contract. The Claude Code payload field was confirmed live: PostToolUse Bash carries tool_response.stdout, with stderr merged in. Known limit: a deliberate double forgery (the set-status command text plus an echoed matching transition line, on an already-done mission) still acts. The hooks are not a security boundary.
