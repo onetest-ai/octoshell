@@ -1,0 +1,12 @@
+name: B2 - installOctobotsPack shows the modal before a missing-store error, and a thrown install surfaces no message
+status: draft
+severity: minor
+description: |-
+  From the T7.4 review:
+  (1) When the shipped-skill store is missing, installOctobotsPack still detects deviations from version labels, so the user sees the Reconcile/Overwrite/Keep modal, and possibly the hooks/tools questions, before installPack reports 'shipped-skill store missing'. Nothing is written, but the user is asked questions that can't be acted on.
+  (2) installOctobotsPack is invoked with `void` and has no try/catch, so an exception from installPack (e.g. a permissions error) shows the user no message.
+steps_to_reproduce: (1) Run the extension with resources/shipped-skills.json.br removed, on a solo copy, then run Install. (2) Make .claude read-only, then run Install.
+expected: (1) The store check happens at the top of installOctobotsPack and shows the error before any prompt. (2) Any throw is caught and shown as an error message naming the failure. Both are covered by tests (pure-function seam or source scan).
+actual: (1) The modal is shown first. (2) The failure is silent.
+rca: ''
+environment: 'found by the T7.4 review gate (PR #130, 2026-10-05)'
