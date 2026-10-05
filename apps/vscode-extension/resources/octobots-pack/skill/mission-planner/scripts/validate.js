@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, statSync } from "node:fs";
-import { dirname, resolve, parse } from "node:path";
-import { findLegacyWorkflowFolders, legacyWorkflowsWarning } from "./legacy-workflows.mjs";
+import { dirname } from "node:path";
+import { boardRootOf, findLegacyWorkflowFolders, legacyWorkflowsWarning } from "./legacy-workflows.mjs";
 import { readEntity, resolveEntityFile, KIND_KEYS, KNOWN_KEYS } from "./entity-io.mjs";
 
 const arg = process.argv[2];
@@ -71,16 +71,12 @@ report();
 
 /**
  * Non-fatal: `workflows/` folders under this campaign or mission are no longer read (pack v57).
- * Paths are relative to the enclosing `.octobots/` so the lines match the board library's validateBoard.
+ * Paths are relative to the board root (even on a copy not named `.octobots`), so the lines match
+ * the board library's validateBoard(root).
  */
 function legacyWorkflowWarnings() {
-  const dir = resolve(dirname(path));
-  let base = dir;
-  for (let d = dir; ; d = dirname(d)) {
-    if (parse(d).base === ".octobots") { base = d; break; }
-    if (d === parse(d).root) break;
-  }
-  return findLegacyWorkflowFolders(dir, base).map(legacyWorkflowsWarning);
+  const dir = dirname(path);
+  return findLegacyWorkflowFolders(dir, boardRootOf(dir)).map(legacyWorkflowsWarning);
 }
 
 function report() {

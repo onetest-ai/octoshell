@@ -443,6 +443,30 @@ describe("validate.js contract checks", () => {
       expect(stderr).toContain("missing a `name`");
     });
 
+    it("names each workflows/<slug>/ folder (M2 TC-003/TC-004); a workflows/ with no sub-folder names itself", () => {
+      const { campaign, missions } = seedMissions();
+      const m = join(boardRoot, missions[0]!);
+      mkdirSync(join(m, "workflows", "m2-execution"), { recursive: true });
+      expect(warningLines(runScript("validate.js", [m], projectDir))).toEqual([
+        `warning: ${missions[0]}/workflows/m2-execution: no longer read since pack v57`,
+        `warning: ${missions[0]}/workflows/run: no longer read since pack v57`,
+      ]);
+      mkdirSync(join(boardRoot, campaign, "workflows"));
+      writeFileSync(join(boardRoot, campaign, "workflows", "stray.txt"), "x\n", "utf8");
+      const lines = warningLines(runScript("validate.js", [join(boardRoot, campaign)], projectDir));
+      expect(lines).toHaveLength(7);
+      expect(lines).toContain(`warning: ${campaign}/workflows: no longer read since pack v57`);
+    });
+
+    it("a board copy not named .octobots still reports paths from the board root (validateBoard parity)", () => {
+      const { missions } = seedMissions();
+      const expected = warningLines(runScript("validate.js", [join(boardRoot, missions[1]!)], projectDir));
+      expect(expected).toEqual([`warning: ${missions[1]}/workflows/run: no longer read since pack v57`]);
+      const copy = join(projectDir, "solo-octobots");
+      execFileSync("cp", ["-R", boardRoot, copy]);
+      expect(warningLines(runScript("validate.js", [join(copy, missions[1]!)], projectDir))).toEqual(expected);
+    });
+
     it("a board without workflows/ folders prints no warning", () => {
       const c = createCampaign(boardRoot, { name: "Clean" });
       expect(warningLines(runScript("validate.js", [join(boardRoot, c.folderPath)], projectDir))).toHaveLength(0);
