@@ -31,7 +31,7 @@ The real shipped `skill/octobots-doctor/SKILL.md`; a git copy of solo staged by 
 ```bash
 cd $OCTO && pnpm --filter @octoshell/vscode-extension exec vitest run test/skill-conventions.test.ts test/pack-reconcile-script.test.ts --reporter=verbose
 awk 'c>=2{print} /^---$/{c++}' $PACK/skill/octobots-doctor/SKILL.md | grep -n -E "ESCALATED|RESOLVED|Kept local|Taken from upstream|Conflicts|\+local|reconciled-from|merge|by lines|workflows/|CLAUDE_CONFIG_DIR|No upstream change since the base|UPSTREAM-CANDIDATES|doctor-acks|when unsure|who may merge"
-grep -c -E "mission-execution|mission-completion-gate|mission-planner|knowledge-explorer|workflow-designer" $PACK/skill/octobots-doctor/scripts/pack-reconcile.mjs
+grep -v -E '^import ' $PACK/skill/octobots-doctor/scripts/pack-reconcile.mjs | grep -c -E "mission-execution|mission-completion-gate|mission-planner|knowledge-explorer|workflow-designer"   # 0: its logic names no skill; the two imports from mission-planner/scripts are excluded
 gitcopy solo10; W=$WORK/solo10; $IP $W > /dev/null 2>&1; PR=$W/.claude/skills/octobots-doctor/scripts/pack-reconcile.mjs
 (cd $OCTO && node $PR list)
 (cd $W && node $PR done mission-execution); echo "exit=$?"; jq '.skills | length' $W/.octobots/pack-updates/pending.json
