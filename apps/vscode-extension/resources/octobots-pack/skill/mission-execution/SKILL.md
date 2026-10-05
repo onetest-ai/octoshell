@@ -136,8 +136,8 @@ all tasks merged → set-status.js … "M<n> - name" done → mission-completion
    reproducible defect, or security exposure with a PoC). Anything else is filed as a board bug.
    Keep separate counters for question rounds and fix rounds.
 10. **A dead agent is a dispatch to retry, not a task failure.** If an agent returns an API or transport
-   error, inspect `git status` and the branch, keep committed work, and dispatch again with "resume:
-   these commits already exist, do not redo them". Resume from the board and git, never from a cache.
+    error, inspect `git status` and the branch, keep committed work, and dispatch again with "resume:
+    these commits already exist, do not redo them". Resume from the board and git, never from a cache.
 
 ### The phases
 
@@ -224,7 +224,8 @@ orchestrator picks the one that matches what it was asked to do, never the first
   the code as it is now. Nothing is built in this loop; a failure becomes a board bug, not an inline edit.
 - **Fixing** — bugs have accumulated on this mission and are being worked off. Dispatch a dev per bug,
   test-first (the failing regression test comes before the fix), then re-run the testing loop over the
-  affected criteria before the bug is marked fixed.
+  affected criteria before the bug is marked fixed. A bug fix is a change like any other: it still goes
+  through review, then QA + land, before it merges.
 
 Re-run the tests at the boundary of each loop: after every build and fix round (scoped, fast lane), at
 QA + land (the full fast lane), and again after any later mission lands on the same code. A green run
@@ -446,13 +447,14 @@ It adds what a per-task loop structurally cannot:
 - **A whole-mission review** over `git diff <base-branch>...<mission-feature-branch>` — where
   `<base-branch>` is the branch the mission was cut from (the campaign branch when the campaign lands
   atomically, else `main`). Diffing against `main` when a campaign branch is in use would pull in
-  every prior mission already merged there, so pass the mission's base as the gate's `baseBranch` arg.
+  every prior mission already merged there, so the orchestrator passes the mission's base branch in the
+  briefs it dispatches for each gate phase.
   This review catches integration defects, duplicated abstractions across tasks, and marker/doc
   coherence — invisible to a review scoped to one task's diff.
 
 **Only then does the mission feature branch PR into `main`** — that PR is the per-mission PR, and it
-is opened after the gate is green, never before. **Do not end a mission run at
-`MISSION_TASKS_MERGED`** — that is the middle of the job, not the end of it.
+is opened after the gate is green, never before. **Do not end a mission run when the last task has
+merged** — that is the middle of the job, not the end of it.
 
 ## Non-negotiable principles
 

@@ -23,6 +23,7 @@
 //
 // DESIGN RULES
 //   * Inert unless it recognises a status flip — exits 0 on all other Bash calls.
+//   * Logs a flip only once the target's YAML shows the requested status (status-flip.mjs).
 //   * Self-gates on `.octobots/`, so it does nothing in a non-Octobots repo.
 //   * Writes only; emits nothing on stdout and never influences the agent.
 //   * Never fails the tool call. A work log is analytics; analytics must not
@@ -30,6 +31,7 @@
 import { existsSync, appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
+import { parseSetStatus, statusNowEquals } from "./status-flip.mjs";
 
 const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.env.OCTOBOTS_PROJECT_DIR ?? process.cwd();
 if (!existsSync(join(projectDir, ".octobots"))) process.exit(0);
@@ -38,28 +40,6 @@ async function slurpStdin() {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   return Buffer.concat(chunks).toString("utf8");
-}
-
-/** Tokenize a shell command respecting single/double quotes. */
-function tokenize(cmd) {
-  const out = [];
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  let m;
-  while ((m = re.exec(cmd)) !== null) out.push(m[1] ?? m[2] ?? m[3]);
-  return out;
-}
-
-/** Find a `set-status.js <board> <title> <state>` call in a (possibly chained) command. */
-function parseSetStatus(command) {
-  for (const seg of command.split(/&&|;|\|\|/)) {
-    const toks = tokenize(seg.trim());
-    const idx = toks.findIndex((t) => t.endsWith("set-status.js"));
-    if (idx === -1) continue;
-    const a = toks.slice(idx + 1).filter((t) => !t.startsWith("-"));
-    if (a.length < 3) continue;
-    return { title: a[a.length - 2], state: a[a.length - 1] };
-  }
-  return null;
 }
 
 let evt;
@@ -83,6 +63,11 @@ const taskId = parsed.title.match(/^(T\d+\.\d+)\b/)?.[1] ?? null;
 const missionId = taskId ? null : (parsed.title.match(/^(M\d+)\b/)?.[1] ?? null);
 if (!taskId && !missionId) process.exit(0);
 if (!["active", "done"].includes(parsed.state)) process.exit(0);
+
+// Log only a flip that landed: re-read the target's YAML and require its status to be the one asked
+// for. `set-status.js … "M9 - no such mission" active; echo` exits 0 but writes nothing, and logging
+// it would attribute this session's planning to a mission it never started.
+if (!(await statusNowEquals(parsed, evt.cwd ?? projectDir))) process.exit(0);
 
 let branch = null;
 try {
