@@ -242,6 +242,24 @@ describe("recoverBase", () => {
     expect(store.versions["57"]![skill]![0]).not.toBe(v56());
   });
 
+  it("rule 2 steps over a commit that deleted the SKILL.md and still finds the shipped body before it", () => {
+    const root = repoWithHistory([body(v56())]);
+    gitIn(root, "rm", "-q", "-r", ".claude");
+    gitIn(root, "commit", "-q", "-m", "delete");
+    writeSkill(root, skill, fork());
+    gitIn(root, "add", "-f", ".");
+    gitIn(root, "commit", "-q", "-m", "fork");
+    expect(recoverBase(root, skill, fork(), PACK, store)!).toMatchObject({ version: 56, sha256: v56(), source: "workspace-git" });
+  });
+
+  it("rule 1 is skipped for a stored body no version lists (fail-closed to the later rules)", () => {
+    const text = `---\nname: ${skill}\nversion: 56\n---\norphan body\n`;
+    const h = skillSha256(text);
+    const orphanStore = { versions: {}, order: [h], bodies: { [h]: text } };
+    const local = `---\nname: ${skill}\nversion: 57+local\nreconciled-from: ${h}\n---\nmerged\n`;
+    expect(recoverBase(workspace({}), skill, local, PACK, orphanStore)).toBeNull();
+  });
+
   it("rule 2 skips commits that are not shipped bodies, and falls to rule 3 when none is", () => {
     const repo = repoWithHistory([fork(), fork() + "more\n"]);
     expect(recoverBase(repo, skill, fork(), PACK, store)!.source).toBe("declared");

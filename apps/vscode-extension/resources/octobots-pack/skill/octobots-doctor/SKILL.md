@@ -87,7 +87,8 @@ For each named folder `.octobots/pack-updates/v<N>/<skill>/`:
     node .claude/skills/octobots-doctor/scripts/pack-reconcile.mjs done <skill>
     ```
 
-    Exit 3 prints what is unfinished; fix it and run done again. Never edit pending.json yourself.
+    Exit 3 prints what is unfinished (done also refuses a live file that still holds an
+    `<!-- ESCALATED: ... -->` line); fix it and run done again. Never edit pending.json yourself.
 
 The marker is exactly `<N>+local`. A plain `<N>` makes the fork look like the pack's own file, so a
 later update would overwrite it; `<N>-local` reads as a fork nobody reconciled.
@@ -129,12 +130,16 @@ UPSTREAM-CANDIDATES.md is optional and lists only rules from Kept local, one lin
 RECONCILE.md says upstream deleted it, so there is nothing to merge. Always escalate a retired skill:
 DECISIONS.md gets `- ESCALATED: <skill> is retired: local <what it does here>; upstream deleted it; question keep it as a project skill under a new directory name (which name?), or delete it?`
 Once the user answers, record the answer (§3), then move `.claude/skills/<skill>` to
-`.claude/skills/<their name>` (a name no pack skill uses) or delete it, and run done.
+`.claude/skills/<new name>` or delete it, and run done. The new name is
+`<skill>-local-<YYYY-MM-DD>` unless the user picks another, and it is never a name that is, or ever
+was, a pack skill (a skill the pack ships, or one any RECONCILE.md calls retired): a retired name
+stays retired, and the next install would treat that directory as the retired skill again. If the
+user picks such a name, say so and ask for another.
 
 ### What you may write
 
 Write nothing outside `.claude/skills/<skill>/`, its staging folder and `.octobots/doctor-acks.json`
-(a retired skill's directory may also move to the name the user chose). Never CLAUDE.md, AGENTS.md,
+(a retired skill's directory may also move to the new name the user chose, as above). Never CLAUDE.md, AGENTS.md,
 another skill, `.octobots/campaigns/` or pending.json.
 
 ## 3. Open escalations and answers

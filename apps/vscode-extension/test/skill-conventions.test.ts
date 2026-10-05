@@ -282,6 +282,20 @@ describe("octobots-doctor: the rules of M7-AC7", () => {
     expect(flat).toMatch(/[Aa]lways escalate a retired skill/);
   });
 
+  it("moves a kept retired skill to a name that is not, and never was, a pack skill (gate Q2)", () => {
+    // A retired name stays retired: a copy kept under one would be treated as that retired skill by
+    // the next install. Phrased generically, so no retired skill is named here.
+    expect(flat).toContain("`<skill>-local-<YYYY-MM-DD>` unless the user picks another");
+    expect(flat).toMatch(/never a name that is, or ever was, a pack skill/);
+    expect(flat).toMatch(/a retired name stays retired/);
+    expect(flat).toMatch(/next install would treat that directory as the retired skill again/);
+    expect(flat).not.toMatch(/a name no pack skill uses/); // the old wording let a retired name through
+  });
+
+  it("says done refuses a live file that still holds an ESCALATED placeholder line", () => {
+    expect(flat).toMatch(/done also refuses a live file that still holds an `<!-- ESCALATED: \.\.\. -->` line/);
+  });
+
   it("an answer is recorded as `- RESOLVED (user, <YYYY-MM-DD>)`; an unanswered escalation is asked again without re-merging", () => {
     expect(body).toContain("- RESOLVED (user, <YYYY-MM-DD>): <rule>: <answer>");
     expect(flat).toMatch(/ask its question again, verbatim, and change nothing[^.]*do not merge again/);
