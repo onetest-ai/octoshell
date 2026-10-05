@@ -1,7 +1,19 @@
 name: T4.1 - add-tests.js scaffolds and links a mission's tests folder
-status: draft
+status: done
 role: js-dev
 description: 'Scope: a new pack script using entity-io.mjs plus the add-doc.js linking rule (repo-relative target .octobots/campaigns/<c>/tests/m<n>/README.md, idempotent on target); a TC template skill/mission-planner/templates/TC-template.md carrying the contract frontmatter (M4 notes § TC format contract) and the required sections. Test cases go in packages/board/test/scripts-cli-scenarios.test.ts. Out of scope: writing TCs. Downstream: T4.3 tells the planner to run it; M6 TC-011''s VSIX check expects add-tests.js.'
 acceptance_criteria:
   - text: packages/board/test/scripts-cli-scenarios.test.ts proves add-tests.js creates README with M<n>-AC1..ACk rows and the three sections, links the document with target .octobots/campaigns/<c>/tests/m<n>/README.md, changes nothing and exits 0 on a second run, and never overwrites an existing README (mission AC1); `pnpm coverage:pack` passes
-    done: false
+    done: true
+notes: |
+  ## QA verification (Sage, 2026-10-05, review fix ef2f2d05)
+
+  Black-box, using the INSTALLED script (.claude/skills/mission-planner/scripts/add-tests.js after apps/vscode-extension/scripts/qa/install-pack.mjs into a git clone --shared of solo). Solo's git status --short identical before and after. All runs on clones/copies.
+
+  - AC1 (add-tests.js scaffold/link/idempotent/no-overwrite): PASS. Pre-existing records: solo uwb m6 (receiver-port-configuration-file, no tests folder, 5 ACs, documents []) -> exit 0, README created with M6-AC1..AC5 rows and the three sections (Shared preconditions, Pre-existing records, Assumptions to confirm), mission.yaml diff is only the documents entry 'M6 functional test cases' -> .octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m6/README.md. Solo uwb m1 (README + link present): exit 0, README sha256 5e3e16b6... and mission.yaml sha256 d066d047... unchanged. m1 with link removed from a copy: README byte-identical, link added once. Re-run of m1 and m6: exit 0, README + mission.yaml sha256 unchanged.
+  - TC-001 (octoshell octograph m6, 5 ACs, no tests): PASS, as written on a copy (M6-AC1..5, three sections, 'M6 plan' document untouched, new document target correct, template exists with id/title/mission/covers/kind/status frontmatter).
+  - TC-002 (solo uwb m1): PASS, git diff --no-index before vs after empty on run 1 and run 2, exit 0.
+  - Symlink PoC (review finding): PASS. Dangling tests/m6/README.md symlink -> exit 2, outside path does not exist, mission.yaml unchanged. Symlinked tests/ dir -> exit 2, outside dir stays empty, mission.yaml unchanged. README that is a directory -> exit 2. tests/m6 that is a file -> exit 2 (file untouched).
+  - Template: apps/vscode-extension/resources/octobots-pack/skill/mission-planner/templates/TC-template.md exists and is installed at .claude/skills/mission-planner/templates/TC-template.md; frontmatter id, title, mission, covers, kind, status per the M4 TC format contract, with ## Steps and ## Expected Final State.
+  - pnpm build, typecheck, lint, test (board 307, tokenomics 102, extension 947, graph 653 passed), coverage:pack: all exit 0; add-tests.js 97.41% lines / 91.89% branches (uncovered lines 40-42).
+  - Observations (not defects): empty bullets in the README placeholder sections; AC summaries truncated at 100 chars with an ellipsis.
