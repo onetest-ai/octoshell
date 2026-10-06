@@ -1,9 +1,21 @@
 name: T6.2 - set-test-status.js and gate/QA skill text
-status: draft
+status: done
 role: js-dev
 description: 'Scope: a new pack script set-test-status.js (status + last_run, --evidence, --date, --migrate with no status by default, body untouched, idempotent, exit 2 on invalid input incl. status `unknown`) built on tc-io.mjs from M4 T4.2 (entity-io.mjs has no frontmatter helpers); the gate phase 2 and the last-QA-task text in mission-completion-gate and mission-execution call it per TC with the result-word mapping (conventions vitest). Out of scope: the extension. Downstream: T6.5 QA uses it; M6 TC-011''s VSIX check expects it.'
 acceptance_criteria:
   - text: packages/board/test/scripts-cli-scenarios.test.ts proves set-test-status.js body-preserving bytes, idempotence, exit 2 on an invalid status (incl. `unknown`) and on a non-TC path, and `--migrate` (no status) on a copy of a legacy TC yielding status unknown (mission AC6); `pnpm coverage:pack` passes
-    done: false
+    done: true
   - text: apps/vscode-extension/test/skill-conventions.test.ts asserts both skills tell QA to call set-test-status.js for every TC run, with PASS -> pass, FAIL -> fail, BLOCKED/UNREACHABLE -> blocked
-    done: false
+    done: true
+notes: |-
+  ## QA verification (2026-10-06, Sage, black-box on the installed pack)
+
+  Branch feat/direct-dispatch-process-m6-t2 at 52845022 (post-tidy; the full chain was re-run). The pack was installed into a shared clone of solo with install-pack.mjs --local-changes=overwrite (upToDate true, pack v57); every call below used the INSTALLED .claude/skills/mission-planner/scripts/set-test-status.js, on copies. Solo's git status is unchanged.
+
+  - TC-007 PASS (set-test-status updates frontmatter only). On a copy of this campaign's real m1 TC-001: exit 0, body byte-identical (cmp), second identical call byte-identical (idempotent); `passing` exit 2 file unchanged; `unknown` exit 2 (only --migrate writes it) file unchanged; README.md exit 2 and unchanged. Note: m1 TC-001 was already pass with that evidence on the board, so step 1 there reported "(already)"; I also ran it on a draft TC (m6 TC-007 copy): the diff is exactly status draft -> pass plus one last_run line.
+  - TC-008 PASS (migrate legacy TC). On a copy of solo's real uwb m1 TC-003: exit 0; frontmatter keeps id, title, mission M1, covers [M1-AC2, M1-AC5] (from requirements), priority/type/module/size/tags, status unknown, no kind (accepted ruling); body byte-identical; validate.js showed the "lists as unknown: run ... --migrate" suggestion before and 0 migrate mentions after, exit 0.
+  - Round trip: set-test-status.js m6 TC-010 pass --evidence <RUN-2026-10-05-001.md> --date 2026-10-06 on a copy of this campaign's tests, then dump-tests.mjs showed status pass and lastRun {2026-10-06, that evidence}; validate.js on the file: OK, exit 0.
+  - Literal example: gate and mission-execution skill blocks read in the installed copy; the example ran exactly as written (placeholders filled, cwd = workspace root): exit 0, status pass and last_run written, second call "(already)" with identical bytes. The evidence file need not exist.
+  - Refusal: quoted "status" key: exit 2, sha unchanged, message "could not edit the frontmatter ... safely (unusual YAML); nothing was written. Fix the frontmatter so it parses as plain top-level YAML keys (or run --migrate on a file that has none)": no "by hand".
+  - Chain: pnpm build, typecheck, lint, test, coverage:pack all exit 0 (board 800, extension 1117, graph 655, tokenomics 102 tests passed; set-test-status.js 100% lines); shipped-skills.mjs --verify "store is current"; gh pr checks 165: both build jobs pass on 52845022.
+  - TC frontmatter in tests/m6 not updated here (T6.5's job).
