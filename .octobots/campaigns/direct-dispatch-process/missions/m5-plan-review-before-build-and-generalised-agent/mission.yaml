@@ -44,3 +44,13 @@ notes: |-
   Solo's .agents/manual-qa/qa-db.sh hard-codes EDGESERVER_* and is the model for qa-env.mjs (exit 3 refused, exit 4 probe mismatch).
   Octoshell's lanes: fast = `pnpm --filter <pkg> test`, coverage = `pnpm coverage`; parked-test baseline is one allowed skip: packages/graph/test/vault-calibration.test.ts:10 describe.skipIf(!HAS_VAULT).
   Real plan-review examples: this campaign's own notes carry the strict record of 2026-10-05 (the allow case). Solo uwb-ranging-ingest-vendor-v01's campaign notes carry a heading-only record from 2026-10-02 (the legacy accept-with-warning case; its M5 is cancelled, and cancelled -> executing is a gated move). Solo epic-013 M10 ('M10 - One setup flow, preset warnings, and edge-side exception authorization') is draft, and neither it nor its campaign has a record (the refuse case).
+
+  ## Spec clarifications (T5.1 review, Rio, 2026-10-06)
+
+  Rulings on AC1 wording, made in the T5.1 review (PR #156, commit bc65bf0e). T5.2's TS mirror copies them; the shared case table packages/board/test/fixtures/plan-review-cases.json encodes each.
+  1. "(case-insensitive)" covers the whole Reviewers:/Verdict: line, keys included: `verdict: changes requested` under a heading naming both reviewers is a Verdict line, so the section is refused, not accepted as legacy.
+  2. Conflicting verdicts are refused: a strict section needs at least one approving Verdict: line AND every column-0 Verdict: line approving (missing string: "a Verdict: line that is not approved").
+  3. Token neighbours are Unicode letters/digits (\p{L}, \p{N}) plus _ and -.
+  4. A --force reason that starts with # is written escaped (\#), so an override note can never forge a review heading. BoardHost.setStatus applies the same escape.
+  5. An unreadable campaign.yaml (malformed, BOM) is treated as empty campaign notes and named in the refusal; it never exits 1.
+  Left literal (non-blocking, would need an AC change): a record inside a fenced code block counts; `**Verdict:**`, `- Verdict:` and `Verdict :` are not Verdict lines.
