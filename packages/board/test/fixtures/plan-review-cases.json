@@ -1,0 +1,1540 @@
+{
+  "_readme": [
+    "Shared case table for the plan-review rule (mission M5 AC1). T5.1's plan-review.mjs tests and T5.2's TypeScript mirror both feed every row to planReviewStatus(missionNotes, campaignNotes).",
+    "expected for an allowed row: {ok: true, where, legacy, heading}. expected for a refused row: {ok: false, candidates: [{where, heading, missing}], missing}, where `missing` is every candidate's missing strings flattened in candidate order and `candidates` is empty when no '## Plan review (...)' heading exists.",
+    "`heading` is the full column-0 line without trailing blanks. Expected values are hand-written from the rule, never produced by the implementation."
+  ],
+  "cases": [
+    {
+      "id": "strict-mission-notes",
+      "description": "strict record in the mission notes",
+      "missionNotes": "Intro.\n\n## Plan review (Alex + Rio, 2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits\n\nprose",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (Alex + Rio, 2026-10-05)"
+      }
+    },
+    {
+      "id": "strict-campaign-notes",
+      "description": "strict record in the campaign notes only",
+      "missionNotes": "",
+      "campaignNotes": "## Plan review (Alex + Rio, 2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "expected": {
+        "ok": true,
+        "where": "campaign",
+        "legacy": false,
+        "heading": "## Plan review (Alex + Rio, 2026-10-05)"
+      }
+    },
+    {
+      "id": "strict-verdict-approved",
+      "description": "Verdict: approved (no nits)",
+      "missionNotes": "## Plan review (x)\nReviewers: ba, tech-lead\nVerdict: approved",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "strict-verdict-case-insensitive",
+      "description": "the verdict value is case-insensitive",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: APPROVED With Nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "strict-reviewers-case-insensitive",
+      "description": "ba and tech-lead match case-insensitively",
+      "missionNotes": "## Plan review (x)\nReviewers: BA, Tech-Lead\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "strict-reviewers-any-order",
+      "description": "token order and extra words on the line do not matter",
+      "missionNotes": "## Plan review (x)\nReviewers: tech-lead (Rio) and ba (Alex), plus a guest\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "strict-reviewers-punctuation-neighbours",
+      "description": "punctuation other than letter, digit, _ or - may sit next to a token",
+      "missionNotes": "## Plan review (x)\nReviewers: (ba), [tech-lead]; ba/tech-lead\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "strict-empty-heading-text",
+      "description": "a strict record does not need anything in the heading's parentheses",
+      "missionNotes": "## Plan review ()\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review ()"
+      }
+    },
+    {
+      "id": "strict-heading-trailing-blanks",
+      "description": "trailing blanks on the heading are ignored and trimmed from the reported heading",
+      "missionNotes": "## Plan review (x)  \t\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "strict-verdict-trailing-blanks",
+      "description": "trailing blanks on the Verdict line are ignored",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved \t",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "strict-nested-parentheses",
+      "description": "the heading text is greedy: nested parentheses are fine",
+      "missionNotes": "## Plan review (ba (Alex) + tech-lead (Rio), 2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (ba (Alex) + tech-lead (Rio), 2026-10-05)"
+      }
+    },
+    {
+      "id": "strict-section-runs-to-end-of-notes",
+      "description": "the last section ends at the end of the notes, no trailing newline needed",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "strict-subheading-stays-in-section",
+      "description": "a ### subheading does not end the section",
+      "missionNotes": "## Plan review (x)\n### Findings\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "strict-mission-before-campaign",
+      "description": "both notes hold a strict record: the mission's is reported",
+      "missionNotes": "## Plan review (mission one)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "## Plan review (campaign one)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (mission one)"
+      }
+    },
+    {
+      "id": "strict-first-in-document-order",
+      "description": "two strict records in one notes: the first is reported",
+      "missionNotes": "## Plan review (first)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits\n\n## Plan review (second)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (first)"
+      }
+    },
+    {
+      "id": "strict-after-refused-section",
+      "description": "a refused section earlier in the notes does not hide a later strict one",
+      "missionNotes": "## Plan review (Alex, one reviewer)\n\n## Plan review (both)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (both)"
+      }
+    },
+    {
+      "id": "strict-prose-around-lines",
+      "description": "prose lines in the section do not matter",
+      "missionNotes": "## Plan review (x)\nPlan by Rio.\nReviewers: ba (Alex), tech-lead (Rio)\nAlex asked for fixes; all applied.\nVerdict: approved with nits\nMore prose.",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "refuse-conflicting-verdict-lines",
+      "description": "a section whose Verdict: lines disagree is ambiguous and refused, even though one line approves (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: changes requested\nVerdict: approved",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "a Verdict: line that is not approved"
+            ]
+          }
+        ],
+        "missing": [
+          "a Verdict: line that is not approved"
+        ]
+      }
+    },
+    {
+      "id": "refuse-conflicting-verdict-lines-approving-first",
+      "description": "the order of the disagreeing Verdict: lines does not matter (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits\nverdict: Changes Requested",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "a Verdict: line that is not approved"
+            ]
+          }
+        ],
+        "missing": [
+          "a Verdict: line that is not approved"
+        ]
+      }
+    },
+    {
+      "id": "strict-two-approving-verdict-lines",
+      "description": "several Verdict: lines that all approve are not a conflict (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "conflicting-section-then-clean-strict-section",
+      "description": "a refused conflicting section does not stop a later clean strict record from allowing the move (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (first)\nReviewers: ba, tech-lead\nVerdict: changes requested\nVerdict: approved\n\n## Plan review (second)\nReviewers: ba, tech-lead\nVerdict: approved",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (second)"
+      }
+    },
+    {
+      "id": "strict-reviewers-on-second-line",
+      "description": "any column-0 Reviewers: line may satisfy the rule",
+      "missionNotes": "## Plan review (x)\nReviewers: Alex\nReviewers: ba, tech-lead\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "strict-wins-over-legacy-mission-first",
+      "description": "legacy heading first, strict record later in the same notes: strict wins, no warning",
+      "missionNotes": "## Plan review (Alex + Rio, 2026-10-02)\nprose\n\n## Plan review (2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (2026-10-05)"
+      }
+    },
+    {
+      "id": "strict-wins-over-legacy-in-mission-vs-campaign",
+      "description": "legacy in the mission notes, strict in the campaign notes: strict wins",
+      "missionNotes": "## Plan review (Alex + Rio, 2026-10-02)",
+      "campaignNotes": "## Plan review (2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "expected": {
+        "ok": true,
+        "where": "campaign",
+        "legacy": false,
+        "heading": "## Plan review (2026-10-05)"
+      }
+    },
+    {
+      "id": "strict-wins-over-legacy-campaign-legacy",
+      "description": "strict in the mission notes, legacy in the campaign notes: strict wins",
+      "missionNotes": "## Plan review (2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "## Plan review (Alex + Rio, 2026-10-02)",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (2026-10-05)"
+      }
+    },
+    {
+      "id": "legacy-personas-real-uwb",
+      "description": "solo uwb's heading-only record (campaign decision 9)",
+      "missionNotes": "",
+      "campaignNotes": "Context.\n\n## Plan review (Alex + Rio, 2026-10-02)\nReviewed against the real code.\n\n## Next",
+      "expected": {
+        "ok": true,
+        "where": "campaign",
+        "legacy": true,
+        "heading": "## Plan review (Alex + Rio, 2026-10-02)"
+      }
+    },
+    {
+      "id": "legacy-personas-mission-notes",
+      "description": "legacy heading in the mission notes",
+      "missionNotes": "## Plan review (Alex + Rio, 2026-10-02)\nprose",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (Alex + Rio, 2026-10-02)"
+      }
+    },
+    {
+      "id": "legacy-role-tokens",
+      "description": "role tokens in the heading",
+      "missionNotes": "## Plan review (ba + tech-lead, 2026-10-05)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (ba + tech-lead, 2026-10-05)"
+      }
+    },
+    {
+      "id": "legacy-role-tokens-case-insensitive",
+      "description": "BA and Tech-Lead match case-insensitively",
+      "missionNotes": "## Plan review (BA + Tech-Lead)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (BA + Tech-Lead)"
+      }
+    },
+    {
+      "id": "legacy-role-and-persona",
+      "description": "a role token for one reviewer and a persona name for the other",
+      "missionNotes": "## Plan review (ba + Rio)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (ba + Rio)"
+      }
+    },
+    {
+      "id": "legacy-persona-and-role",
+      "description": "a persona name for the BA and a role token for the tech lead",
+      "missionNotes": "## Plan review (Alex + tech-lead)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (Alex + tech-lead)"
+      }
+    },
+    {
+      "id": "legacy-nested-parentheses",
+      "description": "nested parentheses in a legacy heading",
+      "missionNotes": "## Plan review (Alex (ba) + Rio (tech-lead))",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (Alex (ba) + Rio (tech-lead))"
+      }
+    },
+    {
+      "id": "legacy-mission-before-campaign",
+      "description": "legacy in both notes: the mission's is reported",
+      "missionNotes": "## Plan review (Alex + Rio, mission)",
+      "campaignNotes": "## Plan review (Alex + Rio, campaign)",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (Alex + Rio, mission)"
+      }
+    },
+    {
+      "id": "legacy-first-in-document-order",
+      "description": "two legacy records: the first is reported",
+      "missionNotes": "## Plan review (Alex + Rio, first)\n\n## Plan review (Alex + Rio, second)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (Alex + Rio, first)"
+      }
+    },
+    {
+      "id": "legacy-after-refused-candidate",
+      "description": "a refused candidate earlier does not hide a later legacy record",
+      "missionNotes": "## Plan review (Alex only)\n\n## Plan review (Alex + Rio)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (Alex + Rio)"
+      }
+    },
+    {
+      "id": "legacy-lines-after-next-heading-ignored",
+      "description": "a Verdict line after the next ## heading is not part of the legacy section",
+      "missionNotes": "## Plan review (Alex + Rio)\nprose\n\n## Later\nVerdict: changes requested",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (Alex + Rio)"
+      }
+    },
+    {
+      "id": "legacy-indented-lines-are-prose",
+      "description": "indented Reviewers:/Verdict: lines do not make the section strict-judged",
+      "missionNotes": "## Plan review (Alex + Rio)\n  Reviewers: nobody\n  Verdict: changes requested",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (Alex + Rio)"
+      }
+    },
+    {
+      "id": "legacy-indented-example-in-prose",
+      "description": "an indented strict-looking example does not count, the legacy heading still does",
+      "missionNotes": "## Plan review (ba + tech-lead)\nExample record:\n    Reviewers: ba, tech-lead\n    Verdict: approved",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": true,
+        "heading": "## Plan review (ba + tech-lead)"
+      }
+    },
+    {
+      "id": "refuse-empty-notes",
+      "description": "no notes at all",
+      "missionNotes": "",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-no-heading",
+      "description": "notes without any plan-review heading",
+      "missionNotes": "## Planning notes\nSome prose.",
+      "campaignNotes": "## User decisions\n1. x",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-overridden-heading",
+      "description": "an overridden note never counts, even with strict-looking lines",
+      "missionNotes": "## Plan review overridden (2026-10-06)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-overridden-then-reason",
+      "description": "an overridden note with only a reason",
+      "missionNotes": "## Plan review overridden (2026-10-06)\nQA override",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-record-shape-heading",
+      "description": "a '## Plan review record shape' heading is not a candidate",
+      "missionNotes": "## Plan review record shape (decision, final 2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-of-the-replan-heading",
+      "description": "a '## Plan review of ...' heading is not a candidate",
+      "missionNotes": "## Plan review of the re-plan (Alex + Rio, 2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-heading-case-sensitive",
+      "description": "the heading text is case-sensitive",
+      "missionNotes": "## Plan Review (Alex + Rio)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-heading-three-hashes",
+      "description": "### is not a column-0 '## ' heading",
+      "missionNotes": "### Plan review (Alex + Rio)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-heading-no-space-after-hashes",
+      "description": "'##Plan review' without the space",
+      "missionNotes": "##Plan review (Alex + Rio)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-heading-no-space-before-parenthesis",
+      "description": "'## Plan review(' without the space",
+      "missionNotes": "## Plan review(Alex + Rio)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-heading-trailing-text",
+      "description": "text after the closing parenthesis",
+      "missionNotes": "## Plan review (Alex + Rio) done\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-indented-heading",
+      "description": "an indented heading is prose",
+      "missionNotes": "  ## Plan review (Alex + Rio)\n  Reviewers: ba (Alex), tech-lead (Rio)\n  Verdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-indented-example-in-m5-style-notes",
+      "description": "an indented example record next to a non-matching heading",
+      "missionNotes": "## Plan review record shape (x)\n    ## Plan review (Alex + Rio, 2026-10-05)\n    Reviewers: ba (Alex), tech-lead (Rio)\n    Verdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-verdict-changes-requested-both-named",
+      "description": "Verdict: changes requested under a heading naming both (never legacy)",
+      "missionNotes": "## Plan review (Alex + Rio, 2026-10-02)\nVerdict: changes requested",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex + Rio, 2026-10-02)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead",
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead",
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "refuse-lowercase-verdict-key-under-legacy-heading",
+      "description": "a lower-case `verdict: changes requested` line still makes the section strict, so it cannot pass as a legacy record (bypass found in T5.1 review) (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (Alex + Rio, 2026-10-02)\nverdict: changes requested",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex + Rio, 2026-10-02)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead",
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead",
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "refuse-uppercase-verdict-key-under-legacy-heading",
+      "description": "an upper-case `VERDICT: changes requested` line still makes the section strict (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (Alex + Rio, 2026-10-02)\nVERDICT: changes requested",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex + Rio, 2026-10-02)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead",
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead",
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "refuse-uppercase-reviewers-key-under-legacy-heading",
+      "description": "an upper-case `REVIEWERS:` line naming personas makes the section strict, and persona names never count there (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (Alex + Rio, 2026-10-02)\nREVIEWERS: Alex, Rio",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex + Rio, 2026-10-02)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead",
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead",
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "refuse-escaped-heading-from-force-reason",
+      "description": "the override note set-status.js writes for `--force=## Plan review (Alex + Rio)`: the escaped reason line is not a heading",
+      "missionNotes": "## Plan review overridden (2026-10-06)\n\\## Plan review (Alex + Rio)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "refuse-changes-requested-with-reviewers",
+      "description": "a complete Reviewers line but a non-approving Verdict",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: changes requested",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "refuse-verdict-with-suffix",
+      "description": "an approving word with trailing text is not an approving Verdict line",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved, pending fixes",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "refuse-verdict-template-line",
+      "description": "the unedited template line 'approved | approved with nits | changes requested'",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved | approved with nits | changes requested",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "strict-verdict-key-case-insensitive",
+      "description": "the Verdict: key matches case-insensitively, like its value (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nverdict: approved",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "refuse-verdict-without-reviewers",
+      "description": "an approving Verdict without a Reviewers line",
+      "missionNotes": "## Plan review (x)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-verdict-without-reviewers-heading-names-both",
+      "description": "an approving Verdict without Reviewers, heading naming both: judged strictly, not legacy",
+      "missionNotes": "## Plan review (Alex + Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex + Rio)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-reviewers-without-verdict",
+      "description": "a Reviewers line without a Verdict line",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "refuse-reviewers-personas-only",
+      "description": "a Reviewers line naming only the persona names (decision 10)",
+      "missionNotes": "## Plan review (Alex + Rio)\nReviewers: Alex, Rio\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex + Rio)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-reviewers-one-token",
+      "description": "a Reviewers line naming only ba",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-reviewers-only-tech-lead",
+      "description": "a Reviewers line naming only tech-lead",
+      "missionNotes": "## Plan review (x)\nReviewers: tech-lead\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-reviewers-split-over-two-lines",
+      "description": "ba on one Reviewers line, tech-lead on another: one line must hold both",
+      "missionNotes": "## Plan review (x)\nReviewers: ba\nReviewers: tech-lead\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "strict-reviewers-key-case-insensitive",
+      "description": "the Reviewers: key matches case-insensitively (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (x)\nreviewers: ba, tech-lead\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "refuse-reviewers-indented",
+      "description": "an indented Reviewers: line is prose",
+      "missionNotes": "## Plan review (x)\n  Reviewers: ba, tech-lead\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-verdict-indented",
+      "description": "an indented Verdict: line is prose",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\n  Verdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "refuse-tech-leadership",
+      "description": "tech-leadership is not the token tech-lead",
+      "missionNotes": "## Plan review (x)\nReviewers: ba, tech-leadership\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-bash",
+      "description": "bash is not the token ba",
+      "missionNotes": "## Plan review (x)\nReviewers: bash, tech-lead\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-ba-hyphen-neighbour",
+      "description": "ba-lead: a hyphen next to the token",
+      "missionNotes": "## Plan review (x)\nReviewers: ba-lead, tech-lead\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-underscore-neighbour",
+      "description": "ba_ : an underscore next to the token",
+      "missionNotes": "## Plan review (x)\nReviewers: ba_, tech-lead\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-digit-neighbour",
+      "description": "tech-lead2: a digit next to the token",
+      "missionNotes": "## Plan review (x)\nReviewers: ba, tech-lead2\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-accented-letter-neighbour",
+      "description": "baé: a non-ASCII letter next to the token",
+      "missionNotes": "## Plan review (x)\nReviewers: baé, tech-lead\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-reviewers-after-next-heading",
+      "description": "the Reviewers: line sits after the next ## heading, outside the section",
+      "missionNotes": "## Plan review (2026-10-05)\nVerdict: approved with nits\n\n## Other\nReviewers: ba (Alex), tech-lead (Rio)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (2026-10-05)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead"
+        ]
+      }
+    },
+    {
+      "id": "refuse-both-lines-after-next-heading",
+      "description": "Reviewers: and Verdict: after the next ## heading: the section is legacy-judged and its heading names neither",
+      "missionNotes": "## Plan review (2026-10-05)\n\n## Other\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (2026-10-05)",
+            "missing": [
+              "heading does not name the ba (ba or Alex)",
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the ba (ba or Alex)",
+          "heading does not name the tech-lead (tech-lead or Rio)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-legacy-one-reviewer-alex",
+      "description": "a heading naming only the BA",
+      "missionNotes": "## Plan review (Alex, 2026-10-02)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex, 2026-10-02)",
+            "missing": [
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the tech-lead (tech-lead or Rio)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-legacy-one-reviewer-rio",
+      "description": "a heading naming only the tech lead",
+      "missionNotes": "## Plan review (Rio, 2026-10-02)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Rio, 2026-10-02)",
+            "missing": [
+              "heading does not name the ba (ba or Alex)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the ba (ba or Alex)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-legacy-one-reviewer-roles",
+      "description": "role tokens: ba only, then tech-lead only",
+      "missionNotes": "## Plan review (ba, 2026-10-02)\n\n## Plan review (tech-lead, 2026-10-02)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (ba, 2026-10-02)",
+            "missing": [
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          },
+          {
+            "where": "mission",
+            "heading": "## Plan review (tech-lead, 2026-10-02)",
+            "missing": [
+              "heading does not name the ba (ba or Alex)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the tech-lead (tech-lead or Rio)",
+          "heading does not name the ba (ba or Alex)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-legacy-neither-named",
+      "description": "a heading naming neither reviewer",
+      "missionNotes": "## Plan review (2026-10-05)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (2026-10-05)",
+            "missing": [
+              "heading does not name the ba (ba or Alex)",
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the ba (ba or Alex)",
+          "heading does not name the tech-lead (tech-lead or Rio)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-legacy-empty-heading-text",
+      "description": "an empty heading text names neither reviewer",
+      "missionNotes": "## Plan review ()",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review ()",
+            "missing": [
+              "heading does not name the ba (ba or Alex)",
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the ba (ba or Alex)",
+          "heading does not name the tech-lead (tech-lead or Rio)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-legacy-persona-case-sensitive",
+      "description": "persona names match case-sensitively: alex + rio",
+      "missionNotes": "## Plan review (alex + rio)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (alex + rio)",
+            "missing": [
+              "heading does not name the ba (ba or Alex)",
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the ba (ba or Alex)",
+          "heading does not name the tech-lead (tech-lead or Rio)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-legacy-persona-upper-case",
+      "description": "persona names match case-sensitively: ALEX + RIO",
+      "missionNotes": "## Plan review (ALEX + RIO)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (ALEX + RIO)",
+            "missing": [
+              "heading does not name the ba (ba or Alex)",
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the ba (ba or Alex)",
+          "heading does not name the tech-lead (tech-lead or Rio)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-legacy-bash-rion",
+      "description": "bash and Rion are not tokens",
+      "missionNotes": "## Plan review (bash + Rion)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (bash + Rion)",
+            "missing": [
+              "heading does not name the ba (ba or Alex)",
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the ba (ba or Alex)",
+          "heading does not name the tech-lead (tech-lead or Rio)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-legacy-alexander",
+      "description": "Alexander is not the token Alex",
+      "missionNotes": "## Plan review (Alexander + Rio)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alexander + Rio)",
+            "missing": [
+              "heading does not name the ba (ba or Alex)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the ba (ba or Alex)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-legacy-tech-leadership",
+      "description": "tech-leadership is not the token tech-lead",
+      "missionNotes": "## Plan review (ba + tech-leadership)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (ba + tech-leadership)",
+            "missing": [
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the tech-lead (tech-lead or Rio)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-legacy-hyphen-persona",
+      "description": "Rio-de: a hyphen next to a persona name",
+      "missionNotes": "## Plan review (Alex + Rio-de)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex + Rio-de)",
+            "missing": [
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the tech-lead (tech-lead or Rio)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-two-candidates-listed-in-order",
+      "description": "mission candidates come first, then campaign candidates, each with its own missing list",
+      "missionNotes": "## Plan review (Alex only)\n\n## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)",
+      "campaignNotes": "## Plan review (2026-10-05)",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex only)",
+            "missing": [
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          },
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "no Verdict: approved line"
+            ]
+          },
+          {
+            "where": "campaign",
+            "heading": "## Plan review (2026-10-05)",
+            "missing": [
+              "heading does not name the ba (ba or Alex)",
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the tech-lead (tech-lead or Rio)",
+          "no Verdict: approved line",
+          "heading does not name the ba (ba or Alex)",
+          "heading does not name the tech-lead (tech-lead or Rio)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-campaign-candidate-only",
+      "description": "a refused candidate in the campaign notes only",
+      "missionNotes": "",
+      "campaignNotes": "## Plan review (Rio)\nprose",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "campaign",
+            "heading": "## Plan review (Rio)",
+            "missing": [
+              "heading does not name the ba (ba or Alex)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the ba (ba or Alex)"
+        ]
+      }
+    },
+    {
+      "id": "refuse-overridden-beside-refused-candidate",
+      "description": "an overridden note is not listed as a candidate",
+      "missionNotes": "## Plan review overridden (2026-10-06)\nQA override\n\n## Plan review (Alex only)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex only)",
+            "missing": [
+              "heading does not name the tech-lead (tech-lead or Rio)"
+            ]
+          }
+        ],
+        "missing": [
+          "heading does not name the tech-lead (tech-lead or Rio)"
+        ]
+      }
+    },
+    {
+      "id": "real-m5-notes-alone-self-approval",
+      "description": "SELF-APPROVAL CHECK: this campaign's M5 mission notes, verbatim as captured 2026-10-06, with no campaign notes. Its heading does not match, and its example record is indented, so M5's notes must not approve M5",
+      "missionNotes": "## Plan review record shape (decision, final 2026-10-05)\n\nCampaign decisions 9-12 settled the open questions. The rule is AC1; in short:\n- Strict record. This is what the planner writes, and it prints no warning. The example below is indented so it is not itself a record:\n    ## Plan review (Alex + Rio, 2026-10-05)\n    Reviewers: ba (Alex), tech-lead (Rio)\n    Verdict: approved with nits\n- Legacy record, accepted with a set-status.js warning: a heading that names both reviewers by role token or by the persona names Alex and Rio, with no column-0 Reviewers: or Verdict: line in its section. The real example is solo uwb-ranging-ingest-vendor-v01's campaign notes.\n- Never counts: `## Plan review overridden (...)`; a Reviewers: line that names only persona names; a Verdict other than approved or approved with nits; a Verdict line without a Reviewers line; a heading that names one reviewer; indented lines; lines after the next `## ` heading.\n- Self-approval check (rule spike, 2026-10-05, scratchpad pr2-spike.mjs, run on these notes after this edit): this section's heading does not match `^## Plan review \\(` and its examples are indented, so these M5 notes alone are refused. The campaign's own record is strict and is allowed with no warning.\n- Gated: a move INTO executing from any other stored status (decision 11). A refusal exits 3, because exit 1 already means 'no entity' and exit 2 means usage. Override: `--force=<reason>` on the script, the modal confirm in the UI. Both append `## Plan review overridden (<YYYY-MM-DD UTC>)` plus the reason, so the bypass is on the board.\n- One rule, two implementations: plan-review.mjs (pack, dependency-free, imported by set-status.js) and its mirror planReviewStatus in packages/board (used by BoardHost.setStatus). packages/board/test/plan-review-parity.test.ts holds them together over a shared table and every real notes pair. This is the dual-implementation hazard of entity-io.mjs and entity-schema.ts. The dropdown calls BoardHost.setStatus, never the script. The confirm is a host modal (DispatchCtx.dialog.confirm), not webview UI. The work-log and mission-gate hooks act only on a status change that happened (M2-AC8), so a refused start is never logged.\n- Spike results on real data (2026-10-05): solo has 115 missions, and 6 are allowed (all uwb, legacy, through the campaign notes). This campaign has 6 of 6 allowed (strict, through the campaign notes).\n\n## Planning notes (Rio, 2026-10-05)\n\nUser decisions 3 and 6 apply (UI enforcement; AGENTS.md § Test lanes; qa-env.mjs config-driven; mission-input.js retired in M2).\nSolo's .agents/manual-qa/qa-db.sh hard-codes EDGESERVER_* and is the model for qa-env.mjs (exit 3 refused, exit 4 probe mismatch).\nOctoshell's lanes: fast = `pnpm --filter <pkg> test`, coverage = `pnpm coverage`; parked-test baseline is one allowed skip: packages/graph/test/vault-calibration.test.ts:10 describe.skipIf(!HAS_VAULT).\nReal plan-review examples: this campaign's own notes carry the strict record of 2026-10-05 (the allow case). Solo uwb-ranging-ingest-vendor-v01's campaign notes carry a heading-only record from 2026-10-02 (the legacy accept-with-warning case; its M5 is cancelled, and cancelled -> executing is a gated move). Solo epic-013 M10 ('M10 - One setup flow, preset warnings, and edge-side exception authorization') is draft, and neither it nor its campaign has a record (the refuse case).",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
+      "id": "real-campaign-notes-strict",
+      "description": "this campaign's own notes, verbatim as captured 2026-10-06: the strict record of 2026-10-05 is allowed with no warning ('## Plan review of the decision-13 re-plan' is not a candidate)",
+      "missionNotes": "",
+      "campaignNotes": "## User decisions (2026-10-05)\n\n1. **Workflow support is removed from octoshell ENTIRELY**: pack, board library and extension. Old `workflows/` folders are ignored by the model; validate.js, validateBoard and doctor.js give a non-fatal warning. Files are never touched (no activation-time migration, no auto-delete). (Refined by 13(d): an agent running octobots-doctor may remove one folder after the user says yes to that folder.)\n2. **Tests pairing is a WARNING ONLY.** validate warns when a mission has no linked tests/m<n>/ or has ACs not covered by test cases. It is never an error and never blocks `set-status.js ... done`.\n3. **Plan review is ENFORCED in both the script and the UI.** set-status.js AND the extension's status dropdown (BoardHost.setStatus) refuse to move a mission to `active` until a BA + tech-lead plan-review sign-off is recorded (shape defined in M5 AC1). Override: `--force` on the script, a confirm dialog in the UI. (Refined by decisions 9-11 on 2026-10-05: a legacy heading-only record is accepted with a warning, reviewers are matched by role token, and only moves into `executing` are gated. The script override is `--force=<reason>` and a refusal exits 3.)\n4. **Campaign-level branches get their own campaign-level cost row** in tokenomics, not split across missions. A branch containing the campaign slug without -m<n> (feat/<slug>, chore/<slug>-plan, campaign/<slug>) belongs to the campaign row; an explicit `branches:` declaration on the campaign also counts. The precedence and the row shape are M1-AC5.\n5. **Release is 0.1.0** (extension) with workflow pack v57. Owned by M6-AC8 / T6.6.\n6. **Defaults for the remaining questions:** rename the \"Install Workflow Pack\" command title to \"Install Octobots Pack\" (command id kept); test lanes are declared in an `AGENTS.md § Test lanes` section; qa-env.mjs ships as a config-driven DB guard script; mission-input.js is retired.\n7. **2026-10-05: test cases get first-class board representation (M6)**: parsed into a TestCase entity by the board library, shown in the sidebar tree, the mission panel (with AC coverage) and the campaign panel, with QA results written back to each TC's status.\n8. **2026-10-05: doctor.js config-dir advice.** doctor.js stops recommending `CLAUDE_CONFIG_DIR=<repo>/.claude` (the root M1 calls legacy) and treats ~/.claude/projects as the default (M1-AC8).\n9. **2026-10-05: legacy plan-review records are ACCEPTED WITH A WARNING.** A `## Plan review (...)` section that has no column-0 `Reviewers:` or `Verdict:` line counts when its heading names both reviewers, and set-status.js warns that those two lines are missing. Solo's uwb `## Plan review (Alex + Rio, 2026-10-02)` is therefore accepted, not refused. The exact rule is M5-AC1.\n10. **2026-10-05: reviewers are matched by ROLE TOKEN.** A `Reviewers:` line must hold the tokens `ba` and `tech-lead`. The persona names Alex and Rio count only inside a legacy heading (decision 9), never on a `Reviewers:` line. `## Plan review overridden (...)` never counts as a review.\n11. **2026-10-05: only moves INTO `executing` are gated** (`active`, `in progress` and `running` map to it), from any other stored status. Moves to awaiting approval, done, failed, draft or cancelled are never gated, including draft -> done and draft -> failed. executing -> executing is a no-op and is not gated.\n12. **2026-10-05: no new extension messages for warnings.** Workflow-folder, TC-format and tests-pairing warnings appear only in validate.js and doctor.js output: no Problems-panel entry, notification or output-channel line in the extension. The legacy plan-review warning (decision 9) is set-status.js output only. The plan-review confirm dialog on the status dropdown (decision 3) is a different thing and stays, and so does M6's AC coverage view (decision 7), which shows an uncovered AC in warning style inside the mission panel as board content, not as a message.\n13. **2026-10-05, revised the same day: a locally changed pack skill is RECONCILED BY AN AGENT, not just overwritten or kept.** Locally forked skills are a valid practice (solo's 57-local forks delivered a campaign), so a pack update merges a deviation instead of picking a side. (a) Detection: a pack or retired skill is deviated when its SKILL.md matches no hash in the shipped-skill store for its version, or its version label is not a pack version; `<N>+local` marks a skill already reconciled against v<N> and counts as up to date while N is the pack version. (b) Only SKILL.md is protected; the rest of a skill's directory always installs. The install asks Reconcile (default) / Overwrite / Keep mine, applies Overwrite and Keep at once, and for Reconcile stages base.md, local.md, upstream.md and RECONCILE.md under `.octobots/pack-updates/v<N>/<skill>/`, leaves the live skill untouched and writes a pending record. The extension never starts an agent and never copies a prompt. A non-interactive install records Reconcile. (c) The pack's SessionStart hook (primer.mjs) tells the next agent session, in one line, to run the `octobots-doctor` skill while a primer finding exists (pending reconciles first, then leftover workflows/ folders, the legacy config dir and, from M5, missing test lanes; tests-pairing and legacy plan-review are acted on from validate.js / set-status.js output instead), skipping findings the user acknowledged; doctor.js and validate.js list pending reconciles. The decision logs are committed; the staged inputs are not. (d) `octobots-doctor` is the agent's manual for pack and board health: its main duty is the 3-way merge with a decision log, policy conflicts escalated to the user (the whole skill waits for the answer: confirmed by the user 2026-10-05, decision-13 recheck Q1), the `<N>+local` marker and clearing the pending record; it also handles leftover workflows/ folders (removed only with the user's OK) and the config-dir advice, and M4/M5 extend it for tests pairing, lanes and legacy plan-review records. (e) Real-data cases on copies of solo's two forks, including one escalated conflict. Owned by M7 (AC1-AC8). The first version of this decision (a warn-first Overwrite / Keep my changes modal, M2 AC9/AC10) was superseded the same day.\n\nConfirmed defaults (2026-10-05): decision 8 stands (already M1-AC8), and solo's two `57-local` forks (mission-execution, mission-completion-gate) are this campaign's operating manual until M2 ships their upstreamed form.\n\n## Branching\n\n- Campaign branch: `feat/direct-dispatch-process`. Missions merge into it, never straight to main; one campaign -> main PR at the end.\n- Mission branches: `feat/direct-dispatch-process-m<n>`. Task branches: `feat/direct-dispatch-process-m<n>-t<k>`.\n- Branch names drive tokenomics attribution. After M1 ships, the campaign-level branch (`feat/direct-dispatch-process`) lands on this campaign's own campaign row (slug contained, no -m<n>, seven missions: M1-AC5 step 6); this campaign dogfoods that.\n\n## Order and landing\n\nM1 (tokenomics + the single 56->57 pack bump; T1.4 lands first inside M1) -> M2 (pack direct dispatch, workflow pack removal) -> M7 (pack updates reconcile locally changed skills; the octobots-doctor skill; needs M2's retire lists, harness, validate/doctor passes and upstreamed skills) -> M3 (extension + board library drop workflows) -> M4 (tests folder convention, warning-only pairing, TC format contract) -> M5 (plan review enforcement, agent-ops guards, lanes) -> M6 (test cases first-class on the board; needs M3 and M4; ends with the release task T6.6, which also needs M7). M7 is numbered 7 because it was added after M3-M6 were planned; it runs second-to-third, and M4 and M5 extend the octobots-doctor skill it ships. octobots-doctor is v57 payload under the same single bump: no task bumps the pack again. No VSIX is cut until M6 is done (package-vsix.yml is workflow_dispatch only).\n\nRelease (M6-AC8, T6.6): a standalone commit `chore(ext): release 0.1.0 with workflow pack v57` touching only apps/vscode-extension/package.json, body listing the changes since 0.0.51, per-package verification counts, and the removed commands (octoshell.newWorkflow, deleteWorkflow, openWorkflowById) whose keybindings now report 'command not found'. Verify inside the VSIX before publishing: campaign AC2 grep, the 57 markers, absence of workflow-designer, presence of qa-env.mjs, scan-parked.js, add-tests.js, set-test-status.js and tc-io.mjs. After publishing, re-run \"Octobots: Install Octobots Pack\" in octoshell's own checkout and in every dev workspace that accepted the install prompt from an M1-M5 or M7 build: those hold an intermediate v57-labelled pack, and packStatus compares integers only, so 0.1.0 will not re-prompt them. A skill reconciled to `57+local` against an intermediate build is not re-staged by that re-run either (57+local counts as current for v57), so never install a dev build into solo: solo's forks are reconciled once, against 0.1.0.\n\n## Plan review (Alex + Rio, 2026-10-05)\n\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits\n\nPlan by Rio (tech-lead) on 2026-10-05 from the real code (octoshell main d1c83cc, solo chore/tokenomics-collector-home-projects f3a0a8f4). Reviewed against the real code and the real octoshell and solo data. Alex (ba): approve-with-fixes (6 blocking, 14 should-fix, 6 nits). Rio (tech-lead): approve-with-fixes (5 blocking, 10 should-fix, 3 nits). All fixes applied to the board the same day, with validate.js OK on 39 entities. The user answered the five open questions on 2026-10-05 (decisions 9-13). Rio folded them in the same day: M5 AC1/AC2, T5.1/T5.2, M5 TC-001..005 and TC-013; M2 AC9/AC10, T2.5 and M2 TC-013..015; campaign AC1, AC2 and AC5; M6 AC8 and TC-011. This record has the strict shape of M5-AC1 (column-0 Reviewers: with ba and tech-lead, Verdict: approved with nits), so it satisfies the final rule with no legacy warning (checked with the rule spike on 2026-10-05).\n\n## Plan review of the decision-13 re-plan (Alex + Rio, 2026-10-05)\n\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits\n\nScope: only the parts the revised decision 13 changed (campaign AC1, AC2, AC4, decisions 1 and 13, § Order and landing, § Real-data notes; M2 AC2, notes, T2.3, T2.5 and TC-001/002/010; new M7 with T7.1-T7.7 and tests/m7; M4 AC4, T4.3, TC-012; M5 AC3, AC7, T5.3, T5.5, TC-006; M6 description, AC8, TC-011; M3 T3.4). Rio re-planned from the real code and data (spikes in the planning scratchpad, reconcile-spike/). Alex (ba): changes requested (2 blocking, 6 should-fix, 5 nits), every one applied the same day (M7 notes § Plan review of the re-plan); real-data claims re-checked by Alex (7de91fef hashes, fork anchors, duplicate rule 7, DSN guard in solo CLAUDE.md, 800c62c content). validate.js OK on every entity afterwards.\nRecheck (2026-10-05): Reviewers: ba (Alex), tech-lead (independent); Verdict: approved with nits (after fixes). Counts: ba 2 blocking, 8 should-fix, 5 nits, 4 user questions; tech-lead 3 blocking, 12 should-fix, 6 nits, 2 user questions; all applied the same day, merges and the one conflict (tech-lead S7 over ba S7, making ba Q4 moot) recorded in M7 notes § Plan review of the re-plan. validate.js OK on every entity afterwards.\n\n## Decision-13 recheck answers (user-confirmed 2026-10-05)\n\n14. The user accepted all five recheck recommendations on 2026-10-05, and M7 is approved as its own mission (M2 -> M7 -> M3) under the single v57 bump. Each answer below names the board text it governs.\n- Q1: while an escalation is open, the whole skill waits (no partial install). M7-AC7, AC8, TC-013 step 3, TC-015.\n- Q2: the policy-conflict list is model or role; review or fix round limits; coverage threshold; what blocks a merge; who may merge or approve, and into which branch; actions that need the user's OK first (deleting, pushing, migrating or seeding a database, anything with an external effect); a safety guard; and 'when unsure whether a difference is policy, escalate'. Lane commands made concrete for the project are not a conflict. M7-AC7, T7.6.\n- Q3: a committed .octobots/doctor-acks.json records findings the user declined; the primer skips them, doctor.js and validate.js still list them; pending reconciles cannot be acknowledged. M7-AC6, AC7, T7.5, T7.6, TC-008.\n- Q4: Overwrite keeps the replaced fork as overwritten-local.md in its staging folder (git-ignored). M7-AC3, T7.3, TC-016.\n- Q5: locally edited pack files other than SKILL.md keep being overwritten in v57; script reconcile is a follow-up. M7-AC3, M7 notes.\n(Alex's recheck Q4, primer pairing gaps only for active missions, is moot: tests-pairing is not a primer finding.)\n\n## Real-data notes for QA\n\n- Workflow folders: 5 in octoshell (octograph m3..m7 workflows/build-and-gate), 6 in solo (sensor-assignment-uplift m2 workflows/m2-execution has runs.jsonl; five session-replay-track-store-and-read-api missions). 0 documents entries point into a workflows/ folder in either board. Neither board has a workflow.json, so any workflow.json case is UNREACHABLE on real data.\n- runs.json shape (solo .octobots/tokenomics/runs.json): rows identify themselves by work_item_ref (`<campaign>/<Mn>`), work_item_level (always \"story\" today), parent_ref (the campaign) and _octobots.{mission_id, campaign, branches}; there is no `campaign` or `mission` field. `unattributed` is a bucket object {segments, turns, branches[], tokens, cost_api_equivalent_usd}, not an array (490 segments today). Segments in raw/segments.jsonl carry segment_id, session_id, branch, turns.\n- Campaign-row records (2026-10-05): feat/edge-ops-ui (28 segments; edge-ops-ui has 10 missions) and campaign/emulator-arena-loop (1; emulator-arena-loop has 7 missions) are unattributed today and contain their campaign slug. chore/uwb-ranging-plan (5) does not contain its slug and needs a declared campaign tokenomics.branches. campaign/sensor-assignment-uplift (7) is NOT unattributed: sensor-assignment-uplift M1 declares it in tokenomics.branches, so it stays on that mission row. No real branch matches more than one campaign slug. uwb has mission rows M1-M4 and M6 only (M5 is cancelled, no row).\n- Transcripts: ~/.claude/projects/-Users-arozumenko-Development-auqanautica holds 3 top-level sessions (117 jsonl incl. subagents): 011deac1 (the live planning session, still growing), 138ca3b0 and 39d8025a, all home-only. Solo's repo-local <repo>/.claude/projects/<slug> holds 6 other sessions (276MB) that today's extension already reads, so a non-zero solo report alone proves nothing. Octoshell's repo-local root also holds other projects' slug dirs (-Users-arozumenko-Development-analysta, -private-tmp, ...): the record that proves only the own slug is read. In a worktree, the collector reads the legacy root of the MAIN checkout, never the worktree's.\n- solo uwb: m1 has 11 ACs and neither its README map nor any TC frontmatter covers M1-AC11; m2 has 10 ACs and M2-AC10 is covered by neither; m6 has no README and no TCs. uwb m3's README names M4-AC6 (another mission's AC id) in its assumptions prose. uwb TC files use legacy frontmatter (`requirements:`, `type:`, no `status`/`kind`/`mission`); e.g. m1 TC-003_set-ranging-mode-persists.md has `requirements: [M1-AC2, M1-AC5]`.\n- Parked tests: octoshell has exactly 1 (packages/graph/test/vault-calibration.test.ts:10 describe.skipIf, allowed). Solo edgeserver/tests has 0 today; the real history record is `git -C $SOLO archive f2e7812d^ edgeserver/tests` -> test_m6_solve_over_the_wire_e2e.py:474 `pytest.xfail(` (with a reason string). packages/graph/bin/octograph.mjs:30 `process.exit(` is the false-positive trap for a naive `xit(` pattern.\n- Skill forks (2026-10-05, sha256 against `git show 800c62c^:` of the pack): solo's mission-planner, knowledge-explorer and workflow-designer (`version: 56`) are byte-identical to the shipped v56 files, and mission-execution and mission-completion-gate are `version: 57-local`. Octoshell's own .claude/skills (v56) are identical to the shipped v56 files. Git history recovers exactly one SKILL.md per pack version for every version from 18 to 56, so the shipped-skill hash table can be backfilled.\n- Skill fork bases (2026-10-05, reconcile-spike/base-rules.mjs on solo): solo commits .claude/skills, and the newest commit of each fork's SKILL.md whose blob is a shipped file is 7de91fef (`update of octobots`), holding the v56 files exactly (mission-execution sha256 9af2c928b8310ddd..., mission-completion-gate 008de10a952f5afe...); the forks themselves landed in f2e7812d. Picking the base by closest diff alone is WRONG on this data: it picks v50 (240 changed lines vs 252 for v56) and v51 or v48 for the gate. The declared label `57-local` points at v57, whose first build (800c62c) is the v56 file plus the marker. The anchors the reconciled forks must keep: dispatch (mission-execution `## No \\`Workflow\\` tool, no \\`workflow.js\\`: the orchestrator dispatches sub-agents`, gate `## The gate (orchestrator dispatches one sub-agent per phase)`), test lanes (`make edgeserver-test-fast` in both), no-xfail (gate `Green means 0 failed, 0 xfailed`), macOS timeout (mission-execution `This Mac has no \\`timeout\\` binary` and `perl -e 'alarm shift`). The DSN guard is NOT in the forks: it is solo CLAUDE.md:226 rule 11 (`Override BOTH DSNs`), so a reconcile must leave CLAUDE.md byte-identical. `git merge-file` on base/local/synthetic-upstream silently merged a self-contradictory model-tiering bullet with no conflict marker, which is why the reconcile is semantic and never a line merge.\n- UI cases cannot be driven by Playwright MCP (VS Code is Electron; no @vscode/test-electron harness): they are unit tests over the real board copies plus manual Extension Development Host (F5) sessions with screenshots, recorded as manual.\n\n## Test conventions (every TC and QA task)\n\n1. A TC that runs a vitest suite runs `pnpm --filter <pkg> exec vitest run <package-relative path> --reporter=verbose` and expects at least 1 test passed in that file; the owning task's AC names the file (repo-relative). `pnpm --filter <pkg> test -- <name>` is never used: the extension's `--passWithNoTests` exits 0 when no file matches.\n2. Vitests that need real boards read `OCTOBOTS_BOARD_COPIES` (colon-separated `.octobots` directories). When it is unset (CI), they copy the repo's own `.octobots/` into a temp dir, so they still run real data and still pass at least one test. QA points it at `cp -R` copies of solo and octoshell.\n3. QA harnesses are committed plain-node scripts under `apps/vscode-extension/scripts/qa/`, each owned by a task and smoke-tested by a vitest: tokenomics-report.mjs (T1.2), install-pack.mjs (T2.3), dump-ids.mjs (T3.3), dump-tests.mjs (T6.1). There is no `.qa/` directory.\n4. Result words map to TC status: PASS -> pass, FAIL -> fail, BLOCKED -> blocked, UNREACHABLE -> blocked with the reason in the RUN file. A manual (F5) execution is noted as manual in the RUN file; its status is still pass, fail or blocked. (M4's TC format contract.)\n5. Every tokenomics command passes `--project-dir`: agent shells reset the cwd between calls, and a bare rollup.mjs writes octoshell's own runs.json. Each collect run that is compared starts from an empty raw/segments.jsonl (collect.mjs merges into the existing file).\n6. TC shell is portable (BSD/macOS): awk, not GNU sed extensions. The body of a TC without its frontmatter is `awk 'c>=2{print} /^---$/{c++}' <file>`.\n7. set-status.js is `set-status.js <parent-dir> \"<exact title>\" <state>`; for a mission the parent is the campaign dir. doctor.js --json prints `{root, packVersion, findings:[{level, area, msg, fix}]}`. Once M5 lands, moving a mission into executing without a plan review needs `--force=<reason>` (accepted in any argv position), and a refusal exits 3.\n8. Every task that changes packages/board (T1.3, T3.3, T4.2, T5.2, T6.1): after a root `pnpm build`, run `pnpm --filter @octoshell/vscode-extension graph:payload:write`, and if the bytes changed, rewrite the 57 hash in apps/vscode-extension/scripts/graph-payload-versions.json as a visible diff line in the same PR.\n9. Every change to a pack SKILL.md (from M7 on): run `node apps/vscode-extension/scripts/shipped-skills.mjs --write` and commit the updated store in the same PR; the extension's build runs `--verify` and fails otherwise.\n\n## M1 landed (2026-10-05)\n\nM1 merged into feat/direct-dispatch-process via PR #119 (gate green; record in M1 notes). Campaign AC3 is aligned with M1-AC5's gate-clarified wording and checked off on M1's black-box gate evidence (solo copy: 3 campaign rows, a 4th with uwb declared; 51 mission rows identical). AC3 now says 'a copy of solo', because a worktree inside solo writes to solo.\n\n## Rule 9 addendum (T7.1, 2026-10-05)\n\nThe shipped-skill store (apps/vscode-extension/resources/shipped-skills.json.br) is binary (`-text`). When two branches both ran `shipped-skills.mjs --write`, resolve a merge conflict by taking either side and re-running `--write` on the merged tree (append-only, reads git history), never by hand. CI's `pnpm build` runs `--verify`, so a SKILL.md change without `--write` fails CI. A local `pnpm package` bypasses build (T6.6 guards it).",
+      "expected": {
+        "ok": true,
+        "where": "campaign",
+        "legacy": false,
+        "heading": "## Plan review (Alex + Rio, 2026-10-05)"
+      }
+    },
+    {
+      "id": "real-m5-notes-plus-campaign-notes",
+      "description": "M5's mission notes with the campaign notes: the campaign's strict record allows M5's own start",
+      "missionNotes": "## Plan review record shape (decision, final 2026-10-05)\n\nCampaign decisions 9-12 settled the open questions. The rule is AC1; in short:\n- Strict record. This is what the planner writes, and it prints no warning. The example below is indented so it is not itself a record:\n    ## Plan review (Alex + Rio, 2026-10-05)\n    Reviewers: ba (Alex), tech-lead (Rio)\n    Verdict: approved with nits\n- Legacy record, accepted with a set-status.js warning: a heading that names both reviewers by role token or by the persona names Alex and Rio, with no column-0 Reviewers: or Verdict: line in its section. The real example is solo uwb-ranging-ingest-vendor-v01's campaign notes.\n- Never counts: `## Plan review overridden (...)`; a Reviewers: line that names only persona names; a Verdict other than approved or approved with nits; a Verdict line without a Reviewers line; a heading that names one reviewer; indented lines; lines after the next `## ` heading.\n- Self-approval check (rule spike, 2026-10-05, scratchpad pr2-spike.mjs, run on these notes after this edit): this section's heading does not match `^## Plan review \\(` and its examples are indented, so these M5 notes alone are refused. The campaign's own record is strict and is allowed with no warning.\n- Gated: a move INTO executing from any other stored status (decision 11). A refusal exits 3, because exit 1 already means 'no entity' and exit 2 means usage. Override: `--force=<reason>` on the script, the modal confirm in the UI. Both append `## Plan review overridden (<YYYY-MM-DD UTC>)` plus the reason, so the bypass is on the board.\n- One rule, two implementations: plan-review.mjs (pack, dependency-free, imported by set-status.js) and its mirror planReviewStatus in packages/board (used by BoardHost.setStatus). packages/board/test/plan-review-parity.test.ts holds them together over a shared table and every real notes pair. This is the dual-implementation hazard of entity-io.mjs and entity-schema.ts. The dropdown calls BoardHost.setStatus, never the script. The confirm is a host modal (DispatchCtx.dialog.confirm), not webview UI. The work-log and mission-gate hooks act only on a status change that happened (M2-AC8), so a refused start is never logged.\n- Spike results on real data (2026-10-05): solo has 115 missions, and 6 are allowed (all uwb, legacy, through the campaign notes). This campaign has 6 of 6 allowed (strict, through the campaign notes).\n\n## Planning notes (Rio, 2026-10-05)\n\nUser decisions 3 and 6 apply (UI enforcement; AGENTS.md § Test lanes; qa-env.mjs config-driven; mission-input.js retired in M2).\nSolo's .agents/manual-qa/qa-db.sh hard-codes EDGESERVER_* and is the model for qa-env.mjs (exit 3 refused, exit 4 probe mismatch).\nOctoshell's lanes: fast = `pnpm --filter <pkg> test`, coverage = `pnpm coverage`; parked-test baseline is one allowed skip: packages/graph/test/vault-calibration.test.ts:10 describe.skipIf(!HAS_VAULT).\nReal plan-review examples: this campaign's own notes carry the strict record of 2026-10-05 (the allow case). Solo uwb-ranging-ingest-vendor-v01's campaign notes carry a heading-only record from 2026-10-02 (the legacy accept-with-warning case; its M5 is cancelled, and cancelled -> executing is a gated move). Solo epic-013 M10 ('M10 - One setup flow, preset warnings, and edge-side exception authorization') is draft, and neither it nor its campaign has a record (the refuse case).",
+      "campaignNotes": "## User decisions (2026-10-05)\n\n1. **Workflow support is removed from octoshell ENTIRELY**: pack, board library and extension. Old `workflows/` folders are ignored by the model; validate.js, validateBoard and doctor.js give a non-fatal warning. Files are never touched (no activation-time migration, no auto-delete). (Refined by 13(d): an agent running octobots-doctor may remove one folder after the user says yes to that folder.)\n2. **Tests pairing is a WARNING ONLY.** validate warns when a mission has no linked tests/m<n>/ or has ACs not covered by test cases. It is never an error and never blocks `set-status.js ... done`.\n3. **Plan review is ENFORCED in both the script and the UI.** set-status.js AND the extension's status dropdown (BoardHost.setStatus) refuse to move a mission to `active` until a BA + tech-lead plan-review sign-off is recorded (shape defined in M5 AC1). Override: `--force` on the script, a confirm dialog in the UI. (Refined by decisions 9-11 on 2026-10-05: a legacy heading-only record is accepted with a warning, reviewers are matched by role token, and only moves into `executing` are gated. The script override is `--force=<reason>` and a refusal exits 3.)\n4. **Campaign-level branches get their own campaign-level cost row** in tokenomics, not split across missions. A branch containing the campaign slug without -m<n> (feat/<slug>, chore/<slug>-plan, campaign/<slug>) belongs to the campaign row; an explicit `branches:` declaration on the campaign also counts. The precedence and the row shape are M1-AC5.\n5. **Release is 0.1.0** (extension) with workflow pack v57. Owned by M6-AC8 / T6.6.\n6. **Defaults for the remaining questions:** rename the \"Install Workflow Pack\" command title to \"Install Octobots Pack\" (command id kept); test lanes are declared in an `AGENTS.md § Test lanes` section; qa-env.mjs ships as a config-driven DB guard script; mission-input.js is retired.\n7. **2026-10-05: test cases get first-class board representation (M6)**: parsed into a TestCase entity by the board library, shown in the sidebar tree, the mission panel (with AC coverage) and the campaign panel, with QA results written back to each TC's status.\n8. **2026-10-05: doctor.js config-dir advice.** doctor.js stops recommending `CLAUDE_CONFIG_DIR=<repo>/.claude` (the root M1 calls legacy) and treats ~/.claude/projects as the default (M1-AC8).\n9. **2026-10-05: legacy plan-review records are ACCEPTED WITH A WARNING.** A `## Plan review (...)` section that has no column-0 `Reviewers:` or `Verdict:` line counts when its heading names both reviewers, and set-status.js warns that those two lines are missing. Solo's uwb `## Plan review (Alex + Rio, 2026-10-02)` is therefore accepted, not refused. The exact rule is M5-AC1.\n10. **2026-10-05: reviewers are matched by ROLE TOKEN.** A `Reviewers:` line must hold the tokens `ba` and `tech-lead`. The persona names Alex and Rio count only inside a legacy heading (decision 9), never on a `Reviewers:` line. `## Plan review overridden (...)` never counts as a review.\n11. **2026-10-05: only moves INTO `executing` are gated** (`active`, `in progress` and `running` map to it), from any other stored status. Moves to awaiting approval, done, failed, draft or cancelled are never gated, including draft -> done and draft -> failed. executing -> executing is a no-op and is not gated.\n12. **2026-10-05: no new extension messages for warnings.** Workflow-folder, TC-format and tests-pairing warnings appear only in validate.js and doctor.js output: no Problems-panel entry, notification or output-channel line in the extension. The legacy plan-review warning (decision 9) is set-status.js output only. The plan-review confirm dialog on the status dropdown (decision 3) is a different thing and stays, and so does M6's AC coverage view (decision 7), which shows an uncovered AC in warning style inside the mission panel as board content, not as a message.\n13. **2026-10-05, revised the same day: a locally changed pack skill is RECONCILED BY AN AGENT, not just overwritten or kept.** Locally forked skills are a valid practice (solo's 57-local forks delivered a campaign), so a pack update merges a deviation instead of picking a side. (a) Detection: a pack or retired skill is deviated when its SKILL.md matches no hash in the shipped-skill store for its version, or its version label is not a pack version; `<N>+local` marks a skill already reconciled against v<N> and counts as up to date while N is the pack version. (b) Only SKILL.md is protected; the rest of a skill's directory always installs. The install asks Reconcile (default) / Overwrite / Keep mine, applies Overwrite and Keep at once, and for Reconcile stages base.md, local.md, upstream.md and RECONCILE.md under `.octobots/pack-updates/v<N>/<skill>/`, leaves the live skill untouched and writes a pending record. The extension never starts an agent and never copies a prompt. A non-interactive install records Reconcile. (c) The pack's SessionStart hook (primer.mjs) tells the next agent session, in one line, to run the `octobots-doctor` skill while a primer finding exists (pending reconciles first, then leftover workflows/ folders, the legacy config dir and, from M5, missing test lanes; tests-pairing and legacy plan-review are acted on from validate.js / set-status.js output instead), skipping findings the user acknowledged; doctor.js and validate.js list pending reconciles. The decision logs are committed; the staged inputs are not. (d) `octobots-doctor` is the agent's manual for pack and board health: its main duty is the 3-way merge with a decision log, policy conflicts escalated to the user (the whole skill waits for the answer: confirmed by the user 2026-10-05, decision-13 recheck Q1), the `<N>+local` marker and clearing the pending record; it also handles leftover workflows/ folders (removed only with the user's OK) and the config-dir advice, and M4/M5 extend it for tests pairing, lanes and legacy plan-review records. (e) Real-data cases on copies of solo's two forks, including one escalated conflict. Owned by M7 (AC1-AC8). The first version of this decision (a warn-first Overwrite / Keep my changes modal, M2 AC9/AC10) was superseded the same day.\n\nConfirmed defaults (2026-10-05): decision 8 stands (already M1-AC8), and solo's two `57-local` forks (mission-execution, mission-completion-gate) are this campaign's operating manual until M2 ships their upstreamed form.\n\n## Branching\n\n- Campaign branch: `feat/direct-dispatch-process`. Missions merge into it, never straight to main; one campaign -> main PR at the end.\n- Mission branches: `feat/direct-dispatch-process-m<n>`. Task branches: `feat/direct-dispatch-process-m<n>-t<k>`.\n- Branch names drive tokenomics attribution. After M1 ships, the campaign-level branch (`feat/direct-dispatch-process`) lands on this campaign's own campaign row (slug contained, no -m<n>, seven missions: M1-AC5 step 6); this campaign dogfoods that.\n\n## Order and landing\n\nM1 (tokenomics + the single 56->57 pack bump; T1.4 lands first inside M1) -> M2 (pack direct dispatch, workflow pack removal) -> M7 (pack updates reconcile locally changed skills; the octobots-doctor skill; needs M2's retire lists, harness, validate/doctor passes and upstreamed skills) -> M3 (extension + board library drop workflows) -> M4 (tests folder convention, warning-only pairing, TC format contract) -> M5 (plan review enforcement, agent-ops guards, lanes) -> M6 (test cases first-class on the board; needs M3 and M4; ends with the release task T6.6, which also needs M7). M7 is numbered 7 because it was added after M3-M6 were planned; it runs second-to-third, and M4 and M5 extend the octobots-doctor skill it ships. octobots-doctor is v57 payload under the same single bump: no task bumps the pack again. No VSIX is cut until M6 is done (package-vsix.yml is workflow_dispatch only).\n\nRelease (M6-AC8, T6.6): a standalone commit `chore(ext): release 0.1.0 with workflow pack v57` touching only apps/vscode-extension/package.json, body listing the changes since 0.0.51, per-package verification counts, and the removed commands (octoshell.newWorkflow, deleteWorkflow, openWorkflowById) whose keybindings now report 'command not found'. Verify inside the VSIX before publishing: campaign AC2 grep, the 57 markers, absence of workflow-designer, presence of qa-env.mjs, scan-parked.js, add-tests.js, set-test-status.js and tc-io.mjs. After publishing, re-run \"Octobots: Install Octobots Pack\" in octoshell's own checkout and in every dev workspace that accepted the install prompt from an M1-M5 or M7 build: those hold an intermediate v57-labelled pack, and packStatus compares integers only, so 0.1.0 will not re-prompt them. A skill reconciled to `57+local` against an intermediate build is not re-staged by that re-run either (57+local counts as current for v57), so never install a dev build into solo: solo's forks are reconciled once, against 0.1.0.\n\n## Plan review (Alex + Rio, 2026-10-05)\n\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits\n\nPlan by Rio (tech-lead) on 2026-10-05 from the real code (octoshell main d1c83cc, solo chore/tokenomics-collector-home-projects f3a0a8f4). Reviewed against the real code and the real octoshell and solo data. Alex (ba): approve-with-fixes (6 blocking, 14 should-fix, 6 nits). Rio (tech-lead): approve-with-fixes (5 blocking, 10 should-fix, 3 nits). All fixes applied to the board the same day, with validate.js OK on 39 entities. The user answered the five open questions on 2026-10-05 (decisions 9-13). Rio folded them in the same day: M5 AC1/AC2, T5.1/T5.2, M5 TC-001..005 and TC-013; M2 AC9/AC10, T2.5 and M2 TC-013..015; campaign AC1, AC2 and AC5; M6 AC8 and TC-011. This record has the strict shape of M5-AC1 (column-0 Reviewers: with ba and tech-lead, Verdict: approved with nits), so it satisfies the final rule with no legacy warning (checked with the rule spike on 2026-10-05).\n\n## Plan review of the decision-13 re-plan (Alex + Rio, 2026-10-05)\n\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits\n\nScope: only the parts the revised decision 13 changed (campaign AC1, AC2, AC4, decisions 1 and 13, § Order and landing, § Real-data notes; M2 AC2, notes, T2.3, T2.5 and TC-001/002/010; new M7 with T7.1-T7.7 and tests/m7; M4 AC4, T4.3, TC-012; M5 AC3, AC7, T5.3, T5.5, TC-006; M6 description, AC8, TC-011; M3 T3.4). Rio re-planned from the real code and data (spikes in the planning scratchpad, reconcile-spike/). Alex (ba): changes requested (2 blocking, 6 should-fix, 5 nits), every one applied the same day (M7 notes § Plan review of the re-plan); real-data claims re-checked by Alex (7de91fef hashes, fork anchors, duplicate rule 7, DSN guard in solo CLAUDE.md, 800c62c content). validate.js OK on every entity afterwards.\nRecheck (2026-10-05): Reviewers: ba (Alex), tech-lead (independent); Verdict: approved with nits (after fixes). Counts: ba 2 blocking, 8 should-fix, 5 nits, 4 user questions; tech-lead 3 blocking, 12 should-fix, 6 nits, 2 user questions; all applied the same day, merges and the one conflict (tech-lead S7 over ba S7, making ba Q4 moot) recorded in M7 notes § Plan review of the re-plan. validate.js OK on every entity afterwards.\n\n## Decision-13 recheck answers (user-confirmed 2026-10-05)\n\n14. The user accepted all five recheck recommendations on 2026-10-05, and M7 is approved as its own mission (M2 -> M7 -> M3) under the single v57 bump. Each answer below names the board text it governs.\n- Q1: while an escalation is open, the whole skill waits (no partial install). M7-AC7, AC8, TC-013 step 3, TC-015.\n- Q2: the policy-conflict list is model or role; review or fix round limits; coverage threshold; what blocks a merge; who may merge or approve, and into which branch; actions that need the user's OK first (deleting, pushing, migrating or seeding a database, anything with an external effect); a safety guard; and 'when unsure whether a difference is policy, escalate'. Lane commands made concrete for the project are not a conflict. M7-AC7, T7.6.\n- Q3: a committed .octobots/doctor-acks.json records findings the user declined; the primer skips them, doctor.js and validate.js still list them; pending reconciles cannot be acknowledged. M7-AC6, AC7, T7.5, T7.6, TC-008.\n- Q4: Overwrite keeps the replaced fork as overwritten-local.md in its staging folder (git-ignored). M7-AC3, T7.3, TC-016.\n- Q5: locally edited pack files other than SKILL.md keep being overwritten in v57; script reconcile is a follow-up. M7-AC3, M7 notes.\n(Alex's recheck Q4, primer pairing gaps only for active missions, is moot: tests-pairing is not a primer finding.)\n\n## Real-data notes for QA\n\n- Workflow folders: 5 in octoshell (octograph m3..m7 workflows/build-and-gate), 6 in solo (sensor-assignment-uplift m2 workflows/m2-execution has runs.jsonl; five session-replay-track-store-and-read-api missions). 0 documents entries point into a workflows/ folder in either board. Neither board has a workflow.json, so any workflow.json case is UNREACHABLE on real data.\n- runs.json shape (solo .octobots/tokenomics/runs.json): rows identify themselves by work_item_ref (`<campaign>/<Mn>`), work_item_level (always \"story\" today), parent_ref (the campaign) and _octobots.{mission_id, campaign, branches}; there is no `campaign` or `mission` field. `unattributed` is a bucket object {segments, turns, branches[], tokens, cost_api_equivalent_usd}, not an array (490 segments today). Segments in raw/segments.jsonl carry segment_id, session_id, branch, turns.\n- Campaign-row records (2026-10-05): feat/edge-ops-ui (28 segments; edge-ops-ui has 10 missions) and campaign/emulator-arena-loop (1; emulator-arena-loop has 7 missions) are unattributed today and contain their campaign slug. chore/uwb-ranging-plan (5) does not contain its slug and needs a declared campaign tokenomics.branches. campaign/sensor-assignment-uplift (7) is NOT unattributed: sensor-assignment-uplift M1 declares it in tokenomics.branches, so it stays on that mission row. No real branch matches more than one campaign slug. uwb has mission rows M1-M4 and M6 only (M5 is cancelled, no row).\n- Transcripts: ~/.claude/projects/-Users-arozumenko-Development-auqanautica holds 3 top-level sessions (117 jsonl incl. subagents): 011deac1 (the live planning session, still growing), 138ca3b0 and 39d8025a, all home-only. Solo's repo-local <repo>/.claude/projects/<slug> holds 6 other sessions (276MB) that today's extension already reads, so a non-zero solo report alone proves nothing. Octoshell's repo-local root also holds other projects' slug dirs (-Users-arozumenko-Development-analysta, -private-tmp, ...): the record that proves only the own slug is read. In a worktree, the collector reads the legacy root of the MAIN checkout, never the worktree's.\n- solo uwb: m1 has 11 ACs and neither its README map nor any TC frontmatter covers M1-AC11; m2 has 10 ACs and M2-AC10 is covered by neither; m6 has no README and no TCs. uwb m3's README names M4-AC6 (another mission's AC id) in its assumptions prose. uwb TC files use legacy frontmatter (`requirements:`, `type:`, no `status`/`kind`/`mission`); e.g. m1 TC-003_set-ranging-mode-persists.md has `requirements: [M1-AC2, M1-AC5]`.\n- Parked tests: octoshell has exactly 1 (packages/graph/test/vault-calibration.test.ts:10 describe.skipIf, allowed). Solo edgeserver/tests has 0 today; the real history record is `git -C $SOLO archive f2e7812d^ edgeserver/tests` -> test_m6_solve_over_the_wire_e2e.py:474 `pytest.xfail(` (with a reason string). packages/graph/bin/octograph.mjs:30 `process.exit(` is the false-positive trap for a naive `xit(` pattern.\n- Skill forks (2026-10-05, sha256 against `git show 800c62c^:` of the pack): solo's mission-planner, knowledge-explorer and workflow-designer (`version: 56`) are byte-identical to the shipped v56 files, and mission-execution and mission-completion-gate are `version: 57-local`. Octoshell's own .claude/skills (v56) are identical to the shipped v56 files. Git history recovers exactly one SKILL.md per pack version for every version from 18 to 56, so the shipped-skill hash table can be backfilled.\n- Skill fork bases (2026-10-05, reconcile-spike/base-rules.mjs on solo): solo commits .claude/skills, and the newest commit of each fork's SKILL.md whose blob is a shipped file is 7de91fef (`update of octobots`), holding the v56 files exactly (mission-execution sha256 9af2c928b8310ddd..., mission-completion-gate 008de10a952f5afe...); the forks themselves landed in f2e7812d. Picking the base by closest diff alone is WRONG on this data: it picks v50 (240 changed lines vs 252 for v56) and v51 or v48 for the gate. The declared label `57-local` points at v57, whose first build (800c62c) is the v56 file plus the marker. The anchors the reconciled forks must keep: dispatch (mission-execution `## No \\`Workflow\\` tool, no \\`workflow.js\\`: the orchestrator dispatches sub-agents`, gate `## The gate (orchestrator dispatches one sub-agent per phase)`), test lanes (`make edgeserver-test-fast` in both), no-xfail (gate `Green means 0 failed, 0 xfailed`), macOS timeout (mission-execution `This Mac has no \\`timeout\\` binary` and `perl -e 'alarm shift`). The DSN guard is NOT in the forks: it is solo CLAUDE.md:226 rule 11 (`Override BOTH DSNs`), so a reconcile must leave CLAUDE.md byte-identical. `git merge-file` on base/local/synthetic-upstream silently merged a self-contradictory model-tiering bullet with no conflict marker, which is why the reconcile is semantic and never a line merge.\n- UI cases cannot be driven by Playwright MCP (VS Code is Electron; no @vscode/test-electron harness): they are unit tests over the real board copies plus manual Extension Development Host (F5) sessions with screenshots, recorded as manual.\n\n## Test conventions (every TC and QA task)\n\n1. A TC that runs a vitest suite runs `pnpm --filter <pkg> exec vitest run <package-relative path> --reporter=verbose` and expects at least 1 test passed in that file; the owning task's AC names the file (repo-relative). `pnpm --filter <pkg> test -- <name>` is never used: the extension's `--passWithNoTests` exits 0 when no file matches.\n2. Vitests that need real boards read `OCTOBOTS_BOARD_COPIES` (colon-separated `.octobots` directories). When it is unset (CI), they copy the repo's own `.octobots/` into a temp dir, so they still run real data and still pass at least one test. QA points it at `cp -R` copies of solo and octoshell.\n3. QA harnesses are committed plain-node scripts under `apps/vscode-extension/scripts/qa/`, each owned by a task and smoke-tested by a vitest: tokenomics-report.mjs (T1.2), install-pack.mjs (T2.3), dump-ids.mjs (T3.3), dump-tests.mjs (T6.1). There is no `.qa/` directory.\n4. Result words map to TC status: PASS -> pass, FAIL -> fail, BLOCKED -> blocked, UNREACHABLE -> blocked with the reason in the RUN file. A manual (F5) execution is noted as manual in the RUN file; its status is still pass, fail or blocked. (M4's TC format contract.)\n5. Every tokenomics command passes `--project-dir`: agent shells reset the cwd between calls, and a bare rollup.mjs writes octoshell's own runs.json. Each collect run that is compared starts from an empty raw/segments.jsonl (collect.mjs merges into the existing file).\n6. TC shell is portable (BSD/macOS): awk, not GNU sed extensions. The body of a TC without its frontmatter is `awk 'c>=2{print} /^---$/{c++}' <file>`.\n7. set-status.js is `set-status.js <parent-dir> \"<exact title>\" <state>`; for a mission the parent is the campaign dir. doctor.js --json prints `{root, packVersion, findings:[{level, area, msg, fix}]}`. Once M5 lands, moving a mission into executing without a plan review needs `--force=<reason>` (accepted in any argv position), and a refusal exits 3.\n8. Every task that changes packages/board (T1.3, T3.3, T4.2, T5.2, T6.1): after a root `pnpm build`, run `pnpm --filter @octoshell/vscode-extension graph:payload:write`, and if the bytes changed, rewrite the 57 hash in apps/vscode-extension/scripts/graph-payload-versions.json as a visible diff line in the same PR.\n9. Every change to a pack SKILL.md (from M7 on): run `node apps/vscode-extension/scripts/shipped-skills.mjs --write` and commit the updated store in the same PR; the extension's build runs `--verify` and fails otherwise.\n\n## M1 landed (2026-10-05)\n\nM1 merged into feat/direct-dispatch-process via PR #119 (gate green; record in M1 notes). Campaign AC3 is aligned with M1-AC5's gate-clarified wording and checked off on M1's black-box gate evidence (solo copy: 3 campaign rows, a 4th with uwb declared; 51 mission rows identical). AC3 now says 'a copy of solo', because a worktree inside solo writes to solo.\n\n## Rule 9 addendum (T7.1, 2026-10-05)\n\nThe shipped-skill store (apps/vscode-extension/resources/shipped-skills.json.br) is binary (`-text`). When two branches both ran `shipped-skills.mjs --write`, resolve a merge conflict by taking either side and re-running `--write` on the merged tree (append-only, reads git history), never by hand. CI's `pnpm build` runs `--verify`, so a SKILL.md change without `--write` fails CI. A local `pnpm package` bypasses build (T6.6 guards it).",
+      "expected": {
+        "ok": true,
+        "where": "campaign",
+        "legacy": false,
+        "heading": "## Plan review (Alex + Rio, 2026-10-05)"
+      }
+    }
+  ]
+}

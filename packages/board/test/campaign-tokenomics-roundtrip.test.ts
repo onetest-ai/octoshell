@@ -63,7 +63,8 @@ describe("campaign tokenomics.branches", () => {
 
   it("comma-string form survives set-status.js", () => {
     seedBranches("chore/camp-plan , chore/camp-retro");
-    runScript("set-status.js", [campaignFolder, "M1 - First", "active"], projectDir);
+    // The move into executing needs a plan review or an override; only the campaign file is asserted.
+    runScript("set-status.js", [campaignFolder, "M1 - First", "active", "--force=roundtrip test"], projectDir);
     const after = yamlLoad(readFileSync(campaignYaml, "utf8"));
     expect(after.tokenomics).toEqual({ branches: "chore/camp-plan , chore/camp-retro" });
   });

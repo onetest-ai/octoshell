@@ -144,7 +144,8 @@ describe("work-log.mjs", () => {
 
     it("(b2) writes no line for a start on a mission that is already executing", () => {
       const b = makeStatusBoard("octo-worklog-");
-      const cmd = setStatusCommand(b.campaignDir, "M1 - Venue ingest", "active");
+      // A move into executing needs a plan review or an override (M5); the flag is stripped before the state is read.
+      const cmd = setStatusCommand(b.campaignDir, "M1 - Venue ingest", "active") + " --force=work-log-test";
       run(b.repo, runAndPost(b.repo, cmd));
       run(b.repo, runAndPost(b.repo, cmd));
       expect(entries(b.repo)).toHaveLength(1);
