@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
+import { planReviewStatus } from "../resources/octobots-pack/skill/mission-planner/scripts/plan-review.mjs";
 
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
 const skill = (name: string): string => readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
@@ -72,7 +73,7 @@ describe("mission-execution: direct sub-agent dispatch", () => {
   });
 
   it("rule 10 (dead agent) indents its continuation lines by 4 spaces like every other rule", () => {
-    const rule10 = rules().split(/^10\. /m)[1] ?? "";
+    const rule10 = (rules().split(/^10\. /m)[1] ?? "").split(/^11\. /m)[0] ?? "";
     const continuation = rule10.split("\n").slice(1).filter((l) => l.trim() !== "");
     expect(continuation.length).toBeGreaterThan(0);
     for (const line of continuation) expect(line).toMatch(/^ {4}\S/);
@@ -559,5 +560,101 @@ describe("M4 B2: mission-execution and the gate tell one story about the last-ta
     expect(gate).toMatch(/refers to the last task's `## QA verification` block instead of repeating it/);
     expect(gate).not.toMatch(/the gate writes the mission's\)/);
     expect(exec).toMatch(/gate writes its own `## Completion gate \(<date>\)` section/);
+  });
+});
+
+describe("T5.3: mission-planner § Plan review (M5-AC3)", () => {
+  const planner = skill("mission-planner");
+  // Fence-aware: the example record's own `## Plan review (...)` line is column 0 inside a fence.
+  const unfenced = planner.replace(/```[\s\S]*?```/g, (m) => m.replace(/^#/gm, "\u0000#"));
+  const section = sectionUnder(unfenced, /^### Plan review\b/m).replace(/\u0000#/g, "#");
+  const flat = section.replace(/\s+/g, " ");
+
+  it("has a single § Plan review section", () => {
+    expect(section).not.toBe("");
+    expect(unfenced.match(/^#{2,3} Plan review\b/gm)).toHaveLength(1);
+  });
+  it("dispatches ba and tech-lead in parallel, read-only, with an explicit model:", () => {
+    expect(flat).toMatch(/dispatch `ba` and `tech-lead` in parallel/i);
+    expect(flat).toMatch(/read-only/);
+    expect(flat).toMatch(/explicit `model:`/);
+  });
+  it("makes each reviewer run the queries, read real rows, grep call sites per AC, and split blocking from nits", () => {
+    expect(flat).toMatch(/run the queries, read real rows and grep call sites per acceptance criterion/i);
+    expect(flat).toMatch(/blocking findings from nits/i);
+  });
+  it("resolves findings on the board and returns user decisions to the user", () => {
+    expect(flat).toMatch(/findings are resolved on the board/i);
+    expect(flat).toMatch(/user decisions go back to the user/i);
+  });
+  it("records the strict shape and never the legacy heading-only form", () => {
+    expect(flat).toContain("## Plan review (<names or roles>, <date>)");
+    expect(flat).toContain("Reviewers: ba (<name>), tech-lead (<name>)");
+    expect(flat).toContain("Verdict: approved | approved with nits | changes requested");
+    expect(flat).toMatch(/never the legacy heading-only form/i);
+  });
+  it("says set-status.js and the status dropdown refuse to start a mission without it; --force=<reason> overrides", () => {
+    expect(flat).toMatch(/`set-status\.js` and the extension's status dropdown refuse to start a mission/);
+    expect(flat).toContain("--force=<reason>");
+  });
+  it("its literal example record passes the set-status.js gate as a strict record (no legacy warning)", () => {
+    const fence = /```[a-z]*\n(## Plan review \([^\n]*\)\n[\s\S]*?)```/.exec(section);
+    expect(fence, "an example fenced block that starts with a Plan review heading").not.toBeNull();
+    expect(planReviewStatus(fence![1], "")).toMatchObject({ ok: true, legacy: false });
+    expect(planReviewStatus(fence![1]!.replace(/^Verdict:.*$/m, "Verdict: changes requested"), "")).toMatchObject({ ok: false });
+  });
+});
+
+describe("T5.3: octobots-doctor legacy plan-review records (M5-AC3)", () => {
+  const doctor = skill("octobots-doctor");
+  const para = sectionUnder(doctor, /^## \d+\. Legacy plan-review records/m).replace(/\s+/g, " ");
+
+  it("acts on set-status.js's legacy warning, adds Reviewers: (ba, tech-lead) and Verdict:, writes only with the user's OK", () => {
+    expect(para).toMatch(/set-status\.js/);
+    expect(para).toMatch(/lacks its Reviewers:\/Verdict: lines/);
+    expect(para).toMatch(/offer to add them/i);
+    expect(para).toMatch(/role tokens `ba` and `tech-lead`/);
+    expect(para).toMatch(/the verdict the record states/);
+    expect(para).toMatch(/only with the user's OK/);
+    expect(para).toMatch(/not a primer finding/);
+  });
+  it("is reachable: §1 routes it, and it comes before the closing reply", () => {
+    const n = /^## (\d+)\. Legacy plan-review records/m.exec(doctor)?.[1];
+    const reply = /^## (\d+)\. Your reply/m.exec(doctor)?.[1];
+    expect(n).toBeDefined();
+    expect(Number(n)).toBeLessThan(Number(reply));
+    const find = sectionUnder(doctor, /^## 1\. Find what to act on/m).replace(/\s+/g, " ");
+    expect(find).toContain(`legacy plan-review warnings (§${n})`);
+  });
+});
+
+describe("T5.3: mission-execution § Dispatch rules: servers, timeouts, background (M5-AC5)", () => {
+  const rules = dispatchRulesSection(skill("mission-execution"));
+  const flat = rules.replace(/\s+/g, " ");
+
+  it("starts servers with nohup and full redirection, polling readiness with a bounded curl -m 2 loop", () => {
+    expect(flat).toContain("nohup ... > log 2>&1 < /dev/null &");
+    expect(flat).toMatch(/bounded `curl -m 2` loop/);
+  });
+  it("says macOS has no timeout: Bash tool timeout or perl alarm", () => {
+    expect(flat).toMatch(/macOS has no `timeout`/);
+    expect(flat).toContain("perl -e 'alarm shift; exec @ARGV' N cmd");
+    expect(flat).toMatch(/Bash tool/);
+  });
+  it("never backgrounds a test command; the only exceptions are non-terminating servers and watchers", () => {
+    expect(flat).toMatch(/never background a test command/i);
+    expect(flat).toMatch(/non-terminating servers and watchers/);
+  });
+  it("runs QA server, migration and seed commands through qa-env.mjs", () => {
+    expect(flat).toMatch(/QA server, migration and seed commands run through `qa-env\.mjs <db> -- <cmd\.\.\.>`/);
+    expect(flat).toContain(".octobots/qa-env.json");
+  });
+  it("keeps the numbering unique and gapless", () => {
+    const numbers = [...rules.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
+    expect(numbers).toEqual(numbers.map((_, i) => i + 1));
+    expect(numbers.length).toBeGreaterThanOrEqual(11);
+  });
+  it("carries no solo-specific service names, DSNs or ports", () => {
+    expect(flat).not.toMatch(/edgeserver|postgres(ql)?:\/\/|localhost:\d+|:\d{4}\b/i);
   });
 });

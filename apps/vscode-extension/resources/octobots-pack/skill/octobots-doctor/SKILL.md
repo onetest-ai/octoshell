@@ -21,7 +21,7 @@ node .claude/skills/octobots-doctor/scripts/pack-reconcile.mjs list
 ```
 
 Act on their findings: `pack reconcile pending` (§2-§3), leftover `workflows/` folders (§4), the
-`config-dir` finding (§5) and validate.js's tests-pairing warnings (§7). Skip a finding that
+`config-dir` finding (§5), validate.js's tests-pairing warnings (§7) and set-status.js's legacy plan-review warnings (§8). Skip a finding that
 `.octobots/doctor-acks.json` already acknowledges (§6).
 
 ## 2. Pending pack reconciles
@@ -79,7 +79,7 @@ For each named folder `.octobots/pack-updates/v<N>/<skill>/`:
    UPSTREAM-CANDIDATES.md.
 10. If any `- ESCALATED:` entry is open, stop work on this skill: the whole live SKILL.md stays
     untouched (no line, no non-conflicting change, no marker) until every escalation of this skill
-    is answered. Do not run done. Ask in your reply (§8).
+    is answered. Do not run done. Ask in your reply (§9).
 11. Otherwise install. In merged.md's frontmatter replace the `version:` line with
     `version: <N>+local` and add the line `reconciled-from: <sha256>` below it, both values exactly
     as `pack-reconcile.mjs list` prints them for this skill under `marker:`. Then copy merged.md byte for byte to `.claude/skills/<skill>/SKILL.md` and run:
@@ -199,7 +199,19 @@ warning is not a primer finding, and the SessionStart notice never names it. Res
 mission-planner skill). Never resolve it by deleting an AC, a TC or a README row; that hides the gap
 instead of closing it.
 
-## 8. Your reply
+## 8. Legacy plan-review records
+
+`set-status.js` accepts a legacy plan-review record when a move into `executing` finds a
+`## Plan review (...)` heading that names both reviewers but has no `Reviewers:` or `Verdict:` line,
+and prints `warning: legacy plan review "<heading>" ... has no Reviewers:/Verdict: lines; accepted`.
+You act on that `set-status.js` output; a legacy record is not a primer finding, and the
+SessionStart notice never names it. When you see the warning, say the record lacks its
+Reviewers:/Verdict: lines and offer to add them: `Reviewers: ba (<name>), tech-lead (<name>)` with
+the role tokens `ba` and `tech-lead`, plus a `Verdict:` line carrying the verdict the record states
+(`approved` or `approved with nits`). Write them directly under that heading, and only with the
+user's OK. Never invent a verdict the record does not state, and never edit the heading itself.
+
+## 9. Your reply
 
 End your reply with this block, filled in:
 

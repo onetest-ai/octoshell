@@ -289,6 +289,42 @@ the rest, not something to guess up front.
 This is not a substitute for the mission-completion gate. The task proves the mission's behaviour;
 the gate independently re-verifies the criteria black-box and reviews the whole diff.
 
+### Plan review
+
+Before a mission starts executing, have its plan reviewed, and record the review on the board.
+
+1. Dispatch `ba` and `tech-lead` in parallel, read-only, each with an explicit `model:` (`opus` for
+   a review). They write nothing; they return findings. Brief each one with the mission's
+   description, its acceptance criteria and its tasks, verbatim.
+2. Each reviewer must run the queries, read real rows and grep call sites per acceptance criterion:
+   a criterion about stored data is checked against the data, one about a function against its
+   callers. A review that only reads the plan is not a review. Each returns blocking findings from
+   nits.
+3. Findings are resolved on the board: a blocking finding changes a criterion, a task or the
+   description before anything starts, and a nit is fixed or noted. User decisions go back to the
+   user; the planner never decides them. Re-dispatch the reviewer that raised a blocking finding to
+   confirm the fix.
+4. Record the result in the mission `notes` (or the campaign `notes`, for a review of the whole
+   campaign) in exactly the strict shape below: `## Plan review (<names or roles>, <date>)`, then
+   `Reviewers: ba (<name>), tech-lead (<name>)`, then
+   `Verdict: approved | approved with nits | changes requested` (keep one of the three). The
+   heading and both lines start in column 0; keys are case-insensitive; write one `Verdict:` line,
+   never two. Only `approved` and `approved with nits` let the mission start. Always write this
+   shape, never the legacy heading-only form (a `## Plan review (...)` heading with no `Reviewers:`
+   or `Verdict:` line, which set-status.js still accepts but warns about). For example:
+
+```
+## Plan review (Alex + Rio, 2026-10-05)
+Reviewers: ba (Alex), tech-lead (Rio)
+Verdict: approved with nits
+```
+
+`set-status.js` and the extension's status dropdown refuse to start a mission (a move into
+`executing`, which `active` maps to) until such a record exists, with exit code 3 from the script
+and a confirm dialog in the dropdown. To start without a review, run
+`set-status.js ... --force=<reason>`; the reason is appended to the mission notes under
+`## Plan review overridden (<date>)`, so the bypass stays on the board.
+
 ### Task chat — planner (tactical)
 
 The task brief is `task.yaml`. Refine its detail and acceptance criteria with the same discipline:
