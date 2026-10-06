@@ -4,7 +4,7 @@ title: "qa-env.mjs qa_m5 -- env exports BOTH vars at qa_m5; probe against local 
 mission: M5
 covers: [M5-AC4]
 kind: cli
-status: blocked
+status: pass
 last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m5/runs/RUN-2026-10-06-001.md}
 priority: high
 size: M
