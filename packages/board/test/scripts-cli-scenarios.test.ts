@@ -12,7 +12,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
+import { createCampaign, createMission, createTask, createBug, setStatusChecked } from "../src/write.js";
 import { loadEntity, dumpEntity, type EntityFields, type EntityKind } from "../src/entity-schema.js";
 import { BoardModel } from "../src/board-model.js";
 import { readmeText, synthBoard, tcText, writeTests } from "./fixtures/tests-board.js";
@@ -1203,6 +1203,7 @@ describe("set-status.js plan-review gate (M5 AC1)", () => {
     missionDir: string;
     missionFile: string;
     campaignFile: string;
+    missionId: string;
   }
   function fixture(opts: { status?: string; missionNotes?: string; campaignNotes?: string } = {}): Fixture {
     const c = createCampaign(boardRoot, { name: "Camp" });
@@ -1213,7 +1214,7 @@ describe("set-status.js plan-review gate (M5 AC1)", () => {
     const campaignFile = join(dir, "campaign.yaml");
     seed(missionFile, "mission", { status: (opts.status ?? "draft") as EntityFields["status"], notes: opts.missionNotes });
     if (opts.campaignNotes !== undefined) seed(campaignFile, "campaign", { notes: opts.campaignNotes });
-    return { dir, missionDir, missionFile, campaignFile };
+    return { dir, missionDir, missionFile, campaignFile, missionId: m.id };
   }
   const notesOf = (file: string): string | undefined => loadEntity(readFileSync(file, "utf8")).notes;
   const statusOf = (file: string): string | undefined => loadEntity(readFileSync(file, "utf8")).status;
@@ -1333,6 +1334,74 @@ describe("set-status.js plan-review gate (M5 AC1)", () => {
       expect(ok.status).toBe(0);
       expect(ok.stderr).toBe("");
       expect(statusOf(g.missionFile)).toBe("executing");
+    });
+
+    /** The record-template lines exactly as printed between the two markers of a refusal. */
+    function templateOf(stderr: string): string[] {
+      const lines = stderr.split("\n");
+      const open = lines.findIndex((l) => l.startsWith("--- record template"));
+      const close = lines.findIndex((l) => l.startsWith("--- end of record template"));
+      expect(open).toBeGreaterThanOrEqual(0);
+      expect(close).toBeGreaterThan(open);
+      return lines.slice(open + 1, close);
+    }
+
+    it("prints the record template at column 0, and copying it with names and a verdict then starts the mission", async () => {
+      const f = fixture();
+      const refused = run([f.dir, "M1 - Auth", "active"]);
+      expect(refused.status).toBe(3);
+      expect(refused.stdout).toBe("");
+      const template = templateOf(refused.stderr);
+      expect(template.length).toBe(3);
+      expect(template[0]).toMatch(/^## Plan review \(/);
+      expect(template[1]).toMatch(/^Reviewers:/);
+      expect(template[2]).toMatch(/^Verdict:/);
+      // Fill it in the way a person would, then write it through entity-io (the printed pointer).
+      const filled = template
+        .map((l) => l.replace("<names or roles>, <date>", "Alex + Rio, 2026-10-06").replaceAll("<name>", "Pat"))
+        .map((l) => (l.startsWith("Verdict:") ? "Verdict: approved" : l))
+        .join("\n");
+      expect(refused.stderr).toContain("entity-io.mjs");
+      const io = (await import(join(SCRIPTS, "entity-io.mjs"))) as {
+        loadEntity: (t: string) => EntityFields;
+        dumpEntity: (k: string, f: EntityFields) => string;
+      };
+      const fields = io.loadEntity(readFileSync(f.missionFile, "utf8"));
+      fields.notes = fields.notes ? `${fields.notes.trimEnd()}\n\n${filled}` : filled;
+      writeFileSync(f.missionFile, io.dumpEntity("mission", fields));
+      const started = run([f.dir, "M1 - Auth", "active"]);
+      expect(started.status).toBe(0);
+      expect(statusOf(f.missionFile)).toBe("executing");
+    });
+
+    it("opens with 'no plan review is recorded' only when no Plan review section exists", () => {
+      const none = run([fixture().dir, "M1 - Auth", "active"]).stderr.split("\n")[0];
+      expect(none).toContain("no plan review is recorded");
+      expect(none).not.toContain("does not approve");
+      const f = fixture({
+        missionNotes: "## Plan review (ba, tech-lead, 2026-10-06)\nReviewers: ba (x), tech-lead (y)\nVerdict: changes requested",
+      });
+      const { stderr } = run([f.dir, "M1 - Auth", "active"]);
+      const first = stderr.split("\n")[0];
+      expect(first).toContain("a plan review is recorded but does not approve the start");
+      expect(first).not.toContain("no plan review is recorded");
+      expect(stderr).toContain("no Verdict: approved line");
+    });
+
+    it("uses the same reason sentence and record template as the host's confirm message", () => {
+      const notes = "## Plan review (ba, tech-lead, 2026-10-06)\nReviewers: ba (x), tech-lead (y)\nVerdict: changes requested";
+      for (const missionNotes of [undefined, notes]) {
+        const f = fixture({ missionNotes });
+        const script = run([f.dir, "M1 - Auth", "active"]).stderr;
+        const res = setStatusChecked(boardRoot, "mission", f.missionId, "active");
+        expect(res).toMatchObject({ ok: false, reason: "plan-review-missing" });
+        const host = (res as { message: string }).message;
+        expect(templateOf(host)).toEqual(templateOf(script));
+        const reason = (t: string): string => /into executing: (.*)\.$/m.exec(t.split("\n")[0] ?? "")?.[1] ?? "";
+        expect(reason(host)).toBe(reason(script));
+        expect(reason(host)).not.toBe("");
+        expect(host).toContain("entity-io.mjs");
+      }
     });
 
     it("keeps exit 1 for an unknown entity, with or without --force", () => {

@@ -634,7 +634,9 @@ function campaignNotesOf(root: string, missionFolderPath: string): { notes: stri
 
 /** Why a move into executing is refused, and how to record a review or override. (set-status.js prints the same.) */
 function planReviewRefusal(title: string, candidates: PlanReviewCandidate[], campaignError: string | null): string {
-  const lines = [`Cannot move "${title}" into executing: no plan review is recorded.`];
+  // Same wording and record template as set-status.js's refuse() (pack skill/mission-planner/scripts).
+  const reason = candidates.length === 0 ? "no plan review is recorded" : "a plan review is recorded but does not approve the start";
+  const lines = [`Cannot move "${title}" into executing: ${reason}.`];
   if (campaignError) lines.push(`The campaign notes could not be read (${campaignError}).`);
   if (candidates.length === 0) {
     lines.push("There is no `## Plan review (...)` heading in the mission notes or the campaign notes.");
@@ -642,10 +644,14 @@ function planReviewRefusal(title: string, candidates: PlanReviewCandidate[], cam
     for (const c of candidates) lines.push(`${c.where} notes: "${c.heading}": ${c.missing.join("; ")}`);
   }
   lines.push(
-    "To record a review, add this to the mission notes or the campaign notes:",
+    "To record a review, write the record below into the mission notes or the campaign notes with entity-io.mjs",
+    "(loadEntity/dumpEntity; see mission-planner SKILL.md, Plan review), never by editing the YAML text.",
+    "Fill the placeholders and keep one verdict. The lines between the markers start in column 0:",
+    "--- record template (paste into the mission or campaign notes) ---",
     "## Plan review (<names or roles>, <date>)",
     "Reviewers: ba (<name>), tech-lead (<name>)",
     "Verdict: approved | approved with nits",
+    "--- end of record template ---",
   );
   return lines.join("\n");
 }
