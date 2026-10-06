@@ -1,0 +1,23 @@
+### TC-007
+qa-env: refusing "edgeserver": it does not match name_pattern "^(qa_.+|.+_test)$" (anchored, whole name) in <scratchpad>/m5qa/work/qa7/.octobots/qa-env.json
+exit=3
+NOT_EXECUTED
+qa-env: config not found: expected <scratchpad>/m5qa/work/.octobots/qa-env.json
+no-config exit=3
+NOT_EXECUTED
+### TC-008
+-- step 1
+qa-env: target database = qa_m5
+EDGESERVER_POSTGRES_DSN=postgresql+asyncpg://localhost/qa_m5
+EDGESERVER_POSTGRES_SYNC_DSN=postgresql://localhost/qa_m5
+pipe exit=
+-- step 2 UNREACHABLE (no qa_m5 DB; not run, no DB created)
+0
+-- step 3
+qa-env: probe reports database "postgres", expected "qa_m5"; not running the command
+exit=4
+NOT_EXECUTED
+### TC-009
+qa-env: var EDGESERVER_POSTGRES_SYNC_DSN template "postgresql://localhost/edgeserver" lacks {db}, so it could point at a real database (<scratchpad>/m5qa/work/qa9/.octobots/qa-env.json)
+exit=3
+NOT_EXECUTED

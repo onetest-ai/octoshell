@@ -1,0 +1,9 @@
+import { describe, it } from "vitest";
+const code = 1;
+process.exit(code);
+codexit(2);
+obj.xit(3);
+const skipped = items.filter((i) => i.skipped);
+it("mentions skip and todo and xfail in prose only", () => {});
+it.skipIf(process.platform === "win32")("posix only", () => {});
+describe.runIf(process.env.CI)("ci only", () => {});

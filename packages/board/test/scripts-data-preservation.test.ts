@@ -205,6 +205,10 @@ describe("set-status.js preserves the entity's other content", () => {
       documents: [{ label: "spec", target: "docs/spec.md" }],
     });
 
+    // The move into executing needs a plan review: a strict one in the campaign notes adds nothing to the mission's.
+    seed(join(boardRoot, c.folderPath, "campaign.yaml"), "campaign", {
+      notes: "## Plan review (Alex + Rio, 2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved",
+    });
     runScript("set-status.js", [join(boardRoot, c.folderPath), "M1 - Auth", "active"], projectDir);
 
     const after = loadEntity(readFileSync(missionYaml, "utf8"));

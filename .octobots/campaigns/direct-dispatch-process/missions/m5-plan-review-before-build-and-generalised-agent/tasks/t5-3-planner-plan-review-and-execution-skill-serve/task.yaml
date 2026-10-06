@@ -1,9 +1,22 @@
 name: T5.3 - Planner § Plan review and execution-skill server/timeout/background rules
-status: draft
+status: done
 role: js-dev
 description: 'Scope: mission-planner § Plan review text (recorded shape, parallel read-only dispatch with model:, per-AC real-data evidence, blocking vs nits); mission-execution § Dispatch rules: nohup/curl -m 2, no-timeout/perl alarm, never background a test command (server/watcher exceptions), qa-env.mjs for QA servers/migrations/seeds; octobots-doctor (M7) § legacy plan-review records (acted on from set-status.js output; not a primer finding, M7-AC6). Out of scope: project CLAUDE.md beyond octoshell''s. Downstream: none.'
 acceptance_criteria:
   - text: apps/vscode-extension/test/skill-conventions.test.ts asserts the phrases of mission AC3 and AC5 are present in the shipped skills
-    done: false
+    done: true
   - text: 'the same suite asserts octobots-doctor''s legacy plan-review paragraph: offer to add Reviewers: (ba, tech-lead) and Verdict:, write only with the user''s OK (mission AC3)'
-    done: false
+    done: true
+notes: |-
+  ## QA verification (Sage, 2026-10-06)
+  Commit 230c40be, PR #158. Branch pack installed (install-pack.mjs --local-changes=overwrite) into a shared clone of solo (auqanautica, read only) and a copy of octoshell's board; installed SKILL.md files read.
+  - AC3 text, installed mission-planner SKILL.md: parallel read-only ba + tech-lead with explicit model: L296-298; per-AC queries, real rows, call-site grep L299-302; blocking vs nits L301-302; findings resolved on board, user decisions go to the user L303-305; strict record heading, Reviewers:, Verdict: approved | approved with nits | changes requested L308-312, example L316-320; never the legacy form L312-314; entity-io command L322-338; set-status refusal and --force L342-347.
+  - AC3 doctor, installed octobots-doctor: description triggers on the legacy warning L3; section 8 L202-219: offer Reviewers: ba / tech-lead plus Verdict:, only with the user's OK L211-212; ask the user for the verdict when the record states none L214-215; both lines or neither L215-217; entity-io then validate.js L217-219.
+  - AC5, installed mission-execution: rule 6 perl alarm L124-125; rule 7 never background a test command, server/watcher exceptions L126-128; rule 11 nohup + log redirect, curl -m 2 loop, literal 30-try loop, qa-env.mjs path, no-database case L141-151.
+  - TC-006 (skill-conventions.test.ts as written): 131 passed, 0 failed. PASS. TC frontmatter untouched (T5.6).
+  - Planner command run literally (extracted from the installed SKILL.md) in a copy of octoshell's board, on drafts with no review: set-status refused with exit 3 and the file byte-identical; after the command with Verdict: approved, set-status draft -> executing exit 0; with Verdict: changes requested, exit 3, byte-identical; a later approved record, exit 0.
+  - Doctor section 8 on solo's uwb campaign (shared clone): set-status printed the legacy warning and accepted. Applying section 8 with verdict "approved with nits" through entity-io inserted exactly the two lines after the heading (diff: +2 lines). Then set-status accepted with no legacy warning (strict). Negative: Reviewers: only is refused with exit 3, confirming "both or neither".
+  - Rule 6 perl alarm on this Mac: `perl -e 'alarm shift; exec @ARGV' 1 sleep 5` exits 142; a passing command exits 0. Rule 11 curl loop as written: against a nohup'd python http.server, exit 0 after startup retries; against a closed port, exit 1 after about 30 s.
+  - Gate: pnpm build, typecheck, lint, test (tokenomics 102, board 616, extension 1054, graph 655), coverage:pack all exit 0; shipped-skills.mjs --verify current; gh pr checks 158: both build jobs pass on 230c40be. Solo git status unchanged.
+  - Nit, no action: the refusal for a record with a non-approving verdict opens with "no plan review is recorded", though the next line names the real reason.
+  Verdict: PASS.

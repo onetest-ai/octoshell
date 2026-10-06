@@ -12,7 +12,12 @@ export interface DispatchCtx {
   /** Workspace folder path (the open folder), used for project:list. */
   workspaceFolderPath: string;
   /** Host-backed dialogs (vscode.window.showOpenDialog). */
-  dialog: { openFiles: () => Promise<string[]>; openFolder?: () => Promise<string | null> };
+  dialog: {
+    openFiles: () => Promise<string[]>;
+    openFolder?: () => Promise<string | null>;
+    /** A modal confirmation: resolves true only when the user picks `actionLabel`. */
+    confirm: (message: string, actionLabel: string) => Promise<boolean>;
+  };
   /** Host editor capability — keeps this module free of a direct `vscode` import (testable). */
   editor: {
     openReadonly: (content: string, language?: string) => Promise<void>;
@@ -27,9 +32,30 @@ type RpcHandler<M extends RpcMethod> = (
 
 export class RpcError extends Error {}
 
-/** Surface a failed status write as an error so the UI shows it instead of silently reverting to draft. */
-function okStatus(ok: boolean, status: string): { ok: true } {
-  if (!ok) throw new RpcError(`Could not set status "${status}" (entity not found or unknown status).`);
+/** The reason a dropdown-confirmed plan-review override records in the mission notes. */
+const DROPDOWN_FORCE_REASON = "confirmed in the extension's status dropdown";
+
+/**
+ * Set a status. A failed write (entity not found or unknown status) throws, so the UI shows it
+ * instead of silently reverting to draft. A mission start without a plan review asks the user to
+ * confirm (modal); Confirm retries with a recorded override, Cancel leaves the board untouched and
+ * returns the stored status so the view can re-render it.
+ */
+async function applyStatus(
+  c: DispatchCtx,
+  kind: "campaign" | "mission" | "task" | "bug",
+  id: string,
+  status: string,
+): Promise<{ ok: true; status?: string }> {
+  const res = c.board.setStatus(kind, id, status);
+  if (res.ok) return { ok: true };
+  const confirmed = await c.dialog.confirm(res.message, "Start without a review");
+  if (!confirmed) {
+    const stored = kind === "mission" ? c.board.getMission(id)?.status : undefined;
+    return stored ? { ok: true, status: stored } : { ok: true };
+  }
+  const forced = c.board.setStatus(kind, id, status, { force: DROPDOWN_FORCE_REASON });
+  if (!forced.ok) throw new RpcError(forced.message);
   return { ok: true };
 }
 
@@ -55,7 +81,7 @@ const handlers: { [M in RpcMethod]: RpcHandler<M> } = {
   "campaign:create": (a, c) => c.board.createCampaign({ name: a.name }),
   "campaign:get": (a, c) => ({ campaign: c.board.getCampaign(a.campaignId), summary: c.board.campaignSummary(a.campaignId) }),
   "campaign:update": (a, c) => { c.board.updateBrief("campaign", a.campaignId, { description: a.description, acceptanceCriteria: a.acceptanceCriteria, target: a.target, notes: a.notes }); return { ok: true }; },
-  "campaign:setStatus": (a, c) => okStatus(c.board.setStatus("campaign", a.campaignId, a.status), a.status),
+  "campaign:setStatus": (a, c) => applyStatus(c, "campaign", a.campaignId, a.status),
   "campaign:docs": (a, c) => c.board.campaignDocs(a.campaignId),
   "campaign:docs:createFile": (a, c) => ({ path: c.board.createCampaignDocFile(a.campaignId, a.name) }),
   "campaign:docs:addLink": (a, c) => c.board.addCampaignLink(a.campaignId, { url: a.url, title: a.title }),
@@ -68,7 +94,7 @@ const handlers: { [M in RpcMethod]: RpcHandler<M> } = {
   "mission:list": (a, c) => c.board.listMissions(a.campaignId),
   "mission:get": (a, c) => c.board.getMission(a.missionId),
   "mission:update": (a, c) => { c.board.updateBrief("mission", a.missionId, { description: a.description, acceptanceCriteria: a.acceptanceCriteria, notes: a.notes }); return { ok: true }; },
-  "mission:setStatus": (a, c) => okStatus(c.board.setStatus("mission", a.missionId, a.status), a.status),
+  "mission:setStatus": (a, c) => applyStatus(c, "mission", a.missionId, a.status),
   "mission:syncTasks": (a, c) => c.board.syncMissionFromBoard(a.missionId),
   "mission:docs": (a, c) => c.board.missionDocs(a.missionId),
   "mission:docs:addLink": (a, c) => c.board.addMissionLink(a.missionId, { url: a.url, title: a.title }),
@@ -78,13 +104,13 @@ const handlers: { [M in RpcMethod]: RpcHandler<M> } = {
   "task:list": (a, c) => c.board.listTasks(a.missionId),
   "task:create": (a, c) => c.board.createTask({ missionId: a.missionId, name: a.name }),
   "task:update": (a, c) => { c.board.updateBrief("task", a.taskId, { description: a.description, acceptanceCriteria: a.acceptanceCriteria, notes: a.notes }); return { ok: true }; },
-  "task:setStatus": (a, c) => okStatus(c.board.setStatus("task", a.taskId, a.status), a.status),
+  "task:setStatus": (a, c) => applyStatus(c, "task", a.taskId, a.status),
   "task:delete": (a, c) => { c.board.deleteTask(a.taskId); return { ok: true }; },
   "bug:get": (a, c) => c.board.getBug(a.bugId),
   "bug:list": (a, c) => c.board.listBugs(a.campaignId ? { campaignId: a.campaignId } : { missionId: a.missionId! }),
   "bug:create": (a, c) => c.board.createBug({ title: a.title, severity: a.severity, ...(a.campaignId ? { campaignId: a.campaignId } : { missionId: a.missionId! }) }),
   "bug:update": (a, c) => { c.board.updateBrief("bug", a.bugId, { name: a.title, severity: a.severity, description: a.description, stepsToReproduce: a.stepsToReproduce, expected: a.expected, actual: a.actual, rca: a.rca, environment: a.environment, notes: a.notes }); return { ok: true }; },
-  "bug:setStatus": (a, c) => okStatus(c.board.setStatus("bug", a.bugId, a.status), a.status),
+  "bug:setStatus": (a, c) => applyStatus(c, "bug", a.bugId, a.status),
   "bug:delete": (a, c) => { c.board.deleteBug(a.bugId); return { ok: true }; },
   "bug:sync": (a, c) => c.board.syncBugsFromBoard(a.campaignId ? { campaignId: a.campaignId } : { missionId: a.missionId }),
 };

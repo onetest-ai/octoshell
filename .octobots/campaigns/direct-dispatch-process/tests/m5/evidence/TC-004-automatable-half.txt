@@ -1,0 +1,79 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.0.5 <octoshell>/apps/vscode-extension
+
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes project:list to workspace folder (no appRuntime)
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes campaign:list to board.listCampaigns
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes campaign:create to board.createCampaign
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes campaign:get to board.getCampaign + board.campaignSummary
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes campaign:update to board.updateBrief
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes notes through <kind>:update for every entity kind
+ ✓ test/rpc-dispatcher.test.ts > dispatch > leaves notes alone when <kind>:update omits them
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes campaign:docs, addLink, removeLink to board (not daemon)
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes mission:docs, addLink, removeLink, addFile to board (not daemon)
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes mission:list to board.listMissions
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes mission:get to board.getMission
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes campaign:docs:addFile to board.addCampaignFile
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes campaign:missions:sync and :create to board (not daemon)
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes campaign:delete and mission:delete to the board
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes mission:update to board
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes task:get / task:list / task:create to board
+ ✓ test/rpc-dispatcher.test.ts > dispatch > task:setStatus persists and returns ok
+ ✓ test/rpc-dispatcher.test.ts > dispatch > mission:setStatus throws (not silent ok) when the entity can't be found
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes task:update and task:delete to board
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes bug:get / bug:list / bug:create to board (campaign + mission parents)
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes bug:update and bug:delete to board
+ ✓ test/rpc-dispatcher.test.ts > dispatch > routes bug:sync to board
+ ✓ test/rpc-dispatcher.test.ts > dispatch > throws on unknown method
+ ✓ test/rpc-dispatcher.test.ts > dispatch > rejects malformed args via Zod (handler never runs)
+ ✓ test/rpc-dispatcher.test.ts > mission:setStatus with a plan-review confirm > Cancel leaves the YAML byte-identical and returns the stored status; the modal names the missing review
+ ✓ test/rpc-dispatcher.test.ts > mission:setStatus with a plan-review confirm > Cancel leaves a hand-written mission.yaml byte-identical (a canonical rewrite would be visible)
+ ✓ test/rpc-dispatcher.test.ts > mission:setStatus with a plan-review confirm > Confirm re-reads the file: notes written to disk while the modal was open are kept, not overwritten
+ ✓ test/rpc-dispatcher.test.ts > mission:setStatus with a plan-review confirm > Confirm after a review was recorded on disk while the modal was open flips with no override note
+ ✓ test/rpc-dispatcher.test.ts > mission:setStatus with a plan-review confirm > Confirm flips the status and appends the overridden note with the dropdown reason
+ ✓ test/rpc-dispatcher.test.ts > mission:setStatus with a plan-review confirm > never calls confirm for a strict review, a legacy review, or a move that is not into executing
+ ✓ test/rpc-dispatcher.test.ts > mission:setStatus with a plan-review confirm > campaign, task and bug status changes never ask
+ ✓ test/board-host.test.ts > BoardHost > creates a campaign+mission+task and reads them back after reconcile
+ ✓ test/board-host.test.ts > BoardHost > emits entities:changed on reconcile
+ ✓ test/board-host.test.ts > BoardHost > syncBugsFromBoard / syncMissionFromBoard do NOT emit entities:changed
+ ✓ test/board-host.test.ts > BoardHost > setStatus on a task is reflected on next read
+ ✓ test/board-host.test.ts > BoardHost > campaignRollup reflects mission statuses
+ ✓ test/board-host.test.ts > BoardHost > deleteTask removes it from the board
+ ✓ test/board-host.test.ts > BoardHost > createBug accepts a flat {title, campaignId|missionId} shape
+ ✓ test/board-host.test.ts > BoardHost > addCampaignLink / campaignDocs / removeCampaignLink round-trip
+ ✓ test/board-host.test.ts > BoardHost > addCampaignFile / campaignDocs round-trip
+ ✓ test/board-host.test.ts > BoardHost > addMissionLink / missionDocs / removeMissionLink round-trip
+ ✓ test/board-host.test.ts > BoardHost > addMissionFile / missionDocs round-trip
+ ✓ test/board-host.test.ts > BoardHost > campaignDocs.files lists on-disk files in the campaign folder (excluding the campaign.yaml entity file)
+ ✓ test/board-host.test.ts > BoardHost > campaignSummary returns null for unknown campaign
+ ✓ test/board-host.test.ts > BoardHost > campaignSummary counts per-status and rolls up correctly
+ ✓ test/board-host.test.ts > BoardHost > syncCampaignMissions returns empty proposals when the campaign description has no ## Missions section
+ ✓ test/board-host.test.ts > BoardHost > syncCampaignMissions reports a description-authored mission as exists:false when no folder exists
+ ✓ test/board-host.test.ts > BoardHost > syncCampaignMissions marks a mission as exists:true when folder exists
+ ✓ test/board-host.test.ts > BoardHost > createMissionsFromBoard materializes proposals and a re-sync shows them as exists:true
+ ✓ test/board-host.test.ts > BoardHost > createMissionsFromBoard skips duplicates (case-insensitive)
+ ✓ test/board-host.test.ts > BoardHost > syncMissionFromBoard reconciles and returns { created: 0 }
+ ✓ test/board-host.test.ts > BoardHost > syncBugsFromBoard reconciles and returns { created: 0 }
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > refuses a mission moving into executing without a review: plan-review-missing, YAML byte-identical
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > refuses without rewriting a hand-written mission.yaml (comments and quoting survive byte for byte)
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > gates every spelling that maps to executing
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > names the candidate heading and what it lacks in the message
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > {force} flips it and appends the overridden note after the existing notes, bytes preserved
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > dates the overridden note with the injected clock (UTC)
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > escapes a #-led force reason so it cannot forge a review heading
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > a strict record in the mission notes flips it with no override note
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > a strict record in the campaign notes flips it
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > a legacy record flips it, silently, with no override note
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > a forced move that the rule already allows adds no note
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > does not check draft -> done or draft -> awaitingApproval
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > does not check executing -> executing (a spelling of the stored state is no transition)
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > campaign, task and bug status changes are never gated and return {ok: true}
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > throws for an unknown entity or status instead of returning a refusal
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > writes the same bytes as set-status.js --force on a twin board
+ ✓ test/board-host.test.ts > BoardHost.setStatus plan-review gate > writes the same bytes as set-status.js --force for a #-led reason and an empty notes field
+
+ Test Files  2 passed (2)
+      Tests  69 passed (69)
+   Start at  10:56:03
+   Duration  505ms (transform 89ms, setup 106ms, collect 165ms, tests 254ms, environment 0ms, prepare 62ms)
+

@@ -1,0 +1,20 @@
+scan-parked: <octoshell>
+allowed (10):
+  apps/vscode-extension/test/octobots-primer.test.ts:464: it.skipIf(process.platform === "win32")("a FIFO at pending.json or doctor-acks.json is skipped, not read", () => {
+  apps/vscode-extension/test/octobots-primer.test.ts:485: it.skipIf(process.platform === "win32")("a symlinked pending.json is not followed", () => {
+  apps/vscode-extension/test/octobots-primer.test.ts:654: it.skipIf(process.platform === "win32")("a FIFO, a directory, or an AGENTS.md over 1 MiB is never read (no hang) and is named, as doctor.js warns on it", () => {
+  apps/vscode-extension/test/pack-updates-hardening.test.ts:37: describe.runIf(posix)("installPack never writes or deletes through a symlink under .octobots/pack-updates", () => {
+  apps/vscode-extension/test/pack-updates-hardening.test.ts:104: describe.runIf(posix)("no reader blocks on a FIFO or reads through a symlinked pending.json", () => {
+  apps/vscode-extension/test/pack-updates-hardening.test.ts:234: it.runIf(posix)("refuses (exit 3) instead of hanging when DECISIONS.md is a FIFO", () => {
+  apps/vscode-extension/test/pack-updates-hardening.test.ts:248: it.runIf(posix && process.getuid?.() !== 0)("writePending rethrows a failed write and leaves no temp file behind", () => {
+  apps/vscode-extension/test/tokenomics-verify-roots.test.ts:325: describe.skipIf(!REAL)("against the real ccusage binary", () => {
+  packages/board/test/tc-io.test.ts:355: it.skipIf(process.platform === "win32")("never blocks on a README or TC that is a FIFO, a symlink to a FIFO or /dev/zero", () => {
+  packages/graph/test/vault-calibration.test.ts:10: describe.skipIf(!HAS_VAULT)("vault matching, calibrated against this repo's real vault", () => {
+0 unsigned, 10 allowed
+exit=0
+{"file":"packages/graph/test/vault-calibration.test.ts","line":10,"text":"describe.skipIf(!HAS_VAULT)(\"vault matching, calibrated against this repo's real vault\", () => {"}
+[]
+{"unsigned":0,"allowed":10}
+[{"file":"packages/graph/test/qa-parked-probe.test.ts","line":2,"text":"it.skip(\"parked by a QA probe\", () => {});"}]
+exit=1
+exit after signoff=0

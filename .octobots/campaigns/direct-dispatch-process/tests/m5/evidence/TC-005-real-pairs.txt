@@ -1,0 +1,17 @@
+## <scratchpad>/m5qa/work/solo-octobots: 115 missions, 6 allowed
+  uwb-ranging-ingest-vendor-v01/m1-venue-ingest-mode-and-vendor-integer-ids legacy=true where=campaign
+  uwb-ranging-ingest-vendor-v01/m2-tcp-range-set-ingest-with-ack-and-de-duplicatio legacy=true where=campaign
+  uwb-ranging-ingest-vendor-v01/m3-range-trilateration-to-position-records legacy=true where=campaign
+  uwb-ranging-ingest-vendor-v01/m4-ranging-mode-readiness-and-ops-visibility legacy=true where=campaign
+  uwb-ranging-ingest-vendor-v01/m5-emulator-v01-gateway-and-end-to-end-ranging-mat legacy=true where=campaign
+  uwb-ranging-ingest-vendor-v01/m6-receiver-port-configuration-file legacy=true where=campaign
+## <scratchpad>/m5qa/work/octo-octobots: 18 missions, 7 allowed
+  direct-dispatch-process/m1-tokenomics-reads-real-transcripts-and-attribute legacy=false where=campaign
+  direct-dispatch-process/m2-pack-runs-missions-by-direct-sub-agent-dispatch legacy=false where=campaign
+  direct-dispatch-process/m3-extension-and-board-library-drop-workflow-entit legacy=false where=campaign
+  direct-dispatch-process/m4-functional-test-cases-are-a-gate-run-unit-of-ev legacy=false where=campaign
+  direct-dispatch-process/m5-plan-review-before-build-and-generalised-agent legacy=false where=campaign
+  direct-dispatch-process/m6-test-cases-are-first-class-on-the-board legacy=false where=campaign
+  direct-dispatch-process/m7-pack-updates-reconcile-locally-changed-skills-w legacy=false where=campaign
+<scratchpad>/m5qa/work/octo-octobots/campaigns/direct-dispatch-process/missions/m5-plan-review-before-build-and-generalised-agent/mission.yaml
+M5 own notes, with empty campaign notes: {"ok":false,"candidates":[]}

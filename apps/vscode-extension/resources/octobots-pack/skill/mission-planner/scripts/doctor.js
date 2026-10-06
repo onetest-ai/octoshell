@@ -18,6 +18,7 @@ import { join, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
 import { findLegacyWorkflowFolders, isCampaignDir, NO_LONGER_READ } from "./legacy-workflows.mjs";
 import { parseSkillMarker } from "./skill-marker.mjs";
+import { parseTestLanes } from "./lanes.mjs";
 import { readPending, readRegularFile, MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX } from "./pending-io.mjs";
 
 const argv = process.argv.slice(2);
@@ -207,6 +208,32 @@ else {
     warn("board",
       `${leftovers.length} leftover workflows/ folder(s), ${NO_LONGER_READ}: ${leftovers.join(", ")}`,
       "nothing to do — they are ignored and harmless, so you can leave them; to tidy up, move them aside by hand (the doctor never changes them)");
+  }
+}
+
+// ── 7. Test lanes ────────────────────────────────────────────────────────────────────────────
+// AGENTS.md § Test lanes declares the project's fast and coverage commands (the rules are in
+// lanes.mjs). Always listed, even when .octobots/doctor-acks.json acknowledges the finding: only
+// the SessionStart primer honours acknowledgements. The fix is the octobots-doctor skill, which
+// proposes the section and writes it only with the user's OK.
+{
+  const MAX_AGENTS_BYTES = 1024 * 1024; // the primer reads AGENTS.md under the same bound
+  const LANES_FIX = "run the octobots-doctor skill: it proposes a `## Test lanes` section from the project's documented commands and writes it only with your OK";
+  const agentsPath = join(ROOT, "AGENTS.md");
+  if (!existsSync(agentsPath)) {
+    warn("lanes", "no AGENTS.md, so no `## Test lanes` section declaring `fast:` and `coverage:` commands", LANES_FIX);
+  } else {
+    let text = null;
+    try { text = readRegularFile(agentsPath, { max: MAX_AGENTS_BYTES }); } catch { /* reported below */ }
+    if (text === null) {
+      warn("lanes", "AGENTS.md is not a readable regular file of at most 1 MiB, so its `## Test lanes` section could not be read", LANES_FIX);
+    } else {
+      const lanes = parseTestLanes(text);
+      const missing = ["fast", "coverage"].filter((k) => lanes[k] === null);
+      if (!lanes.section) warn("lanes", "AGENTS.md has no `## Test lanes` section declaring `fast:` and `coverage:` commands", LANES_FIX);
+      else if (missing.length) warn("lanes", `AGENTS.md \`## Test lanes\` does not declare ${missing.map((k) => `${k}:`).join(" or ")}`, LANES_FIX);
+      else ok("lanes", `AGENTS.md declares test lanes (fast: ${lanes.fast}; coverage: ${lanes.coverage})`);
+    }
   }
 }
 

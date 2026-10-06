@@ -1,7 +1,30 @@
 name: 'T5.6 - Mission QA: run tests/m5 live on copies of real boards and repos'
-status: draft
+status: done
 role: qa-engineer
 description: 'Scope: TC-001..013; the TC-004 UI half is manual (Extension Development Host). Update each TC''s status; write `## QA verification`. Out of scope: fixes. Downstream: M5 gate.'
 acceptance_criteria:
   - text: every TC has PASS, FAIL, BLOCKED or UNREACHABLE with evidence and a named pre-existing record (manual executions noted as manual in the RUN file); its frontmatter status is pass, fail or blocked (UNREACHABLE recorded as blocked with the reason in the RUN file); the Postgres probe half is UNREACHABLE if no local Postgres, never stubbed
-    done: false
+    done: true
+notes: |-
+  ## QA verification (qa-engineer, 2026-10-06, branch qa/direct-dispatch-process-m5-t6 from feat/direct-dispatch-process-m5 5ee2c435)
+
+  Verdict: all 13 cases run; 11 PASS, 2 BLOCKED (TC-004 live half manual, pending the user's F5; TC-008 step 2 UNREACHABLE), 0 FAIL, no bug filed. Run file: `.octobots/campaigns/direct-dispatch-process/tests/m5/runs/RUN-2026-10-06-001.md`; evidence in `tests/m5/evidence/`. Data safety: solo's `git status --short` and its `.octobots` sha256 manifest (1209 files) are identical before and after, octoshell's own `.octobots` (outside this campaign) too; no database created, dropped or written.
+
+  Per case (pre-existing record, observed value):
+  - TC-001 PASS: solo epic-013 M10 (draft, 0 review headings): executing, active, in progress, running each exit 3, file unchanged; other states and draft->done/failed exit 0.
+  - TC-002 PASS: this campaign's strict plan-review record (copy of octoshell's board), M6: exit 0, empty stderr, status executing.
+  - TC-003 PASS: solo M10 (copy): bare --force exit 2; --force=<reason> in last, first and middle argv position exit 0 with 3 dated overridden notes; a plain move after that exit 3.
+  - TC-004 BLOCKED (manual): automatable half PASS (board-host + rpc-dispatcher on solo's board copy, 69 passed); the F5 half (modal, Escape, no message on legacy) is pending the user, script `tests/m7/manual/T7.4-F5-script.md` Part C.
+  - TC-005 PASS: parity vitest on both board copies, 2 passed; solo 6 of 115 missions allowed (uwb, legacy, via campaign notes); octoshell campaign 7 of 7 strict; M5 notes alone refused.
+  - TC-006 PASS: skill-conventions vitest, 141 passed (planner Plan review, doctor legacy + lanes paragraphs, execution rules, gate calls scan-parked.js).
+  - TC-007 PASS: solo's real var names, `edgeserver`: exit 3, command not run; no config: exit 3 naming the path.
+  - TC-008 BLOCKED: step 1 PASS (both DSNs end /qa_m5), step 3 PASS (probe prints postgres: exit 4, command not run; the signal race fix re-run, qa-env.test.ts 50 passed x3), step 2 UNREACHABLE: a local Postgres runs but has no `qa_m5` database, none may be created, and the probe is never stubbed.
+  - TC-009 PASS: SYNC template without {db}: exit 3 naming EDGESERVER_POSTGRES_SYNC_DSN, command not run.
+  - TC-010 PASS: octoshell: exit 0, 0 unsigned, 10 allowed incl. vault-calibration.test.ts:10, octograph.mjs not a hit; throwaway clone with it.skip: exit 1, then exit 0 after a signoff line.
+  - TC-011 PASS (case text corrected: with --root the path is printed relative to the root): f2e7812d^ edgeserver/tests: .unsigned is test_m6_solve_over_the_wire_e2e.py:474, exit 1, same set as the independent grep; today's solo tree 0/0, exit 0; pytest -rxs not run.
+  - TC-012 PASS (case text corrected: octoshell gets one `ok` lanes finding, no warning): solo copy one {warn, lanes}; octoshell copy none; CLAUDE.md carries the rules.
+  - TC-013 PASS: uwb legacy heading exit 0 with the exact warning line, status executing; one-reviewer and changes-requested derivations exit 3, status cancelled, file unchanged.
+
+  Mission criteria with evidence (recorded here and in the M5 mission notes; this task ticks only its own criterion): AC1 (TC-001, 002, 003, 005, 013), AC3 and AC5 (TC-006), AC6 (TC-010, 011), AC7 (TC-006, 012; primer line per T5.5 QA). NOT fully evidenced: AC2 (TC-004's live F5 half pending) and AC4 (TC-008 step 2: the matching-probe-then-run path on a real qa_m5 database is UNREACHABLE; exit 3 and 4 refusals and the var export are proved on real var names).
+
+  Not pass: TC-004 (blocked, manual live half pending the user's F5) and TC-008 (blocked, step 2 UNREACHABLE: no `qa_m5` database exists and none may be created).

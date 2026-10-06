@@ -1,13 +1,25 @@
 name: T5.5 - Test-lanes contract and parked-test scan
-status: draft
+status: done
 role: js-dev
 description: 'Scope: a new pack script skill/mission-execution/scripts/scan-parked.js with the file set, hit rules, signoff format, exit codes and --json shape of mission AC6 (a sibling package.json {"type":"module"} as in mission-planner/scripts if it is ESM); tests in packages/board/test/scan-parked.test.ts (coverage-gated by T5.4''s widened include); the doctor.js lanes check ({level: warn, area: lanes}) and octobots-doctor''s (M7) paragraph on resolving it, plus the lanes sentence `AGENTS.md declares no test lanes.` in primer.mjs''s octobots-doctor line (M7 notes § Primer line; an AGENTS.md read only; acknowledgeable in doctor-acks.json); gate phase 1 calling scan-parked.js; octoshell AGENTS.md § Test lanes and CLAUDE.md generalised rules (dogfood). Out of scope: making pnpm test parallel (already via turbo). Downstream: campaign AC7 and M6-AC8 (scan on the release tree).'
 acceptance_criteria:
   - text: packages/board/test/scan-parked.test.ts covers every clause of mission AC6, including `process.exit(` (as in packages/graph/bin/octograph.mjs:30) not being a hit, an imperative pytest.xfail( with a reason string being a hit, a signoff line exempting a hit, and its own fixtures being excluded; run at the octoshell root it exits 0 and lists vault-calibration.test.ts:10 as allowed
-    done: false
+    done: true
   - text: 'packages/board/test/scripts-cli-scenarios.test.ts covers `doctor.js --json` reporting {level: "warn", area: "lanes"} on a repo whose AGENTS.md has no `## Test lanes`, and no lanes finding on octoshell''s AGENTS.md, which declares fast: and coverage: (mission AC7)'
-    done: false
+    done: true
   - text: 'apps/vscode-extension/test/skill-conventions.test.ts asserts octobots-doctor''s lanes paragraph: propose `## Test lanes` from the project''s documented commands, write only with the user''s OK (mission AC7)'
-    done: false
+    done: true
   - text: 'apps/vscode-extension/test/octobots-primer.test.ts: an AGENTS.md without `## Test lanes` makes the octobots-doctor line end with `AGENTS.md declares no test lanes.` after the reconcile, workflows and config-dir sentences; with the section, or with the finding acknowledged in .octobots/doctor-acks.json, the line does not name it (mission AC7)'
-    done: false
+    done: true
+notes: |
+  ## QA verification (qa-engineer, 2026-10-06, branch HEAD 6ddda95f)
+
+  Black-box, installed pack: install-pack.mjs --local-changes=overwrite into a git clone --shared of solo (pack v57). Solo's own git status --short was identical before and after (6 untracked memory logs only).
+
+  - TC-010 PASS: scan-parked.js at the octoshell root exits 0, 0 unsigned and 10 allowed, with packages/graph/test/vault-calibration.test.ts:10 in allowed; octograph.mjs is in neither list (process.exit( is not a hit). In a throwaway clone a git-added copy with it.skip( gave exit 1 and .unsigned listed qa-parked-probe.test.ts:2; after a path:line signoff line it exited 0.
+  - TC-011 PASS: on the f2e7812d^ edgeserver/tests extraction (git init + add, scratch dir) the installed script exits 1 with .unsigned = test_m6_solve_over_the_wire_e2e.py:474 pytest.xfail(, the same single hit as the independent grep. Today's solo tree: 0 unsigned, 0 allowed, exit 0. Note: with --root edgeserver/tests the reported path is relative to --root (test_m6_...py); without --root it is edgeserver/tests/test_m6_...py. The TC text expects the latter form; the line is the same. pytest -rxs cross-check: not run.
+  - TC-012 PASS: doctor.js --json on the solo AGENTS.md copy reports {level: warn, area: lanes} about the missing ## Test lanes; on the octoshell copy the lanes finding is level ok ("AGENTS.md declares test lanes (fast: pnpm --filter <pkg> test; coverage: pnpm coverage)"), no warn. octoshell AGENTS.md has ## Test lanes with fast: and coverage:; CLAUDE.md carries the nohup, no-timeout-on-macOS and qa-env rules.
+  - Primer: installed .octobots/hooks/primer.mjs in the solo clone ends the octobots-doctor line with "Leftover workflows/ folders: 6. AGENTS.md declares no test lanes."; after adding {finding: lanes, path: AGENTS.md} to .octobots/doctor-acks.json the lanes sentence is gone (workflows sentence remains). A copy with no AGENTS.md also names the lanes finding.
+  - Subdirectory: scan-parked.js run from solo/edgeserver scans from the repo root (header names the clone root; it reported ea-contracts/tests/test_codegen.py:28 pytest.skip(, outside the cwd). Side finding, not a T5.5 defect: solo's repo-wide scan has 1 unsigned imperative skip there.
+  - Gate SKILL.md phase 1 (installed): calls node .claude/skills/mission-execution/scripts/scan-parked.js --json from the repo root, verdict includes "parked":{"unsigned":n,"allowed":n}. octobots-doctor SKILL.md sections 9 (Test lanes) and 10 (Your reply) read and consistent with doctor.js and the primer.
+  - Build gate: pnpm build, typecheck, lint, test (board 739, extension 1105, graph 655 passed) and coverage:pack exit 0; shipped-skills.mjs --verify current; gh pr checks 161 green on 6ddda95f (2 build jobs pass).

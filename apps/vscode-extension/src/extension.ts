@@ -165,6 +165,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const picks = await vscode.window.showOpenDialog({ canSelectMany: true });
         return picks?.map((u) => u.fsPath) ?? [];
       },
+      confirm: async (message: string, actionLabel: string) => {
+        const choice = await vscode.window.showWarningMessage(message, { modal: true }, actionLabel);
+        return choice === actionLabel;
+      },
       openFolder: async () => {
         const picks = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false });
         return picks?.[0]?.fsPath ?? null;

@@ -4,7 +4,8 @@ title: "Solo's legacy uwb heading-only record is accepted with a warning; a one-
 mission: M5
 covers: [M5-AC1]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m5/runs/RUN-2026-10-06-001.md}
 priority: critical
 size: S
 ---

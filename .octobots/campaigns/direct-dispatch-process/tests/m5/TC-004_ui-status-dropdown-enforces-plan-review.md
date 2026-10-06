@@ -4,7 +4,8 @@ title: "Status dropdown: modal confirm on solo M10; Cancel leaves the YAML byte-
 mission: M5
 covers: [M5-AC2]
 kind: ui
-status: draft
+status: blocked
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m5/runs/RUN-2026-10-06-001.md}
 priority: critical
 size: L
 ---

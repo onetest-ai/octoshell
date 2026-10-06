@@ -8,11 +8,11 @@
  * model can see it.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { createCampaign, createMission, createTask, createBug } from "../src/write.js";
+import { createCampaign, createMission, createTask, createBug, setStatusChecked } from "../src/write.js";
 import { loadEntity, dumpEntity, type EntityFields, type EntityKind } from "../src/entity-schema.js";
 import { BoardModel } from "../src/board-model.js";
 import { readmeText, synthBoard, tcText, writeTests } from "./fixtures/tests-board.js";
@@ -21,6 +21,11 @@ const SCRIPTS = resolve(
   __dirname,
   "../../../apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts",
 );
+
+/** AGENTS.md cases shared with the primer's twin of the lanes parser (apps/vscode-extension/test/octobots-primer.test.ts). */
+const LANES_CASES = (JSON.parse(
+  readFileSync(resolve(__dirname, "../../../apps/vscode-extension/test/fixtures/lanes-cases.json"), "utf8"),
+) as { cases: { name: string; agents: string; declared: boolean }[] }).cases;
 
 /** pending.json text for a case of the shared fixture (the one the extension's readers are tested against). */
 const PENDING_CASES = (JSON.parse(
@@ -343,7 +348,7 @@ describe("set-status.js guards", () => {
     const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
     const dir = join(boardRoot, c.folderPath);
 
-    runScript("set-status.js", [dir, "M1 - Auth", "active"], projectDir);
+    runScript("set-status.js", [dir, "M1 - Auth", "active", "--force=alias test"], projectDir);
     expect(board().getMission(m.id)?.status).toBe("executing");
     runScript("set-status.js", [dir, "M1 - Auth", "awaiting", "approval"], projectDir);
     expect(board().getMission(m.id)?.status).toBe("awaitingApproval");
@@ -778,6 +783,78 @@ describe("pack doctor.js", () => {
       expect(findings(projectDir).filter((x) => x.area === "board" && x.level === "warn")).toHaveLength(0);
     });
 
+    describe("lanes (AGENTS.md § Test lanes, M5 AC7)", () => {
+      type F = { level: string; area: string; msg: string; fix?: string };
+      const lanes = (root: string) => findings(root).filter((x) => x.area === "lanes") as F[];
+      const agents = (text: string) => writeFileSync(join(projectDir, "AGENTS.md"), text);
+
+      it("warns {level: warn, area: lanes} when AGENTS.md has no `## Test lanes` section, and points at octobots-doctor", () => {
+        agents("# Project\n\nRun pnpm test.\n");
+        const f = lanes(projectDir);
+        expect(f).toHaveLength(1);
+        expect(f[0]).toMatchObject({ level: "warn", area: "lanes" });
+        expect(f[0]!.msg).toContain("## Test lanes");
+        expect(f[0]!.fix).toContain("octobots-doctor");
+      });
+
+      it("warns, naming what is missing, when only one of fast: and coverage: is declared", () => {
+        agents("## Test lanes\n- fast: npm test\n");
+        const f = lanes(projectDir);
+        expect(f).toHaveLength(1);
+        expect(f[0]!.level).toBe("warn");
+        expect(f[0]!.msg).toMatch(/coverage:/);
+        expect(f[0]!.msg).not.toMatch(/\bfast:/);
+      });
+
+      it("warns when AGENTS.md is missing, and when it is not a readable regular file", () => {
+        expect(lanes(projectDir)).toMatchObject([{ level: "warn", area: "lanes" }]);
+        expect(lanes(projectDir)[0]!.msg).toMatch(/no AGENTS\.md/);
+        mkdirSync(join(projectDir, "AGENTS.md"));
+        expect(lanes(projectDir)).toMatchObject([{ level: "warn", area: "lanes" }]);
+        expect(lanes(projectDir)[0]!.msg).toMatch(/not a readable regular file/);
+        rmSync(join(projectDir, "AGENTS.md"), { recursive: true });
+        agents(`${"x".repeat(1024 * 1024 + 1)}\n`);
+        expect(lanes(projectDir)[0]!.msg).toMatch(/not a readable regular file/);
+      });
+
+      it("reports no lanes warning, and one ok finding naming both commands, when both are declared", () => {
+        agents("## Test lanes\n- fast: `pnpm --filter <pkg> test`\n- coverage: `pnpm coverage`\n");
+        const f = lanes(projectDir);
+        expect(f).toHaveLength(1);
+        expect(f[0]!.level).toBe("ok");
+        expect(f[0]!.msg).toContain("pnpm --filter <pkg> test");
+        expect(f[0]!.msg).toContain("pnpm coverage");
+      });
+
+      it("still lists the finding when .octobots/doctor-acks.json acknowledges it (only the primer honours acks)", () => {
+        agents("# Project\n");
+        writeFileSync(join(projectDir, ".octobots", "doctor-acks.json"), JSON.stringify({ acknowledged: [{ finding: "lanes", path: "AGENTS.md", date: "2026-10-06" }] }));
+        expect(lanes(projectDir)).toMatchObject([{ level: "warn", area: "lanes" }]);
+      });
+
+      it("never turns the run into a failure: a lanes warning leaves the exit code to the other checks", () => {
+        agents("# Project\n");
+        const fails = (JSON.parse(run(projectDir).out).findings as F[]).filter((x) => x.level === "fail").map((x) => x.area);
+        expect(fails).not.toContain("lanes");
+      });
+
+      it.each(LANES_CASES)("shared case: $name", ({ agents: text, declared }) => {
+        agents(text);
+        const f = lanes(projectDir);
+        expect(f).toHaveLength(1);
+        expect(f[0]!.level).toBe(declared ? "ok" : "warn");
+      });
+
+      it("parseTestLanes returns the commands it found", async () => {
+        const { parseTestLanes } = await import(join(SCRIPTS, "lanes.mjs"));
+        expect(parseTestLanes("## Test lanes\n- **fast:** `npm test`\n- coverage: npm run cov  \n")).toEqual({
+          section: true, fast: "npm test", coverage: "npm run cov",
+        });
+        expect(parseTestLanes("# nothing\n")).toEqual({ section: false, fast: null, coverage: null });
+        expect(parseTestLanes("## Test lanes\nprose only\n")).toEqual({ section: true, fast: null, coverage: null });
+      });
+    });
+
     it("skills that disagree on version, or a primer behind the skills, fail", () => {
       installSkills({ "mission-execution": 56 });
       installPrimer(55);
@@ -1166,7 +1243,7 @@ describe("set-status.js done on a mission with tests-pairing warnings", () => {
     });
     expect(warnings(c.missionDirs.m1!).length).toBeGreaterThanOrEqual(8);
     for (const state of ["active", "awaiting approval", "failed", "draft", "done"]) {
-      runScript("set-status.js", [c.campaignDir, "M1 - Auth", state], projectDir);
+      runScript("set-status.js", [c.campaignDir, "M1 - Auth", state, "--force=pairing test"], projectDir);
     }
     expect(board().listMissions(board().listCampaigns()[0]!.id)[0]!.status).toBe("done");
   });
@@ -1174,7 +1251,7 @@ describe("set-status.js done on a mission with tests-pairing warnings", () => {
   it("leaves validate.js's exit code at what the entity alone produces, at every status", () => {
     const c = synthBoard(boardRoot, [{ title: "M1 - Auth", acs: 2 }]);
     for (const state of ["draft", "active", "done"]) {
-      runScript("set-status.js", [c.campaignDir, "M1 - Auth", state], projectDir);
+      runScript("set-status.js", [c.campaignDir, "M1 - Auth", state, "--force=pairing test"], projectDir);
       expect(warnings(c.missionDirs.m1!)).not.toHaveLength(0); // execFileSync would throw on a non-zero exit
     }
   });
@@ -1184,5 +1261,450 @@ describe("set-status.js done on a mission with tests-pairing warnings", () => {
     expect(warnings(c.missionDirs.m1!)).not.toHaveLength(0);
     runScript("set-status.js", [c.campaignDir, "M1 - Auth", "cancelled"], projectDir);
     expect(warnings(c.missionDirs.m1!)).toEqual([]);
+  });
+});
+
+// Mission M5 AC1: set-status.js refuses to move a mission INTO executing until a plan review is
+// recorded (strict, or legacy with a warning), and `--force=<reason>` overrides and records.
+describe("set-status.js plan-review gate (M5 AC1)", () => {
+  const STRICT = [
+    "## Plan review (Alex + Rio, 2026-10-05)",
+    "Reviewers: ba (Alex), tech-lead (Rio)",
+    "Verdict: approved with nits",
+  ].join("\n");
+  const LEGACY = "## Plan review (Alex + Rio, 2026-10-02)\nReviewed against the real code.";
+  const utcDay = (): string => new Date().toISOString().slice(0, 10);
+
+  interface Fixture {
+    dir: string; // the campaign dir: set-status.js's <parent-dir>
+    missionDir: string;
+    missionFile: string;
+    campaignFile: string;
+    missionId: string;
+  }
+  function fixture(opts: { status?: string; missionNotes?: string; campaignNotes?: string } = {}): Fixture {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
+    const dir = join(boardRoot, c.folderPath);
+    const missionDir = join(boardRoot, m.folderPath);
+    const missionFile = join(missionDir, "mission.yaml");
+    const campaignFile = join(dir, "campaign.yaml");
+    seed(missionFile, "mission", { status: (opts.status ?? "draft") as EntityFields["status"], notes: opts.missionNotes });
+    if (opts.campaignNotes !== undefined) seed(campaignFile, "campaign", { notes: opts.campaignNotes });
+    return { dir, missionDir, missionFile, campaignFile, missionId: m.id };
+  }
+  const notesOf = (file: string): string | undefined => loadEntity(readFileSync(file, "utf8")).notes;
+  const statusOf = (file: string): string | undefined => loadEntity(readFileSync(file, "utf8")).status;
+
+  function run(args: string[]): { status: number; stdout: string; stderr: string } {
+    const r = spawnSync("node", [join(SCRIPTS, "set-status.js"), ...args], { cwd: projectDir, encoding: "utf8" });
+    return { status: r.status ?? -1, stdout: r.stdout, stderr: r.stderr };
+  }
+
+  describe("refusals", () => {
+    const SPELLINGS: string[][] = [["executing"], ["active"], ["in", "progress"], ["running"], ["Active"]];
+    for (const from of ["draft", "awaitingApproval", "failed", "done", "cancelled"]) {
+      for (const spelling of SPELLINGS) {
+        it(`${from} -> ${spelling.join(" ")} without a review exits 3 and leaves the file byte-identical`, () => {
+          const f = fixture({ status: from });
+          const before = readFileSync(f.missionFile);
+          const r = run([f.dir, "M1 - Auth", ...spelling]);
+          expect(r.status).toBe(3);
+          expect(r.stdout).toBe("");
+          expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+        });
+      }
+    }
+
+    it("says there is no plan-review heading, and how to record a review or override", () => {
+      const f = fixture();
+      const { stderr } = run([f.dir, "M1 - Auth", "active"]);
+      expect(stderr).toContain('"M1 - Auth"');
+      expect(stderr).toContain("no `## Plan review (...)` heading in the mission notes or the campaign notes");
+      expect(stderr).toContain("## Plan review (<names or roles>, <date>)");
+      expect(stderr).toContain("Reviewers: ba (<name>), tech-lead (<name>)");
+      expect(stderr).toContain("Verdict: approved | approved with nits");
+      expect(stderr).toContain("--force=<reason>");
+    });
+
+    it("names each candidate heading with where it sits and what it lacks", () => {
+      const f = fixture({
+        missionNotes: "## Plan review (Alex, 2026-10-02)\nprose\n\n## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)",
+        campaignNotes: "## Plan review (2026-10-05)\nVerdict: changes requested",
+      });
+      const { status, stderr } = run([f.dir, "M1 - Auth", "executing"]);
+      expect(status).toBe(3);
+      expect(stderr).toContain('mission notes: "## Plan review (Alex, 2026-10-02)": heading does not name the tech-lead (tech-lead or Rio)');
+      expect(stderr).toContain('mission notes: "## Plan review (x)": no Verdict: approved line');
+      expect(stderr).toContain(
+        'campaign notes: "## Plan review (2026-10-05)": no Reviewers: line naming ba and tech-lead; no Verdict: approved line',
+      );
+      expect(stderr).not.toContain("no `## Plan review (...)` heading");
+      expect(stderr).toContain("--force=<reason>");
+    });
+
+    it("refuses the legacy persona heading when the section carries a Verdict: changes requested line", () => {
+      const f = fixture({ campaignNotes: "## Plan review (Alex + Rio, 2026-10-02)\nVerdict: changes requested" });
+      const before = readFileSync(f.missionFile);
+      const r = run([f.dir, "M1 - Auth", "active"]);
+      expect(r.status).toBe(3);
+      expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+    });
+
+    it("never lets an earlier overridden note satisfy a later plain move", () => {
+      const f = fixture();
+      expect(run([f.dir, "M1 - Auth", "active", "--force=emergency"]).status).toBe(0);
+      expect(statusOf(f.missionFile)).toBe("executing");
+      run([f.dir, "M1 - Auth", "draft"]);
+      expect(run([f.dir, "M1 - Auth", "active"]).status).toBe(3);
+      expect(statusOf(f.missionFile)).toBe("draft");
+    });
+
+    it("gates when the mission folder itself is the parent argument, finding the campaign two levels up", () => {
+      const f = fixture({ campaignNotes: STRICT });
+      expect(run([f.missionDir, "M1 - Auth", "active"]).status).toBe(0);
+      const g = fixture();
+      const before = readFileSync(g.missionFile);
+      expect(run([g.missionDir, "M1 - Auth", "active"]).status).toBe(3);
+      expect(readFileSync(g.missionFile).equals(before)).toBe(true);
+    });
+
+    it("treats a missing campaign.yaml as empty campaign notes", () => {
+      const f = fixture();
+      rmSync(f.campaignFile);
+      const r = run([f.missionDir, "M1 - Auth", "active"]);
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain("no `## Plan review (...)` heading");
+    });
+
+    it("refuses a section whose Verdict: lines disagree, and a lower-case verdict key under a legacy heading", () => {
+      for (const campaignNotes of [
+        "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: changes requested\nVerdict: approved",
+        "## Plan review (Alex + Rio, 2026-10-02)\nverdict: changes requested",
+      ]) {
+        const f = fixture({ campaignNotes });
+        const before = readFileSync(f.missionFile);
+        const r = run([f.dir, "M1 - Auth", "active"]);
+        expect(r.status).toBe(3);
+        expect(r.stderr).not.toContain("warning: legacy plan review");
+        expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+      }
+    });
+
+    it("an unreadable campaign.yaml is reported, not a crash: exit 3 (not 1) without a review", () => {
+      const f = fixture();
+      writeFileSync(f.campaignFile, "name: [unclosed\nnotes: : :\n");
+      const before = readFileSync(f.missionFile);
+      // The mission folder is the parent: with the campaign dir as the parent, resolving the title
+      // already reads campaign.yaml (a pre-existing path this gate does not change).
+      const r = run([f.missionDir, "M1 - Auth", "active"]);
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain("the campaign notes could not be read (");
+      expect(r.stderr).toContain("campaign.yaml: ");
+      expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+    });
+
+    it("an unreadable campaign.yaml does not stop a strict record in the mission notes", () => {
+      const g = fixture({ missionNotes: STRICT });
+      writeFileSync(g.campaignFile, "\uFEFFname: Camp\nnotes: x\n");
+      const ok = run([g.missionDir, "M1 - Auth", "active"]);
+      expect(ok.status).toBe(0);
+      expect(ok.stderr).toBe("");
+      expect(statusOf(g.missionFile)).toBe("executing");
+    });
+
+    /** The record-template lines exactly as printed between the two markers of a refusal. */
+    function templateOf(stderr: string): string[] {
+      const lines = stderr.split("\n");
+      const open = lines.findIndex((l) => l.startsWith("--- record template"));
+      const close = lines.findIndex((l) => l.startsWith("--- end of record template"));
+      expect(open).toBeGreaterThanOrEqual(0);
+      expect(close).toBeGreaterThan(open);
+      return lines.slice(open + 1, close);
+    }
+
+    it("prints the record template at column 0, and copying it with names and a verdict then starts the mission", async () => {
+      const f = fixture();
+      const refused = run([f.dir, "M1 - Auth", "active"]);
+      expect(refused.status).toBe(3);
+      expect(refused.stdout).toBe("");
+      const template = templateOf(refused.stderr);
+      expect(template.length).toBe(3);
+      expect(template[0]).toMatch(/^## Plan review \(/);
+      expect(template[1]).toMatch(/^Reviewers:/);
+      expect(template[2]).toMatch(/^Verdict:/);
+      // Fill it in the way a person would, then write it through entity-io (the printed pointer).
+      const filled = template
+        .map((l) => l.replace("<names or roles>, <date>", "Alex + Rio, 2026-10-06").replaceAll("<name>", "Pat"))
+        .map((l) => (l.startsWith("Verdict:") ? "Verdict: approved" : l))
+        .join("\n");
+      expect(refused.stderr).toContain("entity-io.mjs");
+      const io = (await import(join(SCRIPTS, "entity-io.mjs"))) as {
+        loadEntity: (t: string) => EntityFields;
+        dumpEntity: (k: string, f: EntityFields) => string;
+      };
+      const fields = io.loadEntity(readFileSync(f.missionFile, "utf8"));
+      fields.notes = fields.notes ? `${fields.notes.trimEnd()}\n\n${filled}` : filled;
+      writeFileSync(f.missionFile, io.dumpEntity("mission", fields));
+      const started = run([f.dir, "M1 - Auth", "active"]);
+      expect(started.status).toBe(0);
+      expect(statusOf(f.missionFile)).toBe("executing");
+    });
+
+    it("opens with 'no plan review is recorded' only when no Plan review section exists", () => {
+      const none = run([fixture().dir, "M1 - Auth", "active"]).stderr.split("\n")[0];
+      expect(none).toContain("no plan review is recorded");
+      expect(none).not.toContain("does not approve");
+      const f = fixture({
+        missionNotes: "## Plan review (ba, tech-lead, 2026-10-06)\nReviewers: ba (x), tech-lead (y)\nVerdict: changes requested",
+      });
+      const { stderr } = run([f.dir, "M1 - Auth", "active"]);
+      const first = stderr.split("\n")[0];
+      expect(first).toContain("a plan review is recorded but does not approve the start");
+      expect(first).not.toContain("no plan review is recorded");
+      expect(stderr).toContain("no Verdict: approved line");
+    });
+
+    it("uses the same reason sentence and record template as the host's confirm message", () => {
+      const notes = "## Plan review (ba, tech-lead, 2026-10-06)\nReviewers: ba (x), tech-lead (y)\nVerdict: changes requested";
+      for (const missionNotes of [undefined, notes]) {
+        const f = fixture({ missionNotes });
+        const script = run([f.dir, "M1 - Auth", "active"]).stderr;
+        const res = setStatusChecked(boardRoot, "mission", f.missionId, "active");
+        expect(res).toMatchObject({ ok: false, reason: "plan-review-missing" });
+        const host = (res as { message: string }).message;
+        expect(templateOf(host)).toEqual(templateOf(script));
+        const reason = (t: string): string => /into executing: (.*)\.$/m.exec(t.split("\n")[0] ?? "")?.[1] ?? "";
+        expect(reason(host)).toBe(reason(script));
+        expect(reason(host)).not.toBe("");
+        expect(host).toContain("entity-io.mjs");
+      }
+    });
+
+    it("keeps exit 1 for an unknown entity, with or without --force", () => {
+      const f = fixture();
+      expect(run([f.dir, "M9 - Nope", "active"]).status).toBe(1);
+      expect(run([f.dir, "M9 - Nope", "active", "--force=why"]).status).toBe(1);
+    });
+  });
+
+  describe("moves that are never gated", () => {
+    it("executing -> executing is a byte-identical no-op", () => {
+      const f = fixture({ status: "executing" });
+      const before = readFileSync(f.missionFile);
+      for (const word of ["active", "executing", "running"]) {
+        const r = run([f.dir, "M1 - Auth", word]);
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain("unchanged (executing)");
+      }
+      expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+    });
+
+    for (const from of ["draft", "awaitingApproval", "executing", "failed", "done", "cancelled"]) {
+      for (const to of [["draft"], ["awaiting", "approval"], ["done"], ["failed"], ["cancelled"]]) {
+        it(`${from} -> ${to.join(" ")} succeeds with no review and a quiet stderr`, () => {
+          const f = fixture({ status: from });
+          const r = run([f.dir, "M1 - Auth", ...to]);
+          expect(r.status).toBe(0);
+          expect(r.stderr).toBe("");
+          expect(notesOf(f.missionFile)).toBeUndefined();
+        });
+      }
+    }
+
+    it("a campaign's own status and a task's status move into executing freely", () => {
+      const c = createCampaign(boardRoot, { name: "Camp" });
+      const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
+      createTask(boardRoot, m.id, { name: "T1.1 - JWT", acceptanceCriteria: "works" });
+      const campaignDir = join(boardRoot, c.folderPath);
+      const missionDir = join(boardRoot, m.folderPath);
+      expect(run([campaignDir, "Camp", "executing"]).status).toBe(0);
+      expect(run([missionDir, "T1.1 - JWT", "active"]).status).toBe(0);
+      expect(board().getCampaign(c.id)?.status).toBe("executing");
+      expect(board().listTasks(m.id)[0]?.status).toBe("executing");
+    });
+  });
+
+  describe("--force=<reason>", () => {
+    const REASON = "emergency hotfix";
+    const positions: [string, (f: Fixture) => string[]][] = [
+      ["first", (f) => [`--force=${REASON}`, f.dir, "M1 - Auth", "active"]],
+      ["middle", (f) => [f.dir, `--force=${REASON}`, "M1 - Auth", "active"]],
+      ["middle of the state words", (f) => [f.dir, "M1 - Auth", "in", `--force=${REASON}`, "progress"]],
+      ["last", (f) => [f.dir, "M1 - Auth", "active", `--force=${REASON}`]],
+    ];
+    for (const [name, argv] of positions) {
+      it(`in the ${name} argv position flips the status and appends the overridden note`, () => {
+        const f = fixture({ missionNotes: "## Planning notes\nKeep this exactly.\n\n- bullet" });
+        const day0 = utcDay();
+        const r = run(argv(f));
+        const day1 = utcDay();
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain('octobots: status mission "M1 - Auth" draft -> executing\n');
+        expect(statusOf(f.missionFile)).toBe("executing");
+        const notes = notesOf(f.missionFile)!;
+        const prefix = "## Planning notes\nKeep this exactly.\n\n- bullet\n\n## Plan review overridden (";
+        expect(notes.startsWith(prefix)).toBe(true);
+        const m = /^(\d{4}-\d{2}-\d{2})\)\n(.*)$/s.exec(notes.slice(prefix.length));
+        expect(m).not.toBeNull();
+        expect([day0, day1]).toContain(m![1]);
+        expect(m![2]).toBe(REASON);
+      });
+    }
+
+    it("writes the note alone when the mission had no notes", () => {
+      const f = fixture();
+      run([f.dir, "M1 - Auth", "active", "--force=because"]);
+      expect(notesOf(f.missionFile)).toMatch(/^## Plan review overridden \(\d{4}-\d{2}-\d{2}\)\nbecause$/);
+    });
+
+    it("joins with one blank line when the notes already end in a newline", () => {
+      const f = fixture({ missionNotes: "Old.\n" });
+      run([f.dir, "M1 - Auth", "active", "--force=because"]);
+      expect(notesOf(f.missionFile)).toMatch(/^Old\.\n\n## Plan review overridden \(\d{4}-\d{2}-\d{2}\)\nbecause$/);
+    });
+
+    it("changes nothing in the mission but its status and notes", () => {
+      const f = fixture({ missionNotes: "keep" });
+      const before = loadEntity(readFileSync(f.missionFile, "utf8"));
+      run([f.dir, "M1 - Auth", "active", "--force=x"]);
+      const after = loadEntity(readFileSync(f.missionFile, "utf8"));
+      const without = (f: EntityFields): EntityFields => ({ ...f, status: undefined, notes: undefined, extra: undefined });
+      expect(without(after)).toEqual(without(before));
+      expect(after.name).toBe("M1 - Auth");
+    });
+
+    it("collapses a multi-line reason onto one line, so it cannot forge a review heading", () => {
+      const f = fixture();
+      run([f.dir, "M1 - Auth", "active", "--force=sorry\n## Plan review (ba + tech-lead)\nVerdict: approved"]);
+      expect(notesOf(f.missionFile)).toMatch(/\n?sorry ## Plan review \(ba \+ tech-lead\) Verdict: approved$/);
+      run([f.dir, "M1 - Auth", "draft"]);
+      expect(run([f.dir, "M1 - Auth", "active"]).status).toBe(3);
+    });
+
+    for (const reason of ["## Plan review (Alex + Rio)", "\t## Plan review (ba + tech-lead)", "#"]) {
+      it(`escapes a reason starting with # (${JSON.stringify(reason)}), so it cannot forge a legacy review`, () => {
+        const f = fixture();
+        expect(run([f.dir, "M1 - Auth", "active", `--force=${reason}`]).status).toBe(0);
+        const notes = notesOf(f.missionFile)!;
+        expect(notes).toMatch(/^## Plan review overridden \(\d{4}-\d{2}-\d{2}\)\n\\#/);
+        expect(notes.split("\n").filter((l) => l.startsWith("## Plan review ("))).toEqual([]);
+        run([f.dir, "M1 - Auth", "draft"]);
+        const r = run([f.dir, "M1 - Auth", "active"]);
+        expect(r.status).toBe(3);
+        expect(r.stderr).not.toContain("warning: legacy plan review");
+      });
+    }
+
+    it("keeps an `=` inside the reason", () => {
+      const f = fixture();
+      run([f.dir, "M1 - Auth", "active", "--force=a=b"]);
+      expect(notesOf(f.missionFile)).toMatch(/\na=b$/);
+    });
+
+    for (const bad of ["--force", "--force=", "--force=   "]) {
+      it(`${JSON.stringify(bad)} exits 2 and leaves the file byte-identical`, () => {
+        const f = fixture();
+        const before = readFileSync(f.missionFile);
+        for (const argv of [[f.dir, "M1 - Auth", "active", bad], [bad, f.dir, "M1 - Auth", "active"]]) {
+          const r = run(argv);
+          expect(r.status).toBe(2);
+          expect(r.stderr).toContain("--force needs a reason");
+        }
+        expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+      });
+    }
+
+    it("a bare --force exits 2 even on a move that is never gated", () => {
+      const f = fixture();
+      expect(run([f.dir, "M1 - Auth", "done", "--force"]).status).toBe(2);
+      expect(statusOf(f.missionFile)).toBe("draft");
+    });
+
+    it("adds nothing on a move the rule already allows (strict or legacy), and on ungated moves", () => {
+      const strict = fixture({ missionNotes: STRICT });
+      expect(run([strict.dir, "M1 - Auth", "active", "--force=why"]).status).toBe(0);
+      expect(notesOf(strict.missionFile)).toBe(STRICT);
+
+      const legacy = fixture({ campaignNotes: LEGACY });
+      const r = run([legacy.dir, "M1 - Auth", "active", "--force=why"]);
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("warning: legacy plan review");
+      expect(notesOf(legacy.missionFile)).toBeUndefined();
+
+      const plain = fixture();
+      expect(run([plain.dir, "M1 - Auth", "done", "--force=why"]).status).toBe(0);
+      expect(notesOf(plain.missionFile)).toBeUndefined();
+    });
+  });
+
+  describe("allowed by a recorded review", () => {
+    it("a strict record in the mission notes flips with nothing on stderr", () => {
+      const f = fixture({ missionNotes: `Intro.\n\n${STRICT}\n\nMore.` });
+      const r = run([f.dir, "M1 - Auth", "active"]);
+      expect(r.status).toBe(0);
+      expect(r.stderr).toBe("");
+      expect(r.stdout).toContain('octobots: status mission "M1 - Auth" draft -> executing');
+      expect(statusOf(f.missionFile)).toBe("executing");
+      expect(notesOf(f.missionFile)).toBe(`Intro.\n\n${STRICT}\n\nMore.`);
+    });
+
+    it("a strict record in the campaign notes flips with nothing on stderr", () => {
+      const f = fixture({ status: "cancelled", campaignNotes: `## Branching\nx\n\n${STRICT}` });
+      const r = run([f.dir, "M1 - Auth", "running"]);
+      expect(r.status).toBe(0);
+      expect(r.stderr).toBe("");
+      expect(statusOf(f.missionFile)).toBe("executing");
+    });
+
+    it("a legacy heading-only record in the campaign notes flips and warns on stderr", () => {
+      const f = fixture({ status: "cancelled", campaignNotes: LEGACY });
+      const r = run([f.dir, "M1 - Auth", "executing"]);
+      expect(r.status).toBe(0);
+      expect(r.stderr).toBe(
+        'warning: legacy plan review "## Plan review (Alex + Rio, 2026-10-02)" (campaign notes) has no Reviewers:/Verdict: lines; accepted\n',
+      );
+      expect(statusOf(f.missionFile)).toBe("executing");
+      expect(notesOf(f.missionFile)).toBeUndefined();
+    });
+
+    it("a legacy record in the mission notes warns with `(mission notes)`", () => {
+      const f = fixture({ missionNotes: "## Plan review (ba + tech-lead, 2026-10-05)" });
+      const r = run([f.dir, "M1 - Auth", "active"]);
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain('legacy plan review "## Plan review (ba + tech-lead, 2026-10-05)" (mission notes) has no Reviewers:/Verdict: lines; accepted');
+    });
+
+    it("a strict record wins over a legacy one, so there is no warning", () => {
+      const f = fixture({ missionNotes: LEGACY, campaignNotes: STRICT });
+      const r = run([f.dir, "M1 - Auth", "active"]);
+      expect(r.status).toBe(0);
+      expect(r.stderr).toBe("");
+    });
+  });
+});
+
+// Reads octoshell's REAL AGENTS.md, whose `## Test lanes` section the user approved (M5 T5.5).
+describe("doctor.js lanes on octoshell's own AGENTS.md (mission AC7)", () => {
+  const REPO_ROOT = resolve(__dirname, "../../..");
+
+  it("reports no lanes warning: AGENTS.md declares fast: and coverage:", () => {
+    const home = mkdtempSync(join(tmpdir(), "doctor-home-"));
+    try {
+      const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
+      delete env.CLAUDE_CONFIG_DIR;
+      let out: string;
+      try {
+        out = execFileSync("node", [join(SCRIPTS, "doctor.js"), "--root", REPO_ROOT, "--json"], { encoding: "utf8", env });
+      } catch (err: unknown) {
+        out = (err as { stdout?: string }).stdout ?? ""; // other checks may fail on a source checkout; only lanes matters here
+      }
+      const lanes = (JSON.parse(out) as { findings: { level: string; area: string; msg: string }[] }).findings.filter((f) => f.area === "lanes");
+      expect(lanes.filter((f) => f.level === "warn"), "no lanes warning").toEqual([]);
+      expect(lanes).toHaveLength(1);
+      expect(lanes[0]!.msg).toMatch(/fast: pnpm --filter <pkg> test; coverage: pnpm coverage/);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

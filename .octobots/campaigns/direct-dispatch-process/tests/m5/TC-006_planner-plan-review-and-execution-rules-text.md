@@ -4,7 +4,8 @@ title: "Planner § Plan review and mission-execution rules present in the shippe
 mission: M5
 covers: [M5-AC3, M5-AC5, M5-AC7]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m5/runs/RUN-2026-10-06-001.md}
 priority: high
 size: S
 ---

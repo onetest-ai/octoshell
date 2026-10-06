@@ -4,7 +4,8 @@ title: "doctor.js lanes warning on solo's AGENTS.md copy and none on octoshell's
 mission: M5
 covers: [M5-AC7]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m5/runs/RUN-2026-10-06-001.md}
 priority: high
 size: S
 ---
@@ -42,9 +43,13 @@ grep -n -A6 "^## Test lanes" $OCTO/AGENTS.md
 | # | Action | Expected Result |
 |---|--------|----------------|
 | 1 | doctor.js --json on the solo copy | One finding `{level: "warn", area: "lanes"}` about the missing `## Test lanes` (fast:/coverage:) |
-| 2 | doctor.js --json on the octoshell copy | No `lanes` finding; the section declares fast: `pnpm --filter <pkg> test` and coverage: `pnpm coverage` |
+| 2 | doctor.js --json on the octoshell copy | No `warn` lanes finding (exactly one informational `{level: "ok", area: "lanes"}` finding saying the lanes are declared); the section declares fast: `pnpm --filter <pkg> test` and coverage: `pnpm coverage` |
 | 3 | Check octoshell CLAUDE.md | Carries the generalised agent-ops rules (no timeout, nohup, qa-env) |
 
 ## Expected Final State
 
 Warning only where lanes are undeclared.
+
+## Case text correction (T5.6 QA, 2026-10-06)
+
+Step 2 said "No `lanes` finding" on the octoshell copy. doctor.js emits one `{level: "ok", area: "lanes"}` finding there ("AGENTS.md declares test lanes (fast: pnpm --filter <pkg> test; coverage: pnpm coverage)"), and no warning. The intent (a warning only where lanes are undeclared) holds; the text now says so. The result is unchanged.

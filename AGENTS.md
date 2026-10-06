@@ -60,6 +60,19 @@ adding here:
   functions, 70% branches). The pack script coverage is measured **separately from** `packages/
   board`'s own coverage even though the two implement the same schema — see "Dual schema" below.
 
+## Test lanes
+
+The commands agents run, by purpose. `doctor.js` reads this section, and `mission-execution` and the
+mission completion gate run these lanes by name instead of inventing a command.
+
+- fast: `pnpm --filter <pkg> test`
+- coverage: `pnpm coverage`
+
+`<pkg>` is the workspace package under change (`@octoshell/board`, `@octoshell/tokenomics`,
+`@octoshell/graph`, `@octoshell/vscode-extension`). After changing a public type in `board` or
+`tokenomics`, build it first (`CLAUDE.md` § Commands). Root `pnpm test` runs every package through
+turbo and is already parallel, so the coverage lane is the only one that is run once, at the end.
+
 ## Conventions
 
 Detected conventions (naming, `.js`-extension imports, package-name cross-imports) are already
