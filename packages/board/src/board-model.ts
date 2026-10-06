@@ -12,6 +12,8 @@ import { parseManagedBlock, mapBoardStatus, boardLineEntityName, type EntityKind
 import { loadEntity, ENTITY_STATUSES, type AcceptanceCriterion, type Tokenomics } from "./entity-schema.js";
 import type { Campaign, Mission, Task, Bug, BugSeverity } from "./types.js";
 import type { BugParent } from "./types.js";
+import { TestCaseReader, computeCoverage, type MissionCoverage, type TestCase } from "./test-cases.js";
+import { missionToken } from "./tc-io.js";
 
 /** Entry in the missingIdFiles() list — an .md that had no `<!-- octobots:id ... -->` marker. */
 export interface MissingIdFile {
@@ -48,8 +50,12 @@ export class BoardModel {
   // Files without an id marker
   private missingIds: MissingIdFile[] = [];
 
+  // Test cases live in markdown under campaigns/<c>/tests/, not in the entity maps: read lazily, per campaign.
+  private readonly testCases: TestCaseReader;
+
   constructor(artifactsRoot: string | null) {
     this.root = artifactsRoot;
+    this.testCases = new TestCaseReader(artifactsRoot);
   }
 
   /** Re-parse the entire disk tree. All internal state is reset first. */
@@ -68,6 +74,7 @@ export class BoardModel {
     this.taskByFolder.clear();
     this.bugByFolder.clear();
     this.missingIds = [];
+    this.testCases.clear();
 
     if (!this.root) return;
 
@@ -296,6 +303,32 @@ export class BoardModel {
 
   getBug(id: string): Bug | null {
     return this.bugs.get(id) ?? null;
+  }
+
+  // ── Test cases ───────────────────────────────────────────────────────────────
+
+  /**
+   * The campaign's test cases (`<campaign>/tests/m<n>/TC-*.md`, nothing else), by mission then file name;
+   * `mission` (`"m2"`, `"M2"`, `"2"` or `2`) narrows to one. Read lazily and cached per file on its
+   * size/mtime/ctime, so a status written to a TC shows on the next call; `rebuild()` drops the cache.
+   * Empty for a campaign the board does not have. Lenient: a malformed or legacy file is listed.
+   */
+  listTestCases(campaignId: string, mission?: string | number): TestCase[] {
+    const campaign = this.campaigns.get(campaignId);
+    return campaign ? this.testCases.list(campaign.folderPath, mission) : [];
+  }
+
+  /** Which test cases cover each acceptance criterion of a mission (`covers`, else legacy `requirements`). */
+  getTestCoverage(missionId: string): MissionCoverage {
+    const mission = this.missions.get(missionId);
+    if (!mission) return { missionId, mission: null, acs: [], uncovered: [] };
+    const token = missionToken(mission.title);
+    const criteria = mission.acceptanceCriteria
+      .split("\n")
+      .map((l) => /^- \[[ xX]\] (.*)$/.exec(l)?.[1])
+      .filter((t): t is string => t !== undefined);
+    const cases = token ? this.listTestCases(mission.campaignId, token.folder) : [];
+    return computeCoverage({ missionId, mission: token?.id ?? null, criteria, cases });
   }
 
   // ── FolderPath → id indexes ──────────────────────────────────────────────

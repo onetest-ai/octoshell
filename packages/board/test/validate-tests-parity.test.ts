@@ -139,12 +139,14 @@ describe("tests pairing on a synthetic board", () => {
       `warning: ${rel(c, "m1")}: M1-AC3 is not covered by any test case`,
       `warning: ${rel(c, "m1")}/README.md: map row M1-AC3 names TC-003, which has no file in ${rel(c, "m1")}`,
       `warning: ${rel(c, "m2")}/README.md: missing — M2 has no tests README; run add-tests.js to scaffold it`,
+      // TC-002 is a legacy file (requirements, no status/kind/mission): M6's migrate suggestion
+      `warning: ${rel(c, "m1")}/TC-002_logout.md: legacy test case (no status, kind or mission) lists as unknown: run set-test-status.js <tc-file> --migrate`,
     ];
     expect(boardTestsWarnings(c.board).sort()).toEqual([...expected].sort());
     expect(packAll(c.board)).toEqual([...expected].sort());
     for (const f of validateBoard(c.board)) expect(f.severity).toBe("warning");
     const sev = validateBoard(c.board).filter((f) => isTestsMessage(f.message));
-    expect(sev.map((f) => f.kind)).toEqual(["mission", "mission", "mission"]);
+    expect(sev.map((f) => f.kind)).toEqual(["mission", "mission", "mission", "mission"]);
   });
 
   it("reports an unlinked README, a disagreeing map row and every kind of TC problem", () => {
@@ -176,7 +178,7 @@ describe("tests pairing on a synthetic board", () => {
 
   it("is silent for a fully paired mission and for a cancelled one", () => {
     const c = synthBoard(scratch("pairing-"), [{ title: "M1 - Ok", acs: 1 }, { title: "M2 - Gone", acs: 4, status: "cancelled" }]);
-    writeTests(c, "m1", { "README.md": readmeText([["M1-AC1", "TC-001"]]), "TC-001_a.md": tcText(["id: TC-001", "covers: [M1-AC1]"]) });
+    writeTests(c, "m1", { "README.md": readmeText([["M1-AC1", "TC-001"]]), "TC-001_a.md": tcText(["id: TC-001", "covers: [M1-AC1]", "status: draft"]) });
     expect(boardTestsWarnings(c.board)).toEqual([]);
     expect(packAll(c.board)).toEqual([]);
     expect(validateBoard(c.board)).toEqual([]);
@@ -214,7 +216,7 @@ describe("tests pairing on a synthetic board", () => {
     const m1 = validateJs(c.missionDirs.m1!);
     const lines = m1.stdout.split("\n").filter((l) => l.startsWith("warning: "));
     expect(lines.every((l) => l.includes("/tests/m1"))).toBe(true);
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(3); // AC3 uncovered, the README row naming TC-003, and TC-002 being legacy
     const m2 = validateJs(c.missionDirs.m2!).stdout.split("\n").filter((l) => l.startsWith("warning: "));
     expect(m2).toEqual([`warning: ${rel(c, "m2")}/README.md: missing — M2 has no tests README; run add-tests.js to scaffold it`]);
     expect(validateJs(c.missionDirs.m3!).stdout).not.toMatch(/warning:/);

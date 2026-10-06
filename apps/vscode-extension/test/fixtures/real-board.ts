@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join, relative } from "node:path";
@@ -33,4 +34,23 @@ export function workflowFileHashes(root: string): Record<string, string> {
   };
   if (existsSync(root)) walk(root, false);
   return out;
+}
+
+/**
+ * Boards built from what a CI checkout has: only TRACKED files. `git archive HEAD .octobots` into a scratch
+ * directory (the working-tree `.octobots/` is gitignored, so it holds campaigns a fresh checkout never sees),
+ * plus every `.octobots` named in OCTOBOTS_BOARD_COPIES. Each is a fresh scratch copy named `.octobots`.
+ */
+export function trackedBoardCopies(): string[] {
+  const repoRoot = join(REPO_OCTOBOTS, "..");
+  const extract = mkdtempClean("tracked-board-");
+  const archive = execFileSync("git", ["archive", "HEAD", ".octobots"], { cwd: repoRoot, maxBuffer: 256 * 1024 * 1024 });
+  execFileSync("tar", ["-x", "-C", extract], { input: archive });
+  const named = (process.env.OCTOBOTS_BOARD_COPIES ?? "").split(":").filter(Boolean);
+  const extra = named.map((src, i) => {
+    const dest = join(mkdtempClean(`named-board-${i}-`), ".octobots");
+    cpSync(src, dest, { recursive: true });
+    return dest;
+  });
+  return [join(extract, ".octobots"), ...extra];
 }
