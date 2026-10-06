@@ -1,6 +1,6 @@
 ---
 name: octobots-doctor
-description: Use when the session context says "Octobots health: run the octobots-doctor skill", when .octobots/pack-updates/pending.json lists a pending pack reconcile (a pack skill this workspace changed locally, staged by a pack update), or when doctor.js or validate.js report a pack or board health finding (pack reconcile pending, leftover workflows/ folders, CLAUDE_CONFIG_DIR, tests-pairing warnings) in a repo with an .octobots/ directory. Not for planning or recording board work (that is mission-planner) and not for building a planned task (that is mission-execution).
+description: Use when the session context says "Octobots health: run the octobots-doctor skill", when .octobots/pack-updates/pending.json lists a pending pack reconcile (a pack skill this workspace changed locally, staged by a pack update), or when doctor.js or validate.js report a pack or board health finding (pack reconcile pending, leftover workflows/ folders, CLAUDE_CONFIG_DIR, tests-pairing warnings), or when set-status.js warns about a legacy plan-review record, in a repo with an .octobots/ directory. Not for planning or recording board work (that is mission-planner) and not for building a planned task (that is mission-execution).
 version: 57
 ---
 
@@ -210,6 +210,13 @@ Reviewers:/Verdict: lines and offer to add them: `Reviewers: ba (<name>), tech-l
 the role tokens `ba` and `tech-lead`, plus a `Verdict:` line carrying the verdict the record states
 (`approved` or `approved with nits`). Write them directly under that heading, and only with the
 user's OK. Never invent a verdict the record does not state, and never edit the heading itself.
+
+A heading-only record usually states no verdict. Then ask the user which verdict the review reached,
+and write nothing until they answer. Add both lines or neither: a `Reviewers:` line without an
+approving `Verdict:` line turns the accepted legacy record into a strict one that set-status.js
+refuses. Write through `entity-io.mjs`: `loadEntity` the YAML, insert the two lines after the
+heading line in `notes`, and `dumpEntity` it back, as mission-planner § Plan review shows. Never
+edit the YAML text by hand. Then run `validate.js` on the entity.
 
 ## 9. Your reply
 

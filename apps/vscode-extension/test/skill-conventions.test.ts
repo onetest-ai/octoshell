@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { planReviewStatus } from "../resources/octobots-pack/skill/mission-planner/scripts/plan-review.mjs";
@@ -656,5 +658,84 @@ describe("T5.3: mission-execution § Dispatch rules: servers, timeouts, backgrou
   });
   it("carries no solo-specific service names, DSNs or ports", () => {
     expect(flat).not.toMatch(/edgeserver|postgres(ql)?:\/\/|localhost:\d+|:\d{4}\b/i);
+  });
+});
+
+describe("T5.3 review: the plan-review record is written through entity-io and survives the gate", () => {
+  const planner = skill("mission-planner");
+  const unfenced = planner.replace(/```[\s\S]*?```/g, (m) => m.replace(/^#/gm, "\u0000#"));
+  const section = sectionUnder(unfenced, /^### Plan review\b/m).replace(/\u0000#/g, "#");
+
+  it("tells the planner to write the record through entity-io.mjs, never by editing the YAML text", () => {
+    const flat = section.replace(/\s+/g, " ");
+    expect(flat).toMatch(/Write it through `entity-io\.mjs` \(`loadEntity`\/`dumpEntity`\), never by editing the YAML text/);
+    expect(flat).toMatch(/run `validate\.js` on the entity/);
+  });
+
+  it("its entity-io command, run as written, records a strict review that set-status.js accepts", () => {
+    const cmd = /```bash\n(node --input-type=module[\s\S]*?)```/.exec(section)?.[1];
+    expect(cmd, "a bash block running entity-io").toBeDefined();
+    const ws = mkdtempSync(join(tmpdir(), "t53-plan-review-"));
+    try {
+      mkdirSync(join(ws, ".claude", "skills"), { recursive: true });
+      symlinkSync(join(PACK_SRC, "skill", "mission-planner"), join(ws, ".claude", "skills", "mission-planner"));
+      const campaign = join(ws, ".octobots", "campaigns", "c");
+      const mission = join(campaign, "missions", "m1");
+      mkdirSync(mission, { recursive: true });
+      writeFileSync(join(campaign, "campaign.yaml"), "name: C\nstatus: draft\ntarget: ''\ndescription: ''\n");
+      writeFileSync(
+        join(mission, "mission.yaml"),
+        "name: M1 - Small thing\nstatus: draft\ndescription: d\nacceptance_criteria:\n  - text: it works\n    done: false\nnotes: |-\n  ## Decision\n  keep it small\n",
+      );
+      execFileSync("bash", ["-c", cmd!.replace("<mission-dir>", mission)], { cwd: ws });
+      const yaml = readFileSync(join(mission, "mission.yaml"), "utf8");
+      expect(yaml).toContain("## Decision");
+      const out = execFileSync(
+        "node",
+        [join(ws, ".claude/skills/mission-planner/scripts/set-status.js"), campaign, "M1 - Small thing", "active"],
+        { cwd: ws, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+      );
+      expect(out).toMatch(/draft -> executing/);
+      expect(readFileSync(join(mission, "mission.yaml"), "utf8")).toMatch(/^status: executing$/m);
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("T5.3 review: octobots-doctor never half-fills a legacy record and never invents its verdict", () => {
+  const doctor = skill("octobots-doctor");
+  const para = sectionUnder(doctor, /^## \d+\. Legacy plan-review records/m).replace(/\s+/g, " ");
+
+  it("asks the user for the verdict when the record states none, and writes nothing until they answer", () => {
+    expect(para).toMatch(/states no verdict\. Then ask the user which verdict the review reached, and write nothing until they answer/);
+  });
+  it("adds both lines or neither, because a Reviewers: line alone is refused", () => {
+    expect(para).toMatch(/Add both lines or neither/);
+    expect(para).toMatch(/set-status\.js refuses/);
+  });
+  it("writes through entity-io.mjs and runs validate.js", () => {
+    expect(para).toMatch(/Write through `entity-io\.mjs`/);
+    expect(para).toMatch(/Never edit the YAML text by hand/);
+    expect(para).toMatch(/run `validate\.js`/);
+  });
+  it("its description triggers on set-status.js's legacy plan-review warning", () => {
+    const description = /^description: (.*)$/m.exec(doctor)?.[1] ?? "";
+    expect(description).toMatch(/set-status\.js warns about a legacy plan-review record/);
+    expect(description.length).toBeLessThanOrEqual(1024);
+  });
+});
+
+describe("T5.3 review: rule 11 gives a runnable bounded readiness loop and the qa-env.mjs path", () => {
+  const flat = dispatchRulesSection(skill("mission-execution")).replace(/\s+/g, " ");
+
+  it("shows a bounded curl -m 2 loop that fails the step after the last try", () => {
+    expect(flat).toContain(
+      "for i in $(seq 1 30); do curl -fsS -m 2 -o /dev/null http://127.0.0.1:<port>/ && break; [ $i = 30 ] && exit 1; sleep 1; done",
+    );
+  });
+  it("names the installed qa-env.mjs path and the no-database case", () => {
+    expect(flat).toContain("`.claude/skills/mission-execution/scripts/qa-env.mjs`");
+    expect(flat).toMatch(/A project with no database has no `\.octobots\/qa-env\.json`, and its QA servers start directly/);
   });
 });

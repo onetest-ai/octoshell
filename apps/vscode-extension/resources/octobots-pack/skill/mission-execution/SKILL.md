@@ -141,10 +141,14 @@ all tasks merged → set-status.js … "M<n> - name" done → mission-completion
 11. **Servers and QA environments: detach, poll, and go through `qa-env.mjs`.** Start a server with
     `nohup ... > log 2>&1 < /dev/null &`, so it holds no terminal and cannot block the tool call, then
     poll readiness with a bounded `curl -m 2` loop (a fixed number of tries, each capped at 2 seconds)
-    and fail the step when it never answers; never wait on the server unbounded. QA server, migration
+    and fail the step when it never answers; never wait on the server unbounded. For example, 30
+    tries: `for i in $(seq 1 30); do curl -fsS -m 2 -o /dev/null http://127.0.0.1:<port>/ && break;
+    [ $i = 30 ] && exit 1; sleep 1; done`. QA server, migration
     and seed commands run through `qa-env.mjs <db> -- <cmd...>`, which reads `.octobots/qa-env.json`,
     refuses a database name the project did not declare as a QA one, and exports the declared
-    environment variables, so a QA run can never touch a real database.
+    environment variables, so a QA run can never touch a real database. The script is
+    `.claude/skills/mission-execution/scripts/qa-env.mjs`. A project with no database has no
+    `.octobots/qa-env.json`, and its QA servers start directly.
 
 ### The phases
 

@@ -319,6 +319,26 @@ Reviewers: ba (Alex), tech-lead (Rio)
 Verdict: approved with nits
 ```
 
+Write it through `entity-io.mjs` (`loadEntity`/`dumpEntity`), never by editing the YAML text: inside
+the `notes: |` block every line is indented, and a hand edit that gets that indentation wrong
+breaks the file or lands the record outside `notes`. From the repo root, for a mission (for the
+campaign, pass its `campaign.yaml` and `campaign`):
+
+```bash
+node --input-type=module -e '
+import { readFileSync, writeFileSync } from "node:fs";
+import { loadEntity, dumpEntity } from "./.claude/skills/mission-planner/scripts/entity-io.mjs";
+const [file, kind, record] = process.argv.slice(1);
+const f = loadEntity(readFileSync(file, "utf8"));
+f.notes = f.notes ? `${f.notes.trimEnd()}\n\n${record}` : record;
+writeFileSync(file, dumpEntity(kind, f));
+' <mission-dir>/mission.yaml mission "## Plan review (Alex + Rio, 2026-10-05)
+Reviewers: ba (Alex), tech-lead (Rio)
+Verdict: approved with nits"
+```
+
+Then run `validate.js` on the entity.
+
 `set-status.js` and the extension's status dropdown refuse to start a mission (a move into
 `executing`, which `active` maps to) until such a record exists, with exit code 3 from the script
 and a confirm dialog in the dropdown. To start without a review, run
