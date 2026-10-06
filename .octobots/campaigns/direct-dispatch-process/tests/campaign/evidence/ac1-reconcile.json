@@ -1,0 +1,83 @@
+{
+  "before": {
+    "installed": true,
+    "upToDate": false,
+    "upToDateExceptLocal": false,
+    "currentVersion": 57,
+    "deviations": [
+      {
+        "skill": "mission-execution",
+        "version": "57-local",
+        "reason": "label",
+        "retired": false,
+        "sha256": "c5be7bc4e3729c72fa880dd94e16335f3493140e0e52aa4795c016ed06cc5551"
+      },
+      {
+        "skill": "mission-completion-gate",
+        "version": "57-local",
+        "reason": "label",
+        "retired": false,
+        "sha256": "16dd44681852db1eadf4ce8f3fa137cc50988236445a82cd5c441ed8d9a3e5ab"
+      }
+    ],
+    "reconciled": [],
+    "pendingReconcile": [],
+    "newer": []
+  },
+  "deviations": [
+    {
+      "skill": "mission-execution",
+      "version": "57-local",
+      "reason": "label",
+      "retired": false,
+      "sha256": "c5be7bc4e3729c72fa880dd94e16335f3493140e0e52aa4795c016ed06cc5551"
+    },
+    {
+      "skill": "mission-completion-gate",
+      "version": "57-local",
+      "reason": "label",
+      "retired": false,
+      "sha256": "16dd44681852db1eadf4ce8f3fa137cc50988236445a82cd5c441ed8d9a3e5ab"
+    }
+  ],
+  "result": {
+    "written": 51,
+    "hooksRegistered": true,
+    "statusline": "skipped",
+    "tools": "installed",
+    "pending": [
+      "mission-execution",
+      "mission-completion-gate"
+    ],
+    "kept": [],
+    "keptFiles": []
+  },
+  "after": {
+    "installed": true,
+    "upToDate": false,
+    "upToDateExceptLocal": true,
+    "currentVersion": 57,
+    "deviations": [
+      {
+        "skill": "mission-execution",
+        "version": "57-local",
+        "reason": "label",
+        "retired": false,
+        "sha256": "c5be7bc4e3729c72fa880dd94e16335f3493140e0e52aa4795c016ed06cc5551"
+      },
+      {
+        "skill": "mission-completion-gate",
+        "version": "57-local",
+        "reason": "label",
+        "retired": false,
+        "sha256": "16dd44681852db1eadf4ce8f3fa137cc50988236445a82cd5c441ed8d9a3e5ab"
+      }
+    ],
+    "reconciled": [],
+    "pendingReconcile": [
+      "mission-execution",
+      "mission-completion-gate"
+    ],
+    "newer": []
+  }
+}

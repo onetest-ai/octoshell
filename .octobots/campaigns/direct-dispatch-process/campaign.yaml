@@ -1,22 +1,22 @@
 name: Direct dispatch process
-status: draft
+status: done
 target: apps/vscode-extension/resources/octobots-pack v57 + extension 0.1.0
 description: Ship the process solo proved on the uwb-ranging campaign as the product default. Missions run by orchestrator-dispatched sub-agents; workflow support is removed entirely (pack, board library, extension); two declared test lanes and no parked tests; every mission paired with functional test cases that the gate runs live against pre-existing data, and those test cases are first-class on the board; a BA + tech-lead plan review is enforced before build (script and UI); generalised agent-ops guards; a pack update that reconciles locally changed skills with an agent (the octobots-doctor skill) instead of overwriting them; a tokenomics collector that reads where Claude Code actually writes transcripts and gives campaign-level branches their own cost row.
 acceptance_criteria:
   - text: 'Given a copy of solo''s .claude + .octobots (5 skills incl. two `version: 57-local` forks and workflow-designer), when the 0.1.0 extension installs the pack with the default choice Reconcile (the harness''s default `--local-changes=reconcile`; M7-AC3), then .claude/skills/workflow-designer/ (byte-identical to the shipped v56 file, so not a deviation) and the 7 retired scripts are gone, mission-planner, knowledge-explorer and octobots-doctor read `version: 57`, mission-execution and mission-completion-gate are byte-identical to before (their SKILL.md; mission-execution/scripts/qa-env.mjs and scan-parked.js are installed) and staged under .octobots/pack-updates/v57/<skill>/ with base.md (the shipped v56 file, recovered from solo''s git history), local.md, upstream.md and RECONCILE.md, .octobots/pack-updates/pending.json lists exactly those two, create-team.js and solo''s non-pack skills are still present, and packStatus reports upToDate: false, upToDateExceptLocal: true and pendingReconcile [mission-execution, mission-completion-gate]; on a second copy with Overwrite (`--local-changes=overwrite`) every OCTOBOTS_SKILLS SKILL.md reads `version: 57` and packStatus reports upToDate: true with no deviations (verified by M6-AC8 / T6.6)'
-    done: false
+    done: true
   - text: 'Given the shipped VSIX, when its extension/ tree and pack are grepped for `Workflow(`, workflow.js, add-workflow, sync-meta, add-run, mission-input, workflow-designer and octoshell.newWorkflow, then the only hits are: the validate/doctor ''no longer read'' warning text; the legacy-folder paragraph in the skills (octobots-doctor''s included); tokenomics'' wf_ transcript reader; the installer''s RETIRED_SKILLS/RETIRED_FILES lists compiled into dist/extension.js; extension/resources/shipped-skills.json.br (the brotli-compressed shipped-skill store: every SKILL.md body the pack shipped, workflow-designer''s included, so installPack can tell a locally changed retired skill from a shipped one and recover its base; M7-AC1); and the disposing `octoshell.workflow` panel serializer (verified by M6-AC8 / T6.6)'
-    done: false
+    done: true
   - text: 'Given solo''s real transcripts and board, when `node .octobots/tokenomics/run.mjs --project-dir <copy>` runs on a copy of solo with the v57 pack (never a worktree inside solo), then segments are collected from ~/.claude/projects/<slug> (the home-only sessions 011deac1, 138ca3b0 and 39d8025a included); before any campaign declares branches exactly three campaign rows exist (runs[] entries with work_item_level "campaign", work_item_ref <campaign slug>, parent_ref null, _octobots.mission_id null): edge-ops-ui [chore/close-edge-ops-ui-campaign, feat/edge-ops-ui], emulator-arena-loop [campaign/emulator-arena-loop] and edgeserver-auth [fix/edgeserver-auth-coach-gating-gaps]; chore/uwb-ranging-plan lands on a fourth, uwb-ranging-ingest-vendor-v01 row once that campaign declares it in tokenomics.branches; campaign/sensor-assignment-uplift stays on sensor-assignment-uplift M1, which declares it; and no segment leaves the mission row it was attributed to before (M1-AC5)'
     done: true
   - text: Given this campaign's own seven missions, each has tests/m<n>/README.md mapping every mission AC and at least one TC-NNN_*.md, linked as a mission document, and validate.js reports no tests-pairing warning on any of them (verified by M6-AC8 / T6.6)
-    done: false
+    done: true
   - text: 'Given a mission whose own and campaign notes hold no plan review satisfying M5-AC1, when it is moved into `executing` (`active` maps to it) from any other status by set-status.js or by the extension''s status dropdown, then set-status.js exits 3 and the dropdown shows a modal confirm, and neither changes the file unless overridden (`--force=<reason>` on the script, Confirm in the dialog); the override appends `## Plan review overridden (<YYYY-MM-DD>)` with the reason to the mission notes. Moves to awaiting approval, done, failed, draft or cancelled are never gated. A legacy heading-only record that names both reviewers (solo''s uwb campaign) is accepted, and set-status.js warns that its Reviewers:/Verdict: lines are missing'
     done: false
   - text: Given a campaign with TC files, then the extension shows its test cases, per-mission status counts and per-AC coverage on the board, and gate QA results are written back to each TC's status
     done: false
   - text: Given feat/direct-dispatch-process after M6 (the commit the campaign -> main PR merges), `pnpm lint && pnpm build && pnpm typecheck && pnpm test` and `pnpm coverage` are green, and scan-parked.js reports 0 unsigned skips/todos (verified by M6-AC8 / T6.6)
-    done: false
+    done: true
 documents: []
 notes: |-
   ## User decisions (2026-10-05)
@@ -105,3 +105,44 @@ notes: |-
   ## Rule 9 addendum (T7.1, 2026-10-05)
 
   The shipped-skill store (apps/vscode-extension/resources/shipped-skills.json.br) is binary (`-text`). When two branches both ran `shipped-skills.mjs --write`, resolve a merge conflict by taking either side and re-running `--write` on the merged tree (append-only, reads git history), never by hand. CI's `pnpm build` runs `--verify`, so a SKILL.md change without `--write` fails CI. A local `pnpm package` bypasses build (T6.6 guards it).
+
+  ## Campaign completion (2026-10-06)
+
+  Verified by the qa-engineer, black box, against the 0.1.0 VSIX (`apps/vscode-extension/octobots-0.1.0.vsix`, release commit ea432393 `chore(ext): release 0.1.0 with workflow pack v57`) and octoshell's installed v57 scripts. `git diff ea432393 HEAD -- apps packages` is empty, so the VSIX is the artifact of the current head. Evidence: `tests/campaign/evidence/`, plus `tests/m6/runs/RUN-2026-10-06-002.md` (TC-011) whose cheap parts were re-run.
+
+  Data safety: solo (`/Users/arozumenko/Development/auqanautica`) was read only. Every solo step ran on a `cp -R` copy or a `git clone --shared` clone under the scratchpad. Solo `git status --short` (6 untracked agent-memory lines) and HEAD f3a0a8f4 are identical before and after; the sha256 manifest of solo's `.claude` + `.octobots` (3242 files) has digest be1286b3...c9eca6a before and after, byte-identical (`solo-manifest-digests.txt`). Solo's transcripts under ~/.claude/projects were only read (a frozen `cp -R` of the home slug dir placed under the copy's slug, as M1 did).
+
+  | AC | Verdict | Evidence |
+  |----|---------|----------|
+  | 1 | MET | Fresh solo git copy, default Reconcile (`install-pack.mjs --pack-root <VSIX pack>`): workflow-designer and the 7 retired scripts gone; mission-planner, knowledge-explorer, octobots-doctor read `version: 57`; mission-execution and mission-completion-gate SKILL.md byte-identical to solo's (`cmp`), `57-local`; qa-env.mjs and scan-parked.js installed; staged under `.octobots/pack-updates/v57/<skill>/` with base.md, local.md, upstream.md, RECONCILE.md (local.md equals solo's file); pending.json lists exactly mission-execution and mission-completion-gate, bases version 56 / source workspace-git, sha256 9af2c928... and 008de10a...; create-team.js and all other non-pack skills present; packStatus upToDate false, upToDateExceptLocal true, pendingReconcile both. Overwrite copy: both changed, every OCTOBOTS_SKILLS SKILL.md `version: 57`, upToDate true, 0 deviations (`ac1-reconcile.json`, `ac1-overwrite.json`). TC-011 steps 4 and 5 (agent micro-test, RUN-2026-10-06-002) reused, not re-run. |
+  | 2 | MET | `/usr/bin/grep -E` over the unzipped VSIX extension/ tree: 12 hits, every one on the allow-list (changelog newWorkflow line; RETIRED_SKILLS/RETIRED_FILES in dist/extension.js; the `## No Workflow tool` section lines in mission-execution; the legacy-folder paragraph in mission-planner). 0 unlisted. The brotli store and the wf_ reader do not match as text (`ac2-vsix-hits.txt`). |
+  | 3 | MET | `run.mjs --project-dir <solo copy> --no-gh` on a copy with the v57 pack, home slug dir frozen-copied under the copy's slug: home-only sessions 011deac1, 138ca3b0, 39d8025a present (32 sessions after merging the committed segments); exactly 3 campaign rows (work_item_level campaign, parent_ref null, mission_id null): edge-ops-ui [chore/close-edge-ops-ui-campaign, feat/edge-ops-ui] 324 turns, emulator-arena-loop [campaign/emulator-arena-loop] 41, edgeserver-auth [fix/edgeserver-auth-coach-gating-gaps] 194; chore/uwb-ranging-plan stays unattributed until the campaign declares it, and after declaring `tokenomics.branches` in the copy a 4th row uwb-ranging-ingest-vendor-v01 appears; campaign/sensor-assignment-uplift stays on its M1; 51 mission rows before and after, lost 0, grew none (uwb M1 M2 M3 M4 M6). Method note: segments.jsonl must start from the COMMITTED file, not empty: the 28/1/7 segments on feat/edge-ops-ui, campaign/emulator-arena-loop and campaign/sensor-assignment-uplift exist only there (an emptied start gives 13 mission rows and 1 campaign row, which is a harness error, not a product defect). M1 B4 (letter-suffixed M2a/M2b merge) did not make any clause fail on solo's data (`ac3-tokenomics-check.txt`). |
+  | 4 | MET | `validate.js` (installed v57) on each of the seven missions: OK, 0 warnings, exit 0. Each has tests/m<n>/README.md linked as a mission document and TCs: M1 11, M2 12, M3 10, M4 12, M5 13, M6 11, M7 17 (86). |
+  | 5 | MANUAL-PENDING (F5 Part C) | Script half MET on a copy of solo's board with the installed set-status.js: epic-013 M10 (no plan review) refused with exit 3 for executing, active, in progress and running, file unchanged each time; awaiting approval, draft, cancelled, done, failed never gated; `--force=<reason>` flips it and appends `## Plan review overridden (2026-10-06)` with the reason; uwb M5 (legacy heading-only record) cancelled -> executing accepted, with the warning that the Reviewers:/Verdict: lines are missing (`ac5-set-status.txt`). Dropdown half MET by the T5.2 harness: `board-host.test.ts` + `rpc-dispatcher.test.ts` over the solo copy, 75 passed (modal text, Cancel leaves YAML byte-identical, Confirm appends the note, byte parity with set-status.js --force); `plan-review-parity.test.ts` 2 passed on both real boards. The live modal in the Extension Development Host is manual. |
+  | 6 | MANUAL-PENDING (F5 Parts D and E) | Re-run over copies of octoshell and solo boards: `campaigns-tree-tests.test.ts` 18, `mission-tests-panel.test.tsx` 10, `campaign-tests-summary.test.tsx` 5, `test-cases-own-campaign.test.ts` 7, `test-cases-malformed.test.ts` 5, all passed; `set-test-status.js` on a copy of a real TC changes only status and last_run frontmatter (fail, then back to pass; body unchanged). M6 RUN-2026-10-06-001 TC-007 and TC-009 (write-back) pass. Tree, panel and campaign-panel rendering live is manual. |
+  | 7 | MET | `pnpm lint && pnpm build && pnpm typecheck && pnpm test` exit 0 (tokenomics 102, board 800, vscode-extension 1176 in 64 files, graph 655 passed); `pnpm coverage` exit 0; installed `scan-parked.js`: 0 unsigned, 10 allowed, exit 0. `git status` clean after the gates. |
+
+  Result: AC1, AC2, AC3, AC4, AC7 MET and ticked. AC5 and AC6 are MET on every automatable half and MANUAL-PENDING on the live Extension Development Host. No AC is UNMET, so the campaign status is `done`.
+
+  ### Cost per mission (API-equivalent, from each mission's gate record)
+
+  M1 $58.65 (1131 turns; $59.46 at the M2 gate), M2 $28.80 (567 turns), M3 $45.33 (723), M4 $33.44 (721), M5 $34.02 (698), M6 $30.81 (605), M7 $63.83 (1241). Missions total about $295; the campaign-level row (feat/direct-dispatch-process) was $16.98 at the M2 gate and keeps growing.
+
+  ### Release artifact
+
+  `apps/vscode-extension/octobots-0.1.0.vsix` (760855 bytes), built at ea432393. Extension 0.1.0, pack v57.
+
+  ### Bugs still draft (not fixed)
+
+  - M1 B3: tokenomics build script reads the seed from apps/vscode-extension via a relative path.
+  - M1 B4: rollup.mjs merges letter-suffixed missions (M2a/M2b) into one row.
+  - M2 B2: coverage:pack does not measure the pack hooks (status-flip.mjs, mission-gate.mjs, work-log.mjs).
+
+  ### The user's pending items
+
+  1. F5 checklist `tests/m7/manual/T7.4-F5-script.md`, Parts A to E (A: M7 install prompt and Keep; B: M3 tree and restored workflow panel; C: M5 plan-review modal; D: M6 sidebar Tests node; E: M6 mission and campaign panels).
+  2. Solo's two reconcile policy answers: mission-completion-gate green rule (`0 failed, 0 xfailed` vs upstream's `or todo` plus scan-parked.js) and mission-execution land-step full-suite rule (CI only vs the full fast lane at QA and land). Both reconciles stay staged until answered.
+  3. Solo's unsigned `pytest.skip` at ea-contracts/tests/test_codegen.py:28.
+  4. The 5 leftover workflows/ folders in octoshell's octograph campaign (each removed only with a per-folder yes).
+  5. CHANGELOG line 13 wording (apps/vscode-extension/CHANGELOG.md, "If you still have such files, they were already migrated away" contradicts itself; it ships in the 0.1.0 VSIX, so a fix needs a re-cut or a later patch).
+  6. Also open from M6 T6.6 AC3: re-install the 0.1.0 pack into other dev workspaces after publishing.
