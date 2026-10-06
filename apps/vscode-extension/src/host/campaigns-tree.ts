@@ -50,6 +50,13 @@ export function testFileToOpen(boardRoot: string, arg: unknown): string | null {
     : null;
 }
 
+/**
+ * The {@link OPEN_TEST_FILE_COMMAND} argument for a webview `openTestFile` message: its board-relative path
+ * (TestCase.path) joined under the board. Still untrusted: the command runs {@link testFileToOpen} on it, so a
+ * crafted `../` path or an absolute one never opens anything outside the board's tests folders.
+ */
+export const testFileArgFromWebview = (boardRoot: string, boardRelPath: string): string => join(boardRoot, boardRelPath);
+
 /** Map a mission/task status to its contributed status color (see package.json contributes.colors). */
 function statusColor(status: string): vscode.ThemeColor {
   switch (status) {

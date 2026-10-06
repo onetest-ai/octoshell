@@ -1,33 +1,11 @@
 // Test-case summaries for the sidebar's Tests node and the campaign panel (M6 T6.3). Pure: BoardHost feeds it
 // what BoardModel already knows and the tree formats what comes back, so neither re-derives a count.
 
-import type { MissionCoverage, TestCase, TestCaseStatus } from "@octoshell/board";
-import type { MissionTestSummary, TestStatusCounts, TestSummary } from "../protocol/index.js";
+import type { MissionCoverage, TestCase } from "@octoshell/board";
+import { countByStatus, type MissionTestSummary, type TestSummary } from "../protocol/index.js";
 
-/** The order a status appears in, anywhere it is listed: what passed first, what is not yet known last. */
-export const TEST_STATUS_ORDER = ["pass", "fail", "blocked", "ready", "draft", "unknown"] as const satisfies readonly TestCaseStatus[];
-
-export const emptyCounts = (): TestStatusCounts => ({ pass: 0, fail: 0, blocked: 0, ready: 0, draft: 0, unknown: 0 });
-
-export function countByStatus(cases: readonly TestCase[]): TestStatusCounts {
-  const counts = emptyCounts();
-  for (const tc of cases) counts[tc.status]++;
-  return counts;
-}
-
-/** How one status reads in a label: `30✓`, `1✗`, `1 blocked`, `3 ready`, `2 draft`, `1 unknown`. */
-const countText = (status: TestCaseStatus, n: number): string =>
-  status === "pass" ? `${n}✓` : status === "fail" ? `${n}✗` : `${n} ${status}`;
-
-/** `30✓ 1✗ 1 blocked`: in {@link TEST_STATUS_ORDER}, zero counts omitted. Empty for no cases. */
-export function formatCounts(counts: TestStatusCounts): string {
-  return TEST_STATUS_ORDER.filter((s) => counts[s] > 0).map((s) => countText(s, counts[s])).join(" ");
-}
-
-/** A mission group's label: `m2 · 32 · 30✓ 1✗ 1 blocked`. */
-export function groupLabel(folder: string, total: number, counts: TestStatusCounts): string {
-  return `${folder} · ${total} · ${formatCounts(counts)}`;
-}
+// The status vocabulary moved to protocol/test-status.ts (shared with the webview); re-exported for host callers.
+export { TEST_STATUS_ORDER, emptyCounts, countByStatus, formatCounts, groupLabel } from "../protocol/index.js";
 
 const folderKey = (folder: string): [number, string] => {
   const m = /^m(\d+)(.*)$/.exec(folder);
