@@ -82,7 +82,7 @@ dispatches the addressee with them, and then hands the answers back in a follow-
    (`model: sonnet`). It runs the project's mechanical gate (linters, type-checks, full suites) and
    reports new-code coverage on changed lines vs `<base>`. The threshold is 80% unless the project
    sets its own. If the result is red, the same agent gets one bounded fix round, then re-runs.
-   Verdict: `{"green":bool,"coveragePct":n,"failures":[…],"blocked":bool}`.
+   Verdict: `{"green":bool,"coveragePct":n,"failures":[…],"parked":{"unsigned":n,"allowed":n},"blocked":bool}`.
    **Green means 0 failed, 0 xfailed or todo, and no skip without a stated environmental reason.** An
    `xfail`, a `todo` or a bare `skip` is a parked defect, not a pass. It is fixed where the error
    actually is, in code or in the test, before the gate goes green, unless the user explicitly signs
@@ -91,6 +91,15 @@ dispatches the addressee with them, and then hands the answers back in a follow-
    only**. Read the project's declared test lanes (`AGENTS.md § Test lanes`; where a project has not
    declared them yet, use the project's documented commands in its `CLAUDE.md` / `AGENTS.md`). Brief
    the agents with those commands by name, never with a command of your own.
+   Also run the parked-test scan from the repo root:
+   `node .claude/skills/mission-execution/scripts/scan-parked.js --json`. It lists the tests the repo
+   parked instead of fixing (skip, todo, xfail, xit, xdescribe) under `unsigned`, and the
+   conditional skips that state their reason under `allowed`. It exits 1 on any unsigned hit: phase 1
+   is then not green, and the fix goes where the error actually is. A hit stays only when the user
+   explicitly signs it off, as a line `<path>:<line> <who> <YYYY-MM-DD>` in
+   `.octobots/parked-signoff.txt`; only the user signs a parked test off, and the agent never adds
+   such a line itself. Exit 2 (not a git repository, or a bad `--root`) is a process finding, not a
+   pass. Report both counts in the verdict.
    Where octograph is installed, `impact --diff`'s `tests that historically move with this` section
    feeds this question directly. A suggested test that the coverage run never exercised is worth a
    look before calling coverage sufficient.

@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { planReviewStatus } from "../resources/octobots-pack/skill/mission-planner/scripts/plan-review.mjs";
+import { parseTestLanes } from "../resources/octobots-pack/skill/mission-planner/scripts/lanes.mjs";
 
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
 const skill = (name: string): string => readFileSync(join(PACK_SRC, "skill", name, "SKILL.md"), "utf8");
@@ -331,6 +332,7 @@ describe("octobots-doctor: the rules of M7-AC7", () => {
         { finding: "workflows", path: "campaigns/<c>/workflows", date: "<YYYY-MM-DD>" },
         { finding: "workflows", path: "campaigns/<c>/missions/<m>/workflows", date: "<YYYY-MM-DD>" },
         { finding: "config-dir", path: ".claude", date: "<YYYY-MM-DD>" },
+        { finding: "lanes", path: "AGENTS.md", date: "<YYYY-MM-DD>" },
       ],
     });
     const prose = acks.replace(/\s+/g, " ");
@@ -733,5 +735,85 @@ describe("T5.3 review: rule 11 gives a runnable bounded readiness loop and the q
   it("names the installed qa-env.mjs path and the no-database case", () => {
     expect(flat).toContain("`.claude/skills/mission-execution/scripts/qa-env.mjs`");
     expect(flat).toMatch(/A project with no database has no `\.octobots\/qa-env\.json`, and its QA servers start directly/);
+  });
+});
+
+describe("T5.5: octobots-doctor test-lanes paragraph (M5 AC7)", () => {
+  const doctor = skill("octobots-doctor");
+  const heading = /^## (\d+)\. Test lanes/m;
+  // The example holds a `## Test lanes` line of its own: hide fenced headings while cutting the section.
+  const masked = doctor.replace(/```[\s\S]*?```/g, (m) => m.replace(/^#/gm, "\u0000#"));
+  const section = sectionUnder(masked, heading).replace(/\u0000#/g, "#");
+  const para = section.replace(/\s+/g, " ");
+
+  it("acts on doctor.js's `lanes` finding by proposing `## Test lanes` from the project's documented commands", () => {
+    expect(para).toMatch(/`lanes` finding/);
+    expect(para).toMatch(/doctor\.js/);
+    expect(para).toMatch(/Propose the section from the project's documented commands/);
+    expect(para).toContain("`fast:`");
+    expect(para).toContain("`coverage:`");
+  });
+
+  it("writes AGENTS.md only with the user's OK, never invents a command, and touches nothing else", () => {
+    expect(para).toMatch(/only with the user's OK/);
+    expect(para).toMatch(/Never invent a command/);
+    expect(para).toMatch(/Never change another part of AGENTS\.md or CLAUDE\.md/);
+  });
+
+  it("records a declined lanes finding in doctor-acks.json, and says it is a primer finding", () => {
+    expect(para).toMatch(/declines/);
+    expect(para).toMatch(/§6/);
+    expect(para).toMatch(/AGENTS\.md declares no test lanes\./);
+  });
+
+  it("its literal example section is one doctor.js reads as a declaration", () => {
+    const fence = /```markdown\n(## Test lanes\n[\s\S]*?)```/.exec(section);
+    expect(fence, "an example fenced block that starts with the section heading").not.toBeNull();
+    expect(parseTestLanes(fence![1]!)).toMatchObject({ section: true, fast: expect.any(String), coverage: expect.any(String) });
+    expect(parseTestLanes(fence![1]!.replace(/^- coverage:.*$/m, ""))).toMatchObject({ coverage: null });
+  });
+
+  it("is reachable: §1 routes the lanes finding to it, and it comes before the closing reply", () => {
+    const n = heading.exec(doctor)?.[1];
+    const reply = /^## (\d+)\. Your reply/m.exec(doctor)?.[1];
+    expect(n).toBeDefined();
+    expect(Number(n)).toBeLessThan(Number(reply));
+    const find = sectionUnder(doctor, /^## 1\. Find what to act on/m).replace(/\s+/g, " ");
+    expect(find).toContain(`the \`lanes\` finding (§${n})`);
+    expect(doctor).toContain(`Ask in your reply (§${reply})`);
+  });
+
+  it("the description triggers on a lanes finding", () => {
+    const description = /^description: (.*)$/m.exec(doctor)?.[1] ?? "";
+    expect(description).toMatch(/`lanes`/);
+    expect(description).toMatch(/AGENTS\.md declares no test lanes/);
+  });
+
+  it("the write boundary names the one AGENTS.md exception, pointing at the Test lanes section", () => {
+    const flat = doctor.replace(/\s+/g, " ");
+    const n = heading.exec(doctor)?.[1];
+    expect(flat).toContain(`Never CLAUDE.md, AGENTS.md (except the \`## Test lanes\` section, §${n}, with the user's OK)`);
+  });
+});
+
+describe("T5.5: mission-completion-gate phase 1 calls scan-parked.js (M5 AC6, AC7)", () => {
+  const text = skill("mission-completion-gate");
+  const phase1 = (text.split(/^## The gate\b.*$/m)[1]?.split(/^## /m)[0] ?? "").split(/^2\. \*\*/m)[0]!.replace(/\s+/g, " ");
+
+  it("runs scan-parked.js --json in the repo root and treats exit 1 (an unsigned hit) as not green", () => {
+    expect(phase1).toContain("node .claude/skills/mission-execution/scripts/scan-parked.js --json");
+    expect(phase1).toMatch(/exits? 1[^.]*not green/i);
+    expect(phase1).toMatch(/unsigned/);
+  });
+
+  it("names the signoff file and its line format, and says only the user signs off", () => {
+    expect(phase1).toContain(".octobots/parked-signoff.txt");
+    expect(phase1).toContain("<path>:<line> <who> <YYYY-MM-DD>");
+    expect(phase1).toMatch(/only the user/i);
+  });
+
+  it("the script it names ships in the pack, and the verdict carries the scan result", () => {
+    expect(existsSync(join(PACK_SRC, "skill", "mission-execution", "scripts", "scan-parked.js"))).toBe(true);
+    expect(phase1).toMatch(/"parked":/);
   });
 });

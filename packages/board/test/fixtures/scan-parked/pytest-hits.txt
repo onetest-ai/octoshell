@@ -1,0 +1,24 @@
+import pytest
+
+@pytest.mark.xfail
+def test_a(): ...
+
+@pytest.mark.skip
+def test_b(): ...
+
+@pytest.mark.skip()
+def test_c(): ...
+
+@pytest.mark.xfail(strict=True)
+def test_d(): ...
+
+@pytest.mark.xfail(
+    strict=True,
+)
+def test_e(): ...
+
+def test_f():
+    pytest.xfail("known bug, with a reason")
+
+def test_g():
+    pytest.skip("with a reason")
