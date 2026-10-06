@@ -1,0 +1,63 @@
+
+ RUN  v2.0.5 <octoshell>/packages/board
+
+ ✓ test/qa-env.test.ts > qa-env.mjs usage > exits 2 without a `--`
+ ✓ test/qa-env.test.ts > qa-env.mjs usage > exits 2 without a db
+ ✓ test/qa-env.test.ts > qa-env.mjs usage > exits 2 without a command
+ ✓ test/qa-env.test.ts > qa-env.mjs usage > exits 2 on an unknown option, a second db, or --config without a value
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > refuses a db that does not match name_pattern
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > anchors name_pattern: an unanchored `qa_` never matches prod_qa_x
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > says the match is whole-name when the pattern only matches a part of the db
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > refuses a trailing newline even when the pattern ends in $
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > anchors an alternation that merely starts with ^ and ends with $
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > matches the whole name, newlines included
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > refuses a template that lacks {db}, naming the var
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > refuses a missing config, naming the expected path
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > names the --config path when that one is missing
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > exits 3 on malformed JSON
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > exits 3 on a non-object root
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > exits 3 on vars not an object
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > exits 3 on vars missing
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > exits 3 on name_pattern missing
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > exits 3 on name_pattern empty
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > exits 3 on name_pattern an invalid regex
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > exits 3 on a var value that is not a string
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > exits 3 on a var name that cannot be an env name
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > exits 3 on probe not a string
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > exits 3 on a name_pattern that only compiles once wrapped
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > refuses a config over 1 MiB
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > refuses a directory in place of the config
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > refuses a FIFO in place of the config instead of hanging
+ ✓ test/qa-env.test.ts > qa-env.mjs refusals (exit 3, command not run) > reads a config reached through a symlink to a regular file
+ ✓ test/qa-env.test.ts > qa-env.mjs probe (exit 4, command not run) > exits 4 when the probe's trimmed stdout differs from the db
+ ✓ test/qa-env.test.ts > qa-env.mjs probe (exit 4, command not run) > passes when the trimmed stdout equals the db
+ ✓ test/qa-env.test.ts > qa-env.mjs probe (exit 4, command not run) > runs the probe with the substituted vars, and a shell
+ ✓ test/qa-env.test.ts > qa-env.mjs probe (exit 4, command not run) > does not substitute {db} into the probe text
+ ✓ test/qa-env.test.ts > qa-env.mjs probe (exit 4, command not run) > exits 4 when the probe itself fails
+ ✓ test/qa-env.test.ts > qa-env.mjs probe (exit 4, command not run) > exits 4 when the probe cannot start
+ ✓ test/qa-env.test.ts > qa-env.mjs probe (exit 4, command not run) > kills a hung probe at the timeout and exits 4 426ms
+ ✓ test/qa-env.test.ts > qa-env.mjs probe (exit 4, command not run) > kills the whole probe process group, so a grandchild holding stdout cannot hang the guard 442ms
+ ✓ test/qa-env.test.ts > qa-env.mjs probe (exit 4, command not run) > kills the probe's process group and exits 128+n when interrupted during the probe 520ms
+ ✓ test/qa-env.test.ts > qa-env.mjs probe (exit 4, command not run) > exits 128+n, not by the default signal disposition, when interrupted right after the probe spawns 3497ms
+ ✓ test/qa-env.test.ts > qa-env.mjs probe (exit 4, command not run) > defaults the probe timeout to 30 s (documented in the usage text)
+ ✓ test/qa-env.test.ts > qa-env.mjs running the command > exports every var with every {db} replaced, and prints the target db to stderr
+ ✓ test/qa-env.test.ts > qa-env.mjs running the command > overrides an inherited var of the same name
+ ✓ test/qa-env.test.ts > qa-env.mjs running the command > refuses a config that declares no vars, so an inherited DATABASE_URL cannot slip through
+ ✓ test/qa-env.test.ts > qa-env.mjs running the command > passes an undeclared inherited var through unchanged (documented: declare every DB var)
+ ✓ test/qa-env.test.ts > qa-env.mjs running the command > reads --config <path> and --config=<path>, before or after the db
+ ✓ test/qa-env.test.ts > qa-env.mjs running the command > passes the command's exit code through
+ ✓ test/qa-env.test.ts > qa-env.mjs running the command > passes argv through verbatim, with no shell
+ ✓ test/qa-env.test.ts > qa-env.mjs running the command > is safe with a db full of shell metacharacters that the pattern allows
+ ✓ test/qa-env.test.ts > qa-env.mjs running the command > exits 127 with a message when the command does not exist
+ ✓ test/qa-env.test.ts > qa-env.mjs running the command > exits 128+n when the command dies from a signal
+ ✓ test/qa-env.test.ts > qa-env.mjs running the command > forwards SIGTERM and SIGINT to the command
+
+ Test Files  1 passed (1)
+      Tests  50 passed (50)
+   Start at  10:56:35
+   Duration  6.68s (transform 20ms, setup 0ms, collect 21ms, tests 6.49s, environment 0ms, prepare 26ms)
+
+run2:  Test Files  1 passed (1)
+run2:       Tests  50 passed (50)
+run3:  Test Files  1 passed (1)
+run3:       Tests  50 passed (50)

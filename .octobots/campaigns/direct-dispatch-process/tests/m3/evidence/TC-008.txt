@@ -1,0 +1,27 @@
+map=0
+wrote .octobots/graph/map.md and .octobots/graph/clusters.json — 7 modules, 8 edges (4 kept, 3 fresh cluster ids)
+
+       1 ../ev/octo-map.out
+own=0
+apps/vscode-extension/resources/octobots-pack/tokenomics/run.mjs	owned by M1 - Tokenomics reads real transcripts and attributes campaign branches / T1.5 - Mission QA: run tests/m1 live on solo's real transcripts and board (predicted)	criterion (predicted): solo's .octobots/tokenomics/ is byte-identical before and after (git status clean); the qa-m1 worktree is removed
+apps/vscode-extension/resources/octobots-pack/skill/mission-execution/SKILL.md	owned by M2 - Pack runs missions by direct sub-agent dispatch / T2.1 - Upstream direct-dispatch mission-execution (predicted)	criterion (predicted): apps/vscode-extension/test/skill-conventions.test.ts asserts each dispatch rule's keyword is present in the shipped mission-execution SKILL.md (Agent tool, foreground, model:, JSON verdict/BLOCKED, relay questions, resume from board + git, fast/coverage lanes) and that none of these patterns occurs: `Workflow(`, a workflow.js execution instruction, a `make` command (`make ci`, `make <x>-test`, a backticked `make `), `edgeserver`, `uv run` (mission AC5)
+packages/board/test/scripts-cli-scenarios.test.ts	owned by M2 - Pack runs missions by direct sub-agent dispatch / T2.4 - validate.js and doctor.js warn on leftover workflows/ folders (predicted)	criterion (predicted): packages/board/test/scripts-cli-scenarios.test.ts covers: validate.js prints one `warning:` per workflows/ folder (path + 'no longer read since pack v57'), exit code unchanged; validate.js <path>/workflow.js exits 2 'not an en
+     127 ../ev/octo-own.out
+ M .octobots/campaigns/direct-dispatch-process/missions/m3-extension-and-board-library-drop-workflow-entit/tasks/t3-5-mission-qa-run-tests-m3-live-on-copies-of-the/task.yaml
+own: lines matching 'workflow' as an owner kind ("owned by workflow" / "Workflow:"):
+0
+own: owner kinds present (text after 'owned by' up to first ' - '):
+  30 owned by M1
+  24 owned by M2
+  35 owned by M3
+  14 owned by M4
+   1 owned by M5
+   3 owned by M6
+  20 owned by M7
+own: any mention of 'workflow' at all (count)
+7
+apps/vscode-extension/resources/octobots-pack/skill/mission-execution/SKILL.md	owned by M2 - Pack runs missions by direct sub-agent dispatch / T2.1 - Upstream direct-dispatch mission-execution (predic
+packages/board/test/scripts-cli-scenarios.test.ts	owned by M2 - Pack runs missions by direct sub-agent dispatch / T2.4 - validate.js and doctor.js warn on leftover workflows/ folders (predicted)	crite
+apps/vscode-extension/test/fixtures/status-flip-board.ts	owned by M3 - Extension and board library drop Workflow entities / T3.5 - Mission QA: run tests/m3 live on copies of the real octoshell and sol
+apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/add-run.js	owned by M2 - Retire workflow.md; workflow.js + runs.jsonl only / T2.2 - Board write/validate: createWorkflow sca
+apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/add-run.js	owned by M2 - Retire workflow.md; workflow.js + runs.jsonl only / T2.3 - Pack scripts: add-workflow.js (no .md), 

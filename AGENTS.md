@@ -29,13 +29,13 @@ apps/vscode-extension/
 ├── src/host/        ← extension-host (Node): BoardHost, TreeDataProvider, EntityPanelManager,
 │                       board-watcher, rpc-dispatcher, octobots-skill/hooks installer
 ├── src/webview/      ← single Vite bundle (React + Tailwind): CampaignView/MissionView/TaskView/
-│                       BugView/WorkflowView, rpc-client, octoshell-shim
+│                       BugView, rpc-client, octoshell-shim
 ├── src/protocol/     ← shared host↔webview message types
 └── resources/octobots-pack/  ← shipped payload copied into a target workspace's `.claude/`
     └── skill/mission-planner/scripts/entity-io.mjs   ← see "Dual schema" below
 
 packages/board/        ← @octoshell/board — pure functions over the .octobots/ tree
-├── src/entity-schema.ts, write.ts, validate.ts, slug.ts, types.ts, workflow-meta.ts
+├── src/entity-schema.ts, write.ts, validate.ts, slug.ts, types.ts
 └── test/
 
 packages/tokenomics/    ← @octoshell/tokenomics — prices agent transcripts, rolls up cost
@@ -59,6 +59,19 @@ adding here:
   `resources/octobots-pack/skill/mission-planner/scripts/**`, thresholds 90% statements/lines/
   functions, 70% branches). The pack script coverage is measured **separately from** `packages/
   board`'s own coverage even though the two implement the same schema — see "Dual schema" below.
+
+## Test lanes
+
+The commands agents run, by purpose. `doctor.js` reads this section, and `mission-execution` and the
+mission completion gate run these lanes by name instead of inventing a command.
+
+- fast: `pnpm --filter <pkg> test`
+- coverage: `pnpm coverage`
+
+`<pkg>` is the workspace package under change (`@octoshell/board`, `@octoshell/tokenomics`,
+`@octoshell/graph`, `@octoshell/vscode-extension`). After changing a public type in `board` or
+`tokenomics`, build it first (`CLAUDE.md` § Commands). Root `pnpm test` runs every package through
+turbo and is already parallel, so the coverage lane is the only one that is run once, at the end.
 
 ## Conventions
 

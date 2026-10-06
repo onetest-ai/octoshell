@@ -1,0 +1,12 @@
+$ TC-002
+[33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/campaigns-tree-real-board.test.ts > CampaignsTree over a real board > every campaign, mission, task and bug is a node, and no workflow is
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  21:38:42
+   Duration  438ms (transform 48ms, setup 42ms, collect 51ms, tests 139ms, environment 0ms, prepare 26ms)
+

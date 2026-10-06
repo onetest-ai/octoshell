@@ -1,0 +1,17 @@
+name: T4.3 - Planner authors tests with the mission
+status: done
+role: js-dev
+description: 'Scope: mission-planner/SKILL.md § Mission chat (:152+, after step 4 at :236) and the scripts list; ship the TC template; octobots-doctor/SKILL.md (M7) gains its tests-pairing paragraph (acted on from validate.js output; tests-pairing is not a primer finding, M7-AC6). Out of scope: gate text. Downstream: T4.4.'
+acceptance_criteria:
+  - text: apps/vscode-extension/test/skill-conventions.test.ts asserts mission-planner documents the TC format contract fields and values, the PASS/FAIL/BLOCKED/UNREACHABLE -> status mapping, {{base_url}}, the execution modes, record-per-case/UNREACHABLE and 'authored before build' via add-tests.js (mission AC4)
+    done: true
+  - text: 'the same suite asserts octobots-doctor''s tests-pairing paragraph: add-tests.js, author the missing TCs with the mission''s owner, never delete an AC, TC or README row (mission AC4)'
+    done: true
+notes: |
+  ## QA verification
+
+  Installed the branch pack (install-pack.mjs) into a shared clone of auqanautica and read the INSTALLED skills (byte-identical to resources/octobots-pack/skill).
+  - AC1 mission-planner SKILL.md: add-tests.js before build :241-243; frontmatter contract fields/values :247-250; PASS/FAIL/BLOCKED/UNREACHABLE mapping :251-252; {{base_url}} :253-254; execution modes :255-256; record per case/UNREACHABLE :257-258; scripts list :564.
+  - AC2 octobots-doctor SKILL.md: section 1 routes tests-pairing warnings to section 7 :24; add-tests.js and author missing TCs with the mission's owner :198-199; never delete an AC, TC or README row :199-201.
+  - shipped-skills.mjs --verify: store is current.
+  - Gate: pnpm build, typecheck, lint, test (vscode-extension 968, graph 655, board 424 passing), coverage:pack all exit 0. PR #150 checks green on head 03147487.

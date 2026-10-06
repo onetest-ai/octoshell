@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, dirname, join, sep } from "node:path";
-import { mergeAuthoredPhases, parseWorkflowMeta, serializeMeta } from "./workflow-meta.mjs";
-import { extractPhases, unclassifiedMessage } from "./extract-meta.mjs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { boardRootOf, findLegacyWorkflowFolders, isCampaignDir, legacyWorkflowsWarning } from "./legacy-workflows.mjs";
+import { acIdsOf, legacyTcNote, missionToken, missionTestsFindings, readTestsText, tcProblems } from "./tc-io.mjs";
+import { readPending, workspaceRootOf, MALFORMED_PENDING_NOTE } from "./pending-io.mjs";
 import { readEntity, resolveEntityFile, KIND_KEYS, KNOWN_KEYS } from "./entity-io.mjs";
 
 const arg = process.argv[2];
@@ -11,37 +12,19 @@ if (!arg || !existsSync(arg)) {
   process.exit(2);
 }
 
-// Resolve the target: a workflow (workflow.js or a folder holding one) or an entity (<kind>.yaml /
-// legacy <kind>.md, or a folder holding one).
-let path;
-let kind;
-if (statSync(arg).isDirectory()) {
-  if (existsSync(join(arg, "workflow.js"))) {
-    path = join(arg, "workflow.js");
-    kind = "workflow";
-  } else {
-    const ent = resolveEntityFile(arg);
-    if (!ent) { console.error(`validate: no entity (<kind>.yaml) or workflow.js in ${arg}`); process.exit(2); }
-    path = ent.file;
-    kind = ent.kind;
-  }
-} else if (basename(arg) === "workflow.js") {
-  path = arg;
-  kind = "workflow";
-} else {
-  const ent = resolveEntityFile(arg);
-  if (!ent) { console.error(`validate: not an entity file (<kind>.yaml) or workflow.js: ${arg}`); process.exit(2); }
-  path = ent.file;
-  kind = ent.kind;
+// A test-case file (<campaign>/tests/m<n>/TC-*.md) is checked on its own: its `warning:` lines, exit 0.
+if (isTcFile(arg)) checkTcFile(resolve(arg));
+
+// Resolve the target: an entity file (<kind>.yaml / legacy <kind>.md) or a folder holding one.
+const ent = resolveEntityFile(arg);
+if (!ent) {
+  console.error(`validate: ${statSync(arg).isDirectory() ? "no entity (<kind>.yaml) in" : "not an entity file (<kind>.yaml):"} ${arg}`);
+  process.exit(2);
 }
+const path = ent.file;
+const kind = ent.kind;
 
 const problems = [];
-
-// A workflow is validated against its script, not against the task/mission contract.
-if (kind === "workflow") {
-  for (const p of validateWorkflowDir(dirname(path))) problems.push(p);
-  report();
-}
 
 // Entity (<kind>.yaml) validation.
 const format = path.endsWith(".yaml") ? "yaml" : "md";
@@ -89,192 +72,108 @@ if (kind === "campaign" || kind === "mission" || kind === "task") {
   }
 }
 
-// A campaign or mission owns workflow folders. EITHER may hold several — a mission normally has one
-// per execution loop (implementation / testing / fixing), which is why there is no count check here.
-if (kind === "campaign" || kind === "mission") {
-  const dir = dirname(path);
-  const workflowsDir = join(dir, "workflows");
-  const slugs = existsSync(workflowsDir)
-    ? readdirSync(workflowsDir, { withFileTypes: true })
-        .filter((e) => e.isDirectory())
-        .map((e) => e.name)
-        .filter((slug) => existsSync(join(workflowsDir, slug, "workflow.js")) || existsSync(join(workflowsDir, slug, "workflow.json")))
-    : [];
-  for (const slug of slugs) {
-    for (const p of validateWorkflowDir(join(workflowsDir, slug))) {
-      problems.push(`workflow "${slug}": ${p}`);
-    }
-  }
-}
-
 report();
 
-function report() {
-  if (problems.length) {
-    console.error(`INVALID ${path}:`);
-    for (const p of problems) console.error(`  - ${p}`);
-    process.exit(1);
-  }
-  console.log(`OK ${path}`);
-  process.exit(0);
+/**
+ * Non-fatal: `workflows/` folders under this campaign or mission are no longer read (pack v57).
+ * Paths are relative to the board root (even on a copy not named `.octobots`), so the lines match
+ * the board library's validateBoard(root).
+ */
+function legacyWorkflowWarnings() {
+  const dir = dirname(path);
+  return findLegacyWorkflowFolders(dir, boardRootOf(dir)).map(legacyWorkflowsWarning);
 }
 
 /**
- * Validate one workflow folder against its `workflow.js` meta. Returns a list of problems.
- * Mirrors packages/board/src/validate.ts `validateWorkflow` — keep the two in step.
+ * Non-fatal: the tests-pairing findings (tc-io.mjs `missionTestsFindings`) of this mission, or of every
+ * mission of this campaign: the tests README exists and is linked, every acceptance criterion is covered by
+ * a TC, the README map agrees with the TC frontmatter, each TC follows the TC format contract. Warnings
+ * only: they never change the exit code. Mirrors packages/board/src/validate.ts `missionTestsWarnings`.
  */
-function validateWorkflowDir(dir) {
+function testsWarnings() {
+  const dir = dirname(path);
+  const base = boardRootOf(dir);
+  const forMission = (campaignDir, missionFields) =>
+    missionTestsFindings({ campaignDir, campaign: basename(campaignDir), base, mission: missionFields }).map((m) => `warning: ${m}`);
+  if (kind === "mission" && format === "yaml") {
+    const campaignDir = dirname(dirname(dir));
+    if (basename(dirname(dir)) !== "missions" || !isCampaignDir(campaignDir)) return [];
+    return forMission(campaignDir, fields);
+  }
+  if (kind !== "campaign" || !isCampaignDir(dir)) return [];
   const out = [];
-  const slug = basename(dir);
-  const jsPath = join(dir, "workflow.js");
-  if (!existsSync(jsPath)) {
-    // A folder may point at a shared pipeline instead of owning a script — shared pipelines live at
-    // campaign level and several missions run the same one.
-    const pointerPath = join(dir, "workflow.json");
-    if (!existsSync(pointerPath)) return ["workflow.js is missing"];
-    const pointer = readPointer(pointerPath);
-    // Unreadable, not JSON, and no `uses` key are three different mistakes; readPointer names each.
-    if (!pointer.ok) return [pointer.error];
-    const uses = pointer.uses;
-    if (uses.includes("\\")) {
-      // Named ahead of the generic "resolves outside the board" finding: the author's mistake here
-      // is a stray backslash, not a climb, and Windows would treat it as a real separator.
-      return [`pointer "${uses}" contains a backslash — pointers are POSIX-style paths (forward slashes only)`];
-    }
-    const from = boardRelative(dir);
-    const target = from === null ? null : resolveWithin(from, uses);
-    if (target === null) return [`pointer "${uses}" resolves outside the board`];
-    const root = boardRootOf(dir);
-    if (root === null || !existsSync(join(root, target, "workflow.js"))) {
-      return [`pointer "${uses}" names a folder with no workflow.js`];
-    }
-    return out; // valid pointer — the target it names is validated on its own, as its own workflow folder
-  }
-
-  const source = readFileSync(jsPath, "utf8");
-  let meta;
-  try {
-    meta = parseWorkflowMeta(source);
-  } catch (err) {
-    return [err.message];
-  }
-
-  if (meta.name !== slug) out.push(`meta.name "${meta.name}" does not match its folder "${slug}"`);
-
-  // The declared graph is GENERATED from the body, so its internal consistency is not a thing to
-  // check — it is a thing that cannot be wrong. What can be wrong is the body: whether it parses,
-  // whether meta was regenerated after the last edit, and whether every agent() call actually
-  // dispatches to the agent the diagram names. Checked ahead of `meta.phases.length` so a body
-  // that fails to parse is reported even when meta happens to declare zero phases.
-  let extracted;
-  try {
-    extracted = extractPhases(source);
-  } catch (err) {
-    return [...out, `body does not parse: ${err.message}`];
-  }
-
-  if (meta.phases.length === 0) {
-    out.push("workflow has no phases");
-    return out;
-  }
-
-  // Compare through the real writer/reader, not the raw extraction — serializeMeta writes each
-  // step with JSON.stringify(step), so key INSERTION order becomes file order, while
-  // parseWorkflowMeta rebuilds steps through coerceStep in its own canonical order. Comparing
-  // extracted.phases against meta.phases directly would flag a perfectly current file as stale
-  // over key order alone; round-tripping through the same writer+reader a real regenerate would
-  // use makes this immune to that. `mergeAuthoredPhases` is part of that same regenerate: a phase's
-  // `detail` is authored, not derived, so a workflow carrying one is current, not stale.
-  const roundTripped = parseWorkflowMeta(
-    `export const meta = ${serializeMeta({
-      name: meta.name,
-      description: meta.description,
-      phases: mergeAuthoredPhases(meta.phases, extracted.phases),
-    })}`,
-  ).phases;
-  if (JSON.stringify(roundTripped) !== JSON.stringify(meta.phases)) {
-    out.push("meta is out of date — regenerate it with sync-meta.js");
-  }
-  for (const call of extracted.unclassified) {
-    out.push(`line ${call.line}: ${unclassifiedMessage(call)}`);
-  }
-  // A step with a computed agentType (e.g. `agentType: task.role`) dispatches for real at
-  // runtime — it is NOT the "no agentType" defect below, just unreadable by the extractor — so it
-  // is excluded by id rather than folded into the same check.
-  const computedAgentTypeIds = new Set(extracted.computedAgentType.map((c) => c.stepId));
-  for (const step of extracted.phases.flatMap((p) => p.steps)) {
-    if (step.kind === "workflow") continue;
-    if (step.agent || computedAgentTypeIds.has(step.id)) continue;
-    out.push(`step "${step.id}" (${step.label}) has no agentType — it runs as the default subagent`);
-  }
-
+  for (const { fields: m } of campaignMissions(dir)) out.push(...forMission(dir, m));
   return out;
 }
 
 /**
- * The `uses` string of a pointer file, or why there isn't one: `{ ok: true, uses }` /
- * `{ ok: false, error }`. The failures are kept apart because they are different author mistakes —
- * a file that is not JSON at all used to be reported as "has no `uses` string", which sends the
- * author looking for a missing key in a file whose real problem is a syntax error.
- * Mirrors packages/board/src/board-model.ts `readPointer` — keep the two in step.
+ * The parsed `mission.yaml` of every mission folder of the campaign at `campaignDir`. A mission whose
+ * file does not parse is left out: validating THAT mission reports its error, and one broken sibling
+ * must not crash validate.js on the campaign or on a TC file (warnings never change the exit code).
  */
-function readPointer(path) {
-  let text;
-  try {
-    text = readFileSync(path, "utf8");
-  } catch {
-    return { ok: false, error: "workflow.json could not be read" };
+function campaignMissions(campaignDir) {
+  const missions = join(campaignDir, "missions");
+  const out = [];
+  for (const e of existsSync(missions) ? readdirSync(missions, { withFileTypes: true }) : []) {
+    const file = join(missions, e.name, "mission.yaml");
+    if (!e.isDirectory() || !existsSync(file)) continue;
+    try { out.push({ file, fields: readEntity(file, "yaml") }); } catch { /* reported when that mission is validated */ }
   }
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch (err) {
-    return { ok: false, error: `workflow.json is not valid JSON: ${err.message}` };
+  return out;
+}
+
+/** True for a path shaped `.../tests/m<n>/TC-*.md` that is a file. */
+function isTcFile(p) {
+  const abs = resolve(p);
+  return /^TC-.*\.md$/.test(basename(abs)) && /^m\d+[a-z]*$/.test(basename(dirname(abs))) &&
+    basename(dirname(dirname(abs))) === "tests" && statSync(abs).isFile();
+}
+
+/** `validate.js <TC file>`: print the file's `warning:` lines and exit 0 (a TC problem is never an error). */
+function checkTcFile(file) {
+  const dir = dirname(file);
+  const folder = basename(dir);
+  const campaignDir = dirname(dirname(dir));
+  const base = boardRootOf(dir);
+  // The mission this folder belongs to (its criteria bound what `covers` may name); unknown -> prefix check only.
+  let acIds = null;
+  for (const { fields: m } of campaignMissions(campaignDir)) {
+    const token = missionToken(m.name);
+    if (token?.folder === folder) { acIds = acIdsOf(token.id, m.acceptanceCriteria.length); break; }
   }
-  const uses = parsed?.uses;
-  if (typeof uses !== "string" || !uses.trim()) return { ok: false, error: "workflow.json has no `uses` string" };
-  return { ok: true, uses };
+  const rel = relative(base, file).split(sep).join("/");
+  const text = readTestsText(file) ?? "";
+  const note = legacyTcNote(text);
+  const problems = [...tcProblems({ fileName: basename(file), folder, text, acIds }), ...(note ? [note] : [])];
+  console.log(`OK ${file}`);
+  for (const p of problems) console.log(`warning: ${rel}: ${p}`);
+  process.exit(0);
 }
 
 /**
- * Resolve `rel` against `from`, both relative to the board root, refusing anything that climbs out
- * of it. A pointer is a link the board follows on every read; it must not be able to leave the
- * tree, so this is a containment check and not merely a tidy-up.
- *
- * A leading `/` is refused outright rather than folded under `from`, and a `\` anywhere in `rel`
- * is refused outright too (this function only splits on `/`, so on Windows the fs/path layer
- * downstream would treat a blessed-as-contained `\` value as a real separator and a genuine climb)
- * — see the identical notes on packages/board/src/board-model.ts `resolveWithin`, which this
- * mirrors — keep the two in step.
+ * Non-fatal: pack skills awaiting an agent's reconcile (.octobots/pack-updates/pending.json of the
+ * workspace this entity sits in), one line each; a pending.json that cannot be read is one line.
  */
-function resolveWithin(from, rel) {
-  if (rel.startsWith("/") || rel.includes("\\")) return null;
-  const stack = [];
-  for (const part of `${from}/${rel}`.split("/")) {
-    if (part === "" || part === ".") continue;
-    if (part === "..") {
-      if (stack.length === 0) return null;
-      stack.pop();
-      continue;
-    }
-    stack.push(part);
+function packReconcileWarnings() {
+  const root = workspaceRootOf(dirname(path));
+  if (!root) return [];
+  const pending = readPending(root);
+  if (pending.state === "malformed") return [`warning: ${MALFORMED_PENDING_NOTE}`];
+  if (pending.state === "none") return [];
+  return pending.record.skills.map((s) => `warning: pack reconcile pending: ${s.skill} (v${pending.record.packVersion})`);
+}
+
+function report() {
+  const warnings = [...legacyWorkflowWarnings(), ...testsWarnings(), ...packReconcileWarnings()];
+  if (problems.length) {
+    console.error(`INVALID ${path}:`);
+    for (const p of problems) console.error(`  - ${p}`);
+    for (const w of warnings) console.log(w);
+    process.exit(1);
   }
-  const resolved = stack.join("/");
-  return resolved.startsWith("campaigns/") ? resolved : null;
-}
-
-/** The `.octobots` ancestor of `absDir`, or null when `absDir` is not under one. */
-function boardRootOf(absDir) {
-  const parts = absDir.split(sep);
-  const idx = parts.lastIndexOf(".octobots");
-  return idx === -1 ? null : parts.slice(0, idx + 1).join(sep);
-}
-
-/** `absDir`'s path relative to its `.octobots` ancestor, forward-slashed, or null when it has none. */
-function boardRelative(absDir) {
-  const parts = absDir.split(sep);
-  const idx = parts.lastIndexOf(".octobots");
-  return idx === -1 ? null : parts.slice(idx + 1).join("/");
+  console.log(`OK ${path}`);
+  for (const w of warnings) console.log(w);
+  process.exit(0);
 }
 
 /**

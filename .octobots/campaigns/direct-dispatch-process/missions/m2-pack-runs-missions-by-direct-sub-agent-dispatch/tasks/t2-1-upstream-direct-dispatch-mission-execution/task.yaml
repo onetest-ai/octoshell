@@ -1,0 +1,31 @@
+name: T2.1 - Upstream direct-dispatch mission-execution
+status: done
+role: js-dev
+description: 'Scope: replace pack mission-execution/SKILL.md:61-233,474-536,565 with solo''s text (version: 57). Generalise solo :116-123: lanes come from the project''s declared fast/coverage commands (declaration format: M5 T5.5; until then ''the project''s documented commands''). Fix the duplicate rule 7. Keep the ''legacy workflows/ = historical reference only'' paragraph. Fold the workflow-designer ''three loops'' idea (implementation / testing / fixing) in as prose about when to re-run tests. Out of scope: TC-running details (M4), plan review (M5). Downstream: T2.2 cross-references the dispatch rules.'
+acceptance_criteria:
+  - text: 'apps/vscode-extension/test/skill-conventions.test.ts asserts each dispatch rule''s keyword is present in the shipped mission-execution SKILL.md (Agent tool, foreground, model:, JSON verdict/BLOCKED, relay questions, resume from board + git, fast/coverage lanes) and that none of these patterns occurs: `Workflow(`, a workflow.js execution instruction, a `make` command (`make ci`, `make <x>-test`, a backticked `make `), `edgeserver`, `uv run` (mission AC5)'
+    done: true
+  - text: the same suite asserts the rules in mission-execution § Dispatch rules are numbered 1..n without duplicates (scoped to that section, not the whole file)
+    done: true
+notes: |
+  ## QA verification
+
+  **Verdict: PASS.** PR #120 (feat/direct-dispatch-process-m2-t1 -> feat/direct-dispatch-process-m2). CI `build` checks: pass (both runs).
+
+  **Record checked against:** solo's real fork, /Users/arozumenko/Development/auqanautica/.claude/skills/mission-execution/SKILL.md at its current bytes (40031 bytes), sha256 c5be7bc4e3729c72fa880dd94e16335f3493140e0e52aa4795c016ed06cc5551 (version: 57-local). Shipped pack text sha256 37d9786a85da1bd4118538ea72bc67d25a7429e061519ca026acf972bfcaddcb (version: 57).
+
+  **Blind read of shipped SKILL.md (before the test):** orchestrator dispatches via Agent tool with explicit model: (opus plan/review, sonnet build/QA), foreground, one writer at a time, fenced JSON verdicts, missing/unparseable block = BLOCKED, never runs Workflow/workflow.js (legacy workflow.js = historical reference only). grep for make / edgeserver / uv run / auqanautica / solo: zero hits. Dispatch rules numbered 1..10, no dupes (solo's duplicate 7 fixed). Diff vs solo: every rule survives; changes are only the generalisations (rule 5 scope, rule 6 lanes from project's declared commands, rule 7 CI wording, rule 3 relay wording, rule 10 resume-from-board-and-git), the split of solo rule 6/7, and the added "Three loops" prose. Built payload: pnpm build exit 0; resources/octobots-pack (== HEAD) is not excluded by .vscodeignore and extension.js resolves it at resources/octobots-pack; SKILL.md present.
+
+  **Suites (fresh, root):** pnpm build && typecheck && lint && test && coverage:pack exit 0. board 388/388, vscode-extension 527/527 (43 files), tokenomics 102/102, graph 653/653. skipped/todo: 0. campaign-view.test.tsx passed (7 tests); did not flake (known B1).
+
+  **AC1:** skill-conventions.test.ts, describe "mission-execution: direct sub-agent dispatch": "carries the rule keyword: Agent tool / foreground / explicit model: / fenced JSON verdict / missing verdict is BLOCKED / relay questions instead of nested spawning / resume from board + git / fast lane / coverage lane", "the rule keywords sit in § Dispatch rules, not only elsewhere in the file", "does not contain Workflow( tool call / Workflow script path / workflow resume id / workflow run logging / retired workflow-designer skill / a backticked make command / make ci / make <x>-test / edgeserver / uv run", "never instructs running a workflow.js". Verbose run 22/22 passed. My own mutation (appended `make ci` and `Workflow({...})` to the shipped file) turned exactly 3 forbidden-pattern tests red (Workflow( , backticked make, make ci); file restored to HEAD.
+
+  **AC2:** "§ Dispatch rules are numbered 1..n with no duplicates or gaps" passes; independently I extracted the section and observed 1 2 3 4 5 6 7 8 9 10.
+
+  **Non-blocking notes:**
+  - Keyword checks are presence regexes (e.g. /BLOCKED/ matches anywhere in the rules section), so a semantic inversion of rule 4 would not necessarily fail; only the file-vs-section scoping test covers a subset of keywords.
+  - Fixing-loop wording does not say fixes still get reviewed.
+  - Cosmetic indent oddity (rule 10 continuation lines).
+  - Leftover workflow-era phrasing: mission gate section still references the gate's "baseBranch arg" and "MISSION_TASKS_MERGED".
+  - campaign-view.test.tsx flake is M2 bug B1, not a T2.1 failure.
+  - Installed copy .claude/skills/mission-execution is still version 56 (expected; refreshed by pack install, not by this task).

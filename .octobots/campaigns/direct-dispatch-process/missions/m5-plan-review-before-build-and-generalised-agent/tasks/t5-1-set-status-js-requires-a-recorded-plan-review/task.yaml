@@ -1,0 +1,36 @@
+name: T5.1 - set-status.js requires a recorded plan review to start a mission
+status: done
+role: js-dev
+description: |-
+  Scope:
+  - a new pack module skill/mission-planner/scripts/plan-review.mjs, dependency-free like entity-io.mjs, exporting `planReviewStatus(missionNotes, campaignNotes) -> {ok: true, heading, where: "mission" | "campaign", legacy: boolean} | {ok: false, candidates: [{heading, where, missing: string[]}]}` per mission AC1;
+  - set-status.js: when the target is a mission, the state maps to executing and the stored status is not executing, read the mission notes and `<mission dir>/../../campaign.yaml` notes and call it; on a refusal exit 3 and leave the file unchanged; on a legacy allow print the warning line to stderr;
+  - pull `--force=<reason>` out of argv (any position) before `stateParts.join` (set-status.js:13-15); a bare `--force` or an empty reason exits 2;
+  - on a forced refused move, append `## Plan review overridden (<YYYY-MM-DD UTC>)` and the reason to the mission notes through entity-io (the rest of the notes byte-preserved);
+  - the shared case table packages/board/test/fixtures/plan-review-cases.json (T5.2 reuses it).
+  mission-gate.mjs is untouched. Out of scope: the extension UI (T5.2) and the planner text (T5.3). Downstream: T5.2 mirrors the module; M2-AC8's hooks see a refusal as no status change; M5 TC-001..003, TC-005, TC-013.
+acceptance_criteria:
+  - text: 'packages/board/test/scripts-cli-scenarios.test.ts covers, on temp copies: draft, awaiting approval, failed, done and cancelled -> executing (also spelled active) without a review exit 3 with the file byte-identical; executing -> executing and moves to draft, awaiting approval, done, failed and cancelled are not gated (draft -> done included); `--force=<reason>` in first, middle and last argv position flips the status and appends the overridden note, and a bare `--force` exits 2; a strict record in the mission notes, and one in the campaign notes, flip with nothing on stderr; a legacy heading-only record flips with the `warning: legacy plan review` stderr line (mission AC1)'
+    done: true
+  - text: 'packages/board/test/plan-review.test.ts unit-tests plan-review.mjs on packages/board/test/fixtures/plan-review-cases.json: strict allowed with legacy false; legacy allowed with legacy true; strict wins over legacy; refused: `Verdict: changes requested` under a heading naming both, a heading naming one reviewer, `Reviewers: Alex, Rio`, a Verdict line without a Reviewers line, `## Plan review overridden (...)`, `tech-leadership`, a Reviewers line after the next `## `, and this campaign''s M5 notes alone (self-approval check); `pnpm coverage:pack` passes'
+    done: true
+notes: |-
+  ## QA verification (Sage, 2026-10-06)
+
+  Black-box on the INSTALLED pack: branch pack installed into a git clone --shared of solo with install-pack.mjs --local-changes=overwrite (v57); the installed .claude/skills/mission-planner/scripts/set-status.js ran against copies of the real solo and octoshell boards. Solo git status --short identical before and after.
+
+  M5 cases (executed as written; TC frontmatter not updated, the full M5 run is T5.6; TC-005 needs T5.2, skipped):
+  - TC-001 PASS: solo M10 refused for executing / active / in progress / running, exit 3, mission.yaml sha256 unchanged each time, stderr says no plan review is recorded and names the record template and --force=<reason>; awaiting approval / draft / cancelled / draft, then draft->done and draft->failed, all exit 0 (never gated).
+  - TC-002 PASS: campaign strict record lets M6 move to executing, exit 0, stderr empty, status executing, 0 overridden notes.
+  - TC-003 PASS: bare --force exit 2 with the file unchanged; --force=<reason> in last, first and middle argv position exit 0 with 3 dated "## Plan review overridden" notes; a plain start after an override exits 3; validate.js exit 0, no new error. Observation: the rewrite re-quotes YAML scalars (name: 'x' -> name: x, notes: | -> |-); semantically identical, the same dumpEntity behaviour as every set-status write.
+  - TC-013 PASS: uwb legacy heading accepted, exit 0, one stderr line "warning: legacy plan review ... (campaign notes) has no Reviewers:/Verdict: lines; accepted", no overridden note; one-reviewer copy exit 3 naming the heading and "does not name the tech-lead (tech-lead or Rio)"; changes-requested copy exit 3 naming the heading and "no Reviewers: line naming ba and tech-lead; no Verdict: approved line"; both sha256 unchanged. Wording note: the case text says the stderr says the Verdict is "not approved or approved with nits"; the actual text is "no Verdict: approved line" (the substance, refusal plus the missing Reviewers line, is right).
+
+  Review bypass PoCs, all closed:
+  - --force='## Plan review (Alex + Rio)' (and a multi-line reason carrying a full strict record): exit 0, recorded escaped (\## ...), a later plain start exits 3.
+  - lower-case "verdict: changes requested", upper-case "VERDICT: CHANGES REQUESTED" and "Verdict: changes requested" under "## Plan review (Alex + Rio, 2026-10-02)": exit 3 each.
+  - conflicting Verdict lines (approved then changes requested, and the reverse; with and without a Reviewers line): exit 3, "a Verdict: line that is not approved".
+  - malformed / empty / chmod 000 campaign.yaml with the mission folder as the parent (the form the T5.1 test uses): exit 3 with "the campaign notes could not be read (...)", file unchanged. Note, pre-existing and not changed by T5.1: with the CAMPAIGN folder as the parent and a syntactically broken campaign.yaml, exit 1 comes from resolveStatusTarget/entityName, before the gate and on every status move, gated or not.
+
+  Hooks: a refused move writes 0 bytes to stdout (exit 3, 571 bytes on stderr), and parseTransitionLines('') of the installed status-flip.mjs returns [], so no status-flip hook sees a transition. Successful moves print the "octobots: status <kind> ... from -> to" line.
+
+  Suite: pnpm build, typecheck, lint, test (tokenomics 102, board 614, extension 1005, graph 655 passed) and coverage:pack all exit 0; set-status.js and plan-review.mjs at 100% lines. PR #156 CI build checks: pass.

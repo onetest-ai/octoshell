@@ -1,0 +1,21 @@
+$ TC-006 vitest
++ 51
+
+ ❯ test/validate-workflows-warning.test.ts:57:31
+     55|       const findings = validateBoard(board);
+     56|       const warnings = findings.filter((f) => f.severity === "warning"…
+     57|       expect(warnings.length).toBe(planted); // exactly the planted fo…
+       |                               ^
+     58|       for (const w of warnings) {
+     59|         expect(w.message).toMatch(new RegExp(`^campaigns/.+/workflows/…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  21:38:44
+   Duration  1.93s (transform 34ms, setup 0ms, collect 40ms, tests 1.76s, environment 0ms, prepare 25ms)
+
+undefined
+/Users/arozumenko/Development/octoshell/packages/board:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/validate-workflows-warning.test.ts --reporter=verbose

@@ -1,0 +1,28 @@
+name: T7.1 - Shipped-skill store and its generator
+status: done
+role: js-dev
+description: 'Scope: apps/vscode-extension/scripts/shipped-skills.mjs (--write appends from git history and the current files; --verify reads no git) and the store apps/vscode-extension/resources/shipped-skills.json.br (M7 notes § The store and detection); .gitattributes marking it `-text`; --verify in the extension''s `build` script beside graph-payload --verify; the VSIX packaging includes the store. Out of scope: reading the store for detection (T7.2). Downstream: T7.2 reads it; every later SKILL.md change runs --write (campaign notes § Test conventions rule 9).'
+acceptance_criteria:
+  - text: 'apps/vscode-extension/test/shipped-skills.test.ts asserts every resources/octobots-pack/skill/*/SKILL.md is indexed under OCTOBOTS_PACK_VERSION with its body stored, the store has workflow-designer entries at 56, an `octobots` entry at 18 and the v56 mission-execution and mission-completion-gate hashes 9af2c928... and 008de10a...; `shipped-skills.mjs --verify` (run with GIT_DIR pointing at an empty directory, so a git read would fail) exits 0 on the committed store and exits 1 naming the file for each of: an unindexed current SKILL.md, a body whose normalised sha256 differs from its key; `--write` on an unchanged tree changes no byte (mission AC1)'
+    done: true
+  - text: '`pnpm --filter @octoshell/vscode-extension build` runs --verify; `pnpm --filter @octoshell/vscode-extension package` produces a VSIX whose `unzip -l` lists extension/resources/shipped-skills.json.br at no more than 100 KB; `pnpm test` is green'
+    done: true
+notes: |-
+  ## QA verification
+
+  Verdict: PASS (QA, 2026-10-05, PR #127, head 4ab1478). Black-box probe of the committed store before reading the generator or tests.
+
+  Records:
+  - Store decompresses (brotli, JSON) to 134 bodies, 31 versions, 134-entry order; 66,978 bytes.
+  - Solo forks (auqanautica, read only, status unchanged): the v56 origin is commit 7de91fef ("update of octobots") itself; its parent holds v36. CRLF->LF sha256 of 7de91fef:.claude/skills/mission-execution/SKILL.md = 9af2c928b831... and mission-completion-gate = 008de10a952f..., both listed under v56 only. The current forks (version 57-local; mission-execution c5be7bc4, mission-completion-gate 16dd4468) are in neither versions nor bodies.
+  - Every current pack skill/*/SKILL.md (knowledge-explorer, mission-completion-gate, mission-execution, mission-planner) is listed under 57 with its body. workflow-designer is at 56 and 57 (and 23-37, 42-51, 54-55); it is no longer in the current pack, the v57 entry is the 800c62c build. octobots is at 18 only.
+  - All 134 bodies hash to their key; every index reference has a body. For each v57 skill the first entry equals the 800c62c build.
+
+  AC1 (shipped-skills.test.ts, 24/24 passed, 0 skipped): verified independently. --verify with GIT_DIR set to a non-repo dir exits 0 ("store is current"). A tampered scratch store (one body altered) exits 1 naming the store and the key. A scratch pack copy with an edited mission-planner SKILL.md exits 1 naming that file ("not indexed under pack version 57"). --write on the unchanged tree exits 0 and the store sha256 is unchanged before/after (2dc7389b...0d5f).
+  AC2: `pnpm --filter @octoshell/vscode-extension build` runs graph-payload --verify then shipped-skills --verify and prints "shipped-skills store is current." Store is 66,978 bytes (< 100 KB; wiring test asserts .vscodeignore does not exclude it and .gitattributes marks it -text). pnpm build, typecheck, lint, test (board 380, tokenomics 102, extension 602, graph 653, all passed) and coverage:pack exit 0; no skips. PR checks green (2 build jobs). `pnpm package` NOT re-run by QA (it rewrites tracked price files); the reviewer's VSIX listing (extension/resources/shipped-skills.json.br, 66,978 bytes) is accepted as given.
+
+  Non-blocking notes:
+  1. --verify does not check entry order or that the stored body's version line matches its version key; --write is the only place order is established (a test pins order).
+  2. The store is binary (-text): a merge conflict cannot be resolved by hand; re-run `node apps/vscode-extension/scripts/shipped-skills.mjs --write` on the merged tree.
+  3. `pnpm package` rewrites the tracked price files (T6.6 owns the guard).
+  4. Versions 38-40 and 52-53 are absent by design (never released); a test pins this.

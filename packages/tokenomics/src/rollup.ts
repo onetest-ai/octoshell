@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { BoardModel, Mission, Task } from "@octoshell/board";
+import type { BoardModel, Campaign, Mission, Task } from "@octoshell/board";
 import { loadWorkLog, readEstimate } from "./estimates.js";
 import { cacheReadCost, costOf, costOfModel, loadPrices, unpricedModels, type PriceTable } from "./prices.js";
 import {
@@ -56,38 +56,50 @@ export function rollup(opts: RollupOptions): Report {
       estimate: readEstimate(join(artifactsRoot, m.folderPath), "mission"),
     }));
 
-  const grouped = new Map<string, Segment[]>();
-  const unattributed: Segment[] = [];
-  const attributionOf = new Map<string, Attribution>();
+  const campaigns: CampaignEntry[] = board.listCampaigns().map((c) => ({
+    campaign: c,
+    slug: c.folderPath.split("/").filter(Boolean).pop() ?? "",
+    declaredBranches: readEstimate(join(artifactsRoot, c.folderPath), "campaign").branches,
+  }));
 
-  // Campaign id -> folder slug, which is what a branch name actually contains.
-  const slugById = new Map(
-    board.listCampaigns().map((c) => [c.id, c.folderPath.split("/").filter(Boolean).pop() ?? ""]),
-  );
-
-  // A task label implies its mission, so the work log resolves the mission too —
-  // otherwise an off-convention branch would still be unattributable, which is
-  // exactly the case the log exists to fix.
-  const missionByTaskLabel = new Map<string, MissionEntry>();
+  // A task label implies its mission, so the work log resolves the mission too - otherwise an
+  // off-convention branch would still be unattributable, which is exactly the case the log exists
+  // to fix. A label carried by tasks in more than one mission names none of them.
+  const missionByTaskLabel = new Map<string, MissionEntry | typeof AMBIGUOUS>();
   for (const e of missions) {
     for (const t of e.tasks) {
       const label = taskLabel(t);
-      if (label) missionByTaskLabel.set(label, e);
+      if (!label) continue;
+      const seen = missionByTaskLabel.get(label);
+      missionByTaskLabel.set(label, seen === undefined || seen === e ? e : AMBIGUOUS);
     }
   }
 
+  const ctx: AttributionContext = {
+    missions: [...missions].sort(byCampaignThenNumber(campaigns)),
+    campaigns,
+    workLog,
+    missionByTaskLabel,
+  };
+
+  const grouped = new Map<string, Segment[]>();
+  const groupedCampaign = new Map<string, Segment[]>();
+  const unattributed: Segment[] = [];
+  const attributionOf = new Map<string, Attribution>();
+
   for (const seg of segments) {
-    const loggedTask = workLog.get(`${seg.sessionId}|${seg.branch}`) ?? workLog.get(seg.sessionId);
-    const entry =
-      matchMission(seg.branch, missions, slugById) ??
-      (loggedTask ? missionByTaskLabel.get(loggedTask) ?? null : null);
-    if (!entry) {
+    const target = resolveAttribution(seg.branch, seg.sessionId, ctx);
+    if (target.kind === "unattributed") {
       unattributed.push(seg);
       continue;
     }
-    const list = grouped.get(entry.mission.id) ?? [];
+    const [bucket, key] =
+      target.kind === "mission"
+        ? [grouped, target.mission.mission.id]
+        : [groupedCampaign, target.campaign.campaign.id];
+    const list = bucket.get(key) ?? [];
     list.push(seg);
-    grouped.set(entry.mission.id, list);
+    bucket.set(key, list);
   }
 
   const runs: MissionRun[] = [];
@@ -95,6 +107,11 @@ export function rollup(opts: RollupOptions): Report {
     const segs = grouped.get(entry.mission.id);
     if (!segs?.length) continue;
     runs.push(buildMissionRun(entry, segs, prices, workLog, attributionOf, artifactsRoot));
+  }
+  for (const c of campaigns) {
+    const segs = groupedCampaign.get(c.campaign.id);
+    if (!segs?.length) continue;
+    runs.push(buildCampaignRun(c, segs, prices));
   }
   runs.sort((a, b) => b.costUsd - a.costUsd);
 
@@ -112,6 +129,7 @@ export function rollup(opts: RollupOptions): Report {
       turns: unattributed.reduce((n, s) => n + s.turns, 0),
       branches: [...new Set(unattributed.map((s) => s.branch))].sort(),
       tokens: totalsOf(unattrByModel),
+      costByModel: Object.fromEntries(Object.entries(unattrByModel).map(([m, t]) => [m, round2(costOfModel(prices, m, t))])),
       costUsd: round2(costOf(prices, unattrByModel)),
     },
     unpricedModels: unpricedModels(prices, seenModels),
@@ -124,49 +142,153 @@ interface MissionEntry {
   estimate: ReturnType<typeof emptyEstimate>;
 }
 
-/** Campaign ids are opaque (`folder:campaigns/<slug>`); branches carry the slug. */
-function campaignSlug(m: Mission, byId: Map<string, string>): string {
-  return byId.get(m.campaignId) ?? "";
+interface CampaignEntry {
+  campaign: Campaign;
+  /** The folder slug, which is what a branch name actually contains (ids are opaque). */
+  slug: string;
+  declaredBranches: string[];
+}
+
+/** A task label carried by tasks in more than one mission: it identifies none of them. */
+const AMBIGUOUS = Symbol("ambiguous-task-label");
+
+export interface AttributionContext {
+  /** Sorted by (campaign slug, mission number) so a branch declared twice resolves the same way every run. */
+  missions: MissionEntry[];
+  /** EVERY campaign, including ones with no missions. */
+  campaigns: CampaignEntry[];
+  /** From `loadWorkLog`; only the branch-qualified `session|branch` keys are consulted. */
+  workLog: Map<string, string>;
+  missionByTaskLabel: Map<string, MissionEntry | typeof AMBIGUOUS>;
+}
+
+export type AttributionTarget =
+  | { kind: "mission"; mission: MissionEntry; step: 1 | 2 | 3 | 4 }
+  | { kind: "campaign"; campaign: CampaignEntry; step: 5 | 6 }
+  | { kind: "unattributed"; step: 7 };
+
+function byCampaignThenNumber(campaigns: CampaignEntry[]): (a: MissionEntry, b: MissionEntry) => number {
+  const slug = new Map(campaigns.map((c) => [c.campaign.id, c.slug]));
+  const key = (e: MissionEntry): [string, number] => [slug.get(e.mission.campaignId) ?? "", missionNumber(e.mission) ?? 0];
+  return (a, b) => {
+    const [sa, na] = key(a);
+    const [sb, nb] = key(b);
+    return sa < sb ? -1 : sa > sb ? 1 : na - nb;
+  };
 }
 
 /**
- * Map a branch to a mission. An explicit `branches:` declaration wins; otherwise
- * match the longest campaign SLUG appearing in the branch, then disambiguate by
- * an `m<n>` token, falling back to the campaign's only mission.
+ * Where does a (branch, session) pair belong? The first step that hits wins. This is the only place
+ * attribution is decided; `packs/.../rollup.mjs` carries the same table and the parity test holds
+ * them together.
  *
- * Branch discipline is what makes the fallback work — which is exactly why the
- * work log exists for the task level, where guessing hurt most.
+ *  1. A mission declares the branch (`tokenomics.branches`).
+ *  2. The longest campaign slug in the branch, plus `-m<n>`: that campaign's mission n. A `-m<n>`
+ *     naming no mission falls through - it must not jump ahead of a recorded worklog fact.
+ *  3. That slug, no `-m<n>`, and the campaign has exactly one mission.
+ *  4. The work log recorded this exact session on this exact branch against a task id that belongs
+ *     to one mission. The bare-session key never attributes a mission: it follows a session across
+ *     branches, so it would drag every branch the session touched into one mission.
+ *  5. A campaign declares the branch.
+ *  6. The longest campaign slug in the branch: the campaign-level bucket.
+ *  7. Unattributed.
  */
-function matchMission(
-  branch: string,
-  missions: MissionEntry[],
-  slugById: Map<string, string>,
-): MissionEntry | null {
-  for (const e of missions) if (e.estimate.branches.includes(branch)) return e;
+export function resolveAttribution(branch: string, sessionId: string, ctx: AttributionContext): AttributionTarget {
+  for (const e of ctx.missions) {
+    if (e.estimate.branches.includes(branch)) return { kind: "mission", mission: e, step: 1 };
+  }
 
-  const slugs = [...new Set(missions.map((e) => campaignSlug(e.mission, slugById)))]
-    .filter((slug) => slug && branch.includes(slug))
-    .sort((a, b) => b.length - a.length);
-  if (!slugs.length) return null;
+  const top = ctx.campaigns
+    .filter((c) => c.slug && branch.includes(c.slug))
+    .sort((a, b) => b.slug.length - a.slug.length || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))[0];
+  if (top) {
+    const inCampaign = ctx.missions.filter((e) => e.mission.campaignId === top.campaign.id);
+    const num = /-m(\d+)\b/i.exec(branch)?.[1];
+    if (num) {
+      const hit = inCampaign.find((e) => (missionNumber(e.mission) ?? 0) === Number(num));
+      if (hit) return { kind: "mission", mission: hit, step: 2 };
+    } else if (inCampaign.length === 1 && inCampaign[0]) {
+      return { kind: "mission", mission: inCampaign[0], step: 3 };
+    }
+  }
 
-  const inCampaign = missions.filter((e) => campaignSlug(e.mission, slugById) === slugs[0]);
-  const num = /-m(\d+)\b/i.exec(branch)?.[1];
-  if (num) return inCampaign.find((e) => missionNumber(e.mission) === Number(num)) ?? null;
-  return inCampaign.length === 1 ? (inCampaign[0] ?? null) : null;
+  const label = ctx.workLog.get(`${sessionId}|${branch}`);
+  const logged = label ? ctx.missionByTaskLabel.get(label) : undefined;
+  if (logged && logged !== AMBIGUOUS) return { kind: "mission", mission: logged, step: 4 };
+
+  const declared = [...ctx.campaigns]
+    .sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))
+    .find((c) => c.declaredBranches.includes(branch));
+  if (declared) return { kind: "campaign", campaign: declared, step: 5 };
+
+  if (top) return { kind: "campaign", campaign: top, step: 6 };
+  return { kind: "unattributed", step: 7 };
 }
 
+/**
+ * The board id of a mission or task, derived exactly as `rollup.mjs` derives it (`splitTitle` with its
+ * folder fallback), because step 2 matches the mission number and step 4 matches the task id: two
+ * derivations would attribute the same segment differently. The `<id> - <name>` title prefix wins;
+ * otherwise the folder slug (`m3-...` -> `M3`, `t3-1-...` -> `T3.1`). An id that appears later in a
+ * title ("Port the T2.1 follow-up") is prose, not the entity's id.
+ */
+function boardId(title: string, folderPath: string, kind: "mission" | "task"): string | null {
+  const fromTitle = /^\s*([MT]\d+(?:\.\d+)?)\s*[-–—:]\s*(.+)$/.exec(title)?.[1];
+  if (fromTitle) return fromTitle;
+  const folder = folderPath.split("/").filter(Boolean).pop() ?? "";
+  if (kind === "mission") {
+    const n = /^m(\d+)/i.exec(folder)?.[1];
+    return n ? `M${n}` : folder || null;
+  }
+  const t = /^t(\d+)-(\d+)/i.exec(folder);
+  return t ? `T${t[1]}.${t[2]}` : null;
+}
+
+/** `rollup.mjs`'s `missionNum`: the digits of the mission's board id; null when it has none. */
 function missionNumber(m: Mission): number | null {
-  const n = /M(\d+)/i.exec(m.title)?.[1];
-  return n ? Number(n) : null;
+  const digits = (boardId(m.title, m.folderPath, "mission") ?? "").replace(/\D/g, "");
+  return digits ? Number(digits) : null;
 }
 
 function taskNumber(t: Task): number | null {
-  const n = /T\d+\.(\d+)/i.exec(t.name)?.[1];
+  const n = /^T\d+\.(\d+)$/.exec(taskLabel(t) ?? "")?.[1];
   return n ? Number(n) : null;
 }
 
 function taskLabel(t: Task): string | null {
-  return /T(\d+\.\d+)/i.exec(t.name)?.[0] ?? null;
+  return boardId(t.name, t.folderPath, "task");
+}
+
+/** The campaign-level bucket: spend attributed to a campaign that belongs to none of its missions. */
+function buildCampaignRun(entry: CampaignEntry, segs: Segment[], prices: PriceTable): MissionRun {
+  return {
+    ...metered(segs, prices),
+    scope: "campaign",
+    missionId: null,
+    missionTitle: entry.campaign.name,
+    campaignId: entry.campaign.id,
+    estimate: { ...emptyEstimate(), branches: entry.declaredBranches },
+    tasks: [],
+  };
+}
+
+function metered(segs: Segment[], prices: PriceTable) {
+  const byModel = sumByModel(segs);
+  const cost = costOf(prices, byModel);
+  const orchCost = costOf(prices, sumByModel(segs.filter((s) => s.kind === "orchestrator")));
+  return {
+    branches: [...new Set(segs.map((s) => s.branch))].sort(),
+    sessions: new Set(segs.map((s) => s.sessionId)).size,
+    turns: segs.reduce((n, s) => n + s.turns, 0),
+    subagentDispatches: segs.filter((s) => s.kind === "subagent").length,
+    orchestratorCostPct: cost > 0 ? Math.round((100 * orchCost) / cost) : 100,
+    cacheReadSharePct: cost > 0 ? Math.round((100 * cacheReadCost(prices, byModel)) / cost) : 0,
+    tokens: totalsOf(byModel),
+    // Priced per model, never apportioned by token share: models differ ~2.5x per token, so an
+    // equal token split is not an equal cost split.
+    costByModel: Object.fromEntries(Object.entries(byModel).map(([m, t]) => [m, round2(costOfModel(prices, m, t))])),
+    costUsd: round2(cost),
+  };
 }
 
 function buildMissionRun(
@@ -177,31 +299,14 @@ function buildMissionRun(
   attributionOf: Map<string, Attribution>,
   artifactsRoot: string,
 ): MissionRun {
-  const byModel = sumByModel(segs);
-  const cost = costOf(prices, byModel);
-  const orchestrator = segs.filter((s) => s.kind === "orchestrator");
-  const subagents = segs.filter((s) => s.kind === "subagent");
-  const orchCost = costOf(prices, sumByModel(orchestrator));
-
   return {
+    ...metered(segs, prices),
+    scope: "mission",
     missionId: entry.mission.id,
     missionTitle: entry.mission.title,
     campaignId: entry.mission.campaignId,
     estimate: entry.estimate,
-    branches: [...new Set(segs.map((s) => s.branch))].sort(),
-    sessions: new Set(segs.map((s) => s.sessionId)).size,
-    turns: segs.reduce((n, s) => n + s.turns, 0),
-    subagentDispatches: subagents.length,
-    orchestratorCostPct: cost > 0 ? Math.round((100 * orchCost) / cost) : 100,
-    cacheReadSharePct: cost > 0 ? Math.round((100 * cacheReadCost(prices, byModel)) / cost) : 0,
-    tokens: totalsOf(byModel),
-    // Priced per model, never apportioned by token share: models differ ~2.5x
-    // per token, so an equal token split is not an equal cost split.
-    costByModel: Object.fromEntries(
-      Object.entries(byModel).map(([m, t]) => [m, round2(costOfModel(prices, m, t))]),
-    ),
-    costUsd: round2(cost),
-    tasks: buildTaskRuns(entry, segs, cost, prices, workLog, attributionOf, artifactsRoot),
+    tasks: buildTaskRuns(entry, segs, costOf(prices, sumByModel(segs)), prices, workLog, attributionOf, artifactsRoot),
   };
 }
 
@@ -306,4 +411,4 @@ function round2(n: number): number {
 }
 
 /** Unused today, but taskNumber keeps the label parsing honest for future sorting. */
-export const __internals = { matchMission, taskNumber, campaignSlug };
+export const __internals = { resolveAttribution, taskNumber };

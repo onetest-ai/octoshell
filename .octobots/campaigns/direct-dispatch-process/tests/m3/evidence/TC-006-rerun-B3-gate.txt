@@ -1,0 +1,13 @@
+pnpm build && typecheck && lint && test (OCTOBOTS_BOARD_COPIES unset): exit 0
+ Tasks:    4 successful, 4 total
+ Tasks:    6 successful, 6 total
+ Tasks:    4 successful, 4 total
+@octoshell/board:test:  Test Files  25 passed (25)
+@octoshell/board:test:       Tests  293 passed (293)
+@octoshell/tokenomics:test:  Test Files  7 passed (7)
+@octoshell/tokenomics:test:       Tests  102 passed (102)
+@octoshell/vscode-extension:test:  Test Files  58 passed (58)
+@octoshell/vscode-extension:test:       Tests  947 passed (947)
+@octoshell/graph:test:  Test Files  46 passed (46)
+@octoshell/graph:test:       Tests  653 passed (653)
+ Tasks:    6 successful, 6 total

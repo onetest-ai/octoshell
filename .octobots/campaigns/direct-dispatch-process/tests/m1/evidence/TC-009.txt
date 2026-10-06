@@ -1,0 +1,72 @@
+# TC-009
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/tokenomics
+
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > home default: same segment ids, own slug only, richer duplicate wins
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > CLAUDE_CONFIG_DIR replaces the home default
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > OCTOBOTS_TOKENOMICS_PROJECTS_DIR and --projects-dir replace both
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > a /.claude/worktrees/ path resolves to the main checkout's slug
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > a duplicate with EQUAL turns keeps the earlier root's copy, on both sides
+ ✓ test/claude-source-parity.test.ts > ClaudeTranscriptSource / collect.mjs parity (mission AC4) > a trailing slash or a relative project path yields the same slug and the same ids
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 1 - 'decl-mission'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 1 - 'decl-mission-beats-slug'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 1 - 'mission-decl-beats-campaign-decl'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 2 - 'slug-m'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 2 - 'longest-slug-m'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 6 - 'bad-m-no-worklog (2 falls through to …'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 4 - 'bad-m-worklog (2 falls through to 4)'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 3 - 'single-mission'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 4 - 'worklog-beats-campaign-row'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 4 - 'worklog-off-convention'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 4 - 'worklog-beats-campaign-decl'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 7 - 'worklog-ambiguous-label (falls to 7)'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 7 - 'worklog-bare-session-ignored (falls t…'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 5 - 'campaign-decl-list'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 5 - 'campaign-decl-comma-string'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 5 - 'campaign-decl-beats-slug'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 6 - 'slug-no-mission-longest'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 6 - 'zero-mission-campaign'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 7 - 'nothing'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > exercises every one of the 7 precedence steps
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > runs[] and unattributed are identical, campaign rows included
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > totals invariant (mjs): sum(runs) + unattributed == segments
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > totals invariant (ts): sum(runs) + unattributed == segments
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > cost invariant: attributed + unattributed within per-row rounding of the segments' price
+ ✓ test/rollup-parity.test.ts > real board copy (OCTOBOTS_TOKENOMICS_COPY, else this repo's own .octobots) > rollup.mjs and rollup.ts agree on a copy of a real .octobots, and the totals invariant holds 1406ms
+
+ Test Files  2 passed (2)
+      Tests  31 passed (31)
+   Start at  11:34:11
+   Duration  1.85s (transform 69ms, setup 0ms, collect 313ms, tests 1.69s, environment 0ms, prepare 57ms)
+
+## real-data copy: $WORK/tk (copy of qa-m1 .octobots after TC-005/006: incl. uwb declaration); segments:     1640
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 1 - 'decl-mission-beats-slug'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 1 - 'mission-decl-beats-campaign-decl'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 2 - 'slug-m'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 2 - 'longest-slug-m'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 6 - 'bad-m-no-worklog (2 falls through to …'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 4 - 'bad-m-worklog (2 falls through to 4)'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 3 - 'single-mission'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 4 - 'worklog-beats-campaign-row'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 4 - 'worklog-off-convention'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 4 - 'worklog-beats-campaign-decl'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 7 - 'worklog-ambiguous-label (falls to 7)'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 7 - 'worklog-bare-session-ignored (falls t…'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 5 - 'campaign-decl-list'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 5 - 'campaign-decl-comma-string'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 5 - 'campaign-decl-beats-slug'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 6 - 'slug-no-mission-longest'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 6 - 'zero-mission-campaign'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > step 7 - 'nothing'
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > exercises every one of the 7 precedence steps
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > runs[] and unattributed are identical, campaign rows included
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > totals invariant (mjs): sum(runs) + unattributed == segments
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > totals invariant (ts): sum(runs) + unattributed == segments
+ ✓ test/rollup-parity.test.ts > attribution parity: rollup.mjs and rollup.ts > cost invariant: attributed + unattributed within per-row rounding of the segments' price
+ ✓ test/rollup-parity.test.ts > real board copy (OCTOBOTS_TOKENOMICS_COPY, else this repo's own .octobots) > rollup.mjs and rollup.ts agree on a copy of a real .octobots, and the totals invariant holds 5923ms
+
+ Test Files  1 passed (1)
+      Tests  25 passed (25)
+   Start at  11:34:13
+   Duration  6.41s (transform 59ms, setup 0ms, collect 257ms, tests 6.03s, environment 0ms, prepare 28ms)
+

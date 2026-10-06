@@ -1,0 +1,5 @@
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4qa/work/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/missions/m6-receiver-port-configuration-file/mission.yaml
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m6/README.md: missing — M6 has no tests README; run add-tests.js to scaffold it
+exit=0
+evidence
+runs

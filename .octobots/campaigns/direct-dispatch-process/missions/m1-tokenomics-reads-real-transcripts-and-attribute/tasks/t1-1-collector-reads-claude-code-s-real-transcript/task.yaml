@@ -1,0 +1,34 @@
+name: T1.1 - Collector reads Claude Code's real transcript roots
+status: done
+role: js-dev
+description: 'Scope: port solo''s collect.mjs root resolution, slug rule and dedupe, plus its selftest.mjs roots suite (isolated HOME) and README section, into resources/octobots-pack/tokenomics/. Wrap selftest.mjs in a vitest so CI runs it. Rewrite doctor.js''s config-dir check (mission AC8): ~/.claude/projects is the default root and is ok; never recommend CLAUDE_CONFIG_DIR=<repo>/.claude. Out of scope: prices.json (T1.4; solo''s copy is older, never copy wholesale) and the TS source (T1.2). Downstream: T1.2 mirrors the rules; T1.3 consumes segments; TC-001..003 and TC-011.'
+acceptance_criteria:
+  - text: apps/vscode-extension/test/tokenomics-selftest.test.ts spawns `node resources/octobots-pack/tokenomics/selftest.mjs`, asserts exit 0, and asserts the roots suite ran and covered mission AC1-AC3 (slug filter, root precedence, dedupe + byte-identical rerun)
+    done: true
+  - text: the selftest fails if the developer's real HOME or CLAUDE_CONFIG_DIR leaks into it (HOME and CLAUDE_CONFIG_DIR are isolated), proven by a case in the same suite
+    done: true
+  - text: doctor.js config-dir check per mission AC8, covered by cases in packages/board/test/scripts-cli-scenarios.test.ts whose names contain "config-dir" (unset -> ok naming ~/.claude/projects/<slug>, no CLAUDE_CONFIG_DIR=<repo>/.claude advice; set -> names $CLAUDE_CONFIG_DIR/projects/<slug>); `pnpm coverage:pack` passes
+    done: true
+notes: |
+  ## QA verification
+
+  Verdict: PASS (2026-10-05, PR #113, branch feat/direct-dispatch-process-m1-t1). All 3 task ACs verified; mission AC1, AC2, AC3, AC8 observed.
+
+  Real record. Copied (cp -R, frozen) ~/.claude/projects/-Users-arozumenko-Development-auqanautica (sessions 011deac1, 138ca3b0, 39d8025a with subagent dirs, memory/ dropped; 102M) plus ~/.claude/projects/-Users-arozumenko-Development-octodeck (other project) into a scratch HOME. Solo's own path could not be used as --project-dir (collect.mjs writes .octobots/ under it and the real checkout exists), so the solo dir was copied under the scratch project's slug; the slug rule was checked separately: "/Users/arozumenko/Development/auqanautica".replace(/[^A-Za-z0-9]/g,"-") === the real dir name. Probed the built pack blind (copy of resources/octobots-pack/tokenomics). Nothing was written under the real solo repo or ~/.claude.
+
+  - AC1: HOME=scratch, CLAUDE_CONFIG_DIR unset, --project-dir <scratch>: 180 segments, 3 sessions, session ids exactly {011deac1, 138ca3b0, 39d8025a}; 0 segments from the octodeck session 268bb8f4. Tests: tokenomics-selftest "covers M1 AC1 slug filter" and "slug rule: _ and . become -".
+  - AC2: CLAUDE_CONFIG_DIR=X (HOME holding 3 other sessions) -> only X's session. --projects-dir Y with CLAUDE_CONFIG_DIR=X+HOME -> only Y. OCTOBOTS_TOKENOMICS_PROJECTS_DIR=Y with CONFIG+HOME -> only Y. --projects-dir Y beats env=X -> Y. Tests: "covers M1 AC2 root precedence" x3.
+  - AC3: same session in home root and legacy <project>/.claude/projects/<slug>, both ways round (home 300 lines/legacy 100, and the inverse): each counted once, 27 turns each (the larger copy; a lone 100-line file is 6 turns, 300-line is 27), no double count. Rerun shasum identical (4e6327c4...bd08bca both runs). Tests: "covers M1 AC3 dedupe" x3 incl. "more turns wins regardless of root order".
+  - AC8: doctor.js --json, CLAUDE_CONFIG_DIR unset -> {level ok, area config-dir, "transcripts are read from ~/.claude/projects/<slug>"}; set to /x/cfg -> ok, "/x/cfg/projects/<slug>". Zero occurrences of "export CLAUDE_CONFIG_DIR". Tests: scripts-cli-scenarios "doctor.js config-dir" x4 (names contain "config-dir").
+
+  Per-AC evidence:
+  1. tokenomics-selftest.test.ts: 12/12 passed (verbose); exits 0, roots suite ran (15 ok roots lines), AC1-AC3 mapped by name.
+  2. Isolation case "proves the developer's real HOME and CLAUDE_CONFIG_DIR cannot leak in" passes. Mutation check: in a scratch copy of the pack, removing the env deletion in selftest.mjs isolatedEnv makes it fail: FAIL [roots][isolation] the caller's CLAUDE_CONFIG_DIR does not leak in, exit 1 (unmutated exit 0). (HOME leak is overridden explicitly by isolatedEnv so is not mutable this way.)
+  3. scripts-cli-scenarios.test.ts 59/59, 4 config-dir cases; pnpm coverage:pack passes, 92.47% stmts, doctor.js 97.14%.
+
+  Re-run from scratch, root, foreground: pnpm build && typecheck && lint && test && coverage:pack all exit 0. board 383, tokenomics 44, graph 653, vscode-extension 463 (dev reported 462, +1 not a failure). gh pr checks 113: both build jobs pass.
+
+  Reviewer's fix 958dbd0 (richer copy in the earlier root) confirmed: selftest case "more turns wins even when the richer copy is in the earlier root" passes and my inverse probe agrees.
+
+  Routed to T1.3 (not T1.1 failures): verify.mjs:65 points ccusage at the legacy root; gate SKILL.md/README text.
+  Non-blocking findings: (a) collect.mjs does not resolve() --project-dir, so a relative path yields a wrong slug; (b) collect.mjs has no --help: `collect.mjs --help` runs a real collection against cwd and writes .octobots/tokenomics/raw/segments.jsonl there (I hit this once, scratch dir only); (c) dev-run count 462 vs 463 is just the added reviewer test.

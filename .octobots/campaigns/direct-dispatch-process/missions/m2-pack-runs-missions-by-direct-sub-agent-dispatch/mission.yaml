@@ -1,0 +1,116 @@
+name: M2 - Pack runs missions by direct sub-agent dispatch
+status: done
+description: Upstream solo's 57-local mission-execution and mission-completion-gate, with solo-specifics replaced by project-declared test lanes (declaration format lands in M5; until then 'the project's documented commands'). Delete workflow-designer and the 7 workflow scripts (incl. mission-input.js) from the pack, and retire them on install. Protecting locally changed skills during an install is M7 (campaign decision 13, revised); until M7 lands, installPack overwrites them as it does today. Replace workflow validation in validate.js with a non-fatal 'no longer read' warning. Fix the gate hook's directive, and make the gate and work-log hooks act only on a status change that actually happened. Board library and extension are untouched (M3), except the board test that imports a deleted pack script.
+acceptance_criteria:
+  - text: Given the v57 pack, skill/workflow-designer/ and scripts/{add-workflow,sync-meta,add-run,mission-input}.js, scripts/{extract-meta,workflow-meta}.mjs and scripts/vendor/acorn.mjs do not exist; OCTOBOTS_SKILLS (octobots-skill.ts:14) and doctor.js:63 list 4 skills
+    done: true
+  - text: Given a workspace with any of those installed, when installPack runs, then they are removed, and files the pack never shipped (e.g. create-team.js) are kept (a locally changed skill's protection is M7's)
+    done: true
+  - text: Given a mission or campaign dir holding workflows/<slug>/ (workflow.js or workflow.json), when validate.js <dir> runs, then it prints one `warning:` line per folder naming the path and 'no longer read since pack v57', and the exit code is what the entity alone would produce; validate.js <path>/workflow.js exits 2 with 'not an entity file'
+    done: true
+  - text: Given a board with N workflows/ folders, doctor.js reports one `warn` (not `fail`) with the count and the fix
+    done: true
+  - text: 'mission-execution tells the orchestrator to: dispatch one sub-agent per phase with the Agent tool, in the foreground, with explicit model:; require a fenced JSON verdict and treat a missing one as BLOCKED; relay questions instead of nested spawning; resume from board + git and re-dispatch a dead agent; read the project''s fast and coverage lanes, naming no project-specific command (no `make` invocation such as `make ci` or `make <x>-test`, no edgeserver path, no `uv run`). It contains no `Workflow(` or workflow.js execution instruction, and the rules in its § Dispatch rules are numbered without duplicates'
+    done: true
+  - text: mission-completion-gate defines its 5 phases as orchestrator dispatches; defines blocking as an AC demonstrably unmet, a reproducible defect, or a security exposure with a PoC; allows one review round plus one fix round with residue filed as board bugs; green means 0 failed, 0 xfailed/todo and no skip without an environmental reason; coverage runs on the coverage lane only
+    done: true
+  - text: Given `set-status.js ... "M1 - ..." done`, hooks/mission-gate.mjs emits a directive that says the orchestrator relays Rio's questions to the devs and does not say 'directly'; `pnpm coverage:pack` still passes (90/90/90/70)
+    done: true
+  - text: 'Given a set-status.js command whose write did not happen (for example `set-status.js <campaign-dir> "M9 - no such mission" done; echo`, which exits 0 as a whole, or a start that set-status.js refused), hooks/mission-gate.mjs and hooks/work-log.mjs act only on a real transition: set-status.js reports each call on stdout (`octobots: status <kind> "<title>" <from> -> <to>`, or `... unchanged (<state>)` with no write), and the hooks act only for a call whose transition line they read from the PostToolUse tool_response AND whose YAML now holds the target state (so a re-run on an already-done mission, a forged echo of either line alone, or an absent tool_response is silent): no gate directive is printed and no work-log line is written'
+    done: true
+documents:
+  - label: M2 functional test cases
+    target: .octobots/campaigns/direct-dispatch-process/tests/m2/README.md
+tokenomics:
+  effort_days: 2.5
+  size_tshirt: L
+  complexity_score: 15
+notes: |-
+  ## Planning notes (Rio, 2026-10-05)
+
+  M2 goes before M3: the pack's scripts are dependency-free .mjs with no import edge to packages/board, so the extension keeps compiling while it still reads workflows; M3 then removes the board types and every consumer together.
+  Solo-specific text to generalise when porting: solo mission-execution :116 (edgeserver/app search scope), :118-121 (uv run pytest, make edgeserver-test-fast, 'This Mac'), :122-123 (make ci). Defect to fix while porting: the fork has two rules numbered 7. Solo gate :85-86 (make edgeserver-test-fast, make coverage). Gap: the fork never tells QA to run the mission's tests/m<n>/ cases (M4 adds it).
+  Retired files must go into RETIRED_SKILLS/RETIRED_FILES (octobots-skill.ts:20,26) or copyTree (:95-105) leaves them forever. mission-planner's create-team.js (solo-only) is not shipped and must survive an upgrade.
+  Solo's `version: 57-local` parses to null (parseVersion regex), so packStatus reports solo not-installed today; accepting the re-install prompt BEFORE v57 ships would roll solo back to v56 workflows (tell the user to decline until 0.1.0). From M7 on, a `57-local` skill counts as installed but deviated, and the install offers to reconcile it (decision 13, revised; M7).
+
+  ## Plan-review fixes (2026-10-05)
+
+  - CI must stay green on the M2 branch: packages/board/test/extract-meta-parity.test.ts:11 imports the pack's extract-meta.mjs, which T2.3 deletes, so T2.3 deletes that test too (the TS extract-meta.ts and its own tests go in M3 T3.3).
+  - QA calls installPack through the committed harness apps/vscode-extension/scripts/qa/install-pack.mjs (T2.3), never an ad-hoc .qa/ script.
+  - AC8 (hooks confirm the status change): hooks/work-log.mjs:85 logs any `active` without checking the result, which would attribute a planning session to a mission once M5 can refuse a start. It is testable before M5 with a set-status.js call for a title that does not exist, chained with `; echo`.
+  - AC3's workflow.json half has no real record (neither board has a workflow.json): UNREACHABLE on real data, covered only by the scripts-cli-scenarios case.
+
+  ## Local-fork protection: moved to M7 (2026-10-05)
+
+  The warn-first design that was here (T2.5, AC9/AC10) was superseded the same day by campaign decision 13 (revised): agent-driven reconcile. It is planned as M7, which lands after M2. M2 keeps today's overwrite behaviour; its TCs say so.
+
+  ## QA verification
+
+  T2.5, qa-engineer, 2026-10-05. Run record: `.octobots/campaigns/direct-dispatch-process/tests/m2/runs/RUN-2026-10-05-001.md` (evidence under `tests/m2/evidence/`). 11 of 12 cases pass, 1 fails (TC-012, existing bug B3); no case blocked. TC-009 was executed by the orchestrator (QA agents cannot dispatch sub-agents). All cases ran on copies; baselines of `git status --short` for solo and octoshell compared at the end: solo identical, octoshell shows only the T2.5 board files.
+
+  Mission AC -> test case(s) -> record:
+  - M2-AC1 (workflow skill + 7 scripts gone; 4 skills): TC-001 PASS, TC-002 PASS, TC-008 PASS (deviation noted: a second historical-reference paragraph in mission-planner SKILL.md, no execution instruction).
+  - M2-AC2 (installPack retires them, keeps create-team.js): TC-001 PASS, TC-002 PASS, TC-010 PASS (before upToDate false, after true, all pack skills v57).
+  - M2-AC3 (validate.js warns per workflows/ folder, same exit; workflow.js exits 2): TC-003 PASS, TC-004 PASS (1 mission warning, 5 on the campaign), TC-005 PASS. The workflow.json half is UNREACHABLE on real data (neither board has one); covered only by scripts-cli-scenarios.test.ts.
+  - M2-AC4 (doctor.js one warn with count + fix): TC-006 PASS (1 warn, count 6, 0 fail, fix never suggests deleting).
+  - M2-AC5 (mission-execution = direct dispatch): TC-008 PASS, TC-009 PASS (5/5 plan an Agent dispatch with model:, 0/5 Workflow), TC-011 PASS.
+  - M2-AC6 (gate = 5 dispatched phases + stopping rule): TC-011 PASS.
+  - M2-AC7 (gate hook says relay, not 'directly'; coverage:pack passes): TC-007 PASS; `pnpm coverage:pack` exit 0, 96.53/78.79/98.18/96.53 (evidence/AC7-coverage-pack.md; no TC maps it).
+  - M2-AC8 (hooks act only on a real status change): TC-012 FAIL. The no-such-mission and control cases pass, but the hooks act when the status EQUALS the request: a repeated `done` re-prints the gate directive and a repeated `active` appends a duplicate work-log line. This is bug B3 (already filed, not re-filed). The AC's literal text (acts when status now equals the requested state) is implemented; the case's Expected Final State (a call that changed nothing is silent) is not.
+
+  Mission ACs are not ticked by this task. Open bugs: B1, B2, B3 (B3 decides AC8).
+
+
+  ## AC8 tightened (2026-10-05)
+
+  AC8 originally read 'act only when its status now equals the requested state'. M2 TC-012 expected a real transition, and bug B3 (PR #125) delivered that, so AC8 now states the transition contract. The Claude Code payload field was confirmed live: PostToolUse Bash carries tool_response.stdout, with stderr merged in. Known limit: a deliberate double forgery (the set-status command text plus an echoed matching transition line, on an already-done mission) still acts. The hooks are not a security boundary.
+
+  ## Completion gate (2026-10-05): GREEN
+
+  Base: feat/direct-dispatch-process. Mission branch: feat/direct-dispatch-process-m2. PRs into the mission branch:
+  - #120 T2.1
+  - #121 T2.2
+  - #122 T2.3
+  - #123 T2.4
+  - #124 T2.5 (functional QA, 11/12; TC-012 failed on B3)
+  - #125 B3 fix (TC-012 re-run PASS, RUN-002)
+
+  1. **Tests + coverage (js-dev):** green, with 0 failed. Suite counts:
+
+     | Suite | Tests |
+     | --- | --- |
+     | board | 379 |
+     | extension | 569 |
+     | tokenomics | 102 |
+     | graph | 653 |
+
+     - Changed-line coverage was 97.5% against the base. The hooks were measured by hand via NODE_V8_COVERAGE, because coverage:pack omits them (B2).
+     - The only conditional skip is the real-ccusage test, which did run.
+
+  2. **Black-box QA (Sage):** AC1-AC8 pass on COPIES of solo's and octoshell's real .claude + .octobots.
+     - Install: retires workflow-designer and the 7 scripts and keeps create-team.js. After it, upToDate is true.
+     - validate.js: one warning per workflows/<slug>, 1 for the solo mission and 5 per campaign.
+     - doctor.js: one board warning (6 for solo, 5 for octoshell) and never suggests deleting.
+     - The skill texts conform.
+     - The gate directive uses relay wording.
+     - The hooks act only on real transitions.
+     - Unreachable on real data: the workflow.json half of AC3 (unit-tested), and a refused start for AC8 (refusals arrive in M5).
+     - AC5's behavioural clause is TC-009, run by the orchestrator: 5/5 fresh agents planned an Agent dispatch with an explicit model, and 0/5 used Workflow.
+
+  3. **Critical review (Rio):** no blocking defect. One cross-PR contradiction was fixed in 5631d21: the hook directive ordered merge before tokenomics, the reverse of the skill.
+     - Gate nits fixed: the recovery sentence, the mislabelled d2 test, and a stale comment.
+     - The 12 uncovered lines are now covered (fe946eb).
+     - Security: linear-time parsing (1MB in about 2ms), imports from the installed pack only, no title injection.
+     - Sage re-verified AC6-AC8 black-box, including a real recovery flip (executing then done) that fires the gate exactly once.
+
+  4. **Tokenomics (non-blocking):** M2 cost $28.80 API-equivalent over 567 turns; the orchestrator's share was 28%. M1 is $59.46 and the campaign-level row is $16.98.
+
+  **Open, not blocking:**
+  - B1: flaky campaign-view test.
+  - B2: coverage:pack omits the hooks.
+  - Nits:
+    - mission-execution mentions a live/E2E pass that the gate does not name.
+    - The directive does not name backfill-worklog-sha.mjs.
+    - Hidden set-status stdout (>/dev/null, | head) skips the gate (fail-closed).
+
+  **Known AC8 limit:** a deliberate double forgery still acts.

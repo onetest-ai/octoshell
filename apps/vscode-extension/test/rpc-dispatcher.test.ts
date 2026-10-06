@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { updateBrief } from "@octoshell/board";
 import { dispatch } from "../src/host/rpc-dispatcher.js";
 import { BoardHost } from "../src/host/board-host.js";
 import { AppearanceStore } from "../src/host/appearance-store.js";
@@ -17,11 +19,11 @@ function makeBoard(): BoardHost {
   return makeBoardWithRoot().board;
 }
 
-function ctx(board?: BoardHost) {
+function ctx(board?: BoardHost, confirm: (message: string, actionLabel: string) => Promise<boolean> = async () => false) {
   const { board: defaultBoard, repoRoot } = makeBoardWithRoot();
   const b = board ?? defaultBoard;
   const appearanceStore = new AppearanceStore(new FakeMemento());
-  return { board: b, appearanceStore, workspaceFolderPath: repoRoot, dialog: { openFiles: async () => ["x"] }, editor: { openReadonly: async () => {}, openFile: async () => {} } };
+  return { board: b, appearanceStore, workspaceFolderPath: repoRoot, dialog: { openFiles: async () => ["x"], confirm }, editor: { openReadonly: async () => {}, openFile: async () => {} } };
 }
 
 describe("dispatch", () => {
@@ -54,7 +56,7 @@ describe("dispatch", () => {
     const b = makeBoard();
     const camp = b.createCampaign({ name: "Q4" });
     const m = b.createMission({ title: "M", campaignId: camp.id });
-    b.setStatus("mission", m.id, "executing");
+    b.setStatus("mission", m.id, "executing", { force: "test" });
     const c = ctx(b);
     const res = await dispatch("campaign:get", { projectId: "p1", campaignId: camp.id }, c as never);
     const typed = res as { campaign: { id: string; name: string }; summary: { rollupStatus: string; counts: Record<string, number> } };
@@ -296,5 +298,186 @@ describe("dispatch", () => {
     const c = ctx();
     // campaign:setStatus requires campaignId to be a string; passing a number must fail Zod validation
     await expect(dispatch("campaign:setStatus", { campaignId: 123, status: "draft" }, c as never)).rejects.toThrow();
+  });
+});
+
+// ── mission:setStatus plan-review confirm (mission M5 AC2) ───────────────────────────────────────
+
+const STRICT = "## Plan review (ba + tech-lead, 2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved";
+const LEGACY = "## Plan review (Alex + Rio, 2026-10-02)\nLooked fine.";
+
+function missionFixture(notes?: { mission?: string; campaign?: string }) {
+  const { board, repoRoot } = makeBoardWithRoot();
+  const camp = board.createCampaign({ name: "C" });
+  if (notes?.campaign !== undefined) board.updateBrief("campaign", camp.id, { notes: notes.campaign });
+  const m = board.createMission({ title: "M1 - Thing", campaignId: camp.id });
+  if (notes?.mission !== undefined) board.updateBrief("mission", m.id, { notes: notes.mission });
+  const file = join(repoRoot, ".octobots", m.folderPath, "mission.yaml");
+  return { board, m, file };
+}
+
+describe("mission:setStatus with a plan-review confirm", () => {
+  it("Cancel leaves the YAML byte-identical and returns the stored status; the modal names the missing review", async () => {
+    const { board, m, file } = missionFixture({ mission: "## Plan review (Alex, 2026-10-05)\nonly one" });
+    const before = readFileSync(file, "utf8");
+    const confirm = vi.fn(async () => false);
+    const res = await dispatch("mission:setStatus", { missionId: m.id, status: "active" }, ctx(board, confirm) as never);
+    expect(res).toEqual({ ok: true, status: "draft" });
+    expect(readFileSync(file, "utf8")).toBe(before);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    const [message, label] = confirm.mock.calls[0] as unknown as [string, string];
+    expect(message).toContain("## Plan review (Alex, 2026-10-05)");
+    expect(message).toContain("heading does not name the tech-lead");
+    expect(message).toContain("Reviewers: ba (<name>), tech-lead (<name>)");
+    expect(message.split("\n")[0]).toContain("a plan review is recorded but does not approve the start");
+    expect(message).toContain("\n--- record template (paste into the mission or campaign notes) ---\n## Plan review (<names or roles>, <date>)\nReviewers:");
+    expect(label).toBeTruthy();
+  });
+
+  it("Cancel leaves a hand-written mission.yaml byte-identical (a canonical rewrite would be visible)", async () => {
+    const { board, m, file } = missionFixture();
+    const hand = '# written by an agent\nname: "M1 - Thing"\nstatus: draft   # not started\nnotes: |\n  Prose only.\n';
+    writeFileSync(file, hand, "utf8");
+    const confirm = vi.fn(async () => false);
+    const res = await dispatch("mission:setStatus", { missionId: m.id, status: "executing" }, ctx(board, confirm) as never);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(res).toMatchObject({ ok: true });
+    expect(readFileSync(file, "utf8")).toBe(hand);
+  });
+
+  it("Confirm re-reads the file: notes written to disk while the modal was open are kept, not overwritten", async () => {
+    const { board, m, file } = missionFixture({ mission: "Before." });
+    const confirm = vi.fn(async () => {
+      // an agent edits the notes on disk while the user looks at the modal
+      writeFileSync(file, readFileSync(file, "utf8").replace("Before.", "Edited during the modal."), "utf8");
+      return true;
+    });
+    await dispatch("mission:setStatus", { missionId: m.id, status: "executing" }, ctx(board, confirm) as never);
+    const notes = board.getMission(m.id)!.notes ?? "";
+    expect(notes).toMatch(/^Edited during the modal\.\n\n## Plan review overridden \(/);
+    expect(board.getMission(m.id)!.status).toBe("executing");
+  });
+
+  it("Confirm after a review was recorded on disk while the modal was open flips with no override note", async () => {
+    const { board, m, file } = missionFixture({ mission: "Before." });
+    const confirm = vi.fn(async () => {
+      // an agent records a review on disk (library write, no host reconcile) while the modal is open
+      updateBrief(join(file, "..", "..", "..", "..", ".."), "mission", m.id, { notes: `Before.\n\n${STRICT}` });
+      return true;
+    });
+    await dispatch("mission:setStatus", { missionId: m.id, status: "executing" }, ctx(board, confirm) as never);
+    expect(board.getMission(m.id)!.status).toBe("executing");
+    expect(board.getMission(m.id)!.notes ?? "").not.toContain("overridden");
+  });
+
+  it("Confirm flips the status and appends the overridden note with the dropdown reason", async () => {
+    const { board, m } = missionFixture({ mission: "Existing." });
+    const confirm = vi.fn(async () => true);
+    const res = await dispatch("mission:setStatus", { missionId: m.id, status: "executing" }, ctx(board, confirm) as never);
+    expect(res).toEqual({ ok: true });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    const day = new Date().toISOString().slice(0, 10);
+    expect(board.getMission(m.id)!.status).toBe("executing");
+    expect(board.getMission(m.id)!.notes).toBe(`Existing.\n\n## Plan review overridden (${day})\nconfirmed in the extension's status dropdown`);
+  });
+
+  it("never calls confirm for a strict review, a legacy review, or a move that is not into executing", async () => {
+    const confirm = vi.fn(async () => true);
+    const strict = missionFixture({ mission: STRICT });
+    expect(await dispatch("mission:setStatus", { missionId: strict.m.id, status: "executing" }, ctx(strict.board, confirm) as never)).toEqual({ ok: true });
+    const legacy = missionFixture({ campaign: LEGACY });
+    expect(await dispatch("mission:setStatus", { missionId: legacy.m.id, status: "active" }, ctx(legacy.board, confirm) as never)).toEqual({ ok: true });
+    expect(legacy.board.getMission(legacy.m.id)!.notes ?? "").toBe("");
+    for (const to of ["done", "awaitingApproval", "failed", "cancelled"]) {
+      const plain = missionFixture();
+      expect(await dispatch("mission:setStatus", { missionId: plain.m.id, status: to }, ctx(plain.board, confirm) as never)).toEqual({ ok: true });
+    }
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("campaign, task and bug status changes never ask", async () => {
+    const confirm = vi.fn(async () => true);
+    const { board, m } = missionFixture();
+    const t = board.createTask({ missionId: m.id, name: "T" });
+    const camp = board.listCampaigns()[0]!;
+    const c = ctx(board, confirm);
+    expect(await dispatch("campaign:setStatus", { campaignId: camp.id, status: "executing" }, c as never)).toEqual({ ok: true });
+    expect(await dispatch("task:setStatus", { taskId: t.id, status: "executing" }, c as never)).toEqual({ ok: true });
+    expect(confirm).not.toHaveBeenCalled();
+  });
+});
+
+
+// ── tests:* (M6 T6.3) ────────────────────────────────────────────────────────────────────────────
+
+describe("tests:* routes", () => {
+  function testsFixture() {
+    const { board, repoRoot } = makeBoardWithRoot();
+    const camp = board.createCampaign({ name: "C" });
+    const m1 = board.createMission({ title: "M1 - Thing", campaignId: camp.id });
+    const m2 = board.createMission({ title: "M2 - Other", campaignId: camp.id });
+    board.updateBrief("mission", m1.id, { acceptanceCriteria: "- [ ] first\n- [ ] second" });
+    const dir = join(repoRoot, ".octobots", camp.folderPath, "tests");
+    const put = (folder: string, id: string, status: string, covers: string) => {
+      mkdirSync(join(dir, folder), { recursive: true });
+      writeFileSync(join(dir, folder, `${id}_x.md`), `---\nid: ${id}\ntitle: t ${id}\nmission: ${folder.toUpperCase()}\ncovers: [${covers}]\nkind: unit\nstatus: ${status}\n---\n\n# ${id}\n`);
+    };
+    put("m1", "TC-001", "pass", "M1-AC1");
+    put("m1", "TC-002", "fail", "M1-AC1");
+    put("m2", "TC-001", "blocked", "M2-AC1");
+    board.reconcile();
+    return { board, camp, m1, m2, dir };
+  }
+
+  it("routes tests:list to board.listTests, whole campaign or one mission", async () => {
+    const { board, camp } = testsFixture();
+    const all = (await dispatch("tests:list", { campaignId: camp.id }, ctx(board) as never)) as Array<{ id: string; mission: string; status: string }>;
+    expect(all.map((t) => `${t.mission}/${t.id}/${t.status}`)).toEqual(["M1/TC-001/pass", "M1/TC-002/fail", "M2/TC-001/blocked"]);
+    const one = (await dispatch("tests:list", { campaignId: camp.id, mission: "M2" }, ctx(board) as never)) as unknown[];
+    expect(one).toHaveLength(1);
+  });
+
+  it("routes tests:coverage to board.testCoverage", async () => {
+    const { board, m1 } = testsFixture();
+    const cov = (await dispatch("tests:coverage", { missionId: m1.id }, ctx(board) as never)) as { mission: string; acs: Array<{ ac: string; tcs: string[]; covered: boolean }>; uncovered: string[] };
+    expect(cov.mission).toBe("M1");
+    expect(cov.acs.map((a) => [a.ac, a.tcs, a.covered])).toEqual([["M1-AC1", ["TC-001", "TC-002"], true], ["M1-AC2", [], false]]);
+    expect(cov.uncovered).toEqual(["M1-AC2"]);
+  });
+
+  it("routes tests:summary to board.testSummary, null for an unknown campaign", async () => {
+    const { board, camp } = testsFixture();
+    const s = (await dispatch("tests:summary", { campaignId: camp.id }, ctx(board) as never)) as { total: number; counts: Record<string, number>; uncovered: number };
+    expect(s.total).toBe(3);
+    expect(s.counts).toMatchObject({ pass: 1, fail: 1, blocked: 1, unknown: 0 });
+    expect(s.uncovered).toBe(1);
+    expect(await dispatch("tests:summary", { campaignId: "nope" }, ctx(board) as never)).toBeNull();
+  });
+
+  it("rejects malformed ids and mission tokens before any handler runs", async () => {
+    const { board, camp } = testsFixture();
+    const spy = vi.spyOn(board, "listTests");
+    for (const args of [{ campaignId: "" }, { campaignId: camp.id, mission: "../../etc" }, { campaignId: 5 }, {}])
+      await expect(dispatch("tests:list", args, ctx(board) as never)).rejects.toThrow();
+    await expect(dispatch("tests:coverage", { missionId: "" }, ctx(board) as never)).rejects.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("unknown ids answer with empty results, never a throw", async () => {
+    const { board } = testsFixture();
+    expect(await dispatch("tests:list", { campaignId: "nope" }, ctx(board) as never)).toEqual([]);
+    expect(await dispatch("tests:coverage", { missionId: "nope" }, ctx(board) as never)).toMatchObject({ mission: null, acs: [], uncovered: [] });
+  });
+
+  it("writes nothing: runs/ and evidence/ files and the TCs are untouched by every tests:* call", async () => {
+    const { board, camp, m1, dir } = testsFixture();
+    mkdirSync(join(dir, "m1", "runs"), { recursive: true });
+    writeFileSync(join(dir, "m1", "runs", "RUN-1.md"), "run");
+    const snap = () => readdirSync(join(dir, "m1"), { recursive: true }).map(String).sort().map((f) => f + statSync(join(dir, "m1", f)).mtimeMs).join("|");
+    const before = snap();
+    await dispatch("tests:list", { campaignId: camp.id }, ctx(board) as never);
+    await dispatch("tests:coverage", { missionId: m1.id }, ctx(board) as never);
+    await dispatch("tests:summary", { campaignId: camp.id }, ctx(board) as never);
+    expect(snap()).toBe(before);
   });
 });

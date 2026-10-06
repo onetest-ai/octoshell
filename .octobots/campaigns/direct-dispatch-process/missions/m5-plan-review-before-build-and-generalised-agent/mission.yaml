@@ -1,0 +1,123 @@
+name: M5 - Plan review before build, and generalised agent-ops guards
+status: done
+description: 'Make the BA + tech-lead plan review a structural step, enforced in the script AND the UI: set-status.js and the extension''s status dropdown (BoardHost.setStatus) refuse to move a mission into `executing` (`active` maps to it) until a plan-review sign-off is recorded, with an explicit override (`--force=<reason>`; a confirm dialog). A legacy heading-only record is accepted with a warning (campaign decisions 9-11). Add the agent-ops rules solo learned (no `timeout` binary on macOS, nohup servers with full redirection and bounded readiness polling), a config-driven QA environment guard (qa-env.mjs), a declared test-lanes contract (AGENTS.md § Test lanes) and a parked-test scan. Dogfood in octoshell''s own CLAUDE.md and AGENTS.md.'
+acceptance_criteria:
+  - text: 'Given a mission and `set-status.js <parent-dir> "M<n> - ..." <state>` whose <state> maps to executing (active, executing, in progress, running) while the stored status is anything other than executing, when no section of the mission''s notes or its campaign''s notes (`<mission dir>/../../campaign.yaml`) satisfies the rule below, then it exits 3, prints to stderr each candidate `## Plan review (...)` heading with what it lacks (or that there is none) and how to record a review or override, and leaves the file byte-identical. Rule (one implementation: planReviewStatus(missionNotes, campaignNotes) in skill/mission-planner/scripts/plan-review.mjs, imported by set-status.js): a candidate section starts at a column-0 line matching `^## Plan review \((.*)\)[ \t]*$` and ends at the next column-0 `## ` line, so `## Plan review overridden (...)` and `## Plan review record shape ...` can never match. (a) Strict record: the section has a column-0 `Reviewers:` line holding the tokens `ba` and `tech-lead`, and a column-0 line `Verdict: approved` or `Verdict: approved with nits` (case-insensitive): allowed, no warning. (b) Legacy record: the section has NO column-0 `Reviewers:` line and NO column-0 `Verdict:` line, and the heading''s parenthesised text names the BA (`ba`, or the persona name `Alex`) and the tech lead (`tech-lead`, or the persona name `Rio`): allowed, exit 0, and stderr prints `warning: legacy plan review "<heading>" (<mission|campaign> notes) has no Reviewers:/Verdict: lines; accepted`. Persona names count only inside a legacy heading, never on a `Reviewers:` line. `ba` and `tech-lead` match case-insensitively, `Alex` and `Rio` case-sensitively, and a token never has a letter, digit, `_` or `-` next to it (tech-leadership, bash and Rion do not count). Indented lines are prose. Everything else is refused, including a section with `Verdict: changes requested` (even under a heading naming both) and a heading that names only one reviewer. A strict record wins over a legacy one, so the warning prints only when a legacy record is the sole match. `--force=<reason>` (non-empty; accepted in any argv position and removed before the state words are joined; a bare `--force` exits 2) flips a refused move and appends `## Plan review overridden (<YYYY-MM-DD UTC>)` followed by the reason to the mission notes; when the rule already allows the move, --force adds nothing. Moves to draft, awaiting approval, done, failed or cancelled, and executing -> executing, are never gated. Exit 1 keeps its meaning (no such entity)'
+    done: true
+  - text: 'The host enforces the same rule through planReviewStatus exported from @octoshell/board (a TS mirror of plan-review.mjs): `BoardHost.setStatus(kind, id, status, opts?: {force?: string})` returns `{ok: true} | {ok: false, reason: "plan-review-missing", message}`, and `DispatchCtx.dialog.confirm(message, actionLabel): Promise<boolean>` is wired in extension.ts to a modal `vscode.window.showWarningMessage`. Choosing a gated status in the mission dropdown (into executing from another status, as in AC1) without a satisfying review shows the modal naming the missing review. Cancel leaves the YAML byte-identical, and the dropdown re-renders the stored status. Confirm calls setStatus with `force: "confirmed in the extension''s status dropdown"`, which flips the status and appends the same overridden note. A move allowed by a strict or a legacy record flips with no dialog and no other message (the legacy warning is set-status.js output only; campaign decision 12). Campaign, task and bug status changes are unaffected. packages/board/test/plan-review-parity.test.ts feeds both implementations the shared case table (packages/board/test/fixtures/plan-review-cases.json) and every (mission notes, campaign notes) pair of the boards in OCTOBOTS_BOARD_COPIES (else a temp copy of the repo''s own .octobots/), and asserts identical results (ok, legacy, heading, where, candidates)'
+    done: false
+  - text: 'mission-planner § Plan review says: dispatch ba and tech-lead in parallel (read-only) with explicit model:; each must run the queries, read real rows and grep call sites per AC, and return blocking vs nits; findings are resolved on the board, user decisions go back to the user, and the result is recorded as `## Plan review (<names or roles>, <date>)` with column-0 `Reviewers: ba (<name>), tech-lead (<name>)` and `Verdict: approved | approved with nits | changes requested` lines (the strict shape of AC1; the planner never writes the legacy heading-only form); octobots-doctor (M7) says that when set-status.js warns that a legacy plan-review record lacks its Reviewers:/Verdict: lines, the agent offers to add them (role tokens ba and tech-lead, the verdict the record states) and writes them only with the user''s OK'
+    done: true
+  - text: 'Given `.octobots/qa-env.json` in the current directory (or `--config <path>`) shaped `{"vars": {"<ENV_NAME>": "<template containing {db}>", ...}, "name_pattern": "<regex>", "probe": "<optional shell command>"}`, `qa-env.mjs <db> -- <cmd...>`: exits 3 without executing <cmd> when <db> does not match name_pattern; exits 3 without executing when any declared template lacks {db}, naming that var; exits 3 naming the expected path when the config file is missing; otherwise exports every declared var with {db} replaced; when probe is set, runs it with those vars and exits 4 without executing <cmd> unless its trimmed stdout equals <db>; then executes <cmd>, passes its exit code through and prints the target DB name to stderr'
+    done: true
+  - text: 'mission-execution states: start servers with `nohup ... > log 2>&1 < /dev/null &` and poll readiness with a bounded `curl -m 2` loop; macOS has no `timeout`, so use the Bash tool timeout or `perl -e ''alarm shift; exec @ARGV'' N cmd`; never background a test command (the only exceptions are non-terminating servers/watchers); QA server, migration and seed commands run through qa-env.mjs'
+    done: true
+  - text: 'Given a repo, `scan-parked.js [--root <dir>] [--json]` scans the files `git ls-files` lists under --root (default the repo root) that match test globs (*.test.*, *.spec.*, test_*.py, *_test.py, anything under a tests/ or test/ dir), excluding node_modules/, dist/ and its own test fixtures. Unsigned hits: pytest `@pytest.mark.xfail`/`@pytest.mark.skip` without reason=, any imperative `pytest.xfail(` or `pytest.skip(` call, and vitest/jest `.skip(`, `.todo(`, `.fails(`, `xit(`, `xdescribe(` as call tokens (`process.exit(` and other identifiers that merely end in xit are not hits). Allowed: skipIf/runIf, and pytest skipif with a reason. A `.octobots/parked-signoff.txt` line `<path>:<line> <who> <YYYY-MM-DD>` exempts a hit. It exits 1 on any unsigned hit, else 0; `--json` prints {unsigned: [{file, line, text}], allowed: [{file, line, text}]}. On octoshell it exits 0 and lists packages/graph/test/vault-calibration.test.ts:10 as allowed'
+    done: true
+  - text: '`doctor.js --json` reports a finding {level: "warn", area: "lanes"} when AGENTS.md has no `## Test lanes` section declaring `fast:` and `coverage:` commands, and none when it does; octoshell''s AGENTS.md declares them (fast: pnpm --filter <pkg> test, coverage: pnpm coverage) and its CLAUDE.md carries the generalised rules; gate phase 1 calls scan-parked.js; primer.mjs''s octobots-doctor line names a missing lanes declaration (M7-AC6); octobots-doctor (M7) says a `lanes` finding is resolved by proposing an AGENTS.md `## Test lanes` section from the project''s documented commands and writing it only with the user''s OK'
+    done: true
+documents:
+  - label: M5 functional test cases
+    target: .octobots/campaigns/direct-dispatch-process/tests/m5/README.md
+tokenomics:
+  effort_days: 3
+  size_tshirt: L
+  complexity_score: 16
+notes: |
+  ## Plan review record shape (decision, final 2026-10-05)
+
+  Campaign decisions 9-12 settled the open questions. The rule is AC1; in short:
+  - Strict record. This is what the planner writes, and it prints no warning. The example below is indented so it is not itself a record:
+      ## Plan review (Alex + Rio, 2026-10-05)
+      Reviewers: ba (Alex), tech-lead (Rio)
+      Verdict: approved with nits
+  - Legacy record, accepted with a set-status.js warning: a heading that names both reviewers by role token or by the persona names Alex and Rio, with no column-0 Reviewers: or Verdict: line in its section. The real example is solo uwb-ranging-ingest-vendor-v01's campaign notes.
+  - Never counts: `## Plan review overridden (...)`; a Reviewers: line that names only persona names; a Verdict other than approved or approved with nits; a Verdict line without a Reviewers line; a heading that names one reviewer; indented lines; lines after the next `## ` heading.
+  - Self-approval check (rule spike, 2026-10-05, scratchpad pr2-spike.mjs, run on these notes after this edit): this section's heading does not match `^## Plan review \(` and its examples are indented, so these M5 notes alone are refused. The campaign's own record is strict and is allowed with no warning.
+  - Gated: a move INTO executing from any other stored status (decision 11). A refusal exits 3, because exit 1 already means 'no entity' and exit 2 means usage. Override: `--force=<reason>` on the script, the modal confirm in the UI. Both append `## Plan review overridden (<YYYY-MM-DD UTC>)` plus the reason, so the bypass is on the board.
+  - One rule, two implementations: plan-review.mjs (pack, dependency-free, imported by set-status.js) and its mirror planReviewStatus in packages/board (used by BoardHost.setStatus). packages/board/test/plan-review-parity.test.ts holds them together over a shared table and every real notes pair. This is the dual-implementation hazard of entity-io.mjs and entity-schema.ts. The dropdown calls BoardHost.setStatus, never the script. The confirm is a host modal (DispatchCtx.dialog.confirm), not webview UI. The work-log and mission-gate hooks act only on a status change that happened (M2-AC8), so a refused start is never logged.
+  - Spike results on real data (2026-10-05): solo has 115 missions, and 6 are allowed (all uwb, legacy, through the campaign notes). This campaign has 6 of 6 allowed (strict, through the campaign notes).
+
+  ## Planning notes (Rio, 2026-10-05)
+
+  User decisions 3 and 6 apply (UI enforcement; AGENTS.md § Test lanes; qa-env.mjs config-driven; mission-input.js retired in M2).
+  Solo's .agents/manual-qa/qa-db.sh hard-codes EDGESERVER_* and is the model for qa-env.mjs (exit 3 refused, exit 4 probe mismatch).
+  Octoshell's lanes: fast = `pnpm --filter <pkg> test`, coverage = `pnpm coverage`; parked-test baseline is one allowed skip: packages/graph/test/vault-calibration.test.ts:10 describe.skipIf(!HAS_VAULT).
+  Real plan-review examples: this campaign's own notes carry the strict record of 2026-10-05 (the allow case). Solo uwb-ranging-ingest-vendor-v01's campaign notes carry a heading-only record from 2026-10-02 (the legacy accept-with-warning case; its M5 is cancelled, and cancelled -> executing is a gated move). Solo epic-013 M10 ('M10 - One setup flow, preset warnings, and edge-side exception authorization') is draft, and neither it nor its campaign has a record (the refuse case).
+
+  ## Spec clarifications (T5.1 review, Rio, 2026-10-06)
+
+  Rulings on AC1 wording, made in the T5.1 review (PR #156, commit bc65bf0e). T5.2's TS mirror copies them; the shared case table packages/board/test/fixtures/plan-review-cases.json encodes each.
+  1. "(case-insensitive)" covers the whole Reviewers:/Verdict: line, keys included: `verdict: changes requested` under a heading naming both reviewers is a Verdict line, so the section is refused, not accepted as legacy.
+  2. Conflicting verdicts are refused: a strict section needs at least one approving Verdict: line AND every column-0 Verdict: line approving (missing string: "a Verdict: line that is not approved").
+  3. Token neighbours are Unicode letters/digits (\p{L}, \p{N}) plus _ and -.
+  4. A --force reason that starts with # is written escaped (\#), so an override note can never forge a review heading. BoardHost.setStatus applies the same escape.
+  5. An unreadable campaign.yaml (malformed, BOM) is treated as empty campaign notes and named in the refusal; it never exits 1.
+  Left literal (non-blocking, would need an AC change): a record inside a fenced code block counts; `**Verdict:**`, `- Verdict:` and `Verdict :` are not Verdict lines.
+
+  ## QA verification (T5.6, qa-engineer, 2026-10-06; full record in the T5.6 task notes)
+
+  Verdict: all 13 cases run; 11 PASS, 2 BLOCKED (TC-004 live half manual, pending the user's F5; TC-008 step 2 UNREACHABLE), 0 FAIL, no bug filed. Run file: `.octobots/campaigns/direct-dispatch-process/tests/m5/runs/RUN-2026-10-06-001.md`; evidence in `tests/m5/evidence/`. Data safety: solo's `git status --short` and its `.octobots` sha256 manifest (1209 files) are identical before and after, octoshell's own `.octobots` (outside this campaign) too; no database created, dropped or written.
+
+  Per case (pre-existing record, observed value):
+  - TC-001 PASS: solo epic-013 M10 (draft, 0 review headings): executing, active, in progress, running each exit 3, file unchanged; other states and draft->done/failed exit 0.
+  - TC-002 PASS: this campaign's strict plan-review record (copy of octoshell's board), M6: exit 0, empty stderr, status executing.
+  - TC-003 PASS: solo M10 (copy): bare --force exit 2; --force=<reason> in last, first and middle argv position exit 0 with 3 dated overridden notes; a plain move after that exit 3.
+  - TC-004 BLOCKED (manual): automatable half PASS (board-host + rpc-dispatcher on solo's board copy, 69 passed); the F5 half (modal, Escape, no message on legacy) is pending the user, script `tests/m7/manual/T7.4-F5-script.md` Part C.
+  - TC-005 PASS: parity vitest on both board copies, 2 passed; solo 6 of 115 missions allowed (uwb, legacy, via campaign notes); octoshell campaign 7 of 7 strict; M5 notes alone refused.
+  - TC-006 PASS: skill-conventions vitest, 141 passed (planner Plan review, doctor legacy + lanes paragraphs, execution rules, gate calls scan-parked.js).
+  - TC-007 PASS: solo's real var names, `edgeserver`: exit 3, command not run; no config: exit 3 naming the path.
+  - TC-008 BLOCKED: step 1 PASS (both DSNs end /qa_m5), step 3 PASS (probe prints postgres: exit 4, command not run; the signal race fix re-run, qa-env.test.ts 50 passed x3), step 2 UNREACHABLE: a local Postgres runs but has no `qa_m5` database, none may be created, and the probe is never stubbed.
+  - TC-009 PASS: SYNC template without {db}: exit 3 naming EDGESERVER_POSTGRES_SYNC_DSN, command not run.
+  - TC-010 PASS: octoshell: exit 0, 0 unsigned, 10 allowed incl. vault-calibration.test.ts:10, octograph.mjs not a hit; throwaway clone with it.skip: exit 1, then exit 0 after a signoff line.
+  - TC-011 PASS (case text corrected: with --root the path is printed relative to the root): f2e7812d^ edgeserver/tests: .unsigned is test_m6_solve_over_the_wire_e2e.py:474, exit 1, same set as the independent grep; today's solo tree 0/0, exit 0; pytest -rxs not run.
+  - TC-012 PASS (case text corrected: octoshell gets one `ok` lanes finding, no warning): solo copy one {warn, lanes}; octoshell copy none; CLAUDE.md carries the rules.
+  - TC-013 PASS: uwb legacy heading exit 0 with the exact warning line, status executing; one-reviewer and changes-requested derivations exit 3, status cancelled, file unchanged.
+
+  Mission criteria with evidence (recorded here and in the M5 mission notes; this task ticks only its own criterion): AC1 (TC-001, 002, 003, 005, 013), AC3 and AC5 (TC-006), AC6 (TC-010, 011), AC7 (TC-006, 012; primer line per T5.5 QA). NOT fully evidenced: AC2 (TC-004's live F5 half pending) and AC4 (TC-008 step 2: the matching-probe-then-run path on a real qa_m5 database is UNREACHABLE; exit 3 and 4 refusals and the var export are proved on real var names).
+
+  Not pass: TC-004 (blocked, manual live half pending the user's F5) and TC-008 (blocked, step 2 UNREACHABLE: no `qa_m5` database exists and none may be created).
+
+  ## Completion gate (2026-10-06): GREEN
+
+  - **Base:** feat/direct-dispatch-process.
+  - **Mission branch:** feat/direct-dispatch-process-m5.
+  - **PRs:**
+    - #156 T5.1 set-status.js requires a recorded plan review to start a mission
+    - #157 T5.2 BoardHost.setStatus enforces plan review with a confirm dialog
+    - #158 T5.3 plan-review text in the planner, doctor legacy-record handling, dispatch server rules
+    - #159 M5 B1 (the refusal template is column-0 and copyable)
+    - #160 T5.4 qa-env.mjs, the config-driven QA database guard
+    - #161 T5.5 parked-test scan (scan-parked.js) and the test-lanes contract
+    - #162 T5.6 mission QA run (tests/m5; RUN-2026-10-06-001)
+
+  1. **Tests + coverage (phase 1, run as written in the shipped gate skill):** 0 failed, 0 skipped. build, typecheck, lint, test and coverage all exit 0.
+     - Counts: board 739 / tokenomics 102 / extension 1105 / graph 655.
+     - Changed-line coverage 98.24% (949/966). The only file under 80% is extension.ts (0/4, the F5-only modal wiring).
+     - scan-parked.js exits 0 (0 unsigned, 10 allowed).
+     - The shipped-skill store is append-only (+8, 0 changed). The payload is byte-identical and its sha equals the 57 entry.
+  2. **Black-box QA (Sage):** see T5.6's `## QA verification` block above (RUN-2026-10-06-001) rather than a copy of it. One addition made at the gate, appended to the RUN file as "Gate addendum: TC-008 step 2": TC-008 step 2 was NOT unreachable. The pre-existing local database `edgeserver_test` matches TC-007's `name_pattern` `^(qa_.+|.+_test)$` with solo's real vars. The real psql probe (`select current_database()`, read-only) printed `edgeserver_test`, the command ran, exit 0, MARKER written. `qa_m5` (absent) exits 4 with the command not run. pg_database count 116 before and 116 after, so nothing was created. TC-008 is now `pass`; the run is 12 pass, 1 blocked (TC-004 live half). Evidence: tests/m5/evidence/TC-008-step2-gate-addendum.txt. Solo was read only (status and HEAD f3a0a8f4 unchanged).
+  3. **Critical review (Rio):** GREEN, no blocking findings.
+     - Per-task review fixes landed before the gate (for example T5.5: scan-parked missed chained or module-level parking and --root helpers, and the primer now names a missing AGENTS.md; B1: the refusal template).
+     - 5604d3b2 (qa-env signal handoff) checked by hand: a trapped command's exit code is passed through, a double SIGINT gives one clean exit, SIGTERM during the probe exits 143 with no orphan.
+     - #159's text matches between script and host. Cross-PR consistency is clean. The user-approved CLAUDE.md and AGENTS.md match the shipped behaviour.
+  4. **Tokenomics:** M5 cost $34.02 API-equivalent, 698 turns, orchestrator 20% (36 sub-agent dispatches).
+     - Command (shipped scripts): for s in collect rollup render; do node apps/vscode-extension/resources/octobots-pack/tokenomics/$s.mjs --project-dir /Users/arozumenko/Development/octoshell; done. Read from .octobots/tokenomics/runs.json, row direct-dispatch-process/M5. Collected at the moment of the gate, so the turns after it (this record, the mission PR) are not in it. The tokenomics files are not committed.
+  5. **Acceptance-criteria rulings:**
+     - **AC2 left UNTICKED**, pending the user's F5 run of `tests/m7/manual/T7.4-F5-script.md` Part C (the modal, Escape as Cancel, the dropdown revert, no message for the legacy move). The automatable half is proven (board-host and rpc-dispatcher on a copy of solo's board, 69 passed). Same as the M3 AC5 precedent.
+     - **AC4 TICKED**, with the TC-008 note above: step 2 was reachable on the pre-existing `edgeserver_test`, and passes.
+     - AC1, AC3, AC5, AC6, AC7 ticked on the evidence cited in T5.6's QA block. The mission is set done with AC2 open; this is the M3/M7 precedent, where a manual F5 item stays open.
+
+  **Manual item still open:** AC2's live Extension Development Host (F5) run, `tests/m7/manual/T7.4-F5-script.md` Part C. It is the user's.
+
+  **Open, not blocking:**
+  1. In the host, a malformed campaign.yaml makes BoardModel throw before the refusal can name the file. The file stays untouched. This predates M5. The write.ts catch (631-632) is unreachable and its comment is misleading.
+  2. The extension modal tells a human to use entity-io.mjs (agent wording).
+  3. The planner's "returns blocking findings from nits" wording is garbled.
+  4. Doctor section 8 says "insert ... as mission-planner shows", but the planner appends.
+  5. scan-parked narrows "under tests/" to source files (accepted in T5.5).
+  6. Octoshell's own installed pack is still v56, so the gate's literal scan-parked path fails here until the pack is reinstalled. Rio ran the pack copy.
+  7. Process: TC-008 step 2 was wrongly recorded UNREACHABLE (corrected by the gate addendum).
+  8. From T5.1 QA: with the campaign dir as the parent and a syntactically broken campaign.yaml, set-status exits 1 before the gate. This predates M5.
+  9. The changes-requested lacks-line does not name the actual verdict.
+  10. Solo has a real unsigned `pytest.skip` at ea-contracts/tests/test_codegen.py:28. Solo is read-only for us, so this is for the user.

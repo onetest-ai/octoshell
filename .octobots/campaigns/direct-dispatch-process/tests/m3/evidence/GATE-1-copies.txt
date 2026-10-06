@@ -1,0 +1,16 @@
+## 3. #145 file on fresh solo copy (cp -R of auqanautica/.octobots, read only source)
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+## 4. fresh copy of the live octoshell .octobots (cp -R)
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+## 5. solo + octoshell + empty-workflows copy together
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+## 6. variable unset
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+solo status after:
+identical
+TC-006 step 2:
+warning: campaigns/direct-dispatch-process/workflows: no longer read since pack v57

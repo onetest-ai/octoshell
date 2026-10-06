@@ -1,0 +1,85 @@
+---
+id: TC-011
+title: "0.1.0 VSIX: workflow grep hits only the allow-list, new scripts present, markers 57, solo install up to date, no pairing warnings, 0 unsigned parked"
+mission: M6
+covers: [M6-AC8]
+kind: cli
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-002.md}
+priority: critical
+size: M
+---
+
+# TC-011: 0.1.0 VSIX: workflow grep hits only the allow-list, new scripts present, markers 57, solo install up to date, no pairing warnings, 0 unsigned parked
+
+**Mission:** M6 | **Priority:** critical | **Kind:** cli | **Covers:** M6-AC8
+
+## Objective
+
+0.1.0 VSIX: workflow grep hits only the allow-list, new scripts present, markers 57, solo install up to date, no pairing warnings, 0 unsigned parked. Verifies M6-AC8 (and campaign AC1, AC2, AC4, AC7) of M6 - Test cases are first-class on the board. Owned by T6.6; runs after T6.5.
+
+## Preconditions
+
+- Suite prerequisites in `README.md` are met (variables SOLO, OCTO, PACK, WORK).
+- $OCTO is on feat/direct-dispatch-process at the release commit; `pnpm install && pnpm build` done; `pnpm --filter @octoshell/vscode-extension package` has written apps/vscode-extension/octobots-0.1.0.vsix.
+- Originals under $SOLO and $OCTO are untouched; the install runs on a copy.
+
+## Real data (pre-existing record)
+
+The VSIX built from the real release commit; a `cp -R` copy of solo's real `.claude` + `.octobots` (two `version: 57-local` forks, workflow-designer, create-team.js, 30+ non-pack skills); this campaign's own seven missions; the octoshell repo itself for the parked-test scan.
+
+## Commands
+
+```bash
+cd $OCTO
+git log -1 --format=%s; git show --name-only --format= HEAD             # the release commit: subject, and only apps/vscode-extension/package.json
+jq -r .version apps/vscode-extension/package.json
+mkdir -p $WORK/vsix && unzip -q apps/vscode-extension/octobots-0.1.0.vsix -d $WORK/vsix; X=$WORK/vsix/extension; XP=$X/resources/octobots-pack
+# (1) workflow grep: print every hit with 60 chars of context, then classify each against the allow-list
+grep -rnoE '.{0,60}(Workflow\(|workflow\.js|add-workflow|sync-meta|add-run|mission-input|workflow-designer|octoshell\.newWorkflow).{0,60}' $X | cut -c1-260 > $WORK/vsix-hits.txt; wc -l < $WORK/vsix-hits.txt
+# (2) new scripts and markers
+for f in qa-env.mjs scan-parked.js add-tests.js set-test-status.js tc-io.mjs pack-reconcile.mjs; do find $XP -name $f | grep -q . && echo "$f present" || echo "$f MISSING"; done
+test ! -e $XP/skill/workflow-designer && echo "no workflow-designer"; test -e $XP/skill/octobots-doctor/SKILL.md && echo "octobots-doctor present"; test -e $X/resources/shipped-skills.json.br && echo "store present"
+grep -rh -E "^version:|octobots-pack-version" $XP | sort | uniq -c
+# (3) install the VSIX's own pack into a copy of solo
+mkdir -p $WORK/solo-rel && cp -R $SOLO/.claude $SOLO/.octobots $WORK/solo-rel/
+git clone -q --shared --no-checkout $SOLO $WORK/solo-rec && git -C $WORK/solo-rec checkout -q HEAD -- .claude .octobots && cp -R $SOLO/.claude $SOLO/.octobots $WORK/solo-rec/   # a git copy: base recovery reads solo history read-only (M7 tests/m7 README, gitcopy)
+node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs $WORK/solo-rec --pack-root $XP | jq '{pending: .result.pending, bases: [.deviations[] | {skill, reason}], after: .after | {upToDate, upToDateExceptLocal, pendingReconcile}}'   # default Reconcile
+jq -c '.skills[] | {skill, base}' $WORK/solo-rec/.octobots/pack-updates/pending.json
+node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs $WORK/solo-rel --pack-root $XP --local-changes=overwrite | jq '{changed: [.deviations[].skill], before: .before.upToDate, after: .after | {upToDate, n: (.deviations | length)}}'   # Overwrite (M7-AC3)
+ls $WORK/solo-rel/.claude/skills; test -e $WORK/solo-rel/.claude/skills/mission-planner/scripts/create-team.js && echo "create-team KEPT"
+for f in add-workflow.js sync-meta.js add-run.js mission-input.js extract-meta.mjs workflow-meta.mjs vendor/acorn.mjs; do test ! -e $WORK/solo-rel/.claude/skills/mission-planner/scripts/$f && echo "$f gone"; done
+# (3b) one reconcile against the 0.1.0 pack: a git copy of solo staged with the default, then ONE fresh agent (Agent tool, model: sonnet) with the primer's context, per M7 tests README's micro-test prompt
+git clone -q --shared --no-checkout $SOLO $WORK/solo-rc && git -C $WORK/solo-rc checkout -q HEAD -- .claude .octobots && cp -R $SOLO/.claude $SOLO/.octobots $SOLO/CLAUDE.md $SOLO/AGENTS.md $WORK/solo-rc/
+node $OCTO/apps/vscode-extension/scripts/qa/install-pack.mjs $WORK/solo-rc --pack-root $XP > /dev/null 2>&1
+# ... dispatch, then:
+S=$WORK/solo-rc/.claude/skills; grep -h -m1 '^version:' $S/mission-execution/SKILL.md $S/mission-completion-gate/SKILL.md
+grep -c -F 'make edgeserver-test-fast' $S/mission-execution/SKILL.md; grep -c -F '0 xfailed' $S/mission-completion-gate/SKILL.md; grep -c -F "perl -e 'alarm shift" $S/mission-execution/SKILL.md
+awk '/^#+ Dispatch rules/{f=1;next} f&&/^## /{f=0} f&&/^[0-9]+\. /{sub(/\..*/,"");print}' $S/mission-execution/SKILL.md | awk '$1!=NR{bad=1} END{print (bad||NR==0)?"RULES BAD":"rules 1.."NR}'
+grep -c -i 'no `timeout`' $S/mission-execution/SKILL.md
+# (4) no tests-pairing warning on this campaign's missions
+for m in .octobots/campaigns/direct-dispatch-process/missions/*/; do echo "$(basename $m): $(node $XP/skill/mission-planner/scripts/validate.js $m | grep -c '^warning:')"; done
+# (5) parked tests and the repo gates
+node $XP/skill/mission-execution/scripts/scan-parked.js; echo "scan exit=$?"
+pnpm lint && pnpm build && pnpm typecheck && pnpm test && pnpm coverage && echo GATES_GREEN
+```
+
+## Steps
+
+| # | Action | Expected Result |
+|---|--------|----------------|
+| 1 | Read the release commit and version | Subject `chore(ext): release 0.1.0 with workflow pack v57`; the only file is apps/vscode-extension/package.json; version 0.1.0 |
+| 2 | Classify every line of vsix-hits.txt | Each hit is one of: the validate/doctor 'no longer read' text; the legacy-folder paragraph in a skill (octobots-doctor's included); tokenomics' wf_ transcript reader; the installer's RETIRED_SKILLS/RETIRED_FILES lists in dist/extension.js; extension/resources/shipped-skills.json.br (the brotli-compressed store of historical SKILL.md bodies); the disposing octoshell.workflow serializer; the mission-execution SKILL.md section headed `## No \`Workflow\` tool, no \`workflow.js\`` (heading plus the lines in it naming workflow.js); extension/changelog.md's removed-commands line naming octoshell.newWorkflow. Any other hit FAILs |
+| 3 | Check the new scripts, skills, store and markers | qa-env.mjs, scan-parked.js, add-tests.js, set-test-status.js, tc-io.mjs, pack-reconcile.mjs, octobots-doctor and the store present; no workflow-designer; every `version:` and `octobots-pack-version` reads 57 |
+| 4 | Install the VSIX's pack into one solo copy with the default, and into another with Overwrite | Default: `pending` is [mission-execution, mission-completion-gate], both with base source workspace-git and version 56, `after` upToDate false, upToDateExceptLocal true. Overwrite: `changed` is the same two (workflow-designer is not a deviation); `.before` false, `.after.upToDate` true with 0 deviations; workflow-designer and the 7 retired files gone; create-team.js and solo's non-pack skills kept |
+| 5 | One reconcile against the 0.1.0 pack on a git copy of solo (one rep) | Both forks `57+local`; `make edgeserver-test-fast`, `0 xfailed` and the perl alarm each present; `rules 1..n`; the no-`timeout` rule stated exactly once (M5's rule and solo's merged, not duplicated); an ESCALATED entry in DECISIONS.md is BLOCKED on the user's answer only when its two sides really differ in `diff base.md upstream.md`, and a FAIL otherwise |
+| 6 | validate.js on each of this campaign's seven missions | 0 `warning:` lines each (no tests-pairing warning) |
+| 7 | scan-parked.js on octoshell; the repo gates | Scan exit 0 (0 unsigned); GATES_GREEN |
+
+## Expected Final State
+
+The 0.1.0 VSIX ships no workflow surface beyond the allow-list, carries the v57 scripts, upgrades solo cleanly, and the campaign's own board and repo are clean. Recorded with set-test-status.js by the qa-engineer dispatch under T6.6.
+
+## Teardown
+
+- `rm -rf $WORK/vsix $WORK/solo-rel $WORK/solo-rec $WORK/solo-rc`

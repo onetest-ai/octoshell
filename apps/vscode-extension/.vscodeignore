@@ -10,3 +10,4 @@ tsconfig*.json
 .turbo/**
 .vscode/**
 *.vsix
+coverage/**

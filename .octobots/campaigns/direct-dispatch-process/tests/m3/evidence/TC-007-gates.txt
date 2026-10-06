@@ -1,0 +1,45 @@
+### pnpm lint
+exit 0
+@octoshell/board:lint: > eslint src
+@octoshell/board:lint: 
+
+ Tasks:    4 successful, 4 total
+Cached:    4 cached, 4 total
+  Time:    55ms >>> FULL TURBO
+
+### pnpm typecheck
+exit 0
+@octoshell/vscode-extension:typecheck: > tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit
+@octoshell/vscode-extension:typecheck: 
+
+ Tasks:    6 successful, 6 total
+Cached:    6 cached, 6 total
+  Time:    64ms >>> FULL TURBO
+
+### pnpm build
+exit 0
+@octoshell/graph:build: > tsc -p tsconfig.json
+@octoshell/graph:build: 
+
+ Tasks:    4 successful, 4 total
+Cached:    4 cached, 4 total
+  Time:    64ms >>> FULL TURBO
+
+### pnpm test
+exit 0
+@octoshell/graph:test:    Duration  34.78s (transform 2.70s, setup 0ms, collect 13.29s, tests 209.43s, environment 3ms, prepare 5.99s)
+@octoshell/graph:test: 
+
+ Tasks:    6 successful, 6 total
+Cached:    2 cached, 6 total
+  Time:    35.166s 
+
+### pnpm coverage
+exit 0
+  set-status.js          |     100 |      100 |     100 |     100 |                                 
+  show.js                |     100 |    86.66 |     100 |     100 | 9,20                            
+  skill-marker.mjs       |     100 |    95.23 |     100 |     100 | 28                              
+  validate.js            |   98.47 |    81.81 |     100 |   98.47 | 51-52                           
+ octobots-doctor/scripts |     100 |    92.68 |     100 |     100 |                                 
+  pack-reconcile.mjs     |     100 |    92.68 |     100 |     100 | 61,93,104,119,123               
+-------------------------|---------|----------|---------|---------|---------------------------------

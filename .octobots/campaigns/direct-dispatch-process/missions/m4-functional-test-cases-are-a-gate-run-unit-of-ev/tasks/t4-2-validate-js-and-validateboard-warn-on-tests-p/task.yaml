@@ -1,0 +1,29 @@
+name: T4.2 - validate.js and validateBoard warn on tests pairing and TC format
+status: done
+role: js-dev
+description: 'Scope: create the shared pack module skill/mission-planner/scripts/tc-io.mjs and its TS mirror in packages/board (M4 notes § TC format contract); the pairing rule, the README-map disagreement warning and the TC file checks in both validate.js and validate.ts (dual implementation, identical messages with .octobots/-relative paths), always severity warning; validate.js accepting a single TC file; the tests/ exclusion in board-model.ts; the watcher''s handler-side skip for tests/**/runs/** and tests/**/evidence/** (board-watcher.ts:58, RelativePattern cannot negate) while TC/README writes still rebuild. Touches packages/board: campaign notes § Test conventions rule 8 (payload regen). Out of scope: running TCs; errors of any kind. Downstream: M6 builds the TestCase entity and set-test-status.js on tc-io.'
+acceptance_criteria:
+  - text: packages/board/test/validate-tests-parity.test.ts runs validate.js (spawned) and validateBoard over the same boards (OCTOBOTS_BOARD_COPIES, else a temp copy of the repo's .octobots/) and asserts identical warning text and severity for pairing gaps, README-map disagreements and TC format problems; validate.js exit code unchanged; packages/board/test/scripts-cli-scenarios.test.ts shows `set-status.js <campaign-dir> "M<n> - ..." done` succeeds on a mission with pairing warnings (mission AC2, AC3)
+    done: true
+  - text: packages/board/test/tests-folder-ignored.test.ts proves BoardModel entity ids are identical with and without a campaign's tests/; apps/vscode-extension/test/board-watcher.test.ts proves writes under tests/**/runs/** and tests/**/evidence/** trigger no rebuild and a write to tests/m<n>/TC-*.md triggers exactly one debounced rebuild (mission AC6)
+    done: true
+  - text: skill/mission-planner/scripts/tc-io.mjs exists, validate.js imports it, and packages/board/test/tc-io.test.ts proves a frontmatter rewrite preserves the body byte-for-byte; `pnpm coverage:pack` passes
+    done: true
+  - text: after a root `pnpm build`, `pnpm --filter @octoshell/vscode-extension graph:payload:write` leaves graph-payload.mjs --verify green, and the 57 hash is rewritten in a visible diff line if the bytes changed
+    done: true
+notes: |
+  ## QA verification
+
+  Black-box on the installed pack (branch c0988ded, install-pack.mjs into a `git clone --shared` of solo; solo itself untouched, `git status --short` identical before/after).
+
+  - TC-003 (uwb m1): PASS. One warning "M1-AC11 is not covered by any test case", exit 0; set-status draft/active/done all exit 0, warning at every status, never an error.
+  - TC-004 (uwb m2): PASS. One warning naming M2-AC10; exit 0.
+  - TC-005 (uwb m6, done, no README): PASS. Warning "missing - M6 has no tests README; run add-tests.js"; exit 0.
+  - TC-006: PASS on behaviour. Real TC-003 is clean (legacy `requirements:` accepted), exit 0. Id-mismatch copy: one warning, exit 0. Missing-section copy: the missing-section warning, exit 0. Text drift in the case: step 3 expects ONE warning but the awk copy keeps `id: TC-003`, so the id-mismatch warning also fires (two warnings). The product is right; fix the case text in T4.5.
+  - TC-007: PASS (15/15 validate-tests-parity). TC-008: PASS (3/3 tests-folder-ignored, 11/11 board-watcher).
+  - Exit code: validate.js exit codes over all 138 campaign/mission dirs of the solo copy are IDENTICAL between the branch-base v57 pack and this branch (no pairing finding changes an exit code). Against the pre-install v56 pack, 6 missions flip 1 -> 0; all six are the retired "workflow meta is out of date" error, not pairing.
+  - set-status done on a mission with warnings (uwb m1): succeeds.
+  - Single-file: real TC exits 0 and prints its warnings; a random path exits 2 "not an entity file"; a directory or missing path exits 2.
+  - FIFO PoC (FIFO README.md under tests/m6, FIFO TC under tests/m1, validate.js and validateBoard): returns in ~0.03 s (validateBoard 0.1 s), no hang.
+  - pnpm build, typecheck, lint, test (board 424, extension 955, graph 653, tokenomics 102) and coverage:pack green. CI green on c0988ded; the push-run ENOTEMPTY (graph e2e-gate teardown flake) passed on one rerun.
+  - TC frontmatter not updated here; the full M4 run is T4.5.

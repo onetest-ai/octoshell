@@ -1,0 +1,41 @@
+== TC-007
+ ✓ test/validate-tests-parity.test.ts > tests pairing: validate.js and validateBoard agree > over every real board copy, as sets, and the rule never touches validate.js's exit code 3382ms
+ ✓ test/validate-tests-parity.test.ts > tests pairing: validate.js and validateBoard agree > adds no error to validateBoard 453ms
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > reports exactly the planted gaps, as warnings, with the same text from both runtimes
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > reports an unlinked README, a disagreeing map row and every kind of TC problem
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > is silent for a fully paired mission and for a cancelled one
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > applies in every status except cancelled
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > ignores a legacy mission.md, which has no structured criteria or documents
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > works on a board not named .octobots (paths stay relative to the board)
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > validate.js on a mission folder reports that mission's pairing warnings only
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > never changes the exit code: 0 for a well-formed entity, 1 only for its own errors
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > lists a mission's own tests README findings under the board root even when run from another cwd
+ ✓ test/validate-tests-parity.test.ts > validate.js <TC file> > checks that one file, prints its warnings and exits 0
+ ✓ test/validate-tests-parity.test.ts > validate.js <TC file> > accepts a relative path and a TC whose mission is not on the board
+ ✓ test/validate-tests-parity.test.ts > validate.js <TC file> > matches a lettered folder (m3b) to its mission
+ ✓ test/validate-tests-parity.test.ts > validate.js <TC file> > exits 2 'not an entity file' for a path that is neither an entity nor a tests/m<n>/TC-*.md file
+ ✓ test/validate-tests-parity.test.ts > a malformed sibling mission.yaml (M4 gate) > validate.js <campaign-dir> still exits 0 and reports the healthy missions' warnings
+ ✓ test/validate-tests-parity.test.ts > a malformed sibling mission.yaml (M4 gate) > validate.js <TC file> still exits 0 and bounds covers by its own mission
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+exit=0
+== TC-008
+ ✓ test/tests-folder-ignored.test.ts > BoardModel and a campaign's tests/ folder > over every real board copy: entity ids are identical with and without tests/ 353ms
+ ✓ test/tests-folder-ignored.test.ts > BoardModel and a campaign's tests/ folder > over every real board copy: entity-shaped files planted inside tests/ create no entity 386ms
+ ✓ test/tests-folder-ignored.test.ts > BoardModel and a campaign's tests/ folder > a directory holding only tests/ is no campaign, and a campaign's TC files are no entities
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > coalesces a burst of triggers into ONE settle after the debounce window
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > defers the settle while git is non-quiescent, then runs exactly once after it settles
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > dispose cancels a pending settle
+ ✓ test/board-watcher.test.ts > isTestsRunOrEvidencePath > is true for anything under tests/**/runs/ or tests/**/evidence/
+ ✓ test/board-watcher.test.ts > isTestsRunOrEvidencePath > is false for a TC file, a README, an entity file and a runs/ or evidence/ folder outside tests/
+ ✓ test/board-watcher.test.ts > isTestsRunOrEvidencePath > judges only the part below .octobots/campaigns/, never the workspace's own ancestors (M4 gate)
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > watches the whole campaigns tree, so TC and README writes reach the handler
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > triggers no rebuild for a write under tests/**/runs/** or tests/**/evidence/**, on any event
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a write to a TC file triggers exactly one debounced rebuild, however many events it raises
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a README write triggers exactly one rebuild, and so does a TC delete
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a run report written in the same window as a TC write still costs exactly one rebuild
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > entity files outside tests/ rebuild as before
+ Test Files  1 passed (1)
+      Tests  12 passed (12)

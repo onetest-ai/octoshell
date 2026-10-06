@@ -1,0 +1,14 @@
+home-only: 011deac1=true 138ca3b0=true 39d8025a=true
+campaign rows: 3
+  {"ref":"edgeserver-auth","lvl":"campaign","parent":null,"mid":null,"branches":["fix/edgeserver-auth-coach-gating-gaps"],"turns":194}
+  {"ref":"edge-ops-ui","lvl":"campaign","parent":null,"mid":null,"branches":["chore/close-edge-ops-ui-campaign","feat/edge-ops-ui"],"turns":324}
+  {"ref":"emulator-arena-loop","lvl":"campaign","parent":null,"mid":null,"branches":["campaign/emulator-arena-loop"],"turns":41}
+before mission rows 51 after 51
+lost 0 grew []
+chore/uwb-ranging-plan unattributed: true segs: 5 rows: 
+campaign/sensor-assignment-uplift unattributed: false segs: 7 rows: story:sensor-assignment-uplift/sensor-assignment-uplift/M1/M1
+feat/edge-ops-ui unattributed: false segs: 28 rows: campaign:null/edge-ops-ui/null
+chore/close-edge-ops-ui-campaign unattributed: false segs: 1 rows: campaign:null/edge-ops-ui/null
+campaign/emulator-arena-loop unattributed: false segs: 1 rows: campaign:null/emulator-arena-loop/null
+fix/edgeserver-auth-coach-gating-gaps unattributed: false segs: 1 rows: campaign:null/edgeserver-auth/null
+uwb mission rows: M1 M2 M3 M4 M6

@@ -1,0 +1,14 @@
+# run.mjs (mission AC3 literal: collect -> rollup -> render), fresh qa-m1-run dir, HOME=stub
+tokenomics: 1640 segments (3 new) · 53011 turns · 155 branches · 32 sessions
+tokenomics: wrote $WORK/copy/.claude/worktrees/qa-m1-run/.octobots/tokenomics/raw/segments.jsonl
+tokenomics: 51 mission rows · 3 campaign rows · $2696.74 attributed · $1510.75 unattributed
+tokenomics: WARNING unpriced models (fallback rate used): <synthetic>, qwen3.6:35b-a3b-mlx-bf16
+tokenomics: wrote $WORK/copy/.claude/worktrees/qa-m1-run/.octobots/tokenomics/runs.json
+tokenomics: wrote $WORK/copy/.claude/worktrees/qa-m1-run/.octobots/tokenomics/report.html (51 missions, 3 campaign rows, $4207.49)
+exit=0
+campaign row edgeserver-auth level campaign parent_ref null mission_id null branches ["fix/edgeserver-auth-coach-gating-gaps"]
+campaign row edge-ops-ui level campaign parent_ref null mission_id null branches ["chore/close-edge-ops-ui-campaign","feat/edge-ops-ui"]
+campaign row emulator-arena-loop level campaign parent_ref null mission_id null branches ["campaign/emulator-arena-loop"]
+unattributed has feat/edge-ops-ui / campaign/emulator-arena-loop: false false
+home-only sessions in segments: 011deac1=true 138ca3b0=true 39d8025a=true
+render wrote report.html

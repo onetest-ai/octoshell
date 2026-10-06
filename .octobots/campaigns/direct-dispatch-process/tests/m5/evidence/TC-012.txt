@@ -1,0 +1,19 @@
+== solo
+{"level":"warn","area":"lanes","msg":"AGENTS.md has no `## Test lanes` section declaring `fast:` and `coverage:` commands","fix":"run the octobots-doctor skill: it proposes a `## Test lanes` section from the project's documented commands and writes it only with your OK"}
+lanes findings: 1
+== octo
+{"level":"ok","area":"lanes","msg":"AGENTS.md declares test lanes (fast: pnpm --filter <pkg> test; coverage: pnpm coverage)"}
+lanes findings: 1
+63:## Test lanes
+64-
+65-The commands agents run, by purpose. `doctor.js` reads this section, and `mission-execution` and the
+66-mission completion gate run these lanes by name instead of inventing a command.
+67-
+68-- fast: `pnpm --filter <pkg> test`
+69-- coverage: `pnpm coverage`
+0
+155:- **Servers:** start one with `nohup ... > log 2>&1 < /dev/null &`, then poll readiness with a bounded
+158:- **No `timeout` on macOS.** Use the Bash tool's `timeout` parameter, or
+161:  under a Bash timeout. Only non-terminating servers and watchers are backgrounded.
+162:- **QA databases:** QA server, migration and seed commands run through `qa-env.mjs <db> -- <cmd...>`
+163:  (config `.octobots/qa-env.json`), so they cannot touch a real database. Octoshell has no database,

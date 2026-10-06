@@ -1,0 +1,8 @@
+import pytest
+
+pytestmark = pytest.mark.skip
+
+pytestmark = pytest.mark.xfail(reason="tracked in BUG-7")
+
+@pytest.mark.parametrize("n", [1, pytest.param(2, marks=pytest.mark.xfail)])
+def test_a(n): ...

@@ -1,0 +1,37 @@
+name: T5.2 - Board library and BoardHost.setStatus enforce plan review with a confirm dialog
+status: done
+role: js-dev
+description: |-
+  Scope:
+  - packages/board/src/plan-review.ts: planReviewStatus, a pure mirror of plan-review.mjs with the same return shape, exported from src/index.ts;
+  - `BoardHost.setStatus(kind, id, status, opts?: {force?: string})` returns `{ok: true} | {ok: false, reason: "plan-review-missing", message}` (the boolean return is replaced for every kind; campaign, task and bug keep their behaviour); a mission move into executing from another status is checked, and a forced move appends the overridden note through the board library write path;
+  - `DispatchCtx.dialog.confirm(message, actionLabel): Promise<boolean>` added (rpc-dispatcher.ts:14-15) and wired in extension.ts to `vscode.window.showWarningMessage(message, {modal: true}, actionLabel)`;
+  - the `mission:setStatus` handler (rpc-dispatcher.ts:71) asks confirm on plan-review-missing and retries with `force: "confirmed in the extension's status dropdown"`; on cancel it returns the stored status and the webview re-renders it;
+  - no message of any kind on a legacy allow (campaign decision 12);
+  - the parity vitest over packages/board/test/fixtures/plan-review-cases.json (from T5.1) and every real notes pair.
+  Touches packages/board: campaign notes § Test conventions rule 8 (payload regen after a root build, 57 hash). Out of scope: the script. Downstream: M6 shares BoardHost.
+acceptance_criteria:
+  - text: 'apps/vscode-extension/test/board-host.test.ts: BoardHost.setStatus on a mission moving into executing without a satisfying review returns {ok: false, reason: "plan-review-missing"} and the YAML is byte-identical; `{force}` flips it and appends the overridden note; a strict record and a legacy record each flip it; draft -> done and draft -> awaitingApproval are not checked; campaign, task and bug status changes behave as before (mission AC2)'
+    done: true
+  - text: 'apps/vscode-extension/test/rpc-dispatcher.test.ts, with a stubbed `dialog.confirm`: Cancel leaves the YAML byte-identical and returns the stored status; Confirm flips the status and appends the note; confirm is never called when a strict or legacy review exists or when the move is not into executing'
+    done: true
+  - text: 'packages/board/test/plan-review-parity.test.ts: the pack and board implementations return identical results on packages/board/test/fixtures/plan-review-cases.json and on every (mission notes, campaign notes) pair of the boards in OCTOBOTS_BOARD_COPIES (else a temp copy of the repo''s own .octobots/), at least 1 test passed'
+    done: true
+  - text: after a root `pnpm build`, `pnpm --filter @octoshell/vscode-extension graph:payload:write` leaves `--verify` green, and the 57 hash in graph-payload-versions.json is rewritten in a visible diff line if the bytes changed
+    done: true
+notes: |-
+  ## QA verification (2026-10-06, qa-engineer, head 0fb68c0c)
+
+  Gate: pnpm build, typecheck, lint, test (tokenomics 102, board 616, vscode-extension 1031, graph 655, all passed) and coverage:pack all exit 0; graph-payload.mjs --verify: "octograph payload is current"; gh pr checks 157: both build jobs pass on 0fb68c0c. Solo (auqanautica) git status and HEAD identical before and after (read only; only cp -R copies were used).
+
+  TC-005 (script/UI parity): PASS. packages/board test/plan-review-parity.test.ts with OCTOBOTS_BOARD_COPIES set to copies of solo and octoshell: 2 passed, 0 failed. Independent pair count over the two copies (pack plan-review.mjs vs @octoshell/board planReviewStatus, 0 divergences): solo 115 pairs, 6 satisfied, all legacy through the campaign notes (uwb-ranging-ingest-vendor-v01 M1-M6); octoshell 18 pairs, 7 satisfied, all strict through the campaign notes (direct-dispatch-process M1-M7; the TC text says 6 because M7 now exists). The M5 mission notes alone give {ok:false} (self-approval check holds).
+
+  TC-004 (status dropdown enforces plan review): automatable half PASS, live VS Code half BLOCKED (manual F5, steps appended as Part C of tests/m7/manual/T7.4-F5-script.md). Run through the real BoardHost and the mission:setStatus dispatcher on a COPY of solo (epic-013 M10, draft, no review), stubbed dialog.confirm:
+  - Cancel: confirm called once; result {ok:true,status:"draft"}; mission.yaml sha256 identical (87e9af39...4ff7 before and after); status still draft.
+  - Confirm: status flips to executing; notes end with "## Plan review overridden (2026-10-06)" and "confirmed in the extension's status dropdown".
+  - Then awaiting-approval and done: no confirm call.
+  - Legacy review (uwb M5, cancelled -> executing): {ok:true}, no confirm call. Strict review (this campaign's M7 -> executing): {ok:true}, no confirm call.
+  - Modal text observed: Cannot move "M10 - ..." into executing: no plan review is recorded. There is no `## Plan review (...)` heading in the mission notes or the campaign notes. (then the add-this-heading template), button "Start without a review".
+  Not verifiable here: the real modal rendering, Escape as Cancel, the dropdown visually reverting, and the absence of toast/Problems/output lines (F5 Part C). TC frontmatter not updated (T5.6).
+
+  Verdict: PASS, 4 of 4 acceptance criteria met.

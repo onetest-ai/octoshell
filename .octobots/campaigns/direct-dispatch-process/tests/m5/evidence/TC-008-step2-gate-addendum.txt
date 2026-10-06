@@ -1,0 +1,26 @@
+# TC-008 step 2 gate addendum, 2026-10-06 (qa-engineer)
+# config: /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m5gate/qa8b/.octobots/qa-env.json
+{"vars":{"EDGESERVER_POSTGRES_DSN":"postgresql+asyncpg://localhost/{db}","EDGESERVER_POSTGRES_SYNC_DSN":"postgresql://localhost/{db}"},"name_pattern":"^(qa_.+|.+_test)$","probe":"psql \"$EDGESERVER_POSTGRES_SYNC_DSN\" -Atc 'select current_database()'"}
+-- pg_database count BEFORE
+116
+-- edgeserver_test pre-existing:
+edgeserver_test
+-- run: qa-env.mjs edgeserver_test -- touch MARKER
+qa-env: target database = edgeserver_test
+exit=0
+MARKER_WRITTEN
+-- run: qa-env.mjs qa_m5 -- touch MARKER2
+psql: error: connection to server at "localhost" (::1), port 5432 failed: FATAL:  database "qa_m5" does not exist
+qa-env: probe failed for "qa_m5": probe exited 2
+exit=4
+NOT_EXECUTED
+-- pg_database count AFTER
+116
+-- solo status after (read-only check)
+?? .agents/memory/js-dev/daily/2026-10-02.md
+?? .agents/memory/js-dev/daily/2026-10-03.md
+?? .agents/memory/python-dev/daily/2026-10-02.md
+?? .agents/memory/python-dev/daily/2026-10-03.md
+?? .agents/memory/qa-engineer/daily/2026-10-02.md
+?? .agents/memory/qa-engineer/daily/2026-10-03.md
+f3a0a8f455e526c74aa4502c99737205e8294f92

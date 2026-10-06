@@ -1,0 +1,11 @@
+
+ RUN  v2.0.5 <octoshell>/packages/board
+
+ ✓ test/plan-review-parity.test.ts > plan-review parity: pack plan-review.mjs vs packages/board planReviewStatus > returns identical results on every row of the shared case table
+ ✓ test/plan-review-parity.test.ts > plan-review parity: pack plan-review.mjs vs packages/board planReviewStatus > returns identical results on every (mission notes, campaign notes) pair of the real boards 543ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  10:56:04
+   Duration  739ms (transform 48ms, setup 0ms, collect 63ms, tests 546ms, environment 0ms, prepare 30ms)
+

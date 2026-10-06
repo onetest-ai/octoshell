@@ -1,0 +1,81 @@
+set-status: --force needs a reason: --force=<reason>
+bare exit=2
+<scratchpad>/m5qa/work/e13-tc3/missions/m10-setup-flow-preset-and-exception-authorization/mission.yaml: OK
+plan review overridden with --force; recorded in the notes of "M10 - One setup flow, preset warnings, and edge-side exception authorization"
+set status of "M10 - One setup flow, preset warnings, and edge-side exception authorization" to executing
+octobots: status mission "M10 - One setup flow, preset warnings, and edge-side exception authorization" draft -> executing
+last-position exit=0
+2:status: executing
+71:  ## Plan review overridden (2026-10-06)
+72-  QA override for TC-003
+set-status: refusing to move "M10 - One setup flow, preset warnings, and edge-side exception authorization" into executing: no plan review is recorded.
+  no `## Plan review (...)` heading in the mission notes or the campaign notes
+again exit=3
+plan review overridden with --force; recorded in the notes of "M10 - One setup flow, preset warnings, and edge-side exception authorization"
+set status of "M10 - One setup flow, preset warnings, and edge-side exception authorization" to executing
+octobots: status mission "M10 - One setup flow, preset warnings, and edge-side exception authorization" draft -> executing
+first-position exit=0
+plan review overridden with --force; recorded in the notes of "M10 - One setup flow, preset warnings, and edge-side exception authorization"
+set status of "M10 - One setup flow, preset warnings, and edge-side exception authorization" to executing
+octobots: status mission "M10 - One setup flow, preset warnings, and edge-side exception authorization" draft -> executing
+middle-position exit=0
+3
+OK <scratchpad>/m5qa/work/e13-tc3/missions/m10-setup-flow-preset-and-exception-authorization/mission.yaml
+warning: ../../tests/m10/README.md: missing — M10 has no tests README; run add-tests.js to scaffold it
+validate exit=0
+1,2c1,2
+< name: 'M10 - One setup flow, preset warnings, and edge-side exception authorization'
+< status: draft
+---
+> name: M10 - One setup flow, preset warnings, and edge-side exception authorization
+> status: executing
+10c10
+<   - text: 'Official Match presets WARN and accelerate setup without blocking a Match-local exception that carries a reason. A departing lineup is never refused on preset grounds alone.'
+---
+>   - text: Official Match presets WARN and accelerate setup without blocking a Match-local exception that carries a reason. A departing lineup is never refused on preset grounds alone.
+12c12
+<   - text: 'The reason is PERSISTED with the Session, not merely displayed. An implementation that permits the submission while silently dropping the reason FAILS this mission - does-not-block is not does-not-record.'
+---
+>   - text: The reason is PERSISTED with the Session, not merely displayed. An implementation that permits the submission while silently dropping the reason FAILS this mission - does-not-block is not does-not-record.
+14c14
+<   - text: 'Team Staff can prepare an Official Match or a Training Session from one flow, and a Training Session inherits NO competition-lineup maximum and accepts non-roster participants, guests and temporary sides.'
+---
+>   - text: Team Staff can prepare an Official Match or a Training Session from one flow, and a Training Session inherits NO competition-lineup maximum and accepts non-roster participants, guests and temporary sides.
+16c16
+<   - text: 'Goalkeeper status is recorded EXPLICITLY for every participant who has it, covering both the starting and any substitute keeper. It is an independent boolean - matching the model coach-android has already shipped - never a position enum value.'
+---
+>   - text: Goalkeeper status is recorded EXPLICITLY for every participant who has it, covering both the starting and any substitute keeper. It is an independent boolean - matching the model coach-android has already shipped - never a position enum value.
+18c18
+<   - text: 'Cap number remains the primary identifier. NOTHING infers goalkeeper from cap number or cap colour, and no cap-colour field is added.'
+---
+>   - text: Cap number remains the primary identifier. NOTHING infers goalkeeper from cap number or cap colour, and no cap-colour field is added.
+20c20
+<   - text: 'A Match-local exception is accepted only from a caller holding the coach role (or admin), checked EDGE-SIDE. The Coach App performs no local authorization.'
+---
+>   - text: A Match-local exception is accepted only from a caller holding the coach role (or admin), checked EDGE-SIDE. The Coach App performs no local authorization.
+22c22
+<   - text: 'A verified caller lacking the role is refused with 403; a missing or unverifiable credential gets 401. The distinction is tested, not assumed.'
+---
+>   - text: A verified caller lacking the role is refused with 403; a missing or unverifiable credential gets 401. The distinction is tested, not assumed.
+24c24
+<   - text: 'The refusal is recorded with actor and timestamp.'
+---
+>   - text: The refusal is recorded with actor and timestamp.
+35c35
+<   - label: 'H0004 spec'
+---
+>   - label: H0004 spec
+41c41
+< notes: |
+---
+> notes: |-
+69a70,78
+> 
+>   ## Plan review overridden (2026-10-06)
+>   QA override for TC-003
+> 
+>   ## Plan review overridden (2026-10-06)
+>   first position
+> 
+>   ## Plan review overridden (2026-10-06)
+>   middle position

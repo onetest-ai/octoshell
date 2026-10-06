@@ -1,4 +1,4 @@
-export type EntityKind = "campaign" | "mission" | "task" | "bug" | "workflow";
+export type EntityKind = "campaign" | "mission" | "task" | "bug";
 
 /** Authored content owned by the `.md` brief (the DB only caches these). */
 export interface ManagedFields {
@@ -20,8 +20,6 @@ export interface ManagedFields {
   actual?: string;
   rca?: string;
   environment?: string;
-  /** workflow only — the raw body of the `## Runs` section. */
-  runs?: string;
   /** Free-form appended prose (decisions, rationale, sign-offs). Markdown, preserved verbatim. */
   notes?: string;
 }
@@ -103,10 +101,7 @@ export function renderManagedBlock(
 ): string {
   const lines = [`# ${fields.name}`];
   lines.push(``);
-  if (kind === "workflow") {
-    lines.push(section("Description", fields.description));
-    lines.push(section("Runs", fields.runs ?? ""));
-  } else if (kind === "bug") {
+  if (kind === "bug") {
     lines.push(section("Severity", fields.severity ?? ""));
     lines.push(section("Description", fields.description));
     lines.push(section("Steps to Reproduce", fields.stepsToReproduce ?? ""));
@@ -168,7 +163,6 @@ export function parseManagedBlock(text: string): ManagedFields {
     actual: sectionBody("Actual"),
     rca: sectionBody("RCA"),
     environment: sectionBody("Environment"),
-    runs: sectionBody("Runs"),
   };
 }
 

@@ -1,0 +1,161 @@
+chore(ext): release 0.1.0 with workflow pack v57
+
+Changes since 0.0.51 (full notes in apps/vscode-extension/CHANGELOG.md):
+- M1 tokenomics: one transcript-root rule, local price seed, per-mission and per-task rollup fixes.
+- M2 direct dispatch: mission-execution and the gate run by orchestrator-dispatched sub-agents;
+  workflow-designer and the workflow scripts retired from the pack; Workflow support removed.
+- M3 Workflow removed from the extension: commands, tree nodes, panel, RPC, diagram, board entity.
+- M4 test cases: add-tests.js, tests-pairing warnings, gate and QA run them on real data.
+- M5 plan review and agent-ops guards: plan review before a mission starts, qa-env.mjs database
+  guard, scan-parked.js, test-lane check.
+- M6 test cases on the board: TestCase entity, AC coverage, Tests tree node and panels,
+  set-test-status.js.
+- M7 pack-updates reconcile: shipped-skill store, Reconcile/Overwrite/Keep install choice,
+  octobots-doctor skill.
+
+IMPORTANT: 0.0.51 and earlier (since a192780c) deleted any legacy workflows/<slug>/workflow.md on
+every activation (migrateLegacyWorkflows). 0.1.0 no longer touches workflows/ at all.
+
+Verification (pnpm build, typecheck, lint, test, coverage all green):
+- tests passed: tokenomics 102, board 800, vscode-extension 1176, graph 655
+- coverage board (stmts/branch/funcs/lines): 93.99 / 83.69 / 95.17 / 93.99
+- coverage pack scripts (c8 over every skill's scripts): 97.95 / 88.09 / 98.05 / 97.95
+
+Removed commands: octoshell.newWorkflow, octoshell.deleteWorkflow, octoshell.openWorkflowById.
+A keybinding bound to any of them now reports 'command not found'.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+====== build log
+@octoshell/vscode-extension:build: cache miss, executing f38d399f81f9fbd4
+@octoshell/graph:build: cache hit, replaying logs 102401321ef20aa9
+@octoshell/graph:build: 
+@octoshell/graph:build: > @octoshell/graph@0.0.0 build /Users/arozumenko/Development/octoshell/packages/graph
+@octoshell/graph:build: > tsc -p tsconfig.json
+@octoshell/graph:build: 
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build: > @octoshell/vscode-extension@0.1.0 build /Users/arozumenko/Development/octoshell/apps/vscode-extension
+@octoshell/vscode-extension:build: > node scripts/graph-payload.mjs --verify && node scripts/shipped-skills.mjs --verify && node esbuild.mjs && vite build
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build: octograph payload is current.
+@octoshell/vscode-extension:build: shipped-skills store is current.
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build:   dist/extension.js      873.5kb
+@octoshell/vscode-extension:build:   dist/extension.js.map    1.7mb
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build: ⚡ Done in 20ms
+@octoshell/vscode-extension:build: Bundled dist/extension.js
+@octoshell/vscode-extension:build: [33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+@octoshell/vscode-extension:build: vite v5.3.5 building for production...
+@octoshell/vscode-extension:build: transforming...
+@octoshell/vscode-extension:build: ✓ 390 modules transformed.
+@octoshell/vscode-extension:build: rendering chunks...
+@octoshell/vscode-extension:build: computing gzip size...
+@octoshell/vscode-extension:build: ../../media/index.html                     0.40 kB │ gzip:   0.27 kB
+@octoshell/vscode-extension:build: ../../media/assets/codicon-B16ygVZF.ttf   80.19 kB
+@octoshell/vscode-extension:build: ../../media/assets/index-CkgWM0sJ.css     39.80 kB │ gzip:   9.23 kB
+@octoshell/vscode-extension:build: ../../media/assets/index-D4Ct9_oO.js     612.85 kB │ gzip: 165.83 kB
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build: (!) Some chunks are larger than 500 kB after minification. Consider:
+@octoshell/vscode-extension:build: - Using dynamic import() to code-split the application
+@octoshell/vscode-extension:build: - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+@octoshell/vscode-extension:build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+@octoshell/vscode-extension:build: ✓ built in 824ms
+
+ Tasks:    4 successful, 4 total
+Cached:    3 cached, 4 total
+  Time:    1.264s 
+
+
+> @octoshell/vscode-extension@0.1.0 package /Users/arozumenko/Development/octoshell/apps/vscode-extension
+> node scripts/package-vsix.mjs
+
+octograph payload is current.
+shipped-skills store is current.
+
+  dist/extension.js      873.5kb
+  dist/extension.js.map    1.7mb
+
+⚡ Done in 21ms
+Bundled dist/extension.js
+npm warn Unknown env config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "recursive". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "_onetest-registry". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+[33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+vite v5.3.5 building for production...
+==== package scripts
+apps/vscode-extension/scripts/package-steps.mjs:32:        args: [join(extDir, "..", "..", "packages", "tokenomics", "scripts", "update-prices.mjs")],
+apps/vscode-extension/scripts/package-steps.mjs:38:        args: [join(extDir, "resources", "octobots-pack", "tokenomics", "update-prices.mjs")],
+apps/vscode-extension/scripts/package-steps.mjs:47:    { label: "verify graph payload", cmd: "node", args: ["scripts/graph-payload.mjs", "--verify"] },
+apps/vscode-extension/scripts/package-steps.mjs:48:    { label: "verify shipped-skill store", cmd: "node", args: ["scripts/shipped-skills.mjs", "--verify"] },
+==== changelog
+# Changelog
+
+## 0.1.0
+
+Octobots pack v57. This release removes the Workflow feature end to end and replaces it with
+direct sub-agent dispatch.
+
+### Read this first: legacy `workflows/` folders
+
+**0.0.51 and every earlier release (since commit a192780c) DELETED any legacy
+`workflows/<slug>/workflow.md` on every activation.** The migration (`migrateLegacyWorkflows`)
+derived a `runs.jsonl` from the file's `## Runs` section and then permanently removed
+`workflow.md`. If you still have such files, they were already migrated away by an earlier
+version, and a copy in git history is the only way back.
+
+**0.1.0 no longer touches `workflows/` at all.** A leftover `workflows/` folder is ignored by the
+board, and `validate.js` and `doctor.js` warn that it is no longer read.
+
+### Removed commands
+
+These commands no longer exist. A keybinding you bound to any of them now reports
+"command not found":
+
+- `octoshell.newWorkflow`
+- `octoshell.deleteWorkflow`
+- `octoshell.openWorkflowById`
+
+The Workflow tree nodes, the Workflow editor panel and its diagram are gone too.
+
+### Pack v57 and upgrading
+
+The pack is versioned as one unit and is now at v57. When you install or update it in a workspace
+where you edited a skill locally, the prompt offers three choices:
+
+- **Reconcile** (default): leaves your live skill alone and stages the base, your version and the
+  new upstream version under `.octobots/pack-updates/`. The next agent session is told to run the
+  `octobots-doctor` skill, which merges the three and records its decisions.
+- **Overwrite**: replaces your edit with the pack's text, after saving yours as
+  `overwritten-local.md`.
+- **Keep**: keeps your edit and remembers the choice while the file is unchanged.
+
+`packStatus` compares integers only, so a workspace that already took an intermediate v57 install
+will not be prompted again. Re-run "Octobots: Install Octobots Pack" there.
+
+### Changes since 0.0.51
+
+- **Tokenomics.** Collection and rollup read one transcript root rule, price models that upstream
+  does not list from a local `prices.local.json`, and attribute cost per mission and task more
+  accurately; `verify` gates cost only over models it can price.
+- **Direct dispatch.** `mission-execution` runs a mission by having the orchestrator dispatch one
+  sub-agent per phase; the completion gate runs the same way and the session hooks confirm status
+  flips. The workflow design skill and the workflow authoring and run-logging scripts (with their
+  vendored parser) are retired from the pack and the installer. Support
+  for the Workflow tool is removed.
+- **Workflow removed from the extension.** The Workflow entity is gone from `@octoshell/board`;
+  `validateBoard` warns about a leftover `workflows/` folder. Detail views no longer save stale
+  text over newer values.
+- **Test cases.** A mission's `tests/` folder is scaffolded and linked by `add-tests.js`;
+  `validate.js` warns on a missing tests pairing or a malformed test case; the planner authors
+  tests with the mission, and the gate and last-task QA run them on real data.
+- **Plan review and agent-ops guards.** A mission cannot start until a plan review is recorded
+  (`set-status.js`, and a confirm dialog in the extension); the planner and execution skills carry
+  server and timeout rules; a config-driven `qa-env.mjs` guards the QA database; `scan-parked.js`
+  and the doctor flag parked tests and a missing test-lane declaration in `AGENTS.md`.
+- **Test cases on the board.** `TestCase` is a board entity with AC coverage; a Tests node in the
+  sidebar, a mission Tests panel and a campaign test summary show status and coverage; results are
+  written with `set-test-status.js`.
+- **Pack-updates reconcile and `octobots-doctor`.** A store of every shipped SKILL.md supplies
+  merge bases; installs detect local deviations and offer Reconcile, Overwrite or Keep; the primer,
+  `validate.js` and `doctor.js` surface a pending reconcile; the new `octobots-doctor` skill

@@ -28,6 +28,11 @@ import { onTestFinished } from "vitest";
  */
 export function mkdtempClean(prefix: string): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
-  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+  // The cause of the old ENOTEMPTY flake (a detached `git maintenance` child
+  // writing into `.git`) is removed in `setup-git-env.ts`. The retries are a
+  // BACKSTOP for any other late writer, not the fix.
+  onTestFinished(() =>
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }),
+  );
   return root;
 }

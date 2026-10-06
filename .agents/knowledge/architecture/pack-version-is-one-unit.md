@@ -1,9 +1,9 @@
 ---
-name: Editing any pack payload obliges a whole-pack version bump across nine markers, a regenerated bundle and a recorded hash
-description: packStatus calls the pack out of date unless every marker equals OCTOBOTS_PACK_VERSION, so a one-line SKILL.md edit drags eight other files with it; the pieces are each documented, the obligation as a whole is not.
+name: Editing any pack payload obliges a whole-pack version bump across ten hand-edited markers, a regenerated bundle, a recorded hash and the shipped-skill store
+description: packStatus calls the pack out of date unless every marker equals OCTOBOTS_PACK_VERSION, so a one-line SKILL.md edit drags every other marker with it; the pieces are each documented, the obligation as a whole is not.
 type: reference
 applies_to: [js-dev, tech-lead, qa-engineer, project-manager]
-verified: 2026-08-13
+verified: 2026-10-05
 aliases: [pack version bump, OCTOBOTS_PACK_VERSION, pack markers, version cohort]
 tags: [area/pack, area/extension]
 ---
@@ -22,8 +22,19 @@ all of this, in the same PR:
 | 7 | `resources/octobots-pack/hooks/primer.mjs` — `// octobots-pack-version:` | by hand |
 | 8 | `resources/octobots-pack/tokenomics/run.mjs` — same banner | by hand |
 | 9 | `resources/octobots-pack/tokenomics/backfill-worklog-sha.mjs` — same banner | by hand |
-| 10 | `resources/octobots-pack/graph/octograph.mjs` | **machine-stamped** — `node scripts/graph-payload.mjs --write` from `apps/vscode-extension/`; never hand-edit its banner |
-| 11 | `apps/vscode-extension/scripts/graph-payload-versions.json` | a **new** entry `"<version>": "<sha256 of the regenerated payload>"`; leave prior entries untouched |
+| 10 | `resources/octobots-pack/statusline/statusline.sh` — same banner (`# octobots-pack-version:`) | by hand |
+| 11 | `resources/octobots-pack/graph/octograph.mjs` | **machine-stamped** — `node scripts/graph-payload.mjs --write` from `apps/vscode-extension/`; never hand-edit its banner |
+| 12 | `apps/vscode-extension/scripts/graph-payload-versions.json` | a **new** entry `"<version>": "<sha256 of the regenerated payload>"`; leave prior entries untouched |
+| 13 | `apps/vscode-extension/resources/shipped-skills.json.br` | **machine-written** — see below |
+
+The five skills in row 2-6 are `mission-planner`, `mission-execution`, `mission-completion-gate`,
+`knowledge-explorer` and `octobots-doctor`; the hand-edited markers are therefore rows 1-10.
+
+**Every SKILL.md change is followed by `node apps/vscode-extension/scripts/shipped-skills.mjs --write`
+(from the repo root), with the new store committed in the same PR.** The store holds every SKILL.md
+the pack has shipped; pack updates classify a workspace's skill against it and recover the base of a
+three-way merge from it. `shipped-skills.mjs --verify` (the default mode, reads no git) fails naming
+the file when a current SKILL.md is not indexed under `OCTOBOTS_PACK_VERSION`.
 
 Two tests enforce it, and they fail for different reasons: `octobots-skill.test.ts` parameterises
 its convention cases over `OCTOBOTS_SKILLS`, so a stale `SKILL.md` version fails by skill name;
@@ -43,11 +54,11 @@ The failure is silent on the shipping side and loud on the CI side, which is the
   banner integer, so every workspace keeps running a stale `octograph.mjs` indefinitely, is never
   prompted to upgrade, and nothing anywhere says so. `graph-payload-versions.json`'s own `_why` key
   documents this specific hole and exists to close it.
-- **`js-dev`** editing a `SKILL.md` for a one-line doctrine fix ships an eleven-file diff. That is
+- **`js-dev`** editing a `SKILL.md` for a one-line doctrine fix ships a diff across the whole cohort. That is
   correct, not scope creep — a reviewer who asks for it to be narrowed is asking for a red CI run.
 - **`tech-lead`** reviewing any diff that touches `resources/octobots-pack/` should check the
   cohort moved as a unit before approving.
-- **`qa-engineer`**: the install path is only genuinely covered when all eleven are consistent;
+- **`qa-engineer`**: the install path is only genuinely covered when every marker is consistent;
   `packStatus(repo).upToDate === true` after `installPack` is the assertion that proves it.
 
 The individual pieces *are* documented — in `graph-payload-versions.json`'s `_why`, in
@@ -65,7 +76,7 @@ recording `5d45b4fe…` in `graph-payload-versions.json` returned the extension 
 Independently surfaced the same cohort from git history, before touching any of it:
 
 ```
-$ octograph impact apps/…/octobots-pack/skill/workflow-designer/SKILL.md
+$ octograph impact apps/…/octobots-pack/skill/<skill>/SKILL.md   # taken in 2026-08, on a SKILL.md since retired
 …/hooks/primer.mjs                          npmi=0.646  support=19
 src/host/octobots-skill.ts                  npmi=0.646  support=19
 …/tokenomics/run.mjs                        npmi=0.460  support=11
@@ -82,3 +93,5 @@ it. Recorded in full at
 Related: [[dual-schema-entity-io]] — the other pack coupling that no import edge expresses. That one
 is enforced by a comment; this one is enforced by two tests, which is why it fails loudly instead of
 corrupting data.
+
+(2026-10-05: re-checked against `main` after the workflow removal and the agent-driven skill reconcile: the roster is five skills, `statusline.sh` carries a banner, and `shipped-skills.json.br` exists.)

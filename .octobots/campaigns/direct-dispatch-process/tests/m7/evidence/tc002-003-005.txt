@@ -1,0 +1,21 @@
+# TC-002 octo1
+{"n":0,"pending":[],"upToDate":true}
+campaigns graph hooks pastes teams tokenomics tools 
+# TC-003 final solo3 state
+solo3/.octobots/pack-updates/.gitignore
+solo3/.octobots/pack-updates/pending.json
+solo3/.octobots/pack-updates/v57/mission-completion-gate/overwritten-local.md
+solo3/.octobots/pack-updates/v57/mission-execution/overwritten-local.md
+{
+  "packVersion": 57,
+  "skills": [],
+  "kept": []
+}
+
+# TC-005 bases
+solo5
+{"skill":"mission-execution","base":{"version":56,"sha256":"9af2c928b8310dddbff78f015f00264251592ca727ae1d07741f363bd4a9c523","source":"workspace-git"}}
+{"skill":"mission-completion-gate","base":{"version":56,"sha256":"008de10a952f5afeb5e85fb02cf1814179cd516d537bf57016b3e071105dd4cc","source":"workspace-git"}}
+solo5plain
+{"skill":"mission-execution","base":{"version":57,"sha256":"92e7eebb995bacf738751d47989944914be146a5d9410378d84e69708fd42755","source":"declared"}}
+{"skill":"mission-completion-gate","base":{"version":57,"sha256":"cea02af4cb23b7d25dafad8fac3de934f4bd28bafa09e146f27796b7ac80b6c7","source":"declared"}}

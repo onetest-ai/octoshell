@@ -1,0 +1,9 @@
+import { describe, it, test } from "vitest";
+it.skip("a", () => {});
+describe.skip("b", () => {});
+it.todo("c");
+it.fails("d", () => {});
+xit("e", () => {});
+xdescribe("f", () => {});
+  test.skip("indented", () => {});
+it.skip("two on one line", () => {}); xit("second", () => {});

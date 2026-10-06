@@ -1,0 +1,27 @@
+name: T3.4 - Docs reflect a workflow-free product
+status: done
+role: js-dev
+description: 'Scope: root README.md (:7,37,51,84,87,101,107); apps/vscode-extension/README.md (:9,18-25,34,54-56); octoshell CLAUDE.md § Architecture (''workflow-meta.ts...'', ''WorkflowView...'') and the ''The Octobots workflow pack'' section (which also names the octobots-doctor skill and the pack-updates reconcile flow M7 adds); AGENTS.md (:32,38,54); .agents/knowledge/architecture/pack-version-is-one-unit.md (5 SKILL.md after M7: 4 after M2 plus octobots-doctor, and statusline.sh is one of the hand-edited markers) and dual-schema-entity-io.md:32. A sentence saying legacy workflows/ folders are ignored is allowed if it uses none of the AC''s grep terms. Out of scope: historical specs under docs/. Downstream: none.'
+acceptance_criteria:
+  - text: '`grep -n -i -E ''workflow\.js|WorkflowView|workflow-designer|workflow-diagram|workflow pack|Install Workflow Pack''` on README.md, apps/vscode-extension/README.md, CLAUDE.md, AGENTS.md and the two knowledge notes returns nothing (mission AC7 docs part)'
+    done: true
+  - text: pack-version-is-one-unit.md lists the 5 SKILL.md files (mission-planner, mission-execution, mission-completion-gate, knowledge-explorer, octobots-doctor) and statusline.sh among the hand-edited markers, and says every SKILL.md change is followed by `node apps/vscode-extension/scripts/shipped-skills.mjs --write` with the new store committed
+    done: true
+  - text: docs/ (prd-v1.md, project-brief.md, tech-stack.md and any other file) carries no 'workflow pack', 'Install Workflow Pack', New/Delete Workflow command or WorkflowView reference except an explicitly historical note; the T3.2 review found these uncovered by any task
+    done: true
+notes: |
+  ## QA verification
+
+  Verdict: PASS. PR #139, head c1b7a76b (checks green: both build jobs pass). Base feat/direct-dispatch-process-m3.
+
+  User approval: the user explicitly approved the CLAUDE.md and AGENTS.md changes in this PR (applied in 6732f9d4).
+
+  Review fixes: af44654f dropped docs claims of a non-existent "team" feature; 4 CLAUDE.md corrections from review were applied (6732f9d4); c1b7a76b fixed the extension README install-location line and removed "planning agents".
+
+  Evidence:
+  - AC1: the AC grep (workflow.js|WorkflowView|workflow-designer|workflow-diagram|workflow pack|Install Workflow Pack, -i) over README.md, apps/vscode-extension/README.md, CLAUDE.md, AGENTS.md, pack-version-is-one-unit.md, dual-schema-entity-io.md: 0 hits (exit 1).
+  - AC2: pack-version-is-one-unit.md lists the 5 SKILL.md (mission-planner, mission-execution, mission-completion-gate, knowledge-explorer, octobots-doctor), statusline.sh as a hand-edited marker (row 10), and the rule that every SKILL.md change is followed by node apps/vscode-extension/scripts/shipped-skills.mjs --write with the new store committed. Cross-checked: OCTOBOTS_SKILLS in pack-skills.ts = the same 5; skill dirs under resources/octobots-pack/skill = the same 5; OCTOBOTS_PACK_VERSION = 57; "version: 57" in all 5 SKILL.md; "octobots-pack-version: 57" in statusline.sh, hooks/primer.mjs, tokenomics/run.mjs, tokenomics/backfill-worklog-sha.mjs, graph/octograph.mjs.
+  - AC3: grep -i 'workflow pack|Install Workflow Pack|New Workflow|Delete Workflow|WorkflowView' docs/*.md (not docs/superpowers): 0 hits.
+  - Accuracy spot-check: every "Octobots: ..." command title in both READMEs exists in package.json contributes.commands (New Campaign, New Mission in this Campaign, Install Octobots Pack, Doctor, Install Graph, Tokenomics); every skill name mentioned exists under resources/octobots-pack/skill; mission-gate hook named in README/CLAUDE.md exists in pack hooks/.
+  - Install-location probe: git clone --shared of auqanautica into scratch, ran scripts/qa/install-pack.mjs (written 41 files). Created/updated skills under .claude/skills (knowledge-explorer, mission-planner, octobots-doctor, mission-execution and mission-completion-gate staged as pending reconcile because of local edits), hooks under .octobots/hooks (mission-gate, primer, status-flip, work-log), tokenomics under .octobots/tokenomics (run, collect, render, rollup, roots, ...), plus .octobots/pack-updates. Retired workflow-designer SKILL.md and mission-planner workflow scripts removed. Matches the stated .claude / .octobots/hooks / .octobots/tokenomics. auqanautica git status identical before and after (6 lines pre-existing, untouched).
+  - pnpm lint && pnpm test: green (extension 925 tests, graph 653 tests, 6/6 turbo tasks); no flake.

@@ -1,14 +1,18 @@
 import { join, basename } from "node:path";
 import * as vscode from "vscode";
-import { BoardHost } from "./host/board-host.js";
+import { openBoard } from "./host/board-host.js";
 import { AppearanceStore } from "./host/appearance-store.js";
-import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE, WORKFLOW_VIEW_TYPE } from "./host/entity-panel-manager.js";
+import { LEGACY_WORKFLOW_VIEW_TYPE, legacyWorkflowPanelSerializer } from "./host/panel-serializers.js";
+import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE } from "./host/entity-panel-manager.js";
 import { TokenomicsPanel } from "./host/tokenomics-panel.js";
-import { renderReportHtml, type Report as TokenomicsReport } from "@octoshell/tokenomics";
-import { CampaignsTree } from "./host/campaigns-tree.js";
+import { isCampaignRun, renderReportHtml, type Report as TokenomicsReport } from "@octoshell/tokenomics";
+import { CampaignsTree, OPEN_TEST_FILE_COMMAND, testFileToOpen } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
 import { packStatus, installPack, OCTOBOTS_PACK_VERSION } from "./host/octobots-skill.js";
+import { loadShippedStore, decideLocalChanges, installCompletionMessage, shouldPromptOnActivation } from "./host/pack-deviations.js";
+import { prepareInstall, installFailureMessage } from "./host/pack-install-guard.js";
+import { readPending } from "./host/pack-updates.js";
 import { claudeHookStatus } from "./host/octobots-hooks.js";
 import { toolsStatus } from "./host/octobots-tools.js";
 import { launchSdlcBundleInstall } from "./host/sdlc-bundles-command.js";
@@ -32,51 +36,71 @@ function packSrcRoot(context: vscode.ExtensionContext): string {
  * refreshes them (and repairs any duplicates an older version left).
  */
 async function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: string): Promise<void> {
-  const src = packSrcRoot(context);
-  const alreadyHooked = claudeHookStatus(repoRoot, OCTOBOTS_PACK_VERSION).present;
-
-  let hooks: boolean | undefined;
-  if (!alreadyHooked) {
-    const answer = await vscode.window.showInformationMessage(
-      "Octobots: also install the session hooks? They run the primer at session start and a " +
-        "work-log + mission-gate hook after every Bash tool call. The pack works without them.",
-      { modal: false },
-      "Install hooks",
-      "Skip hooks",
+  try {
+    const src = packSrcRoot(context);
+    const prepared = prepareInstall(
+      loadShippedStore(vscode.Uri.joinPath(context.extensionUri, "resources", "shipped-skills.json.br").fsPath),
     );
-    if (answer === undefined) return; // dismissed — install nothing rather than guess
-    hooks = answer === "Install hooks";
-  }
+    // Before any modal or question: with no store the install cannot act on an answer.
+    if ("error" in prepared) {
+      void vscode.window.showErrorMessage(prepared.error);
+      return;
+    }
+    const { store } = prepared;
 
-  // The tools step is asked separately because it is the only one that needs the NETWORK: it
-  // installs the pinned `ccusage` into `.octobots/tools` once, so tokenomics stops paying an `npx`
-  // re-resolution on every call (measured 823ms vs 29ms). Declining is a real choice — everything
-  // still works through the npx fallback, just slowly, and the doctor says so.
-  let tools: boolean | undefined;
-  if (!toolsStatus(repoRoot).ccusage) {
-    const answer = await vscode.window.showInformationMessage(
-      "Octobots: install the tokenomics CLI (ccusage) into this workspace? One ~340ms download, " +
-        "reused after that. Without it every usage call re-resolves it through npx (~823ms each).",
-      { modal: false },
-      "Install",
-      "Skip",
+    // First, before any other question and before any write: what to do with pack skills this
+    // workspace changed. Cancel or Escape installs nothing. The extension never starts an agent; the
+    // pack's SessionStart hook tells the next session to run octobots-doctor.
+    const decision = await decideLocalChanges(packStatus(repoRoot, OCTOBOTS_PACK_VERSION, store), OCTOBOTS_PACK_VERSION, (message, detail, buttons) =>
+      vscode.window.showWarningMessage(message, { modal: true, detail }, ...buttons),
     );
-    if (answer !== undefined) tools = answer === "Install";
-  }
+    if (decision.cancelled) return;
 
-  const res = installPack(src, repoRoot, {
-    ...(hooks === undefined ? {} : { hooks }),
-    ...(tools === undefined ? {} : { tools }),
-  });
-  const parts = [
-    res.hooksRegistered ? "session hooks" : null,
-    res.tools === "installed" ? "tokenomics CLI" : null,
-  ].filter(Boolean);
-  const suffix = parts.length ? ` with ${parts.join(" and ")}` : "";
-  const failed = res.tools === "failed" ? " (the tokenomics CLI could not be downloaded — the npx fallback still works)" : "";
-  void vscode.window.showInformationMessage(
-    `Octobots: workflow pack installed (${res.written} files)${suffix}.${failed}`,
-  );
+    const alreadyHooked = claudeHookStatus(repoRoot, OCTOBOTS_PACK_VERSION).present;
+
+    let hooks: boolean | undefined;
+    if (!alreadyHooked) {
+      const answer = await vscode.window.showInformationMessage(
+        "Octobots: also install the session hooks? They run the primer at session start and a " +
+          "work-log + mission-gate hook after every Bash tool call. The pack works without them.",
+        { modal: false },
+        "Install hooks",
+        "Skip hooks",
+      );
+      if (answer === undefined) return; // dismissed — install nothing rather than guess
+      hooks = answer === "Install hooks";
+    }
+
+    // The tools step is asked separately because it is the only one that needs the NETWORK: it
+    // installs the pinned `ccusage` into `.octobots/tools` once, so tokenomics stops paying an `npx`
+    // re-resolution on every call (measured 823ms vs 29ms). Declining is a real choice — everything
+    // still works through the npx fallback, just slowly, and the doctor says so.
+    let tools: boolean | undefined;
+    if (!toolsStatus(repoRoot).ccusage) {
+      const answer = await vscode.window.showInformationMessage(
+        "Octobots: install the tokenomics CLI (ccusage) into this workspace? One ~340ms download, " +
+          "reused after that. Without it every usage call re-resolves it through npx (~823ms each).",
+        { modal: false },
+        "Install",
+        "Skip",
+      );
+      if (answer !== undefined) tools = answer === "Install";
+    }
+
+    const res = installPack(src, repoRoot, {
+      store,
+      ...(decision.localChanges === undefined ? {} : { localChanges: decision.localChanges }),
+      ...(hooks === undefined ? {} : { hooks }),
+      ...(tools === undefined ? {} : { tools }),
+    });
+    if (res.error) {
+      void vscode.window.showErrorMessage(`Octobots: nothing was installed (${res.error}).`);
+      return;
+    }
+    void vscode.window.showInformationMessage(installCompletionMessage(res, OCTOBOTS_PACK_VERSION));
+  } catch (err) {
+    void vscode.window.showErrorMessage(installFailureMessage(err));
+  }
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -109,22 +133,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Explicit-only: on open, if the pack (skill + planning agents) is missing/outdated, PROMPT —
   // never write without the user's click. Shown at most once per activation.
   void (async () => {
-    const st = packStatus(repoRoot);
-    if (st.installed && st.upToDate) return;
+    const store = loadShippedStore(vscode.Uri.joinPath(context.extensionUri, "resources", "shipped-skills.json.br").fsPath);
+    const st = packStatus(repoRoot, OCTOBOTS_PACK_VERSION, store);
+    if (!shouldPromptOnActivation(st, readPending(repoRoot), OCTOBOTS_PACK_VERSION)) return;
+    // No store: an "Install?" prompt here would only lead to the store error, so show that instead.
+    const prepared = prepareInstall(store);
+    if ("error" in prepared) {
+      void vscode.window.showErrorMessage(prepared.error);
+      return;
+    }
     const verb = st.installed ? "update" : "install";
     const Verb = `${verb[0]!.toUpperCase()}${verb.slice(1)}`;
     const choice = await vscode.window.showInformationMessage(
-      `Octobots workflow pack isn't ${st.installed ? "up to date" : "installed"} for this repo. ${Verb} it so planning agents understand campaigns/missions/tasks?`,
+      `Octobots pack isn't ${st.installed ? "up to date" : "installed"} for this repo. ${Verb} it so planning agents understand campaigns/missions/tasks?`,
       "Install",
       "Not now",
     );
     if (choice === "Install") await installOctobotsPack(context, repoRoot);
   })();
 
-  const board = new BoardHost(join(fsPath, ".octobots"));
-  board.migrateLegacyWorkflows(); // one-time: retire workflow.md, materialize runs.jsonl (idempotent)
-  board.migrateEntitiesToYaml(); // one-time: md→yaml entities, fold parent markers, trash .md (idempotent)
-  board.reconcile(); // initial load: stamps missing task/bug id-markers and emits entities:changed
+  // Opens the board: one-time md→yaml entity migration (idempotent), then the initial load, which
+  // stamps missing task/bug id-markers and emits entities:changed. Never touches `workflows/`.
+  const board = openBoard(join(fsPath, ".octobots"));
   const appearanceStore = new AppearanceStore(context.globalState);
   const dispatchCtx: DispatchCtx = {
     board,
@@ -134,6 +164,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       openFiles: async () => {
         const picks = await vscode.window.showOpenDialog({ canSelectMany: true });
         return picks?.map((u) => u.fsPath) ?? [];
+      },
+      confirm: async (message: string, actionLabel: string) => {
+        const choice = await vscode.window.showWarningMessage(message, { modal: true }, actionLabel);
+        return choice === actionLabel;
       },
       openFolder: async () => {
         const picks = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false });
@@ -194,13 +228,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         else panel.dispose();
       },
     }),
-    vscode.window.registerWebviewPanelSerializer(WORKFLOW_VIEW_TYPE, {
-      async deserializeWebviewPanel(panel, state) {
-        const id = (state as { id?: string } | undefined)?.id;
-        if (id) entityPanels.adopt(panel, "workflow", id);
-        else panel.dispose();
-      },
-    }),
+    vscode.window.registerWebviewPanelSerializer(LEGACY_WORKFLOW_VIEW_TYPE, legacyWorkflowPanelSerializer),
   );
 
   const campaignsTree = new CampaignsTree(board);
@@ -237,8 +265,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       });
       if (!target) return;
       await vscode.workspace.fs.writeFile(target, Buffer.from(renderReportHtml(report), "utf8"));
+      const campaignRows = report.runs.filter(isCampaignRun).length;
+      const missionRows = report.runs.length - campaignRows;
       const open = await vscode.window.showInformationMessage(
-        `Octobots: wrote ${report.runs.length} missions to ${basename(target.fsPath)}.`,
+        `Octobots: wrote ${missionRows} missions${campaignRows ? ` + ${campaignRows} campaign rows` : ""} to ${basename(target.fsPath)}.`,
         "Open",
       );
       if (open === "Open") await vscode.env.openExternal(target);
@@ -251,8 +281,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("octoshell.openCampaignById", (id: string) => entityPanels.openCampaign(id)),
     vscode.commands.registerCommand("octoshell.openMissionById", (id: string) => entityPanels.openMission(id)),
     vscode.commands.registerCommand("octoshell.openTaskById", (id: string) => entityPanels.openTask(id)),
+    // A Tests-node leaf opens its markdown file through the same openFile the dispatcher's editor uses. Any caller
+    // can run a command, so the path must be a TC file inside this board; anything else is ignored silently.
+    vscode.commands.registerCommand(OPEN_TEST_FILE_COMMAND, async (arg: unknown) => {
+      const abs = testFileToOpen(board.artifactsRoot, arg);
+      if (abs) await dispatchCtx.editor.openFile(abs);
+    }),
     vscode.commands.registerCommand("octoshell.openBugById", (id: string) => entityPanels.openBug(id)),
-    vscode.commands.registerCommand("octoshell.openWorkflowById", (id: string) => entityPanels.openWorkflow(id)),
     vscode.commands.registerCommand("octoshell.newCampaign", async () => {
       const name = await vscode.window.showInputBox({ prompt: "Campaign name", placeHolder: "e.g. Q3 Rollout" });
       if (!name) return;
@@ -338,38 +373,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         campaignsTree.refresh();
       } catch (err) {
         vscode.window.showErrorMessage(`Octobots: could not delete bug — ${(err as Error).message}`);
-      }
-    }),
-    vscode.commands.registerCommand("octoshell.newWorkflow", async (node?: { campaign?: { id: string }; mission?: { id: string } }) => {
-      const parent = node?.campaign ? { campaignId: node.campaign.id } : node?.mission ? { missionId: node.mission.id } : null;
-      if (!parent) return;
-      const name = await vscode.window.showInputBox({
-        prompt: "Workflow name",
-        placeHolder: "e.g. build-tasks",
-      });
-      if (!name) return;
-      try {
-        const wf = board.createWorkflow(parent, { name });
-        campaignsTree.refresh();
-        entityPanels.openWorkflow(wf.id);
-      } catch (err) {
-        vscode.window.showErrorMessage(`Octobots: could not create workflow — ${(err as Error).message}`);
-      }
-    }),
-    vscode.commands.registerCommand("octoshell.deleteWorkflow", async (node?: { workflow?: { id: string; name: string } }) => {
-      const wf = node?.workflow;
-      if (!wf) return;
-      const pick = await vscode.window.showWarningMessage(
-        `Delete the workflow "${wf.name}"? This permanently removes its workflow.js and runs.jsonl.`,
-        { modal: true }, "Delete",
-      );
-      if (pick !== "Delete") return;
-      try {
-        board.deleteWorkflow(wf.id);
-        entityPanels.closeEntity("workflow", wf.id);
-        campaignsTree.refresh();
-      } catch (err) {
-        vscode.window.showErrorMessage(`Octobots: could not delete workflow — ${(err as Error).message}`);
       }
     }),
     vscode.commands.registerCommand("octoshell.addFileToCampaign", async (uri?: vscode.Uri) => {

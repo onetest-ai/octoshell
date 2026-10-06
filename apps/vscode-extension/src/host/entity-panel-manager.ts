@@ -1,6 +1,7 @@
 import { basename, join } from "node:path";
 import * as vscode from "vscode";
 import { dispatch, type DispatchCtx } from "./rpc-dispatcher.js";
+import { OPEN_TEST_FILE_COMMAND, testFileArgFromWebview } from "./campaigns-tree.js";
 import { buildWebviewHtml } from "./webview-html.js";
 import { routeUiMessage, type UiActions, type BindMessage } from "../protocol/index.js";
 
@@ -8,9 +9,8 @@ export const CAMPAIGN_VIEW_TYPE = "octoshell.campaign";
 export const MISSION_VIEW_TYPE = "octoshell.mission";
 export const TASK_VIEW_TYPE = "octoshell.task";
 export const BUG_VIEW_TYPE = "octoshell.bug";
-export const WORKFLOW_VIEW_TYPE = "octoshell.workflow";
 
-type Kind = "campaign" | "mission" | "task" | "bug" | "workflow";
+type Kind = "campaign" | "mission" | "task" | "bug";
 
 interface Rec {
   panel: vscode.WebviewPanel;
@@ -42,9 +42,6 @@ export class EntityPanelManager {
   openBug(id: string): void {
     this.open("bug", id, BUG_VIEW_TYPE, this.bugTitle(id));
   }
-  openWorkflow(id: string): void {
-    this.open("workflow", id, WORKFLOW_VIEW_TYPE, this.workflowTitle(id));
-  }
 
   /** Dispose the entity's details panel if open (used after delete). */
   closeEntity(kind: Kind, id: string): void {
@@ -71,11 +68,6 @@ export class EntityPanelManager {
     this.refreshEntity("bug", bugId);
   }
 
-  /** Public: nudge an open workflow panel to reload (used by host commands outside this class). */
-  refreshWorkflow(workflowId: string): void {
-    this.refreshEntity("workflow", workflowId);
-  }
-
   /** Used by the WebviewPanelSerializer to rebind a restored panel. */
   adopt(panel: vscode.WebviewPanel, kind: Kind, id: string): void {
     const mediaPath = join(this.context.extensionPath, "media");
@@ -94,9 +86,6 @@ export class EntityPanelManager {
   }
   private bugTitle(id: string): string {
     return this.ctx.board.getBug(id)?.title ?? "Bug";
-  }
-  private workflowTitle(id: string): string {
-    return this.ctx.board.getWorkflow(id)?.name ?? "Workflow";
   }
 
   private async newMissionInCampaign(campaignId: string): Promise<void> {
@@ -190,9 +179,7 @@ export class EntityPanelManager {
           ? { projectId: "workspace", missionId: id }
           : kind === "task"
             ? { projectId: "workspace", taskId: id }
-            : kind === "bug"
-              ? { projectId: "workspace", bugId: id }
-              : { projectId: "workspace", workflowId: id };
+            : { projectId: "workspace", bugId: id };
     void rec.panel.webview.postMessage({ type: "spine:event", payload });
   }
 
@@ -327,6 +314,8 @@ export class EntityPanelManager {
       newBugInMission: (m) => void this.newBugInMission(m.id),
       deleteBug: (m) => void this.confirmDeleteBug(m.bugId),
       openFile: (m) => void vscode.window.showTextDocument(vscode.Uri.file(m.path)),
+      // The command re-checks that the file is a TC inside this board, so the webview's string is never trusted.
+      openTestFile: (m) => void vscode.commands.executeCommand(OPEN_TEST_FILE_COMMAND, testFileArgFromWebview(this.ctx.board.artifactsRoot, m.path)),
     };
 
     const sub = panel.webview.onDidReceiveMessage(

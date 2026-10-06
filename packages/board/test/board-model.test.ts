@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BoardModel, readPointer, resolveWithin } from "../src/board-model.js";
+import { BoardModel } from "../src/board-model.js";
+import { realBoardCopies, scratchDir } from "./fixtures/real-board.js";
 import { renderManagedBlock } from "../src/managed-block.js";
 
 let root: string;
@@ -60,270 +61,85 @@ describe("BoardModel read API", () => {
   });
 });
 
-describe("workflows", () => {
-  it("parses a campaign workflow and a mission workflow", () => {
-    const c = join(root, "campaigns", "alpha");
-    mkdirSync(join(c, "workflows", "ship-missions"), { recursive: true });
-    writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");
-    writeFileSync(
-      join(c, "workflows", "ship-missions", "workflow.md"),
-      "# ship-missions\n\n## Description\nShip them\n\n## Runs\n- [status:done] 2026-07-23 — ok\n",
-    );
-    writeFileSync(
-      join(c, "workflows", "ship-missions", "workflow.js"),
-      "export const meta = { name: 'ship-missions', description: 'd', phases: [{ title: 'Go', steps: [{ id: 's1', agent: 'a', label: 'l' }] }] }\n",
-    );
+describe("leftover workflows/ folders", () => {
+  /** Every entity id the model exposes, one `<kind>\t<id>` string each, sorted. */
+  function allIds(board: BoardModel): string[] {
+    const out: string[] = [];
+    for (const c of board.listCampaigns()) {
+      out.push(`campaign\t${c.id}`);
+      for (const b of board.listBugs({ campaignId: c.id })) out.push(`bug\t${b.id}`);
+      for (const m of board.listMissions(c.id)) {
+        out.push(`mission\t${m.id}`);
+        for (const t of board.listTasks(m.id)) out.push(`task\t${t.id}`);
+        for (const b of board.listBugs({ missionId: m.id })) out.push(`bug\t${b.id}`);
+      }
+    }
+    return out.sort();
+  }
 
-    const m = join(c, "missions", "m1-auth");
-    mkdirSync(join(m, "workflows", "build-tasks"), { recursive: true });
-    writeFileSync(join(m, "mission.md"), "# M1 - Auth\n\n## Description\nx\n");
-    writeFileSync(join(m, "workflows", "build-tasks", "workflow.md"), "# build-tasks\n\n## Description\nBuild\n");
-    writeFileSync(
-      join(m, "workflows", "build-tasks", "workflow.js"),
-      "export const meta = { name: 'build-tasks', phases: [] }\n",
-    );
+  function removeWorkflowDirs(dir: string): void {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue;
+      const p = join(dir, e.name);
+      if (e.name === "workflows") rmSync(p, { recursive: true, force: true });
+      else removeWorkflowDirs(p);
+    }
+  }
 
-    const board = new BoardModel(root);
-    board.rebuild();
+  it("loads the same campaigns, missions, tasks and bugs, with the same ids, with or without workflows/", () => {
+    for (const withWf of realBoardCopies()) {
+      expect(hasWorkflowsDir(withWf)).toBe(true); // the copy really has workflows/ to ignore
+      const without = join(scratchDir("board-nowf-"), ".octobots");
+      cpSync(withWf, without, { recursive: true });
+      removeWorkflowDirs(without);
+      expect(hasWorkflowsDir(without)).toBe(false);
 
-    const campaignId = board.listCampaigns()[0]!.id;
-    const missionId = board.listMissions(campaignId)[0]!.id;
-
-    const cw = board.listWorkflows({ campaignId });
-    expect(cw).toHaveLength(1);
-    expect(cw[0]!.name).toBe("ship-missions");
-    expect(cw[0]!.campaignId).toBe(campaignId);
-    expect(cw[0]!.missionId).toBeNull();
-    expect(cw[0]!.phases[0]!.steps[0]!.agent).toBe("a");
-    expect(cw[0]!.lastRunStatus).toBe("done");
-    expect(cw[0]!.scriptPath).toBe("campaigns/alpha/workflows/ship-missions/workflow.js");
-    expect(cw[0]!.parseError).toBeNull();
-
-    const mw = board.listWorkflows({ missionId });
-    expect(mw).toHaveLength(1);
-    expect(mw[0]!.missionId).toBe(missionId);
-    expect(mw[0]!.lastRunStatus).toBeNull();
-
-    expect(board.getWorkflow(cw[0]!.id)!.name).toBe("ship-missions");
-    expect(board.workflowIdByFolderPath("campaigns/alpha/workflows/ship-missions")).toBe(cw[0]!.id);
+      const a = new BoardModel(withWf);
+      a.rebuild();
+      const b = new BoardModel(without);
+      b.rebuild();
+      const ids = allIds(a);
+      expect(ids.length).toBeGreaterThan(0);
+      expect(allIds(b)).toEqual(ids);
+      expect(ids.every((l) => /^(campaign|mission|task|bug)\t/.test(l))).toBe(true);
+    }
   });
 
-  it("surfaces an unreadable script as parseError instead of dropping the workflow", () => {
-    const c = join(root, "campaigns", "alpha");
-    mkdirSync(join(c, "workflows", "broken"), { recursive: true });
-    writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");
-    writeFileSync(join(c, "workflows", "broken", "workflow.js"), "const notMeta = 1\n");
-
-    const board = new BoardModel(root);
+  it("creates no workflow entity and exposes no workflow API", () => {
+    const board = new BoardModel(realBoardCopies()[0]!);
     board.rebuild();
-    const campaignId = board.listCampaigns()[0]!.id;
-    const [wf] = board.listWorkflows({ campaignId });
-    expect(wf).toBeDefined();
-    expect(wf!.parseError).toMatch(/export const meta/);
-    expect(wf!.phases).toEqual([]);
-    // No .md heading to source from any more — the name falls back to the de-slugged folder name.
-    expect(wf!.name).toBe("Broken");
+    const api = board as unknown as Record<string, unknown>;
+    expect(api.listWorkflows).toBeUndefined();
+    expect(api.getWorkflow).toBeUndefined();
+    expect(api.workflowIdByFolderPath).toBeUndefined();
+    expect(api.getCampaign).toBeTypeOf("function");
   });
 
-  it("discovers a workflow by workflow.js alone (no workflow.md)", () => {
+  it("does not throw on a workflows/ folder holding workflow.js, runs.jsonl, workflow.md and workflow.json", () => {
     const c = join(root, "campaigns", "alpha");
-    mkdirSync(join(c, "workflows", "shipit"), { recursive: true });
-    writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");
-    writeFileSync(
-      join(c, "workflows", "shipit", "workflow.js"),
-      "export const meta = { name: 'shipit', description: 'Ship', phases: [{ title: 'Run', steps: [{ id: 's1', agent: 'claude', label: 'go' }] }] }\n",
-    );
-
-    const board = new BoardModel(root);
-    board.rebuild();
-    const campaignId = board.listCampaigns()[0]!.id;
-    const [wf] = board.listWorkflows({ campaignId });
-    expect(wf).toBeDefined();
-    expect(wf!.name).toBe("shipit");
-    expect(wf!.parseError).toBeNull();
-    expect(wf!.phases[0]!.title).toBe("Run");
-  });
-
-  it("does NOT treat a folder with only a workflow.md (no workflow.js) as a workflow", () => {
-    const c = join(root, "campaigns", "alpha");
-    mkdirSync(join(c, "workflows", "orphan"), { recursive: true });
-    writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");
-    writeFileSync(join(c, "workflows", "orphan", "workflow.md"), "# orphan\n\n## Description\nd\n");
-
-    const board = new BoardModel(root);
-    board.rebuild();
-    const campaignId = board.listCampaigns()[0]!.id;
-    expect(board.listWorkflows({ campaignId })).toEqual([]);
-  });
-
-  it("reads lastRunStatus from runs.jsonl (newest line wins)", () => {
-    const c = join(root, "campaigns", "alpha");
-    mkdirSync(join(c, "workflows", "run-log"), { recursive: true });
-    writeFileSync(join(c, "campaign.md"), "# Alpha\n\n## Description\nx\n");
-    writeFileSync(
-      join(c, "workflows", "run-log", "workflow.js"),
-      "export const meta = { name: 'run-log', description: '', phases: [{ title: 'Run', steps: [{ id: 's1', agent: 'claude', label: 'go' }] }] }\n",
-    );
-    writeFileSync(
-      join(c, "workflows", "run-log", "runs.jsonl"),
-      '{"status":"failed","summary":"first","at":"2026-07-01"}\n{"status":"done","summary":"second","at":"2026-07-02"}\n',
-    );
-
-    const board = new BoardModel(root);
-    board.rebuild();
-    const campaignId = board.listCampaigns()[0]!.id;
-    expect(board.listWorkflows({ campaignId })[0]!.lastRunStatus).toBe("done");
-  });
-
-  it("draws a shared pipeline under the mission that points at it", () => {
-    const c = join(root, "campaigns", "c");
-    mkdirSync(join(c, "workflows", "implementation"), { recursive: true });
-    writeFileSync(join(c, "campaign.md"), "# C\n\n## Description\nx\n");
-    writeFileSync(
-      join(c, "workflows", "implementation", "workflow.js"),
-      "export const meta = {\n" +
-        "  name: \"implementation\",\n" +
-        "  description: \"shared\",\n" +
-        "  phases: [{ title: \"Build\", steps: [{ id: \"build-1\", label: \"build\", agent: \"js-dev\" }] }],\n" +
-        "}\n" +
-        "phase('Build')\n",
-    );
-
+    writeBrief("campaign", c, { name: "Alpha", description: "", acceptanceCriteria: "", status: "draft", target: "" });
+    const w = join(c, "workflows", "ship");
+    mkdirSync(w, { recursive: true });
+    writeFileSync(join(w, "workflow.js"), "this is not javascript {{{\n");
+    writeFileSync(join(w, "runs.jsonl"), "not json\n{\"status\":\"done\"}\n");
+    writeFileSync(join(w, "workflow.md"), "# ship\n\n## Runs\n- [status:done] x\n");
+    writeFileSync(join(w, "workflow.json"), "{ nope");
     const m = join(c, "missions", "m1");
-    mkdirSync(join(m, "workflows", "implementation"), { recursive: true });
-    writeFileSync(join(m, "mission.md"), "# M1\n\n## Description\nx\n");
-    writeFileSync(
-      join(m, "workflows", "implementation", "workflow.json"),
-      JSON.stringify({ uses: "../../../../workflows/implementation" }),
-    );
+    writeBrief("mission", m, { name: "M1 - Auth", description: "d", acceptanceCriteria: "- [ ] ac" });
+    mkdirSync(join(m, "workflows", "x"), { recursive: true });
+    writeFileSync(join(m, "workflows", "x", "workflow.js"), "export const meta = {}\n");
 
     const board = new BoardModel(root);
-    board.rebuild();
-    const missionId = board.listMissions(board.listCampaigns()[0]!.id)[0]!.id;
-    const wf = board.listWorkflows({ missionId })[0];
-    expect(wf?.name).toBe("implementation");
-    expect(wf?.phases[0]?.steps[0]?.label).toBe("build");
-    expect(wf?.usesPath).toBe("campaigns/c/workflows/implementation");
-    // scriptPath follows the pointer to where the script actually lives, not the mission's own folder.
-    expect(wf?.scriptPath).toBe("campaigns/c/workflows/implementation/workflow.js");
-  });
-
-  it("drops a pointer that escapes the board instead of following it", () => {
-    const c = join(root, "campaigns", "c");
-    mkdirSync(c, { recursive: true });
-    writeFileSync(join(c, "campaign.md"), "# C\n\n## Description\nx\n");
-
-    const m = join(c, "missions", "m1");
-    mkdirSync(join(m, "workflows", "implementation"), { recursive: true });
-    writeFileSync(join(m, "mission.md"), "# M1\n\n## Description\nx\n");
-    writeFileSync(
-      join(m, "workflows", "implementation", "workflow.json"),
-      JSON.stringify({ uses: "../../../../../../etc" }),
-    );
-
-    const board = new BoardModel(root);
-    board.rebuild();
-    const missionId = board.listMissions(board.listCampaigns()[0]!.id)[0]!.id;
-    expect(board.listWorkflows({ missionId })).toEqual([]);
+    expect(() => board.rebuild()).not.toThrow();
+    expect(board.listCampaigns().map((x) => x.id)).toEqual(["folder:campaigns/alpha"]);
+    expect(board.listMissions("folder:campaigns/alpha").map((x) => x.id)).toEqual(["folder:campaigns/alpha/missions/m1"]);
+    // read-only: nothing under workflows/ changed
+    expect(readFileSync(join(w, "workflow.js"), "utf8")).toBe("this is not javascript {{{\n");
   });
 });
 
-describe("resolveWithin", () => {
-  it("resolves a normal pointer to its target folder", () => {
-    expect(
-      resolveWithin("campaigns/c/missions/m1/workflows/implementation", "../../../../workflows/implementation"),
-    ).toBe("campaigns/c/workflows/implementation");
-  });
-
-  it("refuses a pointer that climbs above the board root", () => {
-    expect(resolveWithin("campaigns/c/missions/m1/workflows/implementation", "../../../../../../etc")).toBeNull();
-  });
-
-  it("refuses an absolute-looking pointer that still climbs above the board root", () => {
-    expect(resolveWithin("campaigns/c/missions/m1/workflows/implementation", "/../../../../../../etc")).toBeNull();
-  });
-
-  // A `uses` beginning with "/" is refused outright, even with no ".." in it at all. Earlier this
-  // degraded to a same-folder-relative append (the leading "/" contributed one skipped empty split
-  // segment) and stayed contained; that was safe but surprising — an author writing a leading slash
-  // almost certainly means "from some root", so silently reinterpreting it resolves to a path they
-  // never asked for. A security boundary should not quietly reinterpret its input, so this now
-  // refuses instead of resolving. (Superseded assertion: this pointer used to resolve to
-  // "campaigns/c/workflows/w/sibling" — that contract is deliberately no longer true.)
-  it("refuses an absolute-looking pointer even with no climb in it", () => {
-    expect(resolveWithin("campaigns/c/workflows/w", "/sibling")).toBeNull();
-  });
-
-  // A climb that lands EXACTLY on "campaigns" (no subpath under it) must still be refused — the
-  // containment check requires the "campaigns/" PREFIX, and the bare string "campaigns" does not
-  // have one.
-  it("refuses a climb that lands exactly on the campaigns root with no subpath", () => {
-    expect(resolveWithin("campaigns/c", "..")).toBeNull();
-  });
-
-  // A sibling directory that merely starts with "campaigns" — e.g. "campaigns-evil" — must not
-  // satisfy the "campaigns/" prefix check. `String.startsWith` on "campaigns-evil/x" against
-  // "campaigns/" is false only because the check includes the trailing slash; pin that here so it
-  // can never be "simplified" into a bare startsWith("campaigns") again.
-  it("refuses a sibling of campaigns/ whose name merely starts with campaigns", () => {
-    expect(resolveWithin("campaigns/c", "../../campaigns-evil/x")).toBeNull();
-  });
-
-  // This function only ever splits on "/", so a backslash is just an odd literal character to it —
-  // on POSIX, "..\..\etc" looks like one harmless, contained segment. But the fs/path calls
-  // downstream (board-model.ts's own join(root, resolved, ...), and every existsSync in validate)
-  // go through Node, which on Windows treats "\" as a real separator: a value blessed as
-  // "contained" here would be re-interpreted by the OS as a genuine climb out of the board. A
-  // pointer is a repo-relative, POSIX-style path, so any backslash is refused outright.
-  describe("backslash refusal (Windows path separators)", () => {
-    it("refuses a leading-backslash pointer", () => {
-      expect(resolveWithin("campaigns/c/workflows/w", "\\..\\..\\etc")).toBeNull();
-    });
-
-    it("refuses a pointer mixing forward and backward slashes", () => {
-      expect(resolveWithin("campaigns/c/workflows/w", "../..\\..\\etc")).toBeNull();
-    });
-
-    it("refuses a plain backslash-separated relative pointer with no climb at all", () => {
-      expect(resolveWithin("campaigns/c/workflows/w", "foo\\bar")).toBeNull();
-    });
-  });
-
-  it("runs both the leading-/ and the backslash guard before any other processing — neither can be reached around by a value combining both", () => {
-    // "/\..\..\..\..\..\..\etc" starts with "/" AND contains "\": either guard alone refuses it,
-    // and nothing between the two guards and the return could let one bypass the other.
-    expect(resolveWithin("campaigns/c/missions/m1/workflows/implementation", "/\\..\\..\\..\\..\\..\\..\\etc")).toBeNull();
-  });
-});
-
-// CHANGED CONTRACT: readPointer used to return `string | null`, collapsing every failure into one
-// null. It now returns `{ ok: true, uses } | { ok: false, error }` — because "this file is not
-// JSON" was being reported to the author as "has no `uses` string", which names the wrong problem.
-describe("readPointer", () => {
-  it("reads the uses string from a well-formed pointer file", () => {
-    const p = join(root, "workflow.json");
-    writeFileSync(p, JSON.stringify({ uses: "../../x" }));
-    expect(readPointer(p)).toEqual({ ok: true, uses: "../../x" });
-  });
-
-  it("fails for a missing file, naming the read", () => {
-    const result = readPointer(join(root, "missing.json"));
-    expect(result.ok).toBe(false);
-    expect(result.ok === false && result.error).toMatch(/could not be read/);
-  });
-
-  it("tells malformed JSON apart from a missing `uses` key, rather than reporting both as the latter", () => {
-    const bad = join(root, "bad.json");
-    writeFileSync(bad, "{not json");
-    const malformed = readPointer(bad);
-    expect(malformed.ok).toBe(false);
-    expect(malformed.ok === false && malformed.error).toMatch(/not valid JSON/);
-    expect(malformed.ok === false && malformed.error).not.toMatch(/`uses`/);
-
-    const blank = join(root, "blank.json");
-    writeFileSync(blank, JSON.stringify({ uses: "  " }));
-    const missing = readPointer(blank);
-    expect(missing.ok).toBe(false);
-    expect(missing.ok === false && missing.error).toMatch(/no `uses` string/);
-  });
-});
+function hasWorkflowsDir(dir: string): boolean {
+  return readdirSync(dir, { withFileTypes: true }).some(
+    (e) => e.isDirectory() && (e.name === "workflows" || hasWorkflowsDir(join(dir, e.name))),
+  );
+}

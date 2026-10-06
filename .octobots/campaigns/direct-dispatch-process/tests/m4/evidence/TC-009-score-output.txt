@@ -1,0 +1,287 @@
+===== ws1
+mission: ws1/.octobots/campaigns/direct-dispatch-process/missions/m8-octograph-prints-its-version-banner/mission.yaml
+status: draft
+ACs: 4
+README.md
+TC-001_built-cli-version-outside-repo.md
+TC-002_bundled-payload-alone.md
+TC-003_flag-beside-command-and-typo.md
+README=yes
+doclink=yes
+README AC rows: 4 (of 4)
+rows with empty TC column: none
+TC files:        3
+-- ws1/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-001_built-cli-version-outside-repo.md
+id: TC-001;mission: M8;covers: [M8-AC1];kind: cli;status: ready;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+packages/graph/package.json (its real version V); an empty mktemp -d directory.
+
+-- ws1/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-002_bundled-payload-alone.md
+id: TC-002;mission: M8;covers: [M8-AC2, M8-AC4];kind: cli;status: ready;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs as committed.
+
+-- ws1/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-003_flag-beside-command-and-typo.md
+id: TC-003;mission: M8;covers: [M8-AC3];kind: cli;status: ready;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+packages/graph/bin/octograph.mjs run in this repo, which has a real octograph.yaml.
+
+validate.js:
+===== ws2
+mission: ws2/.octobots/campaigns/direct-dispatch-process/missions/m8-octograph-prints-its-version-banner/mission.yaml
+status: draft
+ACs: 5
+README.md
+README=yes
+doclink=yes
+README AC rows: 5 (of 5)
+rows with empty TC column:  M8-AC1   M8-AC2   M8-AC3   M8-AC4   M8-AC5  
+TC files:        0
+validate.js:
+warning: campaigns/direct-dispatch-process/tests/m8: M8-AC1 is not covered by any test case
+warning: campaigns/direct-dispatch-process/tests/m8: M8-AC2 is not covered by any test case
+warning: campaigns/direct-dispatch-process/tests/m8: M8-AC3 is not covered by any test case
+warning: campaigns/direct-dispatch-process/tests/m8: M8-AC4 is not covered by any test case
+warning: campaigns/direct-dispatch-process/tests/m8: M8-AC5 is not covered by any test case
+===== ws3
+mission: ws3/.octobots/campaigns/octograph-code-architecture-graph/missions/m8-octograph-prints-its-version-banner/mission.yaml
+status: draft
+ACs: 5
+README.md
+TC-001_lone-flag-prints-banner.md
+TC-002_standalone-bundle.md
+TC-003_combined-and-misspelled-rejected.md
+TC-004_other-commands-unchanged.md
+TC-005_payload-regenerated-and-guarded.md
+README=yes
+doclink=yes
+README AC rows: 5 (of 5)
+rows with empty TC column: none
+TC files:        5
+-- ws3/.octobots/campaigns/octograph-code-architecture-graph/tests/m8/TC-001_lone-flag-prints-banner.md
+id: TC-001;mission: M8;covers: [M8-AC1];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+`{{repo}}/packages/graph/package.json` (its `version`) and the committed `{{repo}}/apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs`.
+
+-- ws3/.octobots/campaigns/octograph-code-architecture-graph/tests/m8/TC-002_standalone-bundle.md
+id: TC-002;mission: M8;covers: [M8-AC2];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+`{{repo}}/packages/graph/package.json` (its `version`) and the committed `{{repo}}/apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs`.
+
+-- ws3/.octobots/campaigns/octograph-code-architecture-graph/tests/m8/TC-003_combined-and-misspelled-rejected.md
+id: TC-003;mission: M8;covers: [M8-AC3];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+`{{repo}}/packages/graph/package.json` (its `version`) and the committed `{{repo}}/apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs`.
+
+-- ws3/.octobots/campaigns/octograph-code-architecture-graph/tests/m8/TC-004_other-commands-unchanged.md
+id: TC-004;mission: M8;covers: [M8-AC4];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+`{{repo}}/packages/graph/package.json` (its `version`) and the committed `{{repo}}/apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs`.
+
+-- ws3/.octobots/campaigns/octograph-code-architecture-graph/tests/m8/TC-005_payload-regenerated-and-guarded.md
+id: TC-005;mission: M8;covers: [M8-AC5];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+`{{repo}}/packages/graph/package.json` (its `version`) and the committed `{{repo}}/apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs`.
+
+validate.js:
+===== ws4
+mission: ws4/.octobots/campaigns/direct-dispatch-process/missions/m8-octograph-prints-its-version-banner/mission.yaml
+status: draft
+ACs: 6
+README.md
+TC-001_version-flag-on-shipped-payload.md
+TC-002_version-flag-on-dist-build.md
+TC-003_version-flag-rejects-extras.md
+TC-004_existing-commands-unchanged.md
+TC-005_pack-moves-one-version-as-a-unit.md
+TC-006_docs-document-the-flag.md
+README=yes
+doclink=yes
+README AC rows: 6 (of 6)
+rows with empty TC column: none
+TC files:        6
+-- ws4/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-001_version-flag-on-shipped-payload.md
+id: TC-001;mission: M8;covers: [M8-AC1];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+The committed payload itself ($OCTO/apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs), and an empty mktemp directory (a derived input, named as such).
+
+-- ws4/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-002_version-flag-on-dist-build.md
+id: TC-002;mission: M8;covers: [M8-AC2];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+packages/graph's own dist/octograph.mjs, built by `pnpm --filter @octoshell/graph bundle` from the mission branch.
+
+-- ws4/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-003_version-flag-rejects-extras.md
+id: TC-003;mission: M8;covers: [M8-AC3];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+The committed payload ($OCTO/apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs); the six command names come from the payload's own unknown-command error before the change (git show $BASE:...).
+
+-- ws4/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-004_existing-commands-unchanged.md
+id: TC-004;mission: M8;covers: [M8-AC4];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+This octoshell checkout's own git history (hundreds of real commits) and its .octobots board; the baseline payload is `git show $BASE:apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs`.
+
+-- ws4/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-005_pack-moves-one-version-as-a-unit.md
+id: TC-005;mission: M8;covers: [M8-AC5];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+OCTOBOTS_PACK_VERSION and the ten markers at $BASE (the previous integer), the committed shipped-skills.json.br and graph-payload-versions.json, and a fresh empty workspace (derived input).
+
+-- ws4/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-006_docs-document-the-flag.md
+id: TC-006;mission: M8;covers: [M8-AC6];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+docs/octograph.md at the mission branch head.
+
+validate.js:
+===== ws5
+mission: ws5/.octobots/campaigns/direct-dispatch-process/missions/m8-octograph-prints-its-version-banner/mission.yaml
+status: draft
+ACs: 5
+README.md
+TC-001_dist-bundle-banner-in-bare-dir.md
+TC-002_payload-banner-and-verify.md
+TC-003_wrong-forms-still-rejected.md
+TC-004_six-commands-unchanged-on-real-history.md
+TC-005_single-source-of-version.md
+README=yes
+doclink=yes
+README AC rows: 5 (of 5)
+rows with empty TC column: none
+TC files:        5
+-- ws5/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-001_dist-bundle-banner-in-bare-dir.md
+id: TC-001;mission: M8;covers: [M8-AC1];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+packages/graph/package.json (its real version field) and the dist bundle built from this repository; the run directory is an empty mktemp directory.
+
+-- ws5/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-002_payload-banner-and-verify.md
+id: TC-002;mission: M8;covers: [M8-AC2];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs as committed.
+
+-- ws5/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-003_wrong-forms-still-rejected.md
+id: TC-003;mission: M8;covers: [M8-AC3];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+The dist bundle run from the octoshell repository root.
+
+-- ws5/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-004_six-commands-unchanged-on-real-history.md
+id: TC-004;mission: M8;covers: [M8-AC4];kind: cli;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+This repository's own git history (pre-existing), run with the M8 dist bundle and a dist bundle built from main in a git worktree.
+
+-- ws5/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-005_single-source-of-version.md
+id: TC-005;mission: M8;covers: [M8-AC5];kind: unit;status: draft;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+The repository source tree.
+
+validate.js:
+===== ws6
+mission: ws6/.octobots/campaigns/direct-dispatch-process/missions/m8-octograph-prints-its-version-banner/mission.yaml
+status: draft
+ACs: 5
+README.md
+TC-001_banner-in-any-directory.md
+TC-002_extra-arguments-rejected.md
+TC-003_existing-commands-unchanged.md
+TC-004_dist-and-payload-agree.md
+TC-005_pack-v58-one-unit-and-upgrade.md
+README=yes
+doclink=yes
+README AC rows: 5 (of 5)
+rows with empty TC column: none
+TC files:        5
+-- ws6/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-001_banner-in-any-directory.md
+id: TC-001;mission: M8;covers: [M8-AC1];kind: cli;status: ready;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+The real packages/graph/package.json version field and a freshly made empty directory (the directory is the point of the case, not a stand-in for a record).
+
+-- ws6/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-002_extra-arguments-rejected.md
+id: TC-002;mission: M8;covers: [M8-AC2];kind: cli;status: ready;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+The real dist bundle built from this checkout.
+
+-- ws6/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-003_existing-commands-unchanged.md
+id: TC-003;mission: M8;covers: [M8-AC3];kind: cli;status: ready;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+This repository's own git history, read with `doctor` (map/impact/drift/own/conflicts are covered by the existing fixture suite).
+
+-- ws6/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-004_dist-and-payload-agree.md
+id: TC-004;mission: M8;covers: [M8-AC4];kind: cli;status: ready;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+The committed payload apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs.
+
+-- ws6/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-005_pack-v58-one-unit-and-upgrade.md
+id: TC-005;mission: M8;covers: [M8-AC5];kind: cli;status: ready;
+Steps section: 1
+Expected Final State: 1
+Real data:
+
+A copy of a real workspace holding the v57 pack (the original is not modified). UNREACHABLE if none is available; do not hand-build one.
+
+validate.js:

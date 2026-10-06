@@ -1,0 +1,35 @@
+name: T7.2 - Deviation detection, base recovery and packStatus
+status: done
+role: js-dev
+description: |-
+  Depends on T7.1. Scope:
+  - the shared marker rule: apps/vscode-extension/src/host/skill-marker.ts and resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs (frontmatter-only version and reconciled-from, CRLF-normalised sha256), with test/skill-marker-parity.test.ts (mission AC1);
+  - a pure module apps/vscode-extension/src/host/pack-deviations.ts: detectDeviations(repoRoot, packVersion, store) -> {deviations: Deviation[] {skill, version, reason: "label" | "content" | "unknown-version" | "reconciled-older", retired, sha256}, reconciled: [skill], newer: [skill]}, recoverBase(repoRoot, skill, localBytes, packVersion, store) -> {version, sha256, source, body} | null (rules 1-5 of mission AC2; git through child_process with a timeout of at most 2 s, absent git, no repo or an ignored .claude = rule skipped);
+  - octobots-skill.ts packStatus: deviations, reconciled, pendingReconcile (read through pack-updates.ts, contract owned by T7.3; empty until then), newer, upToDate and upToDateExceptLocal as mission AC1 defines them; `57-local` / `57+local` count as present; a missing skill that is new in this pack version does not make installed false.
+  Out of scope: writing anything (T7.3). Downstream: T7.3 stages with these; T7.5 imports skill-marker.mjs into doctor.js and validate.js.
+acceptance_criteria:
+  - text: apps/vscode-extension/test/pack-deviations.test.ts, on temp workspaces built from real files (solo's fork bytes copied from OCTOBOTS_BOARD_COPIES' sibling .claude when set, else the shipped v56 files from the store relabelled `57-local`; a pristine shipped file; a one-line edit of a numeric-version file; a version up to the pack version that the store does not list (unknown-version); a version above it (newer, never in deviations); `57+local` with reconciled-from equal to the current pack file (reconciled), equal to an earlier v57 build (reconciled-older) and at 58; a changed retired workflow-designer), proves the reasons, the order and the not-deviated cases of mission AC1, and recoverBase's rule order on a temp git repo whose history holds a shipped v56 body then a fork commit (rule 2 wins over 3 and 4), a fork with `reconciled-from:` (rule 1), a fork with no history (rule 3 picks the earliest body for N), a `50-local` label whose closest body overall is v56 (rule 4 picks a body with version <= 50), an unknown label (rule 4, source closest) and an empty store (rule 5, null) (mission AC1, AC2)
+    done: true
+  - text: 'apps/vscode-extension/test/skill-marker-parity.test.ts drives skill-marker.ts and skill-marker.mjs from one case table (`57`, `57-local`, `57+local`, `57+local` with reconciled-from, trailing spaces, a CRLF file, no version line, a `version:` line only in the body) and asserts identical {label, n, kind, reconciledFrom, sha256}; apps/vscode-extension/test/octobots-skill.test.ts covers packStatus''s upToDate, upToDateExceptLocal and newer for: all pristine, one pending deviation, one kept deviation, one reconciled skill, one newer skill (upToDateExceptLocal true, upToDate false); `pnpm test` and `pnpm coverage:pack` are green (mission AC1)'
+    done: true
+notes: |-
+  ## QA verification
+
+  Verdict: PASS (black-box, built artifacts, real records). PR #128 at fa1092f. 2026-10-05, qa-engineer.
+
+  Records: solo (auqanautica) HEAD f3a0a8f4, probed through `git clone --shared` and a non-git `cp -R` copy; solo's `git status --short` unchanged afterwards. Probe = esbuild bundle of src/host/pack-deviations.ts and octobots-skill.ts, shipped-skills.json.br store.
+  - (a) clone: detectDeviations gives mission-execution (c5be7bc4) and mission-completion-gate (16dd4468) as `57-local`, reason `label`. recoverBase gives v56 via workspace-git: mission-execution 9af2c928, mission-completion-gate 008de10a. Plain copy: same two deviations; recoverBase gives rule 3 `declared` v57, the earliest v57 body: 92e7eebb and cea02af4 (verified as index 0 of the v57 lists in the store).
+  - (b) octoshell .claude/skills (v56 pristine) with pack 57 and the store: installed true, upToDate false, upToDateExceptLocal false, deviations [], reconciled [], newer []. The only reason is staleness: five integer-56 skills are not the pack's current version (the v56 files are the store's own, so none counts as a deviation). Same without a store.
+  - (c) fresh installPack into a temp workspace: upToDate true, installed true, deviations [].
+  - (d) one line appended to mission-planner: reason `content`, upToDate false, upToDateExceptLocal true.
+  - (e) `57+local` with reconciled-from = the sha256 of the current file: reconciled ["mission-planner"], deviations [], upToDate true. A wrong reconciled-from gives `reconciled-older`.
+  - (f) fake git sleeping 30 s on PATH, two deviated skills, one shared gitDeadline (GIT_BUDGET_MS): first skill 2004 ms, second 2 ms, total 2006 ms (<= 2.2 s).
+
+  Suite: pnpm build, typecheck, lint, test, coverage:pack all exit 0. board 382, graph 653, tokenomics 102, vscode-extension 666 passed (48 files); no skips. pack-deviations.test.ts and skill-marker-parity.test.ts verbose: 54 passed. coverage:pack: skill-marker.mjs 100% lines. PR checks: both build jobs pass.
+
+  AC1 (pack-deviations.test.ts): 36 verbose cases cover the reasons, the order and the not-deviated cases, and recoverBase rules 1-5 including the solo-history case. Live probes (a), (d), (e) match.
+  AC2 (parity test, packStatus): 18 parity cases (one table, .ts and .mjs); packStatus states observed live in (b)-(e).
+
+  Review fix (fa1092f): rule 2's synchronous git blocked the host 2 s per skill; it now shares one deadline. Reproduced in (f) and covered by the two hanging-git tests.
+
+  Non-blocking, for later: doctor.js has its own version regex (T7.5); parseVersion is dead code; the generator's frontmatterVersion is a second spelling of the marker rule; isNewInVersion at v58; one `git show` per commit in rule 2.

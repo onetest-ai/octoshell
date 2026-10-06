@@ -133,3 +133,111 @@ describe("NotesBlock editing", () => {
     expect((screen.getByLabelText(/notes/i) as HTMLTextAreaElement).value).toBe("second");
   });
 });
+
+describe("NotesBlock save vs. notes that changed while the editor was open (M3 B2)", () => {
+  const edit = (): void => { fireEvent.click(screen.getByRole("button", { name: /edit notes/i })); };
+  const save = (): void => { fireEvent.click(screen.getByRole("button", { name: /^save$/i })); };
+  const typeInto = (v: string): void => {
+    fireEvent.change(screen.getByLabelText(/notes/i), { target: { value: v } });
+  };
+
+  it("(a) unchanged draft + notes changed underneath: writes nothing, closes, shows the newer notes", async () => {
+    const onSave = vi.fn();
+    const { rerender } = render(<NotesBlock notes="A" onSave={onSave} />);
+    edit();
+    rerender(<NotesBlock notes="B" onSave={onSave} />);
+    save();
+    expect(onSave).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.querySelector("textarea")).toBeNull());
+    expect(screen.getByText("B")).toBeTruthy();
+  });
+
+  it("(b) edited draft + notes changed underneath: no write, shows a conflict with two actions", () => {
+    const onSave = vi.fn();
+    const { rerender } = render(<NotesBlock notes="A" onSave={onSave} />);
+    edit();
+    typeInto("A prime");
+    rerender(<NotesBlock notes="B" onSave={onSave} />);
+    save();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toMatch(/changed on disk/i);
+    expect(screen.getByRole("button", { name: /overwrite/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /reload/i })).toBeTruthy();
+    // The draft is still there; nothing was dropped.
+    expect((screen.getByLabelText(/notes/i) as HTMLTextAreaElement).value).toBe("A prime");
+  });
+
+  it("(b) Overwrite saves the edited draft and closes", async () => {
+    const onSave = vi.fn();
+    const { rerender } = render(<NotesBlock notes="A" onSave={onSave} />);
+    edit();
+    typeInto("A prime");
+    rerender(<NotesBlock notes="B" onSave={onSave} />);
+    save();
+    fireEvent.click(screen.getByRole("button", { name: /overwrite/i }));
+    expect(onSave.mock.calls).toEqual([["A prime"]]);
+    await waitFor(() => expect(document.querySelector("textarea")).toBeNull());
+  });
+
+  it("(b) Reload discards the draft, writes nothing and shows the newer notes", async () => {
+    const onSave = vi.fn();
+    const { rerender } = render(<NotesBlock notes="A" onSave={onSave} />);
+    edit();
+    typeInto("A prime");
+    rerender(<NotesBlock notes="B" onSave={onSave} />);
+    save();
+    fireEvent.click(screen.getByRole("button", { name: /reload/i }));
+    expect(onSave).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.querySelector("textarea")).toBeNull());
+    expect(screen.getByText("B")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("(c) edited draft + notes unchanged: saves as before, no conflict", () => {
+    const onSave = vi.fn();
+    render(<NotesBlock notes="A" onSave={onSave} />);
+    edit();
+    typeInto("A prime");
+    save();
+    expect(onSave.mock.calls).toEqual([["A prime"]]);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("(d) Cancel still discards, including from a conflict", () => {
+    const onSave = vi.fn();
+    const { rerender } = render(<NotesBlock notes="A" onSave={onSave} />);
+    edit();
+    typeInto("A prime");
+    rerender(<NotesBlock notes="B" onSave={onSave} />);
+    save();
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(document.querySelector("textarea")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("(e) the notes prop echoing the SAME value while open is not a conflict", () => {
+    const onSave = vi.fn();
+    const { rerender } = render(<NotesBlock notes="A" onSave={onSave} />);
+    edit();
+    typeInto("A prime");
+    rerender(<NotesBlock notes="A" onSave={onSave} />);
+    save();
+    expect(onSave.mock.calls).toEqual([["A prime"]]);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("our own save echoing back (A -> A prime) does not raise a conflict on the next edit", () => {
+    const onSave = vi.fn();
+    const { rerender } = render(<NotesBlock notes="A" onSave={onSave} />);
+    edit();
+    typeInto("A prime");
+    save();
+    rerender(<NotesBlock notes="A prime" onSave={onSave} />);
+    edit();
+    typeInto("A second");
+    save();
+    expect(onSave).toHaveBeenLastCalledWith("A second");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

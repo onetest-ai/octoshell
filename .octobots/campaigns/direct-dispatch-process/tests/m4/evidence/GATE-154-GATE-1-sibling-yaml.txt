@@ -1,0 +1,26 @@
+######## base pack: sibling M3 mission.yaml corrupted
+--- validate.js .octobots/campaigns/direct-dispatch-process/missions/m4-functional-test-cases-are-a-gate-run-unit-of-ev
+OK .octobots/campaigns/direct-dispatch-process/missions/m4-functional-test-cases-are-a-gate-run-unit-of-ev/mission.yaml
+exit=0
+--- validate.js .octobots/campaigns/direct-dispatch-process
+YAMLException: missed comma between flow collection entries (3:5)
+exit=1
+--- validate.js .octobots/campaigns/direct-dispatch-process/tests/m4/TC-003_warn-uwb-m1-ac11-unmapped.md
+YAMLException: missed comma between flow collection entries (3:5)
+exit=1
+--- validate.js .octobots/campaigns/direct-dispatch-process/missions/m3-extension-and-board-library-drop-workflow-entit
+YAMLException: missed comma between flow collection entries (3:5)
+exit=1
+######## fix pack: sibling M3 mission.yaml corrupted
+--- validate.js .octobots/campaigns/direct-dispatch-process/missions/m4-functional-test-cases-are-a-gate-run-unit-of-ev
+OK .octobots/campaigns/direct-dispatch-process/missions/m4-functional-test-cases-are-a-gate-run-unit-of-ev/mission.yaml
+exit=0
+--- validate.js .octobots/campaigns/direct-dispatch-process
+OK .octobots/campaigns/direct-dispatch-process/campaign.yaml
+exit=0
+--- validate.js .octobots/campaigns/direct-dispatch-process/tests/m4/TC-003_warn-uwb-m1-ac11-unmapped.md
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4gate/ws-fix/.octobots/campaigns/direct-dispatch-proce
+exit=0
+--- validate.js .octobots/campaigns/direct-dispatch-process/missions/m3-extension-and-board-library-drop-workflow-entit
+YAMLException: missed comma between flow collection entries (3:5)
+exit=1

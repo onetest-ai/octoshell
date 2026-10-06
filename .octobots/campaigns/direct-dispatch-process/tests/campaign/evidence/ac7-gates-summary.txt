@@ -1,0 +1,8 @@
+@octoshell/tokenomics:test:  Test Files  7 passed (7)
+@octoshell/tokenomics:test:       Tests  102 passed (102)
+@octoshell/board:test:  Test Files  35 passed (35)
+@octoshell/board:test:       Tests  800 passed (800)
+@octoshell/vscode-extension:test:  Test Files  64 passed (64)
+@octoshell/vscode-extension:test:       Tests  1176 passed (1176)
+@octoshell/graph:test:  Test Files  47 passed (47)
+@octoshell/graph:test:       Tests  655 passed (655)

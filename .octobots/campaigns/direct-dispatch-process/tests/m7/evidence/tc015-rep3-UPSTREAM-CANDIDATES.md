@@ -1,0 +1,1 @@
+- green rule: 0 xfailed blocks the merge, not just 0 failed (user answered keep-local); general for any project that wants a strict gate.

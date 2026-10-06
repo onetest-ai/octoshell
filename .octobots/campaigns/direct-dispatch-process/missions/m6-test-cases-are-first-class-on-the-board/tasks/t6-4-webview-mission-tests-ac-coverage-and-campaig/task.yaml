@@ -1,0 +1,25 @@
+name: 'T6.4 - Webview: mission Tests + AC coverage and campaign test summary'
+status: done
+role: js-dev
+description: 'Scope: mission panel Tests section and AC coverage view (uncovered ACs in warning style, empty-state hint), campaign panel test summary (totals by status, uncovered AC count, rows link to missions); component tests over real board copies. Out of scope: tree/host (T6.3), write-back. Downstream: M6 QA.'
+acceptance_criteria:
+  - text: apps/vscode-extension/test/mission-tests-panel.test.tsx proves the mission panel Tests section and AC coverage view per mission AC4, including the uncovered-AC warning style and the no-tests empty state
+    done: true
+  - text: apps/vscode-extension/test/campaign-tests-summary.test.tsx proves the campaign panel summary per mission AC5; webview build and tests green
+    done: true
+notes: |-
+  ## QA verification (2026-10-06, QA engineer, PR #167 at c3c4df45)
+
+  Method: real MissionView and CampaignView rendered through the real rpc-dispatcher + BoardHost (happy-dom), on COPIES of this board at HEAD (tracked files) and of solo's .octobots (cp -R under the scratchpad; solo git status hash identical before and after).
+
+  TC-005 (mission panel Tests + AC coverage): automated half PASS, live half BLOCKED (manual F5, steps in tests/m7/manual/T7.4-F5-script.md Part E). mission-tests-panel.test.tsx 10/10 passed with OCTOBOTS_BOARD_COPIES set (the solo uwb test really ran, not skipped). Recorded: this campaign M1..M7 mission panels show every AC covered, no warning rows (M6: 11 draft rows, 8 ACs; M3: 8 pass + 2 blocked, pass sorted first); solo uwb m1: 22 unknown rows, 11 ACs, M1-AC11 uncovered in warning style, no error class; m2: M2-AC10 uncovered; uwb m6: Tests empty state with the "run add-tests.js <mission-dir>" hint, 0 rows, all 5 ACs listed uncovered in warning style, no crash.
+
+  TC-006 (campaign panel summary): automated half PASS, live half BLOCKED (manual F5, Part E). campaign-tests-summary.test.tsx 5/5 passed. Recorded: this campaign totals pass 71 / fail 0 / blocked 4 / ready 0 / draft 11 / unknown 0 (=86), 0 uncovered ACs; rows m1 11, m2 12, m3 10 (8 pass 2 blocked), m4 12, m5 13 (12 pass 1 blocked), m6 11 draft, m7 17 (16 pass 1 blocked), each linked to its mission. Solo uwb: unknown 116 (22+32+22+23+17), 7 uncovered ACs = M1-AC11 + M2-AC10 + M6-AC1..AC5; cancelled m5 contributes none; m6 row "no tests"; uncovered marks use the warning token, never error.
+
+  Note for the F5 runner: the M4 and M6 mission panels of this campaign contain "add-tests.js" in TC titles, so a text search for the empty-state hint is not a valid probe there; the real empty state is the zero tc-row count (uwb m6).
+
+  Boundary: grep of src/webview for imports from the host dir: none (only a comment in tokenomics-view.tsx mentions node:fs); recursive grep of the built media/ for node:fs / node:path / require(fs|path): none; the current bundle contains the new code (add-tests.js hint).
+
+  Gate (foreground): pnpm build && typecheck && lint && test && coverage:pack exit 0 (tokenomics 102, board 800, vscode-extension 1171, graph 655 tests passed). gh pr checks 167: both build jobs pass on c3c4df45 (head SHA verified equal to local HEAD). Solo git status hash unchanged.
+
+  Verdict: PASS for the two ACs. Live halves of TC-005/TC-006 remain BLOCKED (manual F5). TC frontmatter not touched (T6.5).

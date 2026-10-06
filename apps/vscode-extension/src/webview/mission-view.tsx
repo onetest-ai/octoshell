@@ -5,6 +5,8 @@ import { ChecklistField } from "./checklist-field.js";
 import { ENTITY_STATUS_OPTIONS } from "./entity-status.js";
 import { EstimateBlock } from "./estimate-block.js";
 import { NotesBlock } from "./notes-block.js";
+import { MissionTests } from "./mission-tests.js";
+import type { MissionCoverage, TestCase } from "@octoshell/board";
 import type { RpcClient } from "./rpc-client.js";
 
 interface Mission { id: string; campaignId: string; title: string; status: string; description: string; acceptanceCriteria: string; tokenomics?: Record<string, unknown>; notes?: string }
@@ -14,28 +16,35 @@ interface DocFile { name: string; kind: string; size: number; mtime: number }
 interface DocLink { id: string; target: string; label?: string }
 
 export function MissionView(
-  { id, rpc, onOpenTask, onOpenBug, onNewTask, onDeleteTask, onOpenDoc, onAddLink, onAttachFile, onOpenFile }:
+  { id, rpc, onOpenTask, onOpenBug, onNewTask, onDeleteTask, onOpenDoc, onAddLink, onAttachFile, onOpenFile, onOpenTestFile }:
   {
     id: string; rpc: RpcClient;
     onOpenTask: (taskId: string) => void; onOpenBug: (bugId: string) => void; onNewTask: () => void;
     onDeleteTask: (taskId: string) => void;
     onOpenDoc: (relPath: string) => void; onAddLink: () => void; onAttachFile: () => void; onOpenFile: (path: string) => void;
+    onOpenTestFile?: (boardRelPath: string) => void;
   },
 ): JSX.Element {
   const [mission, setMission] = useState<Mission | null>(null);
   const [persistedTasks, setPersistedTasks] = useState<PersistedTask[]>([]);
   const [bugs, setBugs] = useState<MissionBug[]>([]);
   const [docs, setDocs] = useState<{ files: DocFile[]; attachedFiles: DocLink[]; links: DocLink[] }>({ files: [], attachedFiles: [], links: [] });
+  const [tests, setTests] = useState<{ cases: TestCase[]; coverage: MissionCoverage | null }>({ cases: [], coverage: null });
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setMission(await rpc.call("mission:get", { missionId: id }));
+    const got = await rpc.call("mission:get", { missionId: id });
+    setMission(got);
     setPersistedTasks((await rpc.call("task:list", { missionId: id })) ?? []);
     // Self-heal the bug list from the board (mirrors the tasks sync) so board-added bugs surface.
     await rpc.call("bug:sync", { missionId: id });
     setBugs((await rpc.call("bug:list", { missionId: id })) ?? []);
     setDocs((await rpc.call("mission:docs", { missionId: id })) ?? { files: [], attachedFiles: [], links: [] });
+    // Tests ride the same load, so the one spine event a TC change causes refreshes them once.
+    const coverage = (await rpc.call("tests:coverage", { missionId: id })) ?? null;
+    const cases = got && coverage?.mission ? ((await rpc.call("tests:list", { campaignId: got.campaignId, mission: coverage.mission })) ?? []) : [];
+    setTests({ cases, coverage });
     setLoaded(true);
   }, [id, rpc]);
 
@@ -187,6 +196,8 @@ export function MissionView(
           </div>
         )}
       </section>
+
+      <MissionTests cases={tests.cases} coverage={tests.coverage} onOpenTestFile={onOpenTestFile} />
 
       <section>
         <h2 className="text-sm uppercase text-fg-muted mb-2">Bugs</h2>

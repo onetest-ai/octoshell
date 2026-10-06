@@ -1,0 +1,16 @@
+## step2 field checks
+86 entities, 0 bad
+## step3 dump paths that are not TC-*.md
+       0
+0
+## step4 entity ids
+dump-ids.mjs
+dump-tests.mjs
+install-pack.mjs
+tokenomics-report.mjs
+bug	folder:campaigns/direct-dispatch-process/missions/m1-tokenomics-reads-real-transcripts-and-attribute/bugs/b1-rollup-mjs-crashes-with-an-unnamed-syntaxerror
+bug	folder:campaigns/direct-dispatch-process/missions/m1-tokenomics-reads-real-transcripts-and-attribute/bugs/b2-packages-tokenomics-update-prices-mjs-upstream
+bug	folder:campaigns/direct-dispatch-process/missions/m1-tokenomics-reads-real-transcripts-and-attribute/bugs/b3-packages-tokenomics-build-script-reads-the-seed
+bug	folder:campaigns/direct-dispatch-process/missions/m1-tokenomics-reads-real-transcripts-and-attribute/bugs/b4-rollup-mjs-merges-letter-suffixed-missions-m2a
+bug	folder:campaigns/direct-dispatch-process/missions/m1-tokenomics-reads-real-transcripts-and-attribute/bugs/b5-verify-mjs-cost-gate-fails-whenever-ccusage-can
+IDS_IDENTICAL

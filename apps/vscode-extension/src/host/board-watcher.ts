@@ -37,6 +37,23 @@ export function createQuiescentDebouncer(opts: {
 }
 
 /**
+ * True for a file under a campaign's `tests/**\/runs/` or `tests/**\/evidence/`: run reports and
+ * screenshots that QA writes while a mission is verified. They hold no board entity, so a write there
+ * must not cost a rebuild. A TC file or README directly under `tests/m<n>/` is NOT ignored: it still
+ * triggers the normal debounced rebuild (M6 shows TC status changes through it).
+ * A path check, because a `RelativePattern` glob cannot negate. Only the part below the LAST
+ * `.octobots/campaigns/` is judged: the workspace's own ancestors (a repo checked out under some
+ * `campaigns/x/tests/y/runs/` folder) must never silence the board.
+ */
+export function isTestsRunOrEvidencePath(fsPath: string): boolean {
+  const anchors = [...fsPath.matchAll(/[\\/]\.octobots[\\/]campaigns[\\/]/g)];
+  const last = anchors[anchors.length - 1];
+  if (!last) return false;
+  const inBoard = fsPath.slice(last.index + last[0].length);
+  return /^[^\\/]+[\\/]tests[\\/](?:[^\\/]+[\\/])*(?:runs|evidence)[\\/]/.test(inBoard);
+}
+
+/**
  * Watch the whole `.octobots` board tree; after it settles AND git is quiescent, do ONE disk
  * re-parse. Disk is the single source of truth, so every create/edit/delete — including bulk git
  * operations (checkout, stash/pop, rebase) — is handled by one debounced rebuild rather than a
@@ -66,8 +83,11 @@ export function registerBoardWatcher(opts: {
       onSettled?.();
     },
   });
-  watcher.onDidChange(() => gate.trigger());
-  watcher.onDidCreate(() => gate.trigger());
-  watcher.onDidDelete(() => gate.trigger());
+  const onEvent = (uri: vscode.Uri): void => {
+    if (!isTestsRunOrEvidencePath(uri.fsPath)) gate.trigger();
+  };
+  watcher.onDidChange(onEvent);
+  watcher.onDidCreate(onEvent);
+  watcher.onDidDelete(onEvent);
   return { dispose: () => { gate.dispose(); watcher.dispose(); } };
 }

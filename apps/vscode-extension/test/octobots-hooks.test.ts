@@ -23,6 +23,12 @@ describe("octobots-hooks: primer copy", () => {
     installPrimer(PACK_SRC, repo);
     expect(existsSync(join(repo, ".octobots", "hooks", "work-log.mjs"))).toBe(true);
   });
+
+  it("ships status-flip.mjs, the module work-log.mjs and mission-gate.mjs import to confirm a flip", () => {
+    const repo = freshRepo();
+    installPrimer(PACK_SRC, repo);
+    expect(existsSync(join(repo, ".octobots", "hooks", "status-flip.mjs"))).toBe(true);
+  });
 });
 
 describe("octobots-hooks: Claude registration", () => {

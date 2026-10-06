@@ -1,0 +1,15 @@
+name: T3.1 - Webview drops WorkflowView and the diagram
+status: done
+role: js-dev
+description: 'Scope: delete workflow-view.tsx and workflow-diagram.tsx and their 2 tests; chat-entry.tsx:12,32,43,107-108; octoshell-shim.ts:2,23-28,56-61. Out of scope: host. Downstream: T3.2 removes the RPC the shim called.'
+acceptance_criteria:
+  - text: apps/vscode-extension/test/workflow-view.test.tsx and workflow-diagram.test.tsx are deleted with the two components; `pnpm --filter @octoshell/vscode-extension build` and `pnpm --filter @octoshell/vscode-extension test` are green (part of mission AC4)
+    done: true
+notes: |-
+  ## QA verification
+  Verdict: PASS (PR #136, branch feat/direct-dispatch-process-m3-t1).
+  - Built artifact: pnpm --filter @octoshell/vscode-extension build OK; bundle referenced by media/index.html (assets/index-BrFWg8nh.js) has 0 hits for WorkflowView, workflow-diagram, workflow:openScript.
+  - resolveBound({type:"bind",kind:"workflow",id:"x"}) returns {kind:"none"} (throwaway happy-dom probe, deleted; task kind still resolves).
+  - Root pnpm build/typecheck/lint/test all exit 0: board 412, tokenomics 102, vscode-extension 913 (52 files), graph 653; 0 skipped; no flake this run. workflow-view.test.tsx and workflow-diagram.test.tsx are gone.
+  - PR #136 checks: build pass.
+  Non-blocking: media/assets holds stale older bundles (for T6.6); suggest a permanent bind kind:"workflow" -> none regression test in T3.2.

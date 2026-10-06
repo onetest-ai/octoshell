@@ -8,6 +8,7 @@ const report = (over: Partial<Report> = {}): Report => ({
   pricesFetchedAt: "2026-07-22",
   runs: [
     {
+      scope: "mission",
       missionId: "folder:campaigns/demo/missions/m1",
       missionTitle: "M1 - Demo mission",
       campaignId: "folder:campaigns/demo",
@@ -39,7 +40,7 @@ const report = (over: Partial<Report> = {}): Report => ({
       ],
     },
   ],
-  unattributed: { segments: 1, turns: 5, branches: ["main"], tokens: emptyTotals(), costUsd: 2 },
+  unattributed: { segments: 1, turns: 5, branches: ["main"], tokens: emptyTotals(), costByModel: {}, costUsd: 2 },
   unpricedModels: [],
   ...over,
 });
@@ -74,7 +75,7 @@ describe("renderReportHtml", () => {
   it("raises unattributed spend above 10% as a finding", () => {
     // 10 of 50 total = 20%, past the threshold.
     const html = renderReportHtml(
-      report({ unattributed: { segments: 1, turns: 5, branches: ["main"], tokens: emptyTotals(), costUsd: 10 } }),
+      report({ unattributed: { segments: 1, turns: 5, branches: ["main"], tokens: emptyTotals(), costByModel: {}, costUsd: 10 } }),
     );
     expect(html).toMatch(/20% of spend is not attributable to a mission/);
   });
@@ -102,10 +103,74 @@ describe("renderReportHtml", () => {
     const html = renderReportHtml(
       report({
         runs: [],
-        unattributed: { segments: 0, turns: 0, branches: [], tokens: emptyTotals(), costUsd: 0 },
+        unattributed: { segments: 0, turns: 0, branches: [], tokens: emptyTotals(), costByModel: {}, costUsd: 0 },
       }),
     );
     expect(html).toContain("No gaps detected");
     expect(html).toContain("$0.00");
+  });
+});
+
+describe("campaign-level rows", () => {
+  const campaignRow = (over: Partial<Report["runs"][number]> = {}): Report["runs"][number] => ({
+    scope: "campaign",
+    missionId: null,
+    missionTitle: "Demo campaign",
+    campaignId: "folder:campaigns/demo",
+    estimate: { ...emptyEstimate(), branches: ["chore/demo-plan"] },
+    branches: ["chore/demo-plan"],
+    sessions: 2,
+    turns: 11,
+    subagentDispatches: 0,
+    orchestratorCostPct: 100,
+    cacheReadSharePct: 0,
+    tokens: { ...emptyTotals(), output: 500_000 },
+    costByModel: { "claude-sonnet-5": 5 },
+    costUsd: 5,
+    tasks: [],
+    ...over,
+  });
+  const withCampaign = (): Report => {
+    const base = report();
+    return report({ runs: [...base.runs, campaignRow()] });
+  };
+  const tileValue = (html: string, label: string): string | undefined =>
+    new RegExp(`<div class="v">([^<]*)</div><div class="k">${label}</div>`).exec(html)?.[1];
+
+  it("Missions measured counts mission rows only", () => {
+    expect(tileValue(renderReportHtml(withCampaign()), "Missions measured")).toBe("1");
+  });
+
+  it("campaign rows render under Campaign-level work", () => {
+    const html = renderReportHtml(withCampaign());
+    const after = html.slice(html.indexOf("<h2>Campaign-level work</h2>"));
+    expect(html).toContain("<h2>Campaign-level work</h2>");
+    expect(after.slice(0, after.indexOf("<h2>Per-task breakdown</h2>"))).toContain("chore/demo-plan");
+    // ...and not in the missions table, which ends at the campaign heading.
+    expect(html.slice(0, html.indexOf("<h2>Campaign-level work</h2>"))).not.toContain("Demo campaign");
+  });
+
+  it("omits the section when there are no campaign rows", () => {
+    expect(renderReportHtml(report())).not.toContain("Campaign-level work");
+  });
+
+  it("no-effort finding excludes campaign rows (1 of 2)", () => {
+    const base = report();
+    const noEffort = { ...base.runs[0]!, missionId: "folder:campaigns/demo/missions/m2", estimate: emptyEstimate() };
+    const html = renderReportHtml(report({ runs: [...base.runs, noEffort, campaignRow()] }));
+    expect(html).toContain("1 of 2 missions have no authored effort");
+  });
+
+  it("cost-by-size excludes campaign rows", () => {
+    const html = renderReportHtml(withCampaign());
+    const sizes = html.slice(html.indexOf("<h2>Cost by size</h2>"), html.indexOf("<h2>Where the cost goes</h2>"));
+    // One L mission ($40); a campaign row has no size and must not appear under any bucket.
+    expect(sizes).toContain("$40.00");
+    expect(sizes).not.toContain("$45.00");
+  });
+
+  it("total cost includes campaign rows", () => {
+    // 40 mission + 5 campaign + 2 unattributed.
+    expect(tileValue(renderReportHtml(withCampaign()), "Total metered cost")).toBe("$47.00");
   });
 });

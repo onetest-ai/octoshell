@@ -43,3 +43,28 @@ describe("RPC contract drift guard", () => {
     expect(called.filter((m) => !(m in rpcArgs))).toEqual([]);
   });
 });
+
+describe("tests:* RPC contract schemas (M6 T6.3)", () => {
+  it("declares tests:list, tests:coverage and tests:summary, each with a handler", () => {
+    for (const m of ["tests:list", "tests:coverage", "tests:summary"]) {
+      expect(m in rpcArgs, m).toBe(true);
+      expect(handlerMethods, m).toContain(m);
+    }
+  });
+
+  it("tests:list takes a campaign id and an optional mission folder token", () => {
+    const a = rpcArgs["tests:list"];
+    expect(a.safeParse({ campaignId: "c1" }).success).toBe(true);
+    for (const mission of ["m2", "M2", "2", "3b", "M10"]) expect(a.safeParse({ campaignId: "c1", mission }).success, mission).toBe(true);
+    for (const mission of ["", "../x", "m2/..", "m", "mission", "m12345", "m2 ", 2]) expect(a.safeParse({ campaignId: "c1", mission }).success, String(mission)).toBe(false);
+    for (const campaignId of ["", undefined, 7, "x".repeat(201)]) expect(a.safeParse({ campaignId }).success, String(campaignId)).toBe(false);
+  });
+
+  it("tests:coverage and tests:summary require a non-empty string id", () => {
+    expect(rpcArgs["tests:coverage"].safeParse({ missionId: "m1" }).success).toBe(true);
+    expect(rpcArgs["tests:coverage"].safeParse({ missionId: "" }).success).toBe(false);
+    expect(rpcArgs["tests:coverage"].safeParse({}).success).toBe(false);
+    expect(rpcArgs["tests:summary"].safeParse({ campaignId: "c1" }).success).toBe(true);
+    expect(rpcArgs["tests:summary"].safeParse({ campaignId: 3 }).success).toBe(false);
+  });
+});

@@ -1,0 +1,38 @@
+name: 'T4.5 - Mission QA: run tests/m4 live on copies of solo''s uwb campaign and octoshell''s board'
+status: done
+role: qa-engineer
+description: 'Scope: TC-001..011 against `cp -R` copies (never the originals). Update each TC''s status (campaign notes § Test conventions rule 4); write `## QA verification`. Out of scope: fixes. Downstream: M4 gate.'
+acceptance_criteria:
+  - text: every TC has PASS, FAIL, BLOCKED or UNREACHABLE with evidence and a named pre-existing record; its frontmatter status is pass, fail or blocked (UNREACHABLE recorded as blocked with the reason in the RUN file)
+    done: true
+  - text: originals untouched (git status clean in solo and octoshell)
+    done: true
+notes: |
+  ## QA verification (T4.5, 2026-10-06)
+
+  Verdict: GREEN for the suite, recorded in the task notes. Run file: .octobots/campaigns/direct-dispatch-process/tests/m4/runs/RUN-2026-10-06-001.md. All 12 TC files in tests/m4 were run on the m4 head (b2a1e094, built) against cp -R copies; every TC status is pass and last_run is set by hand.
+
+  Per case, with the pre-existing record it was proved on:
+  - TC-001 PASS: octoshell octograph m6-extension-bridge (copy; 5 real ACs, no tests/): README rows M6-AC1..5, 3 sections, document linked, nothing else changed.
+  - TC-002 PASS: solo uwb m1 (copy; real README, doc linked): add-tests.js twice, exit 0, git diff --no-index empty.
+  - TC-003 PASS: solo uwb m1 (copy): one warning for M1-AC11, exit 0; set-status draft/active/done all exit 0 with the warning at every status.
+  - TC-004 PASS: solo uwb m2 (copy): one warning for M2-AC10, exit 0.
+  - TC-005 PASS: solo uwb m6 (copy; done, no README, no TCs): warning "missing", exit 0.
+  - TC-006 PASS: solo uwb m1 real TC-003 (copy): clean (legacy requirements accepted); id mismatch warns once; missing section warns once. The case text was wrong at step 3 (the awk copy kept id TC-003 under TC-098, so the product rightly gave 2 warnings); the case was corrected (copy named TC-003_nosection.md), not the result.
+  - TC-007 PASS: solo copy via OCTOBOTS_BOARD_COPIES: validate-tests-parity 15 passed.
+  - TC-008 PASS: solo uwb campaign copy: tests-folder-ignored 3 passed, board-watcher 11 passed.
+  - TC-009 PASS: octoshell's real board, 5 completed fresh sonnet sub-agents each in its own shared clone with the v57 pack: 5/5 conform (README maps every AC, linked, valid TCs, named record or UNREACHABLE, validate.js silent). 6 were dispatched: the ws2 agent hung with no TC files and was replaced by a fresh one (ws6); recorded in the RUN file.
+  - TC-010 PASS and TC-012 PASS: the real shipped SKILL.md files: skill-conventions 108 passed.
+  - TC-011 PASS: solo uwb m6 and m1 (fresh copy): active then done exit 0, status done, warning never blocks.
+
+  TCs that are not pass: none. Sub-point UNREACHABLE on real data (recorded, not substituted): the README-map-disagreement half of M4-AC2 (README assumption A4); it is proved only by the synthetic cases inside validate-tests-parity.test.ts. Bugs filed: none.
+
+  Data safety: solo's git status --short and its .octobots sha256 manifest (1209 files) are identical before and after; octoshell's .octobots outside this campaign (209 files) is identical; the only octoshell writes are tests/m4 status/runs/evidence and the T4.5 and M4 notes (evidence/data-safety.txt).
+
+  Mission criteria with evidence (the completion gate ticks them in phase 5; this task ticks none of them):
+  - M4-AC1: TC-001, TC-002.
+  - M4-AC2: TC-003, TC-004, TC-005, TC-011 (real data) and TC-007 (parity; also the synthetic README-disagreement cases). Disagreement half only synthetic, see above.
+  - M4-AC3: TC-006 (real and corrected-copy cases) and TC-007.
+  - M4-AC4: TC-009 (behaviour, 5/5) and TC-012 (doctor paragraph), with the planner text assertions in TC-010's vitest.
+  - M4-AC5: TC-010 (text of both skills) and this run itself as the last-task live run on real copies; the gate repeats it on a fresh tree.
+  - M4-AC6: TC-008.

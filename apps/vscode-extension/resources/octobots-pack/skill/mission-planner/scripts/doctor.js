@@ -6,15 +6,20 @@
 // Exits 0 when everything is fine or only NOTEs remain, 1 when any FAIL is reported. Warnings do
 // not fail the run: a workspace that deliberately declined hooks or the status line is healthy.
 //
-// The headline check is CLAUDE_CONFIG_DIR. Claude Code defaults it to ~/.claude, which is SHARED by
-// every project on the machine: sessions, transcripts, history and the usage data tokenomics reads
-// all land in one pile. Octobots attributes cost and run history per board, so a system-wide config
-// dir silently mixes one repo's numbers into another's. This must be run from a real shell — the
-// value is an environment variable, so a check made anywhere else is guessing.
+// The config-dir check reports where Claude Code writes this project's transcripts, which is the
+// root the tokenomics collector reads: $CLAUDE_CONFIG_DIR/projects/<slug>, else ~/.claude/projects/<slug>
+// (<slug> is the main checkout's absolute path with every non-alphanumeric character as "-"). The
+// default is healthy: the collector reads only this project's own slug directory, so a shared
+// ~/.claude does not mix repos. This must be run from a real shell, because CLAUDE_CONFIG_DIR is an
+// environment variable.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
+import { findLegacyWorkflowFolders, isCampaignDir, NO_LONGER_READ } from "./legacy-workflows.mjs";
+import { parseSkillMarker } from "./skill-marker.mjs";
+import { parseTestLanes } from "./lanes.mjs";
+import { readPending, readRegularFile, MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX } from "./pending-io.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
@@ -29,62 +34,83 @@ const note = (area, msg) => findings.push({ level: "note", area, msg });
 
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; } };
 
-/** Is `child` inside `parent`? Compared on resolved paths with a trailing separator, so a sibling
- *  directory whose name merely starts with the parent's (…/repo-evil) can never pass. */
-const within = (parent, child) => {
-  const p = resolve(parent) + sep;
-  const c = resolve(child) + sep;
-  return c.startsWith(p);
-};
-
-// ── 1. CLAUDE_CONFIG_DIR ─────────────────────────────────────────────────────────────────────
+// ── 1. Transcript root (CLAUDE_CONFIG_DIR) ──────────────────────────────────────────────────
+// Transcripts live under the MAIN checkout's slug, so a worktree path is unwound first.
+const wtAt = ROOT.indexOf(`${sep}.claude${sep}worktrees${sep}`);
+const MAIN_ROOT = wtAt !== -1 ? ROOT.slice(0, wtAt) : ROOT;
+const SLUG = MAIN_ROOT.replace(/[^A-Za-z0-9]/g, "-");
 const ccd = process.env.CLAUDE_CONFIG_DIR;
 if (!ccd) {
-  warn(
-    "config-dir",
-    "CLAUDE_CONFIG_DIR is not set — Claude Code will use ~/.claude, which every project on this " +
-      "machine shares. Sessions, transcripts and the usage data tokenomics reads all land in one " +
-      "pile, so this board's cost and run history mix with other repos'.",
-    `export CLAUDE_CONFIG_DIR="${join(ROOT, ".claude")}"  (per project, e.g. from your launcher or .envrc)`,
-  );
-} else if (!within(ROOT, ccd)) {
-  fail(
-    "config-dir",
-    `CLAUDE_CONFIG_DIR points OUTSIDE this project: ${ccd}\n` +
-      `    Expected somewhere under ${ROOT}. Cost attribution and run history for this board are ` +
-      "being written to, and read from, a config dir shared with other work.",
-    `export CLAUDE_CONFIG_DIR="${join(ROOT, ".claude")}"`,
-  );
+  ok("config-dir", `CLAUDE_CONFIG_DIR is not set — transcripts are read from ~/.claude/projects/${SLUG}`);
 } else {
-  ok("config-dir", `CLAUDE_CONFIG_DIR is project-local (${ccd.replace(ROOT, ".")})`);
+  ok("config-dir", `CLAUDE_CONFIG_DIR is set — transcripts are read from ${join(ccd, "projects", SLUG)}`);
 }
 
 // ── 2. Pack payload ──────────────────────────────────────────────────────────────────────────
-const SKILLS = ["mission-planner", "workflow-designer", "mission-execution", "mission-completion-gate", "knowledge-explorer"];
-const versionOf = (text) => { const m = String(text).match(/^version:\s*(\d+)\s*$/m); return m ? Number(m[1]) : null; };
+const SKILLS = ["mission-planner", "mission-execution", "mission-completion-gate", "knowledge-explorer", "octobots-doctor"];
 const markerOf = (text) => { const m = String(text).match(/^(?:\/\/|#)\s*octobots-pack-version:\s*(\d+)\s*$/m); return m ? Number(m[1]) : null; };
 
-const skillVersions = new Map();
+// What the installer recorded about local changes (pending.json), read before the skills are
+// compared: a skill it is reconciling or was told to keep is not expected to match the pack.
+const pending = readPending(ROOT);
+const record = pending.state === "ok" ? pending.record : null;
+const pendingSkills = new Set(record ? record.skills.map((s) => s.skill) : []);
+const keptSkills = new Set(record ? record.kept.map((k) => k.skill) : []);
+
+// Version agreement uses the pack's one marker rule (skill-marker.mjs). Only a plain integer
+// version takes part; pending, kept, reconciled (`<N>+local`) and newer skills are excluded and
+// reported by state in one line instead.
+const primer = join(ROOT, ".octobots", "hooks", "primer.mjs");
+// Read only as small regular files: a FIFO or a symlink to a device must not hang the doctor.
+const readSmall = (p) => { try { return readRegularFile(p); } catch { return null; } };
+const primerVersion = existsSync(primer) ? markerOf(readSmall(primer) ?? "") : null;
+const installed = [];
 for (const s of SKILLS) {
   const p = join(ROOT, ".claude", "skills", s, "SKILL.md");
-  if (!existsSync(p)) { fail("pack", `skill missing: ${s}`, 'run "Octobots: Install Workflow Pack"'); continue; }
-  skillVersions.set(s, versionOf(readFileSync(p, "utf8")));
+  if (!existsSync(p)) { fail("pack", `skill missing: ${s}`, 'run "Octobots: Install Octobots Pack"'); continue; }
+  const text = readSmall(p);
+  if (text === null) { fail("pack", `skill unreadable: ${s} (SKILL.md is not a readable regular file)`, 'run "Octobots: Install Octobots Pack"'); continue; }
+  installed.push({ s, m: parseSkillMarker(text) });
+}
+// "Newer" is newer than the installed pack: the record's version, else primer.mjs's marker, which
+// every install writes (pending.json exists only once a skill was changed locally, and the installer
+// leaves a newer skill alone without recording it). With no record, a primer behind EVERY integer
+// skill is itself the stale file, so nothing is called newer and the checks below report it.
+let newerThan = record ? record.packVersion : primerVersion;
+if (!record && newerThan !== null && !installed.some(({ m }) => m.kind === "integer" && m.n <= newerThan)) newerThan = null;
+const skillVersions = new Map();
+const excluded = [];
+for (const { s, m } of installed) {
+  if (pendingSkills.has(s)) excluded.push(`${s} (pending reconcile)`);
+  else if (keptSkills.has(s)) excluded.push(`${s} (kept: ${m.label ?? "no version"})`);
+  else if (newerThan !== null && m.n !== null && m.n > newerThan) excluded.push(`${s} (newer: ${m.label})`);
+  else if (m.kind === "plus-local") excluded.push(`${s} (reconciled: ${m.label})`);
+  else skillVersions.set(s, m.kind === "integer" ? m.n : null);
 }
 const versions = [...skillVersions.values()].filter((v) => v !== null);
-const packVersion = versions.length ? Math.max(...versions) : null;
+const packVersion = versions.length ? Math.max(...versions) : (record ? record.packVersion : null);
 if (versions.length && new Set(versions).size > 1) {
   fail("pack", `skills disagree on version: ${[...skillVersions].map(([k, v]) => `${k}=${v}`).join(", ")}`,
-    'run "Octobots: Install Workflow Pack" to bring them to one version');
-} else if (packVersion !== null) {
+    'run "Octobots: Install Octobots Pack" to bring them to one version');
+} else if (versions.length) {
   ok("pack", `${skillVersions.size} skills installed at v${packVersion}`);
 }
+if (excluded.length) note("pack", `not compared with the pack version: ${excluded.join(", ")}`);
 
-const primer = join(ROOT, ".octobots", "hooks", "primer.mjs");
-if (!existsSync(primer)) fail("pack", "primer.mjs is missing", 'run "Octobots: Install Workflow Pack"');
+// Pending reconciles (M7): the agent runs the octobots-doctor skill to merge them. Listed even when
+// .octobots/doctor-acks.json acknowledges other findings — a pending reconcile is never acknowledgeable.
+if (record && record.skills.length) {
+  warn("pack", `pack reconcile pending: ${record.skills.map((s) => `${s.skill} (v${record.packVersion})`).join(", ")}`,
+    "run the octobots-doctor skill");
+} else if (pending.state === "malformed") {
+  warn("pack", MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX);
+}
+
+if (!existsSync(primer)) fail("pack", "primer.mjs is missing", 'run "Octobots: Install Octobots Pack"');
 else {
-  const v = markerOf(readFileSync(primer, "utf8"));
+  const v = primerVersion;
   if (packVersion !== null && v !== packVersion) {
-    fail("pack", `primer.mjs is v${v}, skills are v${packVersion}`, 'run "Octobots: Install Workflow Pack"');
+    fail("pack", `primer.mjs is v${v}, skills are v${packVersion}`, 'run "Octobots: Install Octobots Pack"');
   } else ok("pack", `primer.mjs v${v}`);
 }
 
@@ -114,7 +140,7 @@ for (const [event, entries] of Object.entries(hooks)) {
 }
 if (dupes.length) {
   fail("hooks", `duplicate hook registrations — each fires ${dupes.length > 1 ? "multiple times" : "twice"} per event:\n    ${dupes.join("\n    ")}`,
-    'run "Octobots: Install Workflow Pack" with a current Octobots extension — the de-duplication is in the installer, so an older extension will re-create the pair');
+    'run "Octobots: Install Octobots Pack" with a current Octobots extension — the de-duplication is in the installer, so an older extension will re-create the pair');
 } else if (ourHookCount === 0) {
   note("hooks", "no Octobots hooks registered — they are opt-in, so this is only a problem if you wanted them");
 } else {
@@ -131,10 +157,10 @@ if (!sl?.command) {
   note("statusline", `a non-Octobots status line is configured; left alone: ${String(sl.command).slice(0, 60)}`);
 } else if (!existsSync(slScript)) {
   fail("statusline", "settings point at .octobots/statusline.sh but the script is missing",
-    'run "Octobots: Install Workflow Pack"');
+    'run "Octobots: Install Octobots Pack"');
 } else {
   const v = markerOf(readFileSync(slScript, "utf8"));
-  if (packVersion !== null && v !== packVersion) warn("statusline", `statusline.sh is v${v}, pack is v${packVersion}`, 'run "Octobots: Install Workflow Pack"');
+  if (packVersion !== null && v !== packVersion) warn("statusline", `statusline.sh is v${v}, pack is v${packVersion}`, 'run "Octobots: Install Octobots Pack"');
   else ok("statusline", `installed and registered (v${v})`);
   if (String(sl.command).includes("/Users/") || /^[A-Za-z]:\\/.test(String(sl.command))) {
     fail("statusline", `the registration uses an ABSOLUTE path — it breaks on another machine or a fresh clone`,
@@ -150,7 +176,7 @@ if (!sl?.command) {
 
 // ── 5. Tokenomics + ccusage ──────────────────────────────────────────────────────────────────
 if (!existsSync(join(ROOT, ".octobots", "tokenomics"))) {
-  fail("tokenomics", "the tokenomics CLI is missing", 'run "Octobots: Install Workflow Pack"');
+  fail("tokenomics", "the tokenomics CLI is missing", 'run "Octobots: Install Octobots Pack"');
 } else ok("tokenomics", "CLI installed");
 // ccusage: the workspace's own copy first — that is the one the pack installs and the scripts use.
 const localCcusage = join(ROOT, ".octobots", "tools", "node_modules", ".bin", "ccusage");
@@ -164,7 +190,7 @@ if (existsSync(localCcusage)) {
     "ccusage is not installed for this workspace, so every usage call falls back to `npx` — which " +
       "re-resolves a platform-specific native package each time. Measured: 823ms per call against " +
       "29ms for an installed binary, and the usage wait loop makes up to fifteen calls.",
-    'run "Octobots: Install Workflow Pack" and accept the tools step (installs once, ~340ms, into .octobots/tools)');
+    'run "Octobots: Install Octobots Pack" and accept the tools step (installs once, ~340ms, into .octobots/tools)');
 }
 
 // ── 6. Board ─────────────────────────────────────────────────────────────────────────────────
@@ -173,6 +199,42 @@ if (!existsSync(campaigns)) note("board", "no .octobots/campaigns yet — nothin
 else {
   const n = readdirSync(campaigns, { withFileTypes: true }).filter((e) => e.isDirectory()).length;
   ok("board", `${n} campaign(s)`);
+  // Workflow support was removed in pack v57. These folders are ignored, never touched: warn only.
+  const base = join(ROOT, ".octobots");
+  const leftovers = readdirSync(campaigns, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && isCampaignDir(join(campaigns, e.name))) // a dir with no campaign.yaml/.md is no campaign
+    .flatMap((e) => findLegacyWorkflowFolders(join(campaigns, e.name), base));
+  if (leftovers.length) {
+    warn("board",
+      `${leftovers.length} leftover workflows/ folder(s), ${NO_LONGER_READ}: ${leftovers.join(", ")}`,
+      "nothing to do — they are ignored and harmless, so you can leave them; to tidy up, move them aside by hand (the doctor never changes them)");
+  }
+}
+
+// ── 7. Test lanes ────────────────────────────────────────────────────────────────────────────
+// AGENTS.md § Test lanes declares the project's fast and coverage commands (the rules are in
+// lanes.mjs). Always listed, even when .octobots/doctor-acks.json acknowledges the finding: only
+// the SessionStart primer honours acknowledgements. The fix is the octobots-doctor skill, which
+// proposes the section and writes it only with the user's OK.
+{
+  const MAX_AGENTS_BYTES = 1024 * 1024; // the primer reads AGENTS.md under the same bound
+  const LANES_FIX = "run the octobots-doctor skill: it proposes a `## Test lanes` section from the project's documented commands and writes it only with your OK";
+  const agentsPath = join(ROOT, "AGENTS.md");
+  if (!existsSync(agentsPath)) {
+    warn("lanes", "no AGENTS.md, so no `## Test lanes` section declaring `fast:` and `coverage:` commands", LANES_FIX);
+  } else {
+    let text = null;
+    try { text = readRegularFile(agentsPath, { max: MAX_AGENTS_BYTES }); } catch { /* reported below */ }
+    if (text === null) {
+      warn("lanes", "AGENTS.md is not a readable regular file of at most 1 MiB, so its `## Test lanes` section could not be read", LANES_FIX);
+    } else {
+      const lanes = parseTestLanes(text);
+      const missing = ["fast", "coverage"].filter((k) => lanes[k] === null);
+      if (!lanes.section) warn("lanes", "AGENTS.md has no `## Test lanes` section declaring `fast:` and `coverage:` commands", LANES_FIX);
+      else if (missing.length) warn("lanes", `AGENTS.md \`## Test lanes\` does not declare ${missing.map((k) => `${k}:`).join(" or ")}`, LANES_FIX);
+      else ok("lanes", `AGENTS.md declares test lanes (fast: ${lanes.fast}; coverage: ${lanes.coverage})`);
+    }
+  }
 }
 
 // ── Report ───────────────────────────────────────────────────────────────────────────────────

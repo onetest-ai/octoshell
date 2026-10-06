@@ -124,9 +124,17 @@ export interface TaskRun {
   unmeasured: boolean;
 }
 
-/** One mission: the unit that ships behind a PR and carries acceptance criteria. */
+/**
+ * One row of the report. Normally a mission: the unit that ships behind a PR and carries acceptance
+ * criteria. A `scope: "campaign"` row is the campaign-level bucket - work attributed to a campaign
+ * (its planning branch, a declared branch, a slug-only branch) that belongs to no single mission.
+ */
 export interface MissionRun {
-  missionId: string;
+  /** `mission` for a mission row, `campaign` for the campaign-level bucket. */
+  scope: "mission" | "campaign";
+  /** null on a campaign row. */
+  missionId: string | null;
+  /** The campaign's name on a campaign row. */
   missionTitle: string;
   campaignId: string;
   estimate: Estimate;
@@ -149,6 +157,8 @@ export interface Unattributed {
   turns: number;
   branches: string[];
   tokens: TokenTotals;
+  /** Priced per model, like a run row: `verify.mjs` drops the models ccusage cannot price. */
+  costByModel: Record<string, number>;
   costUsd: number;
 }
 
@@ -160,4 +170,9 @@ export interface Report {
   unattributed: Unattributed;
   /** Models seen in transcripts with no price entry — their cost reads as 0. */
   unpricedModels: string[];
+}
+
+/** True for the campaign-level bucket; those rows are spend, not missions, and are counted apart. */
+export function isCampaignRun(r: Pick<MissionRun, "scope">): boolean {
+  return r.scope === "campaign";
 }

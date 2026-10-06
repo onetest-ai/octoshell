@@ -67,7 +67,9 @@ describe("validate is clean for a well-formed YAML board", () => {
     expect(validateBoard(root)).toEqual([]);
     const m = createMission(root, c.id, { title: "M1 - Skills", acceptanceCriteria: "- [ ] ac" });
     createTask(root, m.id, { name: "T1.1 - JWT", acceptanceCriteria: "- [ ] ac" });
-    expect(validateBoard(root)).toEqual([]);
+    // no error; the one finding is the (warning-only) note that the mission has no tests README yet
+    expect(validateBoard(root).filter((f) => f.severity === "error")).toEqual([]);
+    expect(validateBoard(root).map((f) => f.message)).toEqual(["campaigns/q3-rollout/tests/m1/README.md: missing — M1 has no tests README; run add-tests.js to scaffold it"]);
   });
 });
 

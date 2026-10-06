@@ -1,0 +1,9 @@
+$ pnpm build && pnpm typecheck && pnpm lint && pnpm test   (branch fix/direct-dispatch-process-m3-gate @ e5257867, OCTOBOTS_BOARD_COPIES unset)  EXIT=0
+@octoshell/board:test:  Test Files  25 passed (25)
+@octoshell/board:test:       Tests  294 passed (294)
+@octoshell/tokenomics:test:  Test Files  7 passed (7)
+@octoshell/tokenomics:test:       Tests  102 passed (102)
+@octoshell/vscode-extension:test:  Test Files  58 passed (58)
+@octoshell/vscode-extension:test:       Tests  947 passed (947)
+@octoshell/graph:test:  Test Files  46 passed (46)
+@octoshell/graph:test:       Tests  653 passed (653)

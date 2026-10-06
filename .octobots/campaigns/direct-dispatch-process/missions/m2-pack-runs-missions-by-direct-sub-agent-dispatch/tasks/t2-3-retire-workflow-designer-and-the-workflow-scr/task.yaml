@@ -1,0 +1,39 @@
+name: T2.3 - Retire workflow-designer and the workflow scripts from the pack and the installer
+status: done
+role: js-dev
+description: 'Scope: delete the 8 pack paths (workflow-designer skill, add-workflow/sync-meta/add-run/mission-input .js, extract-meta/workflow-meta .mjs, vendor/acorn.mjs); delete packages/board/test/extract-meta-parity.test.ts (it imports the deleted extract-meta.mjs); octobots-skill.ts:14,20,26 add to OCTOBOTS_SKILLS/RETIRED_SKILLS/RETIRED_FILES; doctor.js:63; rewrite mission-planner/SKILL.md:3,240-242,440-461,473-486,561-568 (role field stays, the workflow comparison goes); knowledge-explorer/SKILL.md:3; the pack''s tokenomics/README.md:88-90 (''mission-execution leans heavily on workflows'' becomes past tense: older runs nested Workflow agents under wf_<id>/); fix the octobots-skill.test.ts:69, octobots-scripts.test.ts:29-33,416-425, scripts-cli-scenarios and scripts-smoke cases that exercise the deleted scripts. Add the QA harness apps/vscode-extension/scripts/qa/install-pack.mjs <workspace> [--pack-root <dir>]: plain node; esbuild-bundles src/host/octobots-skill.ts in memory (its import graph is vscode-free), prints JSON {before: packStatus, result: installPack(<pack root, default resources/octobots-pack>, <workspace>), after: packStatus}, exits 1 on a throw. --pack-root lets M6-AC8 install the pack unzipped from the VSIX. Out of scope: packages/board source (M3). Downstream: M7 (T7.2, T7.3) extends packStatus, installPack and install-pack.mjs with deviation detection and reconcile staging (same files, after M2); M3 can delete the TS mirror without a pack mirror left; M2 TC-001/002/010 and M6-AC8 use the harness.'
+acceptance_criteria:
+  - text: the 8 paths and packages/board/test/extract-meta-parity.test.ts do not exist, and OCTOBOTS_SKILLS/doctor.js list 4 skills (mission AC1)
+    done: true
+  - text: 'apps/vscode-extension/test/octobots-skill.test.ts proves installPack on a workspace containing the retired paths removes them and keeps create-team.js, and that packStatus on a copy with `version: 57-local` forks reports not up to date before and upToDate: true after (mission AC2). M7 T7.3 later makes this overwrite an explicit `localChanges: "overwrite"` and updates this test'
+    done: true
+  - text: '`pnpm test` and `pnpm coverage:pack` are green on the M2 branch'
+    done: true
+  - text: apps/vscode-extension/scripts/qa/install-pack.mjs exists with the JSON contract above, and apps/vscode-extension/test/qa-install-pack.test.ts runs it on a temp workspace and asserts before/result/after
+    done: true
+notes: |
+  ## QA verification
+
+  **Verdict: PASS.** PR #122 (feat/direct-dispatch-process-m2-t3 -> feat/direct-dispatch-process-m2), head 6b61276. CI `build` checks: pass (both runs, on 6b61276). Re-verified from scratch, not taken from the dev or review.
+
+  **Records (read only sources, all work on copies in scratch):**
+  - SOLO copy of /Users/arozumenko/Development/auqanautica/.claude + .octobots: 37 skills incl. workflow-designer (v56), mission-planner/knowledge-explorer v56, mission-execution + mission-completion-gate `version: 57-local` forks, create-team.js, 7 retired scripts present. 7 files in 6 workflows/ folders (one with runs.jsonl, sha256 c119a6c71ea2...), sha256 of the sorted per-file hash list cdfaabe471bb61bd.
+  - OCTOSHELL copy of this repo's .claude + .octobots: 35 skills, all v56; 5 files in 5 workflows/ folders (octograph m3..m7), list hash cc4e2507bf427752.
+  - auqanautica `git status --short` identical before and after (6 pre-existing untracked agent memory files, unchanged).
+
+  **Blind probe, harness `node apps/vscode-extension/scripts/qa/install-pack.mjs <copy>` after `pnpm build`:**
+  - Solo run 1: exit 0. before {installed:false, currentVersion:57, upToDate:false}; result {written:37, hooksRegistered:true, tools:installed}; after {installed:true, upToDate:true}. skills/workflow-designer gone; add-workflow.js, sync-meta.js, add-run.js, mission-input.js, extract-meta.mjs, workflow-meta.mjs gone; vendor/ holds js-yaml.mjs only (acorn.mjs gone); create-team.js present; mission-planner, mission-execution, mission-completion-gate, knowledge-explorer all read `version: 57` (the two 57-local forks overwritten). All 7 workflows/ files byte-identical (sha256 diff empty).
+  - Solo run 2 (idempotency): exit 0, before upToDate:true, written:36, after upToDate:true; sha256 of the whole installed skills/hooks/agents tree identical to after run 1; workflows/ still byte-identical.
+  - Octoshell copy: exit 0. before {installed:true, upToDate:false}, after {upToDate:true}; written:36; same removals; all four SKILL.md `version: 57`; all 5 workflows/ files byte-identical.
+
+  **validate.js on the copies, mission holding a legacy workflows/ folder:** solo m1-real-analysis-table-and-batch-copy-writer (workflows/m1-analysis-store) and octograph m4-board-overlay-own-and-conflicts (workflows/build-and-gate): both print OK, exit 0, no crash. No warning about the leftover workflows/ is printed; that is expected, the non-fatal warning is T2.4.
+
+  **Suite (root, foreground):** pnpm build, typecheck, lint, test, coverage:pack all exit 0. Tests: board 365, vscode-extension 554, tokenomics 102, graph 653, all passed; 0 skipped anywhere in the log. coverage:pack table all green. AC-named files verbose: octobots-skill.test.ts + qa-install-pack.test.ts, 53 passed (4 + 49).
+
+  **Per AC:**
+  1. Deleted paths + OCTOBOTS_SKILLS/doctor.js: git ls-files finds none of the 8 paths nor extract-meta-parity.test.ts; OCTOBOTS_SKILLS and doctor.js SKILLS list exactly mission-planner, mission-execution, mission-completion-gate, knowledge-explorer. Test "ships exactly four skills and none of the retired workflow payload". Observed on both copies.
+  2. "removes the retired workflow-designer skill and workflow scripts, keeps a user's own script, and never touches .octobots workflows" and "overwrites a skill forked as `version: 57-local`: not up to date before, up to date after" pass; matches real-data observation (solo before upToDate:false, after true).
+  3. pnpm test and pnpm coverage:pack green (above); CI green.
+  4. install-pack.mjs exists; qa-install-pack.test.ts passes 4 tests incl. "prints {before, result, after} for a temp workspace" and --pack-root and exit 1 on throw. The real harness run on real copies printed that JSON shape.
+
+  **Non-blocking review notes carried:** review audited removal of 23 tests; symlinked retired paths only unlink; mutation check confirms a missing RETIRED_* entry is caught; dead acorn comment removed in 6b61276. QA extra: the first install onto the solo copy reports written:37 vs 36 on every later run (one-time extra file, benign). The task.yaml in the working tree carried an uncommitted status draft->executing change, committed here as part of the landing.

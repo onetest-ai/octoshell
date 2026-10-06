@@ -1,0 +1,36 @@
+/private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/campaign/ac5/solo-octobots/campaigns/epic-013-ruleset-and-interval-retention/missions/m10-setup-flow-preset-and-exception-authorization/mission.yaml:0
+/private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/campaign/ac5/solo-octobots/campaigns/epic-013-ruleset-and-interval-retention/campaign.yaml:0
+executing exit=3
+set-status: refusing to move "M10 - One setup flow, preset warnings, and edge-side exception authorization" into executing: no plan review is recorded.
+  no `## Plan review (...)` heading in the mission notes or the campaign notes
+  unchanged
+active exit=3
+set-status: refusing to move "M10 - One setup flow, preset warnings, and edge-side exception authorization" into executing: no plan review is recorded.
+  no `## Plan review (...)` heading in the mission notes or the campaign notes
+  unchanged
+in progress exit=3
+set-status: refusing to move "M10 - One setup flow, preset warnings, and edge-side exception authorization" into executing: no plan review is recorded.
+  no `## Plan review (...)` heading in the mission notes or the campaign notes
+  unchanged
+running exit=3
+set-status: refusing to move "M10 - One setup flow, preset warnings, and edge-side exception authorization" into executing: no plan review is recorded.
+  no `## Plan review (...)` heading in the mission notes or the campaign notes
+  unchanged
+awaiting approval exit=0
+draft exit=0
+cancelled exit=0
+draft exit=0
+draft->done exit=0
+2:status: done
+draft->failed exit=0
+2:status: draft
+--- force
+force exit=0
+2:status: executing
+71:  ## Plan review overridden (2026-10-06)
+72-  QA override for campaign AC5
+warning: legacy plan review "## Plan review (Alex + Rio, 2026-10-02)" (campaign notes) has no Reviewers:/Verdict: lines; accepted
+set status of "M5 - Emulator v01 gateway and end-to-end ranging match" to executing
+octobots: status mission "M5 - Emulator v01 gateway and end-to-end ranging match" cancelled -> executing
+legacy exit=0
+2:status: executing

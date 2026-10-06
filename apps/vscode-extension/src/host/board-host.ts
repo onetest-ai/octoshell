@@ -16,17 +16,13 @@ import {
   createTask,
   createBug,
   updateBrief,
-  setStatus,
+  setStatusChecked,
   addDocument,
   removeDocument,
   deleteCampaign,
   deleteMission,
   deleteTask,
   deleteBug,
-  createWorkflow as createWorkflowFile,
-  deleteWorkflow as deleteWorkflowFile,
-  appendWorkflowRun as appendWorkflowRunFile,
-  migrateLegacyWorkflows as migrateLegacyWorkflowsFile,
   migrateEntitiesToYaml as migrateEntitiesToYamlFile,
   parseDocumentLinks,
   loadEntity,
@@ -38,11 +34,12 @@ import {
   type Bug,
   type BugParent,
   type BugSeverity,
-  type Workflow,
-  type WorkflowParent,
+  type TestCase,
+  type MissionCoverage,
 } from "@octoshell/board";
 import { rollupCampaign, type Rollup } from "./board-rollup.js";
-import type { DocLink, DocFile, CampaignSummary, MissionProposal } from "../protocol/index.js";
+import type { DocLink, DocFile, CampaignSummary, MissionProposal, TestSummary } from "../protocol/index.js";
+import { summarizeTests } from "./test-summary.js";
 
 export interface CampaignRollup extends Rollup {
   campaignId: string;
@@ -50,12 +47,16 @@ export interface CampaignRollup extends Rollup {
   isDefault: boolean;
 }
 
+/** What {@link BoardHost.setStatus} returns: done, or refused because a mission start has no plan review. */
+export type SetStatusOutcome = { ok: true } | { ok: false; reason: "plan-review-missing"; message: string };
+
 export class BoardHost {
   private readonly octobotsDir: string;
   private model!: BoardModel; // assigned via rebuildModel() in the constructor
   private readonly emitter = new EventEmitter();
 
-  constructor(octobotsDir: string) {
+  /** @param now The clock for dated notes (the plan-review override); injectable for tests. */
+  constructor(octobotsDir: string, private readonly now: () => Date = () => new Date()) {
     this.octobotsDir = octobotsDir;
     this.rebuildModel(); // BoardModel does NOT parse on construction — must rebuild()
   }
@@ -103,6 +104,31 @@ export class BoardHost {
   getTask(id: string): Task | null { return this.model.getTask(id); }
   listBugs(parent: BugParent): Bug[] { return this.model.listBugs(parent); }
   getBug(id: string): Bug | null { return this.model.getBug(id); }
+
+  // ── Tests API (M6): read-only, over BoardModel's lazy, stat-cached TC reader ──────────────────────
+
+  /** The campaign's TCs (all missions, or the one `mission` names: `m2`, `M2`, `2`). Empty for an unknown campaign. */
+  listTests(campaignId: string, mission?: string | number): TestCase[] {
+    return this.model.listTestCases(campaignId, mission);
+  }
+
+  /** Which TCs cover each acceptance criterion of the mission. Empty (`mission: null`) for an unknown mission. */
+  testCoverage(missionId: string): MissionCoverage {
+    return this.model.getTestCoverage(missionId);
+  }
+
+  /**
+   * Totals by status (incl. `unknown`), the uncovered-AC count and one row per mission. A cancelled mission
+   * is excluded from the uncovered count entirely; a live mission with no tests folder counts all its ACs.
+   * Null for an unknown campaign.
+   */
+  testSummary(campaignId: string): TestSummary | null {
+    if (!this.model.getCampaign(campaignId)) return null;
+    const missions = this.model.listMissions(campaignId).map((m) => ({
+      id: m.id, title: m.title, status: m.status, coverage: this.model.getTestCoverage(m.id),
+    }));
+    return summarizeTests({ campaignId, cases: this.model.listTestCases(campaignId), missions });
+  }
 
   /** Resolve a relative doc path inside a campaign's folder to an absolute path. */
   campaignDocPath(campaignId: string, relPath: string): string {
@@ -352,10 +378,21 @@ export class BoardHost {
     this.reconcile();
   }
 
-  setStatus(kind: EntityKind, id: string, status: string): boolean {
-    const ok = setStatus(this.octobotsDir, kind, id, status);
-    if (ok) this.reconcile();
-    return ok;
+  /**
+   * Set an entity's status. A mission moving INTO `executing` from another status needs a recorded
+   * plan review (`planReviewStatus`); without one the file is left untouched and
+   * `{ok: false, reason: "plan-review-missing", message}` comes back. `opts.force` (a reason)
+   * overrides and appends `## Plan review overridden (<date>)` to the mission notes. Every other
+   * kind and move is unchecked. Throws when the entity or the status is unknown.
+   */
+  setStatus(kind: EntityKind, id: string, status: string, opts: { force?: string } = {}): SetStatusOutcome {
+    const res = setStatusChecked(this.octobotsDir, kind, id, status, { force: opts.force, now: this.now });
+    if (res.ok) {
+      this.reconcile();
+      return { ok: true };
+    }
+    if (res.reason === "plan-review-missing") return res;
+    throw new Error(`Could not set status "${status}" (entity not found or unknown status).`);
   }
 
   addDocument(kind: EntityKind, id: string, label: string, target: string): void {
@@ -375,32 +412,6 @@ export class BoardHost {
   deleteTask(id: string): void { deleteTask(this.octobotsDir, id); this.reconcile(); }
   deleteBug(id: string): void { deleteBug(this.octobotsDir, id); this.reconcile(); }
 
-  // ── Workflows API ───────────────────────────────────────────────────────────
-
-  listWorkflows(parent: WorkflowParent): Workflow[] { return this.model.listWorkflows(parent); }
-  getWorkflow(id: string): Workflow | null { return this.model.getWorkflow(id); }
-
-  createWorkflow(parent: WorkflowParent, input: { name: string }): { id: string; folderPath: string } {
-    const res = createWorkflowFile(this.octobotsDir, parent, input);
-    this.reconcile();
-    return res;
-  }
-
-  appendWorkflowRun(id: string, entry: { status: string; summary: string; at: string }): void {
-    appendWorkflowRunFile(this.octobotsDir, id, entry);
-    this.reconcile();
-  }
-
-  deleteWorkflow(id: string): void {
-    deleteWorkflowFile(this.octobotsDir, id);
-    this.reconcile();
-  }
-
-  /** One-time migration to the js-only workflow layout. Returns how many workflow.md were retired. */
-  migrateLegacyWorkflows(): number {
-    return migrateLegacyWorkflowsFile(this.octobotsDir);
-  }
-
   /**
    * One-time, idempotent migration of every entity file from Markdown to YAML: parse each
    * `<kind>.md`, fold parent `[status:]`/`[role:]`/`[severity:]` markers and a `## Tokenomics` block
@@ -408,13 +419,6 @@ export class BoardHost {
    */
   migrateEntitiesToYaml(): number {
     return migrateEntitiesToYamlFile(this.octobotsDir);
-  }
-
-  /** Absolute path of a workflow's script, for opening it in a normal editor tab. */
-  workflowScriptPath(id: string): string {
-    const wf = this.model.getWorkflow(id);
-    if (!wf) throw new Error(`Workflow not found: ${id}`);
-    return join(this.octobotsDir, wf.scriptPath);
   }
 
   // ── Private helpers (documents) ──────────────────────────────────────────────
@@ -464,3 +468,14 @@ export class BoardHost {
   }
 }
 
+
+/**
+ * What activation does to a workspace's board: open it, run the one-time entity migration, load it.
+ * A user's `workflows/` folders are data this extension no longer reads or writes.
+ */
+export function openBoard(octobotsDir: string): BoardHost {
+  const board = new BoardHost(octobotsDir);
+  board.migrateEntitiesToYaml();
+  board.reconcile();
+  return board;
+}

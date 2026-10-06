@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { PRE_MISSION_PRIMER, PRE_MISSION_PRIMER_LINES } from "./fixtures/pre-mission-primer.js";
 import { GRAPH_RELATIVE_PATH } from "../src/host/octograph-install.js";
 import { artifactPath, graphCommand } from "../src/host/octograph.js";
+import { findLegacyWorkflowFolders, isCampaignDir } from "../resources/octobots-pack/skill/mission-planner/scripts/legacy-workflows.mjs";
 
 const PRIMER = join(__dirname, "..", "resources", "octobots-pack", "hooks", "primer.mjs");
 const PRIMER_SRC = readFileSync(PRIMER, "utf8");
@@ -33,9 +34,11 @@ function context(backend: string, cwd: string, event = "SessionStart"): string {
     : parsed.hookSpecificOutput.additionalContext;
 }
 
+/** A board repo. Its AGENTS.md declares test lanes, so only a test about the lanes finding sees it. */
 function repoWithOctobots(): string {
   const dir = mkdtempClean("octo-repo-");
   mkdirSync(join(dir, ".octobots"), { recursive: true });
+  writeFileSync(join(dir, "AGENTS.md"), "## Test lanes\n\n- fast: `npm test`\n- coverage: `npm run coverage`\n");
   return dir;
 }
 
@@ -286,6 +289,393 @@ describe("primer.mjs", () => {
         "utf8",
       );
       expect(payload).toMatch(/argv\[0\] === "setup"/);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// M7 T7.5: the one-line health sentence that points the agent at the octobots-doctor skill.
+// ---------------------------------------------------------------------------------------------
+
+const HEAD = "Octobots health: run the octobots-doctor skill before or alongside the user's task.";
+const PENDING_CASES = (JSON.parse(readFileSync(join(__dirname, "fixtures", "pending-cases.json"), "utf8")) as {
+  cases: Array<{ name: string; text: string; expected: { packVersion: number | null; reconcile: string[]; kept: string[] } }>;
+}).cases;
+const caseText = (name: string): string => PENDING_CASES.find((c) => c.name === name)!.text;
+
+/** The primer's `additionalContext` with CLAUDE_PROJECT_DIR at `ws`; throws on a non-zero exit. */
+function healthContext(ws: string, opts: { event?: string; configDir?: string } = {}): string {
+  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_PROJECT_DIR: ws };
+  delete env.CLAUDE_CONFIG_DIR;
+  if (opts.configDir !== undefined) env.CLAUDE_CONFIG_DIR = opts.configDir;
+  const out = execFileSync("node", [PRIMER, "--backend", "claude"], {
+    cwd: ws,
+    env,
+    input: JSON.stringify({ hook_event_name: opts.event ?? "SessionStart" }),
+    encoding: "utf8",
+    timeout: 15_000, // a primer that blocks on a read fails here instead of hanging the suite
+  });
+  return JSON.parse(out).hookSpecificOutput.additionalContext as string;
+}
+
+/** The health line, or null when the context has none. */
+function healthLine(ctx: string): string | null {
+  return ctx.split("\n").find((l) => l.startsWith("Octobots health:")) ?? null;
+}
+
+function write(ws: string, rel: string, text: string): void {
+  const file = join(ws, ...rel.split("/"));
+  mkdirSync(join(file, ".."), { recursive: true });
+  writeFileSync(file, text);
+}
+
+const pendingJson = (ws: string, text: string): void => write(ws, ".octobots/pack-updates/pending.json", text);
+// The campaign holding `rel` gets a campaign.yaml: a dir under campaigns/ without one is no campaign
+// to the board model, and the primer (like doctor.js and validateBoard) ignores its workflows/.
+const workflowsDir = (ws: string, rel: string): void => {
+  const campaign = /^campaigns\/[^/]+/.exec(rel)?.[0];
+  if (campaign) write(ws, `.octobots/${campaign}/campaign.yaml`, "name: C\n");
+  write(ws, `.octobots/${rel}/run/workflow.js`, "x\n");
+};
+const acks = (ws: string, list: Array<{ finding: string; path: string }>): void =>
+  write(ws, ".octobots/doctor-acks.json", JSON.stringify({ acknowledged: list.map((a) => ({ ...a, date: "2026-10-05" })) }));
+
+describe("primer.mjs health line (octobots-doctor)", () => {
+  it.each(["SessionStart", "PreCompact"])("%s: two pending reconciles plus a workflows/ folder produce exactly the AC line", (event) => {
+    const ws = repoWithOctobots();
+    pendingJson(ws, caseText("valid"));
+    workflowsDir(ws, "campaigns/c1/workflows");
+    const ctx = healthContext(ws, { event });
+    expect(healthLine(ctx)).toBe(
+      `${HEAD} Pending pack reconciles: mission-execution, mission-completion-gate (.octobots/pack-updates/v57/). Leftover workflows/ folders: 1.`,
+    );
+    // ONE line, appended after the routing primer and the graph block, never edited into them.
+    expect(ctx.startsWith(PRE_MISSION_PRIMER)).toBe(true);
+    expect(ctx.trimEnd().endsWith("Leftover workflows/ folders: 1.")).toBe(true);
+    expect(ctx.split("\n").filter((l) => l.startsWith("Octobots health:"))).toHaveLength(1);
+  });
+
+  it("a kept-only record with no workflows/ folder adds no line", () => {
+    const ws = repoWithOctobots();
+    pendingJson(ws, caseText("kept-only"));
+    expect(healthLine(healthContext(ws))).toBeNull();
+  });
+
+  it("workflows/ folders only: the line names the count, not pack-updates", () => {
+    const ws = repoWithOctobots();
+    workflowsDir(ws, "campaigns/c1/workflows");
+    workflowsDir(ws, "campaigns/c1/missions/m1/workflows");
+    // A second slug in the same workflows/ folder is still one folder; and these are not counted at all:
+    workflowsDir(ws, "campaigns/c1/workflows/extra-slug-parent");
+    workflowsDir(ws, "campaigns/c1/missions/m1/tasks/t1/workflows");
+    workflowsDir(ws, "workflows");
+    write(ws, ".octobots/campaigns/c1/missions/m1/notes/workflows", "a file named workflows\n");
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 2.`);
+  });
+
+  it("the same folders acknowledged in doctor-acks.json: no line; one of two acknowledged: count 1", () => {
+    const ws = repoWithOctobots();
+    workflowsDir(ws, "campaigns/c1/workflows");
+    workflowsDir(ws, "campaigns/c1/missions/m1/workflows");
+    acks(ws, [{ finding: "workflows", path: "campaigns/c1/workflows" }]);
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 1.`);
+    acks(ws, [
+      { finding: "workflows", path: "campaigns/c1/workflows" },
+      { finding: "workflows", path: "campaigns/c1/missions/m1/workflows" },
+    ]);
+    expect(healthLine(healthContext(ws))).toBeNull();
+  });
+
+  it("an acknowledgement for another finding does not hide the workflows", () => {
+    const ws = repoWithOctobots();
+    workflowsDir(ws, "campaigns/c1/workflows");
+    acks(ws, [{ finding: "config-dir", path: ".claude" }]);
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 1.`);
+  });
+
+  it("a pending entry acknowledged in doctor-acks.json is still named", () => {
+    const ws = repoWithOctobots();
+    pendingJson(ws, caseText("valid"));
+    acks(ws, [
+      { finding: "pack-reconcile", path: "mission-execution" },
+      { finding: "pack-reconcile", path: ".octobots/pack-updates/v57/mission-execution" },
+      { finding: "pending", path: "mission-execution" },
+    ]);
+    expect(healthLine(healthContext(ws))).toBe(
+      `${HEAD} Pending pack reconciles: mission-execution, mission-completion-gate (.octobots/pack-updates/v57/).`,
+    );
+  });
+
+  it("CLAUDE_CONFIG_DIR=<workspace>/.claude alone: the line names it", () => {
+    const ws = repoWithOctobots();
+    const configDir = join(ws, ".claude");
+    expect(healthLine(healthContext(ws, { configDir }))).toBe(`${HEAD} CLAUDE_CONFIG_DIR is set to ${configDir}.`);
+    // a trailing slash is the same directory
+    expect(healthLine(healthContext(ws, { configDir: `${configDir}/` }))).toBe(`${HEAD} CLAUDE_CONFIG_DIR is set to ${configDir}.`);
+  });
+
+  it("CLAUDE_CONFIG_DIR elsewhere, or acknowledged, adds no line", () => {
+    const ws = repoWithOctobots();
+    expect(healthLine(healthContext(ws, { configDir: join(repoWithOctobots(), ".claude") }))).toBeNull();
+    acks(ws, [{ finding: "config-dir", path: ".claude" }]);
+    expect(healthLine(healthContext(ws, { configDir: join(ws, ".claude") }))).toBeNull();
+  });
+
+  it("sentences come in the order reconciles, workflows, config dir", () => {
+    const ws = repoWithOctobots();
+    pendingJson(ws, caseText("rule-5-base-null"));
+    workflowsDir(ws, "campaigns/c1/workflows");
+    const configDir = join(ws, ".claude");
+    expect(healthLine(healthContext(ws, { configDir }))).toBe(
+      `${HEAD} Pending pack reconciles: mission-execution (.octobots/pack-updates/v57/). Leftover workflows/ folders: 1. CLAUDE_CONFIG_DIR is set to ${configDir}.`,
+    );
+  });
+
+  it.each(["malformed", "malformed-dir-traversal", "malformed-duplicate-skill", "empty-file"])(
+    "a malformed pending.json (%s): normal output, exit 0, no reconcile sentence",
+    (name) => {
+      const ws = repoWithOctobots();
+      pendingJson(ws, caseText(name));
+      const ctx = healthContext(ws); // execFileSync throws on a non-zero exit
+      expect(ctx.startsWith(PRE_MISSION_PRIMER)).toBe(true);
+      expect(ctx).not.toContain("Pending pack reconciles");
+      expect(healthLine(ctx)).toBeNull();
+    },
+  );
+
+  it("a malformed pending.json does not hide the other findings", () => {
+    const ws = repoWithOctobots();
+    pendingJson(ws, caseText("malformed"));
+    workflowsDir(ws, "campaigns/c1/workflows");
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 1.`);
+  });
+
+  it.each(["{not json", "[]", '{"acknowledged": "yes"}', '{"acknowledged": [null, 3, {"finding": 1}]}'])(
+    "a malformed doctor-acks.json (%s) acknowledges nothing and breaks nothing",
+    (text) => {
+      const ws = repoWithOctobots();
+      workflowsDir(ws, "campaigns/c1/workflows");
+      write(ws, ".octobots/doctor-acks.json", text);
+      expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 1.`);
+    },
+  );
+
+  describe("user-controlled files cannot hang, bloat or redirect the primer (it runs at every session start)", () => {
+    it.skipIf(process.platform === "win32")("a FIFO at pending.json or doctor-acks.json is skipped, not read", () => {
+      const ws = repoWithOctobots();
+      workflowsDir(ws, "campaigns/c1/workflows");
+      mkdirSync(join(ws, ".octobots", "pack-updates"), { recursive: true });
+      execFileSync("mkfifo", [join(ws, ".octobots", "pack-updates", "pending.json"), join(ws, ".octobots", "doctor-acks.json")]);
+      expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 1.`);
+    });
+
+    it("a pending.json or doctor-acks.json over 256 KiB is not read", () => {
+      const ws = repoWithOctobots();
+      workflowsDir(ws, "campaigns/c1/workflows");
+      const rec = JSON.parse(caseText("valid")) as { pad?: string };
+      rec.pad = "x".repeat(300 * 1024);
+      pendingJson(ws, JSON.stringify(rec));
+      write(ws, ".octobots/doctor-acks.json", JSON.stringify({
+        acknowledged: [{ finding: "workflows", path: "campaigns/c1/workflows", date: "2026-10-05" }],
+        pad: "x".repeat(300 * 1024),
+      }));
+      expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 1.`);
+    });
+
+    it.skipIf(process.platform === "win32")("a symlinked pending.json is not followed", () => {
+      const ws = repoWithOctobots();
+      const outside = join(mkdtempClean("primer-outside-"), "pending.json");
+      writeFileSync(outside, caseText("valid"));
+      mkdirSync(join(ws, ".octobots", "pack-updates"), { recursive: true });
+      symlinkSync(outside, join(ws, ".octobots", "pack-updates", "pending.json"));
+      expect(healthLine(healthContext(ws))).toBeNull();
+    });
+  });
+
+  describe("doctor-acks.json keys (the contract T7.6's octobots-doctor writes)", () => {
+    it("a config-dir acknowledgement needs no path", () => {
+      const ws = repoWithOctobots();
+      write(ws, ".octobots/doctor-acks.json", JSON.stringify({ acknowledged: [{ finding: "config-dir", date: "2026-10-05" }] }));
+      expect(healthLine(healthContext(ws, { configDir: join(ws, ".claude") }))).toBeNull();
+    });
+
+    it("a workflows path with ./, a trailing / or backslashes is the same folder; a slug inside it is not", () => {
+      const ws = repoWithOctobots();
+      workflowsDir(ws, "campaigns/c1/workflows");
+      workflowsDir(ws, "campaigns/c1/missions/m1/workflows");
+      acks(ws, [
+        { finding: "workflows", path: "./campaigns/c1/workflows/" },
+        { finding: "workflows", path: "campaigns\\c1\\missions\\m1\\workflows" },
+      ]);
+      expect(healthLine(healthContext(ws))).toBeNull();
+      acks(ws, [{ finding: "workflows", path: "campaigns/c1/workflows/run" }]);
+      expect(healthLine(healthContext(ws))).toBe(`${HEAD} Leftover workflows/ folders: 2.`);
+    });
+  });
+
+  it("nothing to report: no line at all", () => {
+    const ws = repoWithOctobots();
+    mkdirSync(join(ws, ".octobots", "campaigns", "c1", "missions", "m1"), { recursive: true });
+    expect(healthLine(healthContext(ws))).toBeNull();
+    expect(healthContext(ws)).not.toContain("octobots-doctor");
+  });
+
+  it("is silent with an unreadable campaigns entry (a file where a folder is expected)", () => {
+    const ws = repoWithOctobots();
+    write(ws, ".octobots/campaigns/stray.txt", "x\n");
+    write(ws, ".octobots/campaigns/c1/missions", "not a folder\n");
+    expect(healthLine(healthContext(ws))).toBeNull();
+  });
+
+  describe("workflows/ counting agrees with legacy-workflows.mjs (the doctor/validate rule)", () => {
+    const LAYOUTS: Array<{ name: string; dirs: string[]; empties?: string[]; strays?: string[] }> = [
+      { name: "none", dirs: [] },
+      { name: "campaign level", dirs: ["campaigns/a/workflows"] },
+      { name: "mission level", dirs: ["campaigns/a/missions/m1/workflows", "campaigns/a/missions/m2/workflows"] },
+      { name: "both levels, two campaigns", dirs: ["campaigns/a/workflows", "campaigns/a/missions/m1/workflows", "campaigns/b/missions/m9/workflows"] },
+      { name: "an empty workflows/ folder", dirs: [], empties: ["campaigns/a/missions/m1/workflows"] },
+      // a dir under campaigns/ with no campaign.yaml/.md is no campaign: its workflows/ are not counted
+      { name: "a campaign dir with no campaign.yaml beside a real one", dirs: ["campaigns/a/workflows"], strays: ["campaigns/stray/missions/m1/workflows/x"] },
+    ];
+
+    it.each(LAYOUTS)("$name", ({ dirs, empties, strays }) => {
+      const ws = repoWithOctobots();
+      for (const d of dirs) workflowsDir(ws, d);
+      for (const d of empties ?? []) {
+        write(ws, `.octobots/${/^campaigns\/[^/]+/.exec(d)![0]}/campaign.yaml`, "name: C\n");
+        mkdirSync(join(ws, ".octobots", ...d.split("/")), { recursive: true });
+      }
+      for (const d of strays ?? []) mkdirSync(join(ws, ".octobots", ...d.split("/")), { recursive: true });
+      const base = join(ws, ".octobots");
+      const campaigns = join(base, "campaigns");
+      // The rule's own answer: each reported path is a workflows/ folder or a slug inside one.
+      const reported = new Set<string>();
+      const all = [...dirs, ...(empties ?? []), ...(strays ?? [])];
+      for (const c of [...new Set(all.map((d) => d.split("/")[1]!))].filter((c) => isCampaignDir(join(campaigns, c)))) {
+        for (const p of findLegacyWorkflowFolders(join(campaigns, c), base)) {
+          reported.add(p.split("/").slice(0, p.split("/").lastIndexOf("workflows") + 1).join("/"));
+        }
+      }
+      const line = healthLine(healthContext(ws));
+      expect(line === null ? 0 : Number(/Leftover workflows\/ folders: (\d+)\./.exec(line)![1])).toBe(reported.size);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// M5 T5.5 (AC7): the lanes sentence, `AGENTS.md declares no test lanes.`, ends the health line.
+// ---------------------------------------------------------------------------------------------
+
+const LANES = "AGENTS.md declares no test lanes.";
+const LANES_CASES = (JSON.parse(readFileSync(join(__dirname, "fixtures", "lanes-cases.json"), "utf8")) as {
+  cases: Array<{ name: string; agents: string; declared: boolean }>;
+}).cases;
+const DECLARED = "## Test lanes\n\n- fast: `npm test`\n- coverage: `npm run coverage`\n";
+
+describe("primer.mjs health line: the test-lanes sentence (M5 AC7)", () => {
+  it("an AGENTS.md without `## Test lanes` makes the line exactly the head plus the lanes sentence", () => {
+    const ws = repoWithOctobots();
+    write(ws, "AGENTS.md", "# Project\n\nRun npm test.\n");
+    const ctx = healthContext(ws);
+    expect(healthLine(ctx)).toBe(`${HEAD} ${LANES}`);
+    expect(ctx.startsWith(PRE_MISSION_PRIMER)).toBe(true);
+    expect(ctx.trimEnd().endsWith(LANES)).toBe(true);
+  });
+
+  it("with the section declaring fast: and coverage: the line does not name it", () => {
+    const ws = repoWithOctobots();
+    write(ws, "AGENTS.md", `# Project\n\n${DECLARED}`);
+    expect(healthLine(healthContext(ws))).toBeNull();
+  });
+
+  it("a section declaring only one lane is still named", () => {
+    const ws = repoWithOctobots();
+    write(ws, "AGENTS.md", "## Test lanes\n- fast: npm test\n");
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} ${LANES}`);
+  });
+
+  it("a finding acknowledged in doctor-acks.json is not named: with a path, with any path, or with none", () => {
+    for (const ack of [
+      { finding: "lanes", path: "AGENTS.md", date: "2026-10-06" },
+      { finding: "lanes", path: "elsewhere", date: "2026-10-06" },
+      { finding: "lanes", date: "2026-10-06" },
+    ]) {
+      const ws = repoWithOctobots();
+      write(ws, "AGENTS.md", "# Project\n");
+      write(ws, ".octobots/doctor-acks.json", JSON.stringify({ acknowledged: [ack] }));
+      expect(healthLine(healthContext(ws))).toBeNull();
+    }
+  });
+
+  it("an acknowledgement of another finding does not hide it", () => {
+    const ws = repoWithOctobots();
+    write(ws, "AGENTS.md", "# Project\n");
+    acks(ws, [{ finding: "config-dir", path: ".claude" }, { finding: "workflows", path: "campaigns/c1/workflows" }]);
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} ${LANES}`);
+  });
+
+  // Review of PR #161: no AGENTS.md is a missing lanes declaration (mission AC7; doctor.js warns on it,
+  // and octobots-doctor § Test lanes creates the file), so the primer names it like doctor.js does.
+  it("no AGENTS.md at all: the line names it, as doctor.js's lanes warning does", () => {
+    const ws = repoWithOctobots();
+    rmSync(join(ws, "AGENTS.md"));
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} ${LANES}`);
+  });
+
+  it("the lanes sentence comes after the reconcile, workflows and config-dir sentences", () => {
+    const ws = repoWithOctobots();
+    pendingJson(ws, caseText("rule-5-base-null"));
+    workflowsDir(ws, "campaigns/c1/workflows");
+    write(ws, "AGENTS.md", "# Project\n");
+    const configDir = join(ws, ".claude");
+    expect(healthLine(healthContext(ws, { configDir }))).toBe(
+      `${HEAD} Pending pack reconciles: mission-execution (.octobots/pack-updates/v57/). Leftover workflows/ folders: 1. CLAUDE_CONFIG_DIR is set to ${configDir}. ${LANES}`,
+    );
+  });
+
+  it("acknowledging the lanes finding never hides a pending reconcile", () => {
+    const ws = repoWithOctobots();
+    pendingJson(ws, caseText("rule-5-base-null"));
+    write(ws, "AGENTS.md", "# Project\n");
+    acks(ws, [{ finding: "lanes", path: "AGENTS.md" }]);
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} Pending pack reconciles: mission-execution (.octobots/pack-updates/v57/).`);
+  });
+
+  it("follows a symlinked AGENTS.md to a regular file (AGENTS.md -> CLAUDE.md is common)", () => {
+    const ws = repoWithOctobots();
+    write(ws, "CLAUDE.md", "# Project\n");
+    rmSync(join(ws, "AGENTS.md"));
+    symlinkSync("CLAUDE.md", join(ws, "AGENTS.md"));
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} ${LANES}`);
+    write(ws, "CLAUDE.md", DECLARED);
+    expect(healthLine(healthContext(ws))).toBeNull();
+  });
+
+  it.skipIf(process.platform === "win32")("a FIFO, a directory, or an AGENTS.md over 1 MiB is never read (no hang) and is named, as doctor.js warns on it", () => {
+    const fifo = repoWithOctobots();
+    rmSync(join(fifo, "AGENTS.md"));
+    execFileSync("mkfifo", [join(fifo, "AGENTS.md")]);
+    expect(healthLine(healthContext(fifo))).toBe(`${HEAD} ${LANES}`);
+    const dir = repoWithOctobots();
+    rmSync(join(dir, "AGENTS.md"));
+    mkdirSync(join(dir, "AGENTS.md"));
+    expect(healthLine(healthContext(dir))).toBe(`${HEAD} ${LANES}`);
+    const big = repoWithOctobots();
+    write(big, "AGENTS.md", `${"x".repeat(1024 * 1024)}\n${DECLARED}`);
+    expect(healthLine(healthContext(big))).toBe(`${HEAD} ${LANES}`);
+  });
+
+  it("is a file read only: the primer still imports no child_process or network module", () => {
+    expect(PRIMER_SRC).not.toMatch(/node:child_process|node:net|node:http|node:https|\bfetch\(/);
+  });
+
+  describe("gives the verdict lanes.mjs gives (the doctor rule) on every shared case", () => {
+    it.each(LANES_CASES)("$name", ({ agents, declared }) => {
+      const ws = repoWithOctobots();
+      // an empty file is a file: the primer names it, like any AGENTS.md without the section
+      write(ws, "AGENTS.md", agents);
+      const line = healthLine(healthContext(ws));
+      expect(line).toBe(declared ? null : `${HEAD} ${LANES}`);
     });
   });
 });

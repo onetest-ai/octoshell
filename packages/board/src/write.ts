@@ -1,13 +1,13 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, renameSync, rmSync, appendFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
+import { planReviewStatus, type PlanReviewCandidate } from "./plan-review.js";
 import { parseManagedBlock, mapBoardStatus, boardLineEntityName, parseDocumentLinks, type EntityKind, type ManagedFields } from "./managed-block.js";
 import { slugify, uniqueSlug } from "./slug.js";
-import { type BugParent, type BugSeverity, type WorkflowParent } from "./types.js";
-import { serializeMeta, type WorkflowMeta } from "./workflow-meta.js";
+import { type BugParent, type BugSeverity } from "./types.js";
 import { dumpEntity, loadEntity, type EntityFields, type AcceptanceCriterion, type DocumentLink } from "./entity-schema.js";
 import { BoardModel } from "./board-model.js";
 
-/** Entity kinds that are YAML files (workflow is a `.js` script, not an entity file). */
+/** Entity kinds that are YAML files. */
 type YamlKind = "campaign" | "mission" | "task" | "bug";
 
 /**
@@ -133,14 +133,15 @@ function loadCurrentFields(root: string, kind: YamlKind, folderPath: string, res
  * Read-modify-write an entity's `<kind>.yaml`. Reading tolerates a legacy `<kind>.md` (which the
  * write then migrates to YAML, trashing the `.md`). Returns false if the entity isn't found.
  */
-function patchEntity(root: string, kind: YamlKind, id: string, mutate: (f: EntityFields) => void): boolean {
+function patchEntity(root: string, kind: YamlKind, id: string, mutate: (f: EntityFields, folderPath: string) => void | false): boolean {
   const board = new BoardModel(root);
   board.rebuild();
   const folderPath = entityFolderPath(kind, id, board);
   if (!folderPath) return false;
   const fields = loadCurrentFields(root, kind, folderPath, entityStatus(kind, id, board));
   if (!fields) return false;
-  mutate(fields);
+  // `false` from the mutator means "nothing to write" (a refused or no-op change): the file is untouched.
+  if (mutate(fields, folderPath) === false) return true;
   const abs = join(root, folderPath);
   mkdirSync(abs, { recursive: true });
   writeFileSync(join(abs, `${kind}.yaml`), dumpEntity(kind, fields), "utf8");
@@ -285,7 +286,6 @@ export function createBug(
  * Returns true on success, false if the entity or file is not found.
  */
 export function updateBrief(root: string, kind: EntityKind, id: string, patch: Partial<ManagedFields>): boolean {
-  if (kind === "workflow") return false;
   return patchEntity(root, kind, id, (f) => {
     if (patch.name !== undefined) f.name = patch.name;
     if (patch.description !== undefined) f.description = patch.description;
@@ -306,14 +306,12 @@ export function updateBrief(root: string, kind: EntityKind, id: string, patch: P
 // ── criteria / documents ─────────────────────────────────────────────────────
 
 export function addCriterion(root: string, kind: EntityKind, id: string, text: string): boolean {
-  if (kind === "workflow") return false;
   return patchEntity(root, kind, id, (f) => {
     f.acceptanceCriteria.push({ text, done: false });
   });
 }
 
 export function setCriterion(root: string, kind: EntityKind, id: string, index1: number, checked: boolean): boolean {
-  if (kind === "workflow") return false;
   let hit = false;
   const ok = patchEntity(root, kind, id, (f) => {
     const c = f.acceptanceCriteria[index1 - 1];
@@ -326,14 +324,12 @@ export function setCriterion(root: string, kind: EntityKind, id: string, index1:
 }
 
 export function addDocument(root: string, kind: EntityKind, id: string, label: string, target: string): boolean {
-  if (kind === "workflow") return false;
   return patchEntity(root, kind, id, (f) => {
     if (!f.documents.some((d) => d.target === target)) f.documents.push({ label, target }); // idempotent on target
   });
 }
 
 export function removeDocument(root: string, kind: EntityKind, id: string, target: string): boolean {
-  if (kind === "workflow") return false;
   return patchEntity(root, kind, id, (f) => {
     f.documents = f.documents.filter((d) => d.target !== target);
   });
@@ -554,146 +550,110 @@ export function deleteCampaign(root: string, id: string): boolean {
  */
 export function setStatus(root: string, kind: EntityKind, id: string, state: string): boolean {
   const mapped = mapBoardStatus(state);
-  if (!mapped || kind === "workflow") return false;
+  if (!mapped) return false;
   // Status lives in the entity's OWN yaml — no parent projection to keep in sync.
   return patchEntity(root, kind, id, (f) => {
     f.status = mapped;
   });
 }
 
-// ── Workflows ────────────────────────────────────────────────────────────────
+/** Outcome of {@link setStatusChecked}. `not-found` covers an unknown entity and an unknown state. */
+export type SetStatusResult =
+  | { ok: true }
+  | { ok: false; reason: "not-found" }
+  | { ok: false; reason: "plan-review-missing"; message: string };
 
 /**
- * The scaffold body written beside a new workflow's meta — a valid, runnable single-phase script.
- *
- * Byte-identical to what the pack's `add-workflow.js` scaffolds: the two are the same command from
- * an author's point of view (the VS Code *new workflow* action and the CLI script), so they must
- * not hand out different advice. `meta` is GENERATED from this body now, so the comment points at
- * sync-meta.js rather than asking the author to keep the two in step by hand.
- * Kept honest by `scripts-cli-scenarios.test.ts`, which scaffolds one of each and diffs the bytes —
- * keep the two in step.
+ * `setStatus` plus the plan-review rule (mission M5 AC2; the pack's set-status.js is the other
+ * implementation). Only a MISSION moving into `executing` from a different stored status is checked:
+ * it needs a plan review in its own or its campaign's notes (`planReviewStatus`). Without one the
+ * file is left byte-identical and `plan-review-missing` comes back with a message naming what is
+ * missing and how to record a review. `opts.force` (a reason) overrides: the mission notes get
+ * `## Plan review overridden (<YYYY-MM-DD UTC>)` + the reason appended, as set-status.js writes it.
+ * A legacy record is allowed silently; the warning is script output only (campaign decision 12).
+ * Every other kind and every other move behaves as `setStatus`.
  */
-function scaffoldScript(meta: WorkflowMeta): string {
-  return [
-    `export const meta = ${serializeMeta(meta)}`,
-    "",
-    "// Body: use phase() / agent() / parallel() / pipeline() / workflow().",
-    "// The board's diagram is GENERATED from this code — after editing, run:",
-    "//   node .claude/skills/mission-planner/scripts/sync-meta.js <this folder>",
-    `phase(${JSON.stringify(meta.phases[0]?.title ?? "Run")})`,
-    "",
-  ].join("\n");
-}
-
-export function createWorkflow(
+export function setStatusChecked(
   root: string,
-  parent: WorkflowParent,
-  input: { name: string; description?: string },
-): { id: string; folderPath: string } {
-  const board = new BoardModel(root);
-  board.rebuild();
-  const parentEntity =
-    "campaignId" in parent ? board.getCampaign(parent.campaignId) : board.getMission(parent.missionId);
-  if (!parentEntity) throw new Error("Workflow parent not found");
-
-  const workflowsDir = join(root, parentEntity.folderPath, "workflows");
-  const slug = uniqueSlug(slugify(input.name), siblingSlugs(workflowsDir));
-  const folderPath = `${parentEntity.folderPath}/workflows/${slug}`;
-  const description = input.description ?? "";
-
-  // A workflow is now just its script (plus an append-only runs.jsonl when it runs) — no workflow.md.
-  mkdirSync(join(root, folderPath), { recursive: true });
-  writeFileSync(
-    join(root, folderPath, "workflow.js"),
-    scaffoldScript({
-      name: slug,
-      description,
-      // No steps: the body below only calls phase('Run') — validate now checks that meta agrees
-      // with the body it was generated from, so a placeholder step here (with nothing in the body
-      // to back it) would fail that check the moment the file is created.
-      phases: [{ title: "Run", steps: [] }],
-    }),
-    "utf8",
-  );
-
-  return { id: `folder:${folderPath}`, folderPath };
-}
-
-/** Absolute path of a workflow's folder, or null when the id is unknown. */
-function workflowFolder(root: string, id: string): string | null {
-  const board = new BoardModel(root);
-  board.rebuild();
-  const wf = board.getWorkflow(id);
-  return wf ? join(root, wf.folderPath) : null;
-}
-
-export function appendWorkflowRun(
-  root: string,
+  kind: EntityKind,
   id: string,
-  entry: { status: string; summary: string; at: string },
-): boolean {
-  const folder = workflowFolder(root, id);
-  if (folder === null) return false;
-  // Runs are an append-only log beside the script, one JSON object per line.
-  const line = JSON.stringify({ status: entry.status, summary: entry.summary, at: entry.at }) + "\n";
-  appendFileSync(join(folder, "runs.jsonl"), line, "utf8");
-  return true;
-}
-
-export function deleteWorkflow(root: string, id: string): boolean {
-  const folder = workflowFolder(root, id);
-  if (folder === null) return false;
-  return trashFolder(folder, root);
-}
-
-/** Convert a legacy `## Runs` markdown body to newline-delimited runs.jsonl content. */
-function legacyRunsToJsonl(runsBody: string): string {
-  const out: string[] = [];
-  for (const line of runsBody.split("\n")) {
-    // Legacy line shape: `- [status:done] 2026-07-23 — 4 agents, 12m`
-    const m = line.match(/^\s*-\s*\[status:([^\]]+)\]\s*(\S+)?\s*(?:—\s*(.*))?$/);
-    if (!m) continue;
-    out.push(JSON.stringify({ status: (m[1] ?? "").trim(), summary: (m[3] ?? "").trim(), at: (m[2] ?? "").trim() }));
-  }
-  return out.length ? out.join("\n") + "\n" : "";
+  state: string,
+  opts: { force?: string; now?: () => Date } = {},
+): SetStatusResult {
+  const mapped = mapBoardStatus(state);
+  if (!mapped) return { ok: false, reason: "not-found" };
+  let refusal: SetStatusResult | null = null;
+  const found = patchEntity(root, kind, id, (f, folderPath) => {
+    // The before-state as the board shows it: `Done` / `awaiting approval` are the canonical values.
+    const from = mapBoardStatus(f.status ?? "") ?? "draft";
+    if (kind === "mission" && mapped === "executing" && from !== "executing") {
+      const { notes: campaignNotes, error } = campaignNotesOf(root, folderPath);
+      const review = planReviewStatus(f.notes, campaignNotes);
+      if (!review.ok) {
+        const reason = normaliseForceReason(opts.force);
+        if (reason === null) {
+          refusal = { ok: false, reason: "plan-review-missing", message: planReviewRefusal(f.name, review.candidates, error) };
+          return false;
+        }
+        const day = (opts.now?.() ?? new Date()).toISOString().slice(0, 10);
+        const note = `## Plan review overridden (${day})\n${reason}`;
+        const old = f.notes ?? "";
+        f.notes = old ? `${old}${old.endsWith("\n") ? "\n" : "\n\n"}${note}` : note;
+      }
+    }
+    f.status = mapped;
+  });
+  if (refusal) return refusal;
+  return found ? { ok: true } : { ok: false, reason: "not-found" };
 }
 
 /**
- * One-time migration to the js-only workflow layout: for every `workflows/<slug>/` folder that still
- * has a `workflow.md`, materialize its `## Runs` log into `runs.jsonl` (only when none exists yet) and
- * delete the stray `workflow.md`. Idempotent — a folder with no `workflow.md` is untouched. Returns
- * how many `workflow.md` files were retired.
+ * A `--force` reason as set-status.js records it: whitespace collapsed and trimmed, and a leading `#`
+ * escaped (`\#`) so the override note can never forge a `## Plan review (...)` heading. `null` when
+ * there is no reason (no override asked for).
  */
-export function migrateLegacyWorkflows(root: string): number {
-  const dirs = (p: string): string[] => {
-    try {
-      return readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-    } catch {
-      return [];
-    }
-  };
-  let retired = 0;
-  const sweep = (workflowsDir: string): void => {
-    for (const slug of dirs(workflowsDir)) {
-      const folder = join(workflowsDir, slug);
-      const mdPath = join(folder, "workflow.md");
-      if (!existsSync(mdPath)) continue;
-      const runsPath = join(folder, "runs.jsonl");
-      if (!existsSync(runsPath)) {
-        const jsonl = legacyRunsToJsonl(parseManagedBlock(readFileSync(mdPath, "utf8")).runs ?? "");
-        if (jsonl) writeFileSync(runsPath, jsonl, "utf8");
-      }
-      rmSync(mdPath, { force: true });
-      retired++;
-    }
-  };
-  const campaigns = join(root, "campaigns");
-  for (const c of dirs(campaigns)) {
-    sweep(join(campaigns, c, "workflows"));
-    const missions = join(campaigns, c, "missions");
-    for (const m of dirs(missions)) sweep(join(missions, m, "workflows"));
+function normaliseForceReason(force: string | undefined): string | null {
+  if (force === undefined) return null;
+  const reason = force.replace(/\s+/g, " ").trim();
+  if (!reason) return null;
+  return reason.startsWith("#") ? `\\${reason}` : reason;
+}
+
+/**
+ * The notes of the campaign holding mission `missionId` (`<mission dir>/../../campaign.yaml`, as the
+ * script reads it). An unreadable campaign file is empty notes plus the error, never a throw.
+ */
+function campaignNotesOf(root: string, missionFolderPath: string): { notes: string; error: string | null } {
+  const campaignFolder = join(missionFolderPath, "..", "..");
+  try {
+    return { notes: loadCurrentFields(root, "campaign", campaignFolder, undefined)?.notes ?? "", error: null };
+  } catch (e) {
+    return { notes: "", error: `${join(campaignFolder, "campaign.yaml")}: ${String((e as Error).message).split("\n")[0]}` };
   }
-  return retired;
+}
+
+/** Why a move into executing is refused, and how to record a review or override. (set-status.js prints the same.) */
+function planReviewRefusal(title: string, candidates: PlanReviewCandidate[], campaignError: string | null): string {
+  // Same wording and record template as set-status.js's refuse() (pack skill/mission-planner/scripts).
+  const reason = candidates.length === 0 ? "no plan review is recorded" : "a plan review is recorded but does not approve the start";
+  const lines = [`Cannot move "${title}" into executing: ${reason}.`];
+  if (campaignError) lines.push(`The campaign notes could not be read (${campaignError}).`);
+  if (candidates.length === 0) {
+    lines.push("There is no `## Plan review (...)` heading in the mission notes or the campaign notes.");
+  } else {
+    for (const c of candidates) lines.push(`${c.where} notes: "${c.heading}": ${c.missing.join("; ")}`);
+  }
+  lines.push(
+    "To record a review, write the record below into the mission notes or the campaign notes with entity-io.mjs",
+    "(loadEntity/dumpEntity; see mission-planner SKILL.md, Plan review), never by editing the YAML text.",
+    "Fill the placeholders and keep one verdict. The lines between the markers start in column 0:",
+    "--- record template (paste into the mission or campaign notes) ---",
+    "## Plan review (<names or roles>, <date>)",
+    "Reviewers: ba (<name>), tech-lead (<name>)",
+    "Verdict: approved | approved with nits",
+    "--- end of record template ---",
+  );
+  return lines.join("\n");
 }
 
 // ── md → yaml entity migration ────────────────────────────────────────────────
@@ -861,8 +821,6 @@ function migrateOneEntity(
  * yaml, write `<kind>.yaml`, then trash the `.md`. A folder already on yaml is skipped and an existing
  * yaml is never overwritten. Dual-read keeps a half-migrated board working mid-sweep. Returns how many
  * `.md` entity files were migrated.
- *
- * Mirrors the workflow.md-retirement pattern in `migrateLegacyWorkflows` above.
  */
 export function migrateEntitiesToYaml(root: string): number {
   const dirs = (p: string): string[] => {

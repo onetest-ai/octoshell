@@ -1,0 +1,19 @@
+name: 'T5.4 - qa-env.mjs: config-driven QA database guard'
+status: done
+role: js-dev
+description: 'Scope: a new script skill/mission-execution/scripts/qa-env.mjs generalising solo .agents/manual-qa/qa-db.sh (which hard-codes EDGESERVER_*), with the config contract of mission AC4 ({vars, name_pattern, probe?} read from .octobots/qa-env.json or --config); a documented example skill/mission-execution/scripts/qa-env.example.json using exactly those keys; tests in packages/board/test/qa-env.test.ts with a stub probe. Widen the root package.json coverage:pack include from skill/mission-planner/scripts/** to apps/vscode-extension/resources/octobots-pack/skill/*/scripts/** (vendor/ still excluded) so qa-env.mjs and scan-parked.js are coverage-gated (today only mission-planner has a scripts/ dir). Out of scope: DB creation. Downstream: the QA brief in the execution skill; M5 TC-007..009; M6 TC-011''s VSIX check expects qa-env.mjs.'
+acceptance_criteria:
+  - text: 'packages/board/test/qa-env.test.ts covers every clause of mission AC4 with a stub probe: exit 3 on a name failing name_pattern, on a template missing {db} (naming the var) and on a missing config, each without executing the command (marker file absent); exit 4 when the probe''s trimmed stdout differs from <db>, command not run; every declared var exported with {db} replaced; the target DB printed to stderr; the command''s exit code passed through'
+    done: true
+  - text: the root coverage:pack include covers skill/*/scripts/** and `pnpm coverage:pack` passes at 90/90/90/70 with qa-env.mjs in the report
+    done: true
+notes: |-
+  ## QA verification (Sage, 2026-10-06)
+  Commit 5e62490c, PR #160. Branch pack installed (install-pack.mjs --local-changes=overwrite) into a shared clone of solo (auqanautica, read only; solo status unchanged); every run used the INSTALLED .claude/skills/mission-execution/scripts/qa-env.mjs with solo's EDGESERVER_* vars.
+  - TC-007 PASS: `edgeserver` vs ^(qa_.+|.+_test)$ -> exit 3, stderr "does not match name_pattern ... (anchored, whole name)", MARKER absent; no config -> exit 3 naming the expected .octobots/qa-env.json path, MARKER0 absent.
+  - TC-008 PARTIAL: step 1 PASS (both EDGESERVER_POSTGRES_DSN and _SYNC_DSN end in /qa_m5; "target database = qa_m5" on stderr). Step 3 PASS (mismatching probe prints postgres -> exit 4, "not running the command", MARKER absent; the probe is the TC's own read-only select current_database() on the maintenance DB). Step 2 (matching probe) BLOCKED/UNREACHABLE: local Postgres is up but no qa_m5 database exists, and no non-QA DB was pointed at; the TC forbids a stub.
+  - TC-009 PASS: sync template without {db} -> exit 3, stderr names EDGESERVER_POSTGRES_SYNC_DSN, MARKER2 absent.
+  - Reviewer PoCs: (1) {"vars":{}} with DATABASE_URL=postgres://prod/real -> exit 3 "vars declares no variable", command not run. (2) SIGINT during a slow probe (sleep 47.31): exit 130, pgrep -f shows the probe up before and none after, command not run.
+  - Happy path: declared vars exported with {db} substituted, "qa-env: target database = qa_ok" on stderr, command exit code 7 passed through.
+  - Gates: pnpm build, typecheck, lint, test, coverage:pack all exit 0 (qa-env.mjs 98.75/90.35/100/98.75, gated); PR #160 checks green.
+  - TC text note for T5.6: none (no prefix-matching assumption refused). TC-008 step 2 needs a qa_m5 database to exist. TC frontmatter untouched (T5.6).

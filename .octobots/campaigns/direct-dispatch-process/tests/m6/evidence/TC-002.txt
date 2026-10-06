@@ -1,0 +1,23 @@
+## real file count uwb m1
+22
+## step1
+{"n":22,"status":[{"unknown":22}],"first":{"id":"TC-001","title":"Verify existing venue reads as tdoa mode with anchors untouched","mission":"M1","covers":["M1-AC1"],"kind":null,"status":"unknown","path":"campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-001_default-mode-tdoa-existing-venue.md"}}
+## all missions
+[{"m":"M1","n":22},{"m":"M2","n":32},{"m":"M3","n":22},{"m":"M4","n":23},{"m":"M5","n":17}]
+## covers empty in M1?
+0
+## step2
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m6qa/work/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_set-ranging-mode-persists.md
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_set-ranging-mode-persists.md: legacy test case (no status, kind or mission) lists as unknown: run set-test-status.js <tc-file> --migrate
+exit=0
+## step2 grep
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_set-ranging-mode-persists.md: legacy test case (no status, kind or mission) lists as unknown: run set-test-status.js <tc-file> --migrate
+## step3 m6
+m1
+m2
+m3
+m4
+m5
+m6
+0
+{"id":"TC-003","title":"Set ranging mode with layout id and 0 mm tag height and read it back after reload and restart","mission":"M1","covers":["M1-AC2","M1-AC5"],"kind":null,"status":"unknown","path":"campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_set-ranging-mode-persists.md"}

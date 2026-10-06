@@ -11,12 +11,12 @@
 // criteria), plus the once-per-submission segment header.
 //
 // Costs are recomputed from raw tokens under the cached LiteLLM price table
-// (`prices.json`) on every run — the
+// (`prices.json`, plus the workspace's `prices.local.json`) on every run — the
 // token counts are canonical, the dollars are derived and disposable.
 //
 // Usage: node .octobots/tokenomics/rollup.mjs [--project-dir DIR] [--no-gh] [--quiet]
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -71,6 +71,21 @@ const PRICE_FIELDS = {
 };
 
 const pricing = JSON.parse(readFileSync(join(TOK_DIR, "prices.json"), "utf8"));
+// `prices.local.json` holds the workspace's own additions (models upstream does not list yet).
+// `update-prices.mjs` rewrites only prices.json, so these survive a refresh. Upstream wins on a
+// conflict: once LiteLLM lists a model its number is authoritative and the local one is stale.
+{
+  const localFile = join(TOK_DIR, "prices.local.json");
+  if (existsSync(localFile)) {
+    // Hand-edited, so it can be malformed: name the file and the error, then price from prices.json alone.
+    try {
+      const local = JSON.parse(readFileSync(localFile, "utf8"));
+      pricing.models = { ...(local.models ?? {}), ...pricing.models };
+    } catch (err) {
+      console.error(`tokenomics: WARNING ignoring ${localFile}: ${err.message}`);
+    }
+  }
+}
 const unpriced = new Set();
 
 function priceOf(model) {
@@ -197,7 +212,7 @@ function loadTasks(missionPath, END) {
   const tasksDir = join(missionPath, "tasks");
   if (!existsSync(tasksDir)) return { tasks, est };
 
-  for (const dir of readdirSync(tasksDir)) {
+  for (const dir of readdirSync(tasksDir).sort()) {
     const slugId = taskIdFromSlug(dir);
     const y = readYamlEntity(join(tasksDir, dir, "task.yaml"));
     if (y) {
@@ -308,15 +323,46 @@ function parseMission(campaignSlug, missionDir, missionPath) {
   };
 }
 
+// A campaign's own `tokenomics.branches` (campaign.yaml, or a legacy campaign.md `## Tokenomics`
+// block) declares branches that are campaign-level work - its planning branch, a hand-off branch.
+function parseCampaign(slug, campaignPath) {
+  const doc = readYamlEntity(join(campaignPath, "campaign.yaml"));
+  let authored = {};
+  let name = slug;
+  let brief = "";
+  if (doc) {
+    authored = normaliseAuthored(doc.tokenomics);
+    name = String(doc.name ?? "").trim() || slug;
+    brief = String(doc.description ?? "").trim().replace(/\s+/g, " ").slice(0, 400);
+  } else if (existsSync(join(campaignPath, "campaign.md"))) {
+    const text = readFileSync(join(campaignPath, "campaign.md"), "utf8");
+    authored = normaliseAuthored(parseTokenomicsBlock(text, "(?=\\n##\\s|\\n<!--|$(?![\\s\\S]))"));
+    name = text.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? slug;
+  }
+  return {
+    slug, name, brief, authored,
+    declaredBranches: (authored.branches ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  };
+}
+
 function loadBoard() {
   const missions = [];
-  if (!existsSync(CAMPAIGNS_DIR)) return missions;
+  const campaigns = [];
+  if (!existsSync(CAMPAIGNS_DIR)) return { missions, campaigns };
 
   let skippedYaml = 0;
-  for (const campaign of readdirSync(CAMPAIGNS_DIR)) {
-    const mdir = join(CAMPAIGNS_DIR, campaign, "missions");
+  for (const campaign of readdirSync(CAMPAIGNS_DIR).sort()) {
+    const campaignPath = join(CAMPAIGNS_DIR, campaign);
+    if (!statSync(campaignPath).isDirectory()) continue;
+    // A directory is a campaign only when it holds campaign.yaml or campaign.md - the rule BoardModel
+    // applies, so the extension's rollup.ts sees the same board. A bare directory (a leftover, an
+    // archive) owns no slug and its missions belong to no campaign. Every real campaign counts, even
+    // one with no missions: it still owns its slug.
+    if (!existsSync(join(campaignPath, "campaign.yaml")) && !existsSync(join(campaignPath, "campaign.md"))) continue;
+    campaigns.push(parseCampaign(campaign, campaignPath));
+    const mdir = join(campaignPath, "missions");
     if (!existsSync(mdir)) continue;
-    for (const m of readdirSync(mdir)) {
+    for (const m of readdirSync(mdir).sort()) {
       const missionPath = join(mdir, m);
       const yamlPath = join(missionPath, "mission.yaml");
       if (existsSync(yamlPath)) {
@@ -341,25 +387,65 @@ function loadBoard() {
   if (!missions.length && readdirSync(CAMPAIGNS_DIR).length) {
     log("tokenomics: ERROR the board has campaigns but no readable missions — every segment will report as unattributed");
   }
-  return missions;
+  return { missions, campaigns };
 }
 
-// Map a branch to a mission. Explicit declaration wins; otherwise match the
-// longest campaign slug appearing in the branch, then disambiguate by an `m<n>`
-// token — and if the campaign has exactly one mission, that one.
-function mapBranch(branch, missions) {
-  for (const m of missions) {
-    if (m.declaredBranches.includes(branch)) return m;
-  }
-  const campaigns = [...new Set(missions.map((m) => m.campaign))]
-    .filter((c) => branch.includes(c))
-    .sort((a, b) => b.length - a.length);
-  if (!campaigns.length) return null;
+// Where does a (branch, session) pair belong? The first step that hits wins. This is the only place
+// attribution is decided; packages/tokenomics/src/rollup.ts carries the same table and
+// packages/tokenomics/test/rollup-parity.test.ts holds the two together.
+//   1. A mission declares the branch (`tokenomics.branches`).
+//   2. The longest campaign slug in the branch plus `-m<n>`: that campaign's mission n. A `-m<n>`
+//      naming no mission falls through - it must not jump ahead of a recorded worklog fact.
+//   3. That slug, no `-m<n>`, and the campaign has exactly one mission.
+//   4. The worklog recorded this exact session on this exact branch against a task id that belongs
+//      to one mission. The bare-session key never attributes a mission: it follows a session across
+//      branches, so it would drag every branch the session touched into one mission.
+//   5. A campaign declares the branch.
+//   6. The longest campaign slug in the branch: the campaign-level bucket.
+//   7. Unattributed.
+const AMBIGUOUS = Symbol("ambiguous-task-label");
 
-  const inCampaign = missions.filter((m) => m.campaign === campaigns[0]);
-  const num = branch.match(/-m(\d+)\b/i)?.[1];
-  if (num) return inCampaign.find((m) => m.missionNum === Number(num)) ?? null;
-  return inCampaign.length === 1 ? inCampaign[0] : null;
+function makeAttributionContext(board) {
+  const missions = [...board.missions].sort((a, b) =>
+    a.campaign < b.campaign ? -1 : a.campaign > b.campaign ? 1 : a.missionNum - b.missionNum);
+  const missionByTaskLabel = new Map();
+  for (const m of missions) {
+    for (const t of m.tasks) {
+      const seen = missionByTaskLabel.get(t.id);
+      missionByTaskLabel.set(t.id, seen === undefined || seen === m ? m : AMBIGUOUS);
+    }
+  }
+  const campaigns = [...board.campaigns].sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+  return { missions, campaigns, missionByTaskLabel };
+}
+
+function resolveAttribution(branch, sessionId, ctx) {
+  for (const m of ctx.missions) {
+    if (m.declaredBranches.includes(branch)) return { kind: "mission", mission: m, step: 1 };
+  }
+
+  const top = ctx.campaigns
+    .filter((c) => c.slug && branch.includes(c.slug))
+    .sort((a, b) => b.slug.length - a.slug.length || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))[0];
+  if (top) {
+    const inCampaign = ctx.missions.filter((m) => m.campaign === top.slug);
+    const num = branch.match(/-m(\d+)\b/i)?.[1];
+    if (num) {
+      const hit = inCampaign.find((m) => m.missionNum === Number(num));
+      if (hit) return { kind: "mission", mission: hit, step: 2 };
+    } else if (inCampaign.length === 1) {
+      return { kind: "mission", mission: inCampaign[0], step: 3 };
+    }
+  }
+
+  const label = WORKLOG_BRANCH.get(`${sessionId}|${branch}`);
+  const logged = label ? ctx.missionByTaskLabel.get(label) : undefined;
+  if (logged && logged !== AMBIGUOUS) return { kind: "mission", mission: logged, step: 4 };
+
+  const declared = ctx.campaigns.find((c) => c.declaredBranches.includes(branch));
+  if (declared) return { kind: "campaign", campaign: declared, step: 5 };
+  if (top) return { kind: "campaign", campaign: top, step: 6 };
+  return { kind: "unattributed", step: 7 };
 }
 
 // ---------------------------------------------------------------------------
@@ -507,16 +593,48 @@ if (!existsSync(rawFile)) {
   process.exit(1);
 }
 const segments = readFileSync(rawFile, "utf8").split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l));
-const missions = loadBoard();
+const board = loadBoard();
 
+// ---------------------------------------------------------------------------
+// Work log: session -> task, recorded by `.octobots/hooks/work-log.mjs` at the
+// moment a task is flipped active/done. A recorded fact beats inferring a task
+// from a branch name, so this is consulted first. Keyed both with and without
+// the branch: the branch-qualified key wins when a session touched several
+// tasks; the bare session key covers work whose branch changed mid-task.
+// ---------------------------------------------------------------------------
+const WORKLOG = new Map();
+// `session|branch` -> the raw task label (`T2.1`). Step 4 of the attribution precedence reads only this.
+const WORKLOG_BRANCH = new Map();
+{
+  const f = join(TOK_DIR, "worklog.jsonl");
+  if (existsSync(f)) {
+    for (const line of readFileSync(f, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const e = JSON.parse(line);
+        if (!e.session_id || !e.task) continue;
+        if (e.branch) {
+          WORKLOG.set(`${e.session_id}|${e.branch}`, e.task.replace(/^T/, ""));
+          WORKLOG_BRANCH.set(`${e.session_id}|${e.branch}`, e.task);
+        }
+        WORKLOG.set(e.session_id, e.task.replace(/^T/, ""));
+      } catch { /* skip corrupt line */ }
+    }
+  }
+}
+
+const attribution = makeAttributionContext(board);
 const groups = new Map(); // mission key -> {mission, segments[]}
+const campaignGroups = new Map(); // campaign slug -> {campaign, segments[]}
 const unattributed = [];
 for (const s of segments) {
-  const m = mapBranch(s.branch, missions);
-  if (!m) { unattributed.push(s); continue; }
-  const key = `${m.campaign}/${m.id}`;
-  if (!groups.has(key)) groups.set(key, { mission: m, segments: [] });
-  groups.get(key).segments.push(s);
+  const t = resolveAttribution(s.branch, s.session_id, attribution);
+  if (t.kind === "unattributed") { unattributed.push(s); continue; }
+  const [map, key, owner] = t.kind === "mission"
+    ? [groups, `${t.mission.campaign}/${t.mission.id}`, { mission: t.mission }]
+    : [campaignGroups, t.campaign.slug, { campaign: t.campaign }];
+  if (!map.has(key)) map.set(key, { ...owner, segments: [] });
+  map.get(key).segments.push(s);
 }
 
 function sumTokens(segs) {
@@ -531,29 +649,6 @@ function sumTokens(segs) {
 }
 
 const round2 = (n) => Math.round(n * 100) / 100;
-
-// ---------------------------------------------------------------------------
-// Work log: session -> task, recorded by `.octobots/hooks/work-log.mjs` at the
-// moment a task is flipped active/done. A recorded fact beats inferring a task
-// from a branch name, so this is consulted first. Keyed both with and without
-// the branch: the branch-qualified key wins when a session touched several
-// tasks; the bare session key covers work whose branch changed mid-task.
-// ---------------------------------------------------------------------------
-const WORKLOG = new Map();
-{
-  const f = join(TOK_DIR, "worklog.jsonl");
-  if (existsSync(f)) {
-    for (const line of readFileSync(f, "utf8").split("\n")) {
-      if (!line.trim()) continue;
-      try {
-        const e = JSON.parse(line);
-        if (!e.session_id || !e.task) continue;
-        if (e.branch) WORKLOG.set(`${e.session_id}|${e.branch}`, e.task.replace(/^T/, ""));
-        WORKLOG.set(e.session_id, e.task.replace(/^T/, ""));
-      } catch { /* skip corrupt line */ }
-    }
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Task-level breakdown inside a mission.
@@ -784,7 +879,80 @@ function buildRow({ mission, segments: segs }) {
   };
 }
 
-const runs = [...groups.values()].map(buildRow)
+// The campaign-level bucket: spend attributed to a campaign that belongs to none of its missions
+// (its planning branch, a declared branch, a slug-only branch). It carries the same key set as a
+// mission row so schema consumers never meet a missing key; there is no diff, so the code-churn
+// and build/iterate fields are null. `work_item_level: "campaign"` is how renderers tell it apart.
+function buildCampaignRow({ campaign, segments: segs }) {
+  const byModel = sumTokens(segs);
+  const cost = costOf(byModel);
+  const subSegs = segs.filter((s) => s.kind === "subagent");
+  const orchCost = costOf(sumTokens(segs.filter((s) => s.kind === "orchestrator")));
+  const models = Object.keys(byModel).sort((x, y) => costOf({ [y]: byModel[y] }) - costOf({ [x]: byModel[x] }));
+  const totals = TOKEN_KEYS.reduce((acc, k) => (acc[k] = Object.values(byModel).reduce((n, t) => n + t[k], 0), acc), {});
+
+  return {
+    work_item_ref: campaign.slug,
+    work_item_level: "campaign",
+    work_item_brief: campaign.brief,
+    parent_ref: null,
+    maturity: null,
+
+    size_tshirt: null,
+    effort_days: null,
+    complexity_score: null,
+    self_size: null,
+    story_points: null,
+
+    sessions: new Set(segs.map((s) => s.session_id)).size,
+    turns: segs.reduce((n, s) => n + s.turns, 0),
+    subagent_dispatches: subSegs.length,
+    orchestrator_cost_pct: cost > 0 ? Math.round(100 * orchCost / cost) : 100,
+    tokens: {
+      input: totals.input_tokens,
+      output: totals.output_tokens,
+      cache_read: totals.cache_read_input_tokens,
+      cache_create: totals.cache_creation_input_tokens,
+    },
+    primary_model: models[0] ?? null,
+    models_used: Object.keys(byModel).sort(),
+    tokens_by_model: Object.fromEntries(Object.entries(byModel).map(([m, t]) => [m, {
+      input: t.input_tokens, output: t.output_tokens,
+      cache_read: t.cache_read_input_tokens, cache_create: t.cache_creation_input_tokens,
+    }])),
+    cost_api_equivalent_usd: round2(cost),
+    cost_by_model: Object.fromEntries(Object.entries(byModel).map(([m, t]) => [m, round2(costOf({ [m]: t }))])),
+    cache_read_share_pct: cost > 0 ? Math.round(100 * cacheReadCost(byModel) / cost) : 0,
+
+    net_loc: null,
+    lines_added: null,
+    lines_removed: null,
+    files_changed: null,
+    build_cost_usd: null,
+    iterate_cost_usd: null,
+
+    _octobots: {
+      mission_id: null,
+      mission_name: null,
+      campaign: campaign.slug,
+      campaign_name: campaign.name,
+      branches: [...new Set(segs.map((s) => s.branch))].sort(),
+      agent_types: [...new Set(subSegs.map((s) => s.agent_type).filter(Boolean))].sort(),
+      diff_source: null,
+      estimated_retrospectively: false,
+      estimate_basis: null,
+      tasks: [],
+      task_churn_reconciles: false,
+      started_at: segs.map((s) => s.started_at).filter(Boolean).sort()[0] ?? null,
+      ended_at: segs.map((s) => s.ended_at).filter(Boolean).sort().at(-1) ?? null,
+      pr_opened_at: null,
+    },
+  };
+}
+
+const missionRows = [...groups.values()].map(buildRow);
+const campaignRows = [...campaignGroups.values()].map(buildCampaignRow);
+const runs = [...missionRows, ...campaignRows]
   .sort((a, b) => b.cost_api_equivalent_usd - a.cost_api_equivalent_usd);
 
 // Unattributed work (planning on `main`, detached HEAD, cross-mission chores) is
@@ -805,6 +973,8 @@ const unattributedBucket = {
     cache_create: unattrTotals.cache_creation_input_tokens,
   },
   cost_api_equivalent_usd: round2(costOf(unattrByModel)),
+  // Per model, like the run rows, so `verify.mjs` can leave out models ccusage cannot price.
+  cost_by_model: Object.fromEntries(Object.entries(unattrByModel).map(([m, t]) => [m, round2(costOf({ [m]: t }))])),
 };
 
 const submission = {
@@ -831,8 +1001,8 @@ const submission = {
 writeFileSync(join(TOK_DIR, "runs.json"), JSON.stringify(submission, null, 2) + "\n");
 
 const totalCost = runs.reduce((n, r) => n + r.cost_api_equivalent_usd, 0);
-const missingSizing = runs.filter((r) => r.effort_days === null).map((r) => r._octobots.mission_id);
-log(`tokenomics: ${runs.length} mission rows · $${round2(totalCost)} attributed · $${unattributedBucket.cost_api_equivalent_usd} unattributed`);
+const missingSizing = missionRows.filter((r) => r.effort_days === null).map((r) => r._octobots.mission_id);
+log(`tokenomics: ${missionRows.length} mission rows · ${campaignRows.length} campaign rows · $${round2(totalCost)} attributed · $${unattributedBucket.cost_api_equivalent_usd} unattributed`);
 if (unpriced.size) log(`tokenomics: WARNING unpriced models (fallback rate used): ${[...unpriced].join(", ")}`);
 if (missingSizing.length) log(`tokenomics: NOTE no authored sizing for ${missingSizing.join(", ")} — add a 'tokenomics:' map (effort_days, size_tshirt) to those mission.yaml files`);
 log(`tokenomics: wrote ${join(TOK_DIR, "runs.json")}`);
