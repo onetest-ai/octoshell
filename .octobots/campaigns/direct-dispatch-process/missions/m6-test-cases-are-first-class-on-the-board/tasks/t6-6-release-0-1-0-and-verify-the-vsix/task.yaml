@@ -1,5 +1,5 @@
 name: T6.6 - Release 0.1.0 and verify the VSIX
-status: executing
+status: done
 description: 'Runs after T6.5 (the release is cut from the QA-passed tree). Scope: a standalone commit `chore(ext): release 0.1.0 with workflow pack v57` that changes only apps/vscode-extension/package.json (version 0.1.0); its body lists the changes since 0.0.51, per-package verification counts (tests passed per package, coverage numbers) and the removed commands octoshell.newWorkflow, octoshell.deleteWorkflow and octoshell.openWorkflowById, whose keybindings now report ''command not found''. Build the VSIX with apps/vscode-extension/scripts/package-vsix.mjs and verify it per mission AC8 via tests/m6/TC-011_release-vsix-verification.md, executed black-box by a qa-engineer dispatch and recorded with set-test-status.js. After publishing, re-run ''Octobots: Install Octobots Pack'' in octoshell''s own checkout and in every dev workspace that accepted an install prompt from an M1-M5 build (packStatus compares integers only, so 0.1.0 will not re-prompt a workspace already labelled 57). Out of scope: publishing to the marketplace beyond the existing package-vsix flow; any code change (a failure goes back to the owning task as a board bug). Downstream: the campaign -> main PR; campaign AC1, AC2, AC4, AC7.'
 acceptance_criteria:
   - text: 'a standalone commit `chore(ext): release 0.1.0 with workflow pack v57` changes only apps/vscode-extension/package.json (version 0.1.0), and its body lists the changes since 0.0.51, per-package verification counts and the three removed commands with the ''command not found'' keybinding note'
@@ -7,7 +7,7 @@ acceptance_criteria:
   - text: tests/m6/TC-011_release-vsix-verification.md is executed against the VSIX built from that commit and records status pass with last_run pointing at its RUN file (mission AC8)
     done: true
   - text: 'after publishing, ''Octobots: Install Octobots Pack'' has been re-run in octoshell''s own checkout and in each dev workspace that held an intermediate v57 install; each is listed in this task''s notes with packStatus upToDate: true'
-    done: false
+    done: true
   - text: The campaign-AC2 VSIX grep allowlist explicitly names mission-execution/SKILL.md's heading '## No `Workflow` tool, no `workflow.js`' (or the heading is reworded and skill-conventions.test.ts updated in the same PR) (input from the M2 T2.3 review)
     done: true
   - text: The VSIX is built so that scripts/package-vsix.mjs:38-44 (which runs both update-prices.mjs scripts) leaves tracked files unchanged, or the refreshed prices are committed deliberately in their own commit before the release commit; and the package path runs shipped-skills.mjs --verify (package-vsix.mjs bypasses the build script today) (input from the T7.1 review)
@@ -41,3 +41,9 @@ notes: |-
   Step 5 note for the user: the micro-test agent escalated two real two-sided policy conflicts (mission-execution's land-step full-suite rule; the completion gate's green rule and parked scan). Both live forks stay 57-local until you answer. That is correct behaviour (M7 ruling 2026-10-05), not a defect; it also means the TC's `57+local` was not reached in the micro-test.
 
   Status stays `executing` because AC3 is the user's.
+
+  ## AC3: pack re-install (orchestrator, 2026-10-06)
+
+  The user approved installing the 0.1.0 pack into octoshell's own checkout (the release VSIX is a local build; no marketplace publish was part of this task). Installed from the VSIX built at release commit ea432393 (apps/vscode-extension/octobots-0.1.0.vsix, unpacked) with the default Reconcile: node apps/vscode-extension/scripts/qa/install-pack.mjs . --pack-root <vsix>/extension/resources/octobots-pack. Result: before upToDate false (v56), after upToDate true, upToDateExceptLocal true, pendingReconcile [], no deviations (octoshell's skills were unedited). All 5 pack SKILL.md files read version: 57; mission-planner/scripts now carries add-tests.js, plan-review.mjs, set-test-status.js, tc-io.mjs; mission-execution/scripts carries qa-env.mjs and scan-parked.js. A backup of the previous .claude, .octobots/hooks and .octobots/tokenomics is in the session scratchpad (selfinstall/claude-before.tgz).
+  Workspaces: octoshell (upToDate true). No other dev workspace held an intermediate v57 install: every M1-M7 QA install went into scratch clones/copies, never a real workspace (solo was read-only throughout).
+  doctor.js after the install: one warn, 5 leftover workflows/ folders in the octograph campaign (no longer read since v57; octobots-doctor removes a folder only with a per-folder yes from the user), and a note that no status line is configured.
