@@ -271,7 +271,7 @@ describe.each(impls)("%s: missionTestsFindings", (_name, io) => {
 
   it("reports an unlinked README by exact target, and a link under another target does not count", () => {
     const c = synthBoard(scratch("tcio-"), [{ title: "M1 - x", acs: 2 }]);
-    writeTests(c, "m1", { "README.md": readmeText([]), "TC-001_a.md": tcText(["id: TC-001", "covers: [M1-AC1, M1-AC2]"]) });
+    writeTests(c, "m1", { "README.md": readmeText([]), "TC-001_a.md": tcText(["id: TC-001", "covers: [M1-AC1, M1-AC2]", "status: draft"]) });
     expect(run(c, "m1", { documents: [] })).toEqual([
       `${rel(c, "m1")}/README.md: not linked from the M1 documents (expected target .octobots/campaigns/${c.campaign}/tests/m1/README.md); run add-tests.js to link it`,
     ]);
@@ -315,7 +315,7 @@ describe.each(impls)("%s: missionTestsFindings", (_name, io) => {
     const c = synthBoard(scratch("tcio-"), [{ title: "M1 - x", acs: 2 }]);
     writeTests(c, "m1", {
       "README.md": readmeText([]),
-      "TC-001_a.md": tcText(["id: TC-001", "covers: [M1-AC1, M1-AC2]"], "no sections\n"),
+      "TC-001_a.md": tcText(["id: TC-001", "covers: [M1-AC1, M1-AC2]", "status: draft"], "no sections\n"),
       "notes.md": "not a TC",
       "runs/TC-9_run.md": "ignored: in a subfolder",
     });
@@ -413,5 +413,20 @@ describe("tc-io.mjs and tc-io.ts agree", () => {
     const a = fn(mjs);
     expect(a.length).toBeGreaterThan(8);
     expect(fn(ts)).toEqual(a);
+  });
+});
+
+describe.each(impls)("%s: legacyTcNote (M6 migrate suggestion)", (_name, io) => {
+  const NOTE = "legacy test case (no status, kind or mission) lists as unknown: run set-test-status.js <tc-file> --migrate";
+  it("is set when the frontmatter parses and carries none of status, kind, mission", () => {
+    expect(io.legacyTcNote(tcText(["id: TC-001", "requirements: [M1-AC1]", "priority: high"]))).toBe(NOTE);
+    expect(io.legacyTcNote(tcText(["id: TC-001", "status: ~", "kind:"]))).toBe(NOTE);
+  });
+  it("is null when any of the three is present, or the frontmatter is missing or unparseable", () => {
+    for (const fm of [["status: draft"], ["kind: api"], ["mission: M1"]]) expect(io.legacyTcNote(tcText(["id: TC-001", ...fm]))).toBeNull();
+    expect(io.legacyTcNote("# no frontmatter\n")).toBeNull();
+    expect(io.legacyTcNote("---\nid: [x\n---\n")).toBeNull();
+    // a bad value is a malformed file, not a legacy one
+    expect(io.legacyTcNote(tcText(["id: TC-001", "status: nope"]))).toBeNull();
   });
 });
