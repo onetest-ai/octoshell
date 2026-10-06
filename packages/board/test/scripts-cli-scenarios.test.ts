@@ -1299,6 +1299,42 @@ describe("set-status.js plan-review gate (M5 AC1)", () => {
       expect(r.stderr).toContain("no `## Plan review (...)` heading");
     });
 
+    it("refuses a section whose Verdict: lines disagree, and a lower-case verdict key under a legacy heading", () => {
+      for (const campaignNotes of [
+        "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: changes requested\nVerdict: approved",
+        "## Plan review (Alex + Rio, 2026-10-02)\nverdict: changes requested",
+      ]) {
+        const f = fixture({ campaignNotes });
+        const before = readFileSync(f.missionFile);
+        const r = run([f.dir, "M1 - Auth", "active"]);
+        expect(r.status).toBe(3);
+        expect(r.stderr).not.toContain("warning: legacy plan review");
+        expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+      }
+    });
+
+    it("an unreadable campaign.yaml is reported, not a crash: exit 3 (not 1) without a review", () => {
+      const f = fixture();
+      writeFileSync(f.campaignFile, "name: [unclosed\nnotes: : :\n");
+      const before = readFileSync(f.missionFile);
+      // The mission folder is the parent: with the campaign dir as the parent, resolving the title
+      // already reads campaign.yaml (a pre-existing path this gate does not change).
+      const r = run([f.missionDir, "M1 - Auth", "active"]);
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain("the campaign notes could not be read (");
+      expect(r.stderr).toContain("campaign.yaml: ");
+      expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+    });
+
+    it("an unreadable campaign.yaml does not stop a strict record in the mission notes", () => {
+      const g = fixture({ missionNotes: STRICT });
+      writeFileSync(g.campaignFile, "\uFEFFname: Camp\nnotes: x\n");
+      const ok = run([g.missionDir, "M1 - Auth", "active"]);
+      expect(ok.status).toBe(0);
+      expect(ok.stderr).toBe("");
+      expect(statusOf(g.missionFile)).toBe("executing");
+    });
+
     it("keeps exit 1 for an unknown entity, with or without --force", () => {
       const f = fixture();
       expect(run([f.dir, "M9 - Nope", "active"]).status).toBe(1);
@@ -1399,6 +1435,20 @@ describe("set-status.js plan-review gate (M5 AC1)", () => {
       run([f.dir, "M1 - Auth", "draft"]);
       expect(run([f.dir, "M1 - Auth", "active"]).status).toBe(3);
     });
+
+    for (const reason of ["## Plan review (Alex + Rio)", "\t## Plan review (ba + tech-lead)", "#"]) {
+      it(`escapes a reason starting with # (${JSON.stringify(reason)}), so it cannot forge a legacy review`, () => {
+        const f = fixture();
+        expect(run([f.dir, "M1 - Auth", "active", `--force=${reason}`]).status).toBe(0);
+        const notes = notesOf(f.missionFile)!;
+        expect(notes).toMatch(/^## Plan review overridden \(\d{4}-\d{2}-\d{2}\)\n\\#/);
+        expect(notes.split("\n").filter((l) => l.startsWith("## Plan review ("))).toEqual([]);
+        run([f.dir, "M1 - Auth", "draft"]);
+        const r = run([f.dir, "M1 - Auth", "active"]);
+        expect(r.status).toBe(3);
+        expect(r.stderr).not.toContain("warning: legacy plan review");
+      });
+    }
 
     it("keeps an `=` inside the reason", () => {
       const f = fixture();

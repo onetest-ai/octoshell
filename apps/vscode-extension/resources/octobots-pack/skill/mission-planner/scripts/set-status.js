@@ -26,6 +26,10 @@ for (const a of rawArgs) {
       console.error("set-status: --force needs a reason: --force=<reason>");
       process.exit(2);
     }
+    // The reason is written on its own line under the overridden heading. A reason starting with `#`
+    // would put a column-0 `## Plan review (...)` line there, which plan-review.mjs reads as a (legacy)
+    // review, so a later plain start would pass. Escape it: Markdown renders `\#` as `#`.
+    if (forceReason.startsWith("#")) forceReason = `\\${forceReason}`;
   } else {
     positional.push(a);
   }
@@ -68,14 +72,22 @@ if (from === mapped) {
 if (match.kind === "mission" && mapped === "executing") {
   const campaignDir = join(match.dir, "..", "..");
   const campaignFile = resolveEntityFile(campaignDir, ["campaign"]);
-  const campaignNotes = campaignFile ? readEntity(campaignFile.file, campaignFile.format).notes : "";
+  // An unreadable campaign file holds no review we can see. It must not crash the script: an
+  // uncaught throw exits 1, and exit 1 means "no such entity".
+  let campaignNotes = "";
+  let campaignError = null;
+  try {
+    campaignNotes = campaignFile ? readEntity(campaignFile.file, campaignFile.format).notes : "";
+  } catch (e) {
+    campaignError = `${campaignFile.file}: ${String(e.message).split("\n")[0]}`;
+  }
   const review = planReviewStatus(fields.notes, campaignNotes);
   if (review.ok) {
     if (review.legacy) {
       console.error(`warning: legacy plan review "${review.heading}" (${review.where} notes) has no Reviewers:/Verdict: lines; accepted`);
     }
   } else if (forceReason === null) {
-    refuse(review.candidates);
+    refuse(review.candidates, campaignError);
   } else {
     const day = new Date().toISOString().slice(0, 10);
     const note = `## Plan review overridden (${day})\n${forceReason}`;
@@ -91,8 +103,9 @@ console.log(`set status of "${title}" to ${mapped}`);
 console.log(`octobots: status ${match.kind} ${JSON.stringify(title)} ${from} -> ${mapped}`);
 
 /** Print why the move into executing is refused, and how to fix or override it, then exit 3. */
-function refuse(candidates) {
+function refuse(candidates, campaignError) {
   const lines = [`set-status: refusing to move "${title}" into executing: no plan review is recorded.`];
+  if (campaignError) lines.push(`  the campaign notes could not be read (${campaignError})`);
   if (candidates.length === 0) {
     lines.push("  no `## Plan review (...)` heading in the mission notes or the campaign notes");
   } else {

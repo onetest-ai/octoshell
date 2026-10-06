@@ -64,6 +64,9 @@ describe("plan-review.mjs on the shared case table", () => {
     const ids = new Set(TABLE.cases.map((c) => c.id));
     for (const id of [
       "refuse-verdict-changes-requested-both-named",
+      "refuse-conflicting-verdict-lines",
+      "refuse-lowercase-verdict-key-under-legacy-heading",
+      "refuse-escaped-heading-from-force-reason",
       "refuse-legacy-one-reviewer-alex",
       "refuse-reviewers-personas-only",
       "refuse-verdict-without-reviewers",

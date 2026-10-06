@@ -9,7 +9,12 @@
 //    blanks) and ends at the next column-0 `## ` line or the end of the notes. So `## Plan review
 //    overridden (...)` and `## Plan review record shape ...` never match.
 //  - Strict record: a column-0 `Reviewers:` line holding the tokens `ba` and `tech-lead`, and a
-//    column-0 `Verdict: approved` or `Verdict: approved with nits` line (case-insensitive).
+//    column-0 `Verdict: approved` or `Verdict: approved with nits` line, with every column-0
+//    `Verdict:` line of the section approving (a section that also says `Verdict: changes requested`
+//    is ambiguous and refused).
+//  - The `Reviewers:` and `Verdict:` keys and the verdict value match case-insensitively (the whole
+//    line, as AC1 says), so `verdict: changes requested` makes a section strict and refused rather
+//    than leaving it to pass as a legacy record. (Spec clarifications of T5.1 review, 2026-10-06.)
 //  - Legacy record: the section has NO column-0 `Reviewers:` line and NO column-0 `Verdict:` line,
 //    and the heading's parenthesised text names the BA (`ba` or `Alex`) and the tech lead
 //    (`tech-lead` or `Rio`). Accepted, with a warning (printed by the caller).
@@ -18,8 +23,8 @@
 //  - Indented lines are prose. A strict record anywhere beats a legacy one.
 
 const HEADING = /^## Plan review \((.*)\)[ \t]*$/;
-const REVIEWERS_LINE = /^Reviewers:/;
-const VERDICT_LINE = /^Verdict:/;
+const REVIEWERS_LINE = /^Reviewers:/i;
+const VERDICT_LINE = /^Verdict:/i;
 const APPROVING_VERDICT = /^Verdict:[ \t]*(?:approved|approved with nits)[ \t]*$/i;
 
 // A token is bounded by anything but a letter, digit, `_` or `-`.
@@ -32,6 +37,7 @@ const RIO = token("Rio", "");
 
 export const MISSING_REVIEWERS = "no Reviewers: line naming ba and tech-lead";
 export const MISSING_VERDICT = "no Verdict: approved line";
+export const CONFLICTING_VERDICT = "a Verdict: line that is not approved";
 export const MISSING_BA = "heading does not name the ba (ba or Alex)";
 export const MISSING_TECH_LEAD = "heading does not name the tech-lead (tech-lead or Rio)";
 
@@ -61,6 +67,7 @@ function judge(section) {
     const missing = [];
     if (!reviewers.some((l) => BA.test(l) && TECH_LEAD.test(l))) missing.push(MISSING_REVIEWERS);
     if (!verdicts.some((l) => APPROVING_VERDICT.test(l))) missing.push(MISSING_VERDICT);
+    else if (!verdicts.every((l) => APPROVING_VERDICT.test(l))) missing.push(CONFLICTING_VERDICT);
     return { legacy: false, missing };
   }
   const missing = [];

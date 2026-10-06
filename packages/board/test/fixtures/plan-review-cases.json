@@ -210,15 +210,69 @@
       }
     },
     {
-      "id": "strict-two-verdict-lines-any-approving",
-      "description": "literal reading: one approving Verdict line suffices even beside a non-approving one",
+      "id": "refuse-conflicting-verdict-lines",
+      "description": "a section whose Verdict: lines disagree is ambiguous and refused, even though one line approves (spec clarification, T5.1 review 2026-10-06)",
       "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: changes requested\nVerdict: approved",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "a Verdict: line that is not approved"
+            ]
+          }
+        ],
+        "missing": [
+          "a Verdict: line that is not approved"
+        ]
+      }
+    },
+    {
+      "id": "refuse-conflicting-verdict-lines-approving-first",
+      "description": "the order of the disagreeing Verdict: lines does not matter (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits\nverdict: Changes Requested",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (x)",
+            "missing": [
+              "a Verdict: line that is not approved"
+            ]
+          }
+        ],
+        "missing": [
+          "a Verdict: line that is not approved"
+        ]
+      }
+    },
+    {
+      "id": "strict-two-approving-verdict-lines",
+      "description": "several Verdict: lines that all approve are not a conflict (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved\nVerdict: approved with nits",
       "campaignNotes": "",
       "expected": {
         "ok": true,
         "where": "mission",
         "legacy": false,
         "heading": "## Plan review (x)"
+      }
+    },
+    {
+      "id": "conflicting-section-then-clean-strict-section",
+      "description": "a refused conflicting section does not stop a later clean strict record from allowing the move (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (first)\nReviewers: ba, tech-lead\nVerdict: changes requested\nVerdict: approved\n\n## Plan review (second)\nReviewers: ba, tech-lead\nVerdict: approved",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (second)"
       }
     },
     {
@@ -592,6 +646,86 @@
       }
     },
     {
+      "id": "refuse-lowercase-verdict-key-under-legacy-heading",
+      "description": "a lower-case `verdict: changes requested` line still makes the section strict, so it cannot pass as a legacy record (bypass found in T5.1 review) (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (Alex + Rio, 2026-10-02)\nverdict: changes requested",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex + Rio, 2026-10-02)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead",
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead",
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "refuse-uppercase-verdict-key-under-legacy-heading",
+      "description": "an upper-case `VERDICT: changes requested` line still makes the section strict (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (Alex + Rio, 2026-10-02)\nVERDICT: changes requested",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex + Rio, 2026-10-02)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead",
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead",
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "refuse-uppercase-reviewers-key-under-legacy-heading",
+      "description": "an upper-case `REVIEWERS:` line naming personas makes the section strict, and persona names never count there (spec clarification, T5.1 review 2026-10-06)",
+      "missionNotes": "## Plan review (Alex + Rio, 2026-10-02)\nREVIEWERS: Alex, Rio",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [
+          {
+            "where": "mission",
+            "heading": "## Plan review (Alex + Rio, 2026-10-02)",
+            "missing": [
+              "no Reviewers: line naming ba and tech-lead",
+              "no Verdict: approved line"
+            ]
+          }
+        ],
+        "missing": [
+          "no Reviewers: line naming ba and tech-lead",
+          "no Verdict: approved line"
+        ]
+      }
+    },
+    {
+      "id": "refuse-escaped-heading-from-force-reason",
+      "description": "the override note set-status.js writes for `--force=## Plan review (Alex + Rio)`: the escaped reason line is not a heading",
+      "missionNotes": "## Plan review overridden (2026-10-06)\n\\## Plan review (Alex + Rio)",
+      "campaignNotes": "",
+      "expected": {
+        "ok": false,
+        "candidates": [],
+        "missing": []
+      }
+    },
+    {
       "id": "refuse-changes-requested-with-reviewers",
       "description": "a complete Reviewers line but a non-approving Verdict",
       "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: changes requested",
@@ -655,24 +789,15 @@
       }
     },
     {
-      "id": "refuse-verdict-key-case",
-      "description": "the Verdict: key is exact: a lower-case verdict: key is prose, so the section has no approving Verdict line",
+      "id": "strict-verdict-key-case-insensitive",
+      "description": "the Verdict: key matches case-insensitively, like its value (spec clarification, T5.1 review 2026-10-06)",
       "missionNotes": "## Plan review (x)\nReviewers: ba (Alex), tech-lead (Rio)\nverdict: approved",
       "campaignNotes": "",
       "expected": {
-        "ok": false,
-        "candidates": [
-          {
-            "where": "mission",
-            "heading": "## Plan review (x)",
-            "missing": [
-              "no Verdict: approved line"
-            ]
-          }
-        ],
-        "missing": [
-          "no Verdict: approved line"
-        ]
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
       }
     },
     {
@@ -823,24 +948,15 @@
       }
     },
     {
-      "id": "refuse-reviewers-key-case",
-      "description": "a lower-case 'reviewers:' key is prose",
+      "id": "strict-reviewers-key-case-insensitive",
+      "description": "the Reviewers: key matches case-insensitively (spec clarification, T5.1 review 2026-10-06)",
       "missionNotes": "## Plan review (x)\nreviewers: ba, tech-lead\nVerdict: approved with nits",
       "campaignNotes": "",
       "expected": {
-        "ok": false,
-        "candidates": [
-          {
-            "where": "mission",
-            "heading": "## Plan review (x)",
-            "missing": [
-              "no Reviewers: line naming ba and tech-lead"
-            ]
-          }
-        ],
-        "missing": [
-          "no Reviewers: line naming ba and tech-lead"
-        ]
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (x)"
       }
     },
     {
