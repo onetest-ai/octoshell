@@ -1,0 +1,7 @@
+{
+  "vars": {
+    "DATABASE_URL": "postgres://localhost/{db}"
+  },
+  "name_pattern": "^qa_[a-z0-9_]+$",
+  "probe": "psql \"$DATABASE_URL\" -tAc 'select current_database()'"
+}
