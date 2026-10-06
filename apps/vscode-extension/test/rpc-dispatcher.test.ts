@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { updateBrief } from "@octoshell/board";
 import { dispatch } from "../src/host/rpc-dispatcher.js";
 import { BoardHost } from "../src/host/board-host.js";
 import { AppearanceStore } from "../src/host/appearance-store.js";
@@ -329,6 +330,42 @@ describe("mission:setStatus with a plan-review confirm", () => {
     expect(message).toContain("heading does not name the tech-lead");
     expect(message).toContain("Reviewers: ba (<name>), tech-lead (<name>)");
     expect(label).toBeTruthy();
+  });
+
+  it("Cancel leaves a hand-written mission.yaml byte-identical (a canonical rewrite would be visible)", async () => {
+    const { board, m, file } = missionFixture();
+    const hand = '# written by an agent\nname: "M1 - Thing"\nstatus: draft   # not started\nnotes: |\n  Prose only.\n';
+    writeFileSync(file, hand, "utf8");
+    const confirm = vi.fn(async () => false);
+    const res = await dispatch("mission:setStatus", { missionId: m.id, status: "executing" }, ctx(board, confirm) as never);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(res).toMatchObject({ ok: true });
+    expect(readFileSync(file, "utf8")).toBe(hand);
+  });
+
+  it("Confirm re-reads the file: notes written to disk while the modal was open are kept, not overwritten", async () => {
+    const { board, m, file } = missionFixture({ mission: "Before." });
+    const confirm = vi.fn(async () => {
+      // an agent edits the notes on disk while the user looks at the modal
+      writeFileSync(file, readFileSync(file, "utf8").replace("Before.", "Edited during the modal."), "utf8");
+      return true;
+    });
+    await dispatch("mission:setStatus", { missionId: m.id, status: "executing" }, ctx(board, confirm) as never);
+    const notes = board.getMission(m.id)!.notes ?? "";
+    expect(notes).toMatch(/^Edited during the modal\.\n\n## Plan review overridden \(/);
+    expect(board.getMission(m.id)!.status).toBe("executing");
+  });
+
+  it("Confirm after a review was recorded on disk while the modal was open flips with no override note", async () => {
+    const { board, m, file } = missionFixture({ mission: "Before." });
+    const confirm = vi.fn(async () => {
+      // an agent records a review on disk (library write, no host reconcile) while the modal is open
+      updateBrief(join(file, "..", "..", "..", "..", ".."), "mission", m.id, { notes: `Before.\n\n${STRICT}` });
+      return true;
+    });
+    await dispatch("mission:setStatus", { missionId: m.id, status: "executing" }, ctx(board, confirm) as never);
+    expect(board.getMission(m.id)!.status).toBe("executing");
+    expect(board.getMission(m.id)!.notes ?? "").not.toContain("overridden");
   });
 
   it("Confirm flips the status and appends the overridden note with the dropdown reason", async () => {

@@ -285,6 +285,18 @@ describe("BoardHost.setStatus plan-review gate", () => {
     expect(board.getMission(m.id)!.status).toBe("draft");
   });
 
+  it("refuses without rewriting a hand-written mission.yaml (comments and quoting survive byte for byte)", () => {
+    // A board-written fixture is already in dumpEntity's canonical form, so a refusal that rewrote the
+    // file anyway would still compare equal. Hand-written bytes are what make "untouched" observable.
+    const { board, m, file } = missionBoard();
+    const hand = '# written by an agent\nname: "M1 - Thing"\nstatus: draft   # not started\nnotes: |\n  Prose only.\n';
+    writeFileSync(file, hand, "utf8");
+    for (const spelling of ["executing", "active"]) {
+      expect(board.setStatus("mission", m.id, spelling)).toMatchObject({ ok: false, reason: "plan-review-missing" });
+      expect(readFileSync(file, "utf8")).toBe(hand);
+    }
+  });
+
   it("gates every spelling that maps to executing", () => {
     for (const spelling of ["active", "in progress", "running", "executing"]) {
       const { board, m } = missionBoard();

@@ -114,3 +114,31 @@ describe("MissionView", () => {
     expect(document.querySelector('[data-status="draft"]')).toBeTruthy();
   });
 });
+
+describe("MissionView against the real dispatcher and BoardHost (plan-review Cancel)", () => {
+  it("Cancel in the modal: the dropdown shows the stored status and the YAML is untouched", async () => {
+    const { BoardHost } = await import("../src/host/board-host.js");
+    const { dispatch } = await import("../src/host/rpc-dispatcher.js");
+    const { mkdtempClean } = await import("./fixtures/tmpdir.js");
+    const { join } = await import("node:path");
+    const { readFileSync } = await import("node:fs");
+    const repo = mkdtempClean("mission-view-cancel-");
+    const board = new BoardHost(join(repo, ".octobots"));
+    const camp = board.createCampaign({ name: "C" });
+    const m = board.createMission({ title: "M1 - Thing", campaignId: camp.id });
+    const file = join(repo, ".octobots", m.folderPath, "mission.yaml");
+    const before = readFileSync(file, "utf8");
+    const confirm = vi.fn(async () => false);
+    const ctx = { board, workspaceFolderPath: repo, dialog: { openFiles: async () => [], confirm }, editor: { openReadonly: async () => {}, openFile: async () => {} } };
+    const rpc = { call: (method: string, args: unknown) => dispatch(method, args, ctx as never), onSpineEvent: () => () => {} };
+    render(<MissionView id={m.id} rpc={rpc as never} onOpenTask={() => {}} onNewTask={() => {}} />);
+    await screen.findByText("M1 - Thing");
+    const sel = screen.getByLabelText("Status") as HTMLSelectElement;
+    expect(sel.value).toBe("draft");
+    fireEvent.change(sel, { target: { value: "executing" } });
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect((screen.getByLabelText("Status") as HTMLSelectElement).value).toBe("draft"));
+    expect(screen.queryByText(/could not set status/i)).toBeNull();
+    expect(readFileSync(file, "utf8")).toBe(before);
+  });
+});
