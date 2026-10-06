@@ -559,3 +559,114 @@ describe("primer.mjs health line (octobots-doctor)", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// M5 T5.5 (AC7): the lanes sentence, `AGENTS.md declares no test lanes.`, ends the health line.
+// ---------------------------------------------------------------------------------------------
+
+const LANES = "AGENTS.md declares no test lanes.";
+const LANES_CASES = (JSON.parse(readFileSync(join(__dirname, "fixtures", "lanes-cases.json"), "utf8")) as {
+  cases: Array<{ name: string; agents: string; declared: boolean }>;
+}).cases;
+const DECLARED = "## Test lanes\n\n- fast: `npm test`\n- coverage: `npm run coverage`\n";
+
+describe("primer.mjs health line: the test-lanes sentence (M5 AC7)", () => {
+  it("an AGENTS.md without `## Test lanes` makes the line exactly the head plus the lanes sentence", () => {
+    const ws = repoWithOctobots();
+    write(ws, "AGENTS.md", "# Project\n\nRun npm test.\n");
+    const ctx = healthContext(ws);
+    expect(healthLine(ctx)).toBe(`${HEAD} ${LANES}`);
+    expect(ctx.startsWith(PRE_MISSION_PRIMER)).toBe(true);
+    expect(ctx.trimEnd().endsWith(LANES)).toBe(true);
+  });
+
+  it("with the section declaring fast: and coverage: the line does not name it", () => {
+    const ws = repoWithOctobots();
+    write(ws, "AGENTS.md", `# Project\n\n${DECLARED}`);
+    expect(healthLine(healthContext(ws))).toBeNull();
+  });
+
+  it("a section declaring only one lane is still named", () => {
+    const ws = repoWithOctobots();
+    write(ws, "AGENTS.md", "## Test lanes\n- fast: npm test\n");
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} ${LANES}`);
+  });
+
+  it("a finding acknowledged in doctor-acks.json is not named: with a path, with any path, or with none", () => {
+    for (const ack of [
+      { finding: "lanes", path: "AGENTS.md", date: "2026-10-06" },
+      { finding: "lanes", path: "elsewhere", date: "2026-10-06" },
+      { finding: "lanes", date: "2026-10-06" },
+    ]) {
+      const ws = repoWithOctobots();
+      write(ws, "AGENTS.md", "# Project\n");
+      write(ws, ".octobots/doctor-acks.json", JSON.stringify({ acknowledged: [ack] }));
+      expect(healthLine(healthContext(ws))).toBeNull();
+    }
+  });
+
+  it("an acknowledgement of another finding does not hide it", () => {
+    const ws = repoWithOctobots();
+    write(ws, "AGENTS.md", "# Project\n");
+    acks(ws, [{ finding: "config-dir", path: ".claude" }, { finding: "workflows", path: "campaigns/c1/workflows" }]);
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} ${LANES}`);
+  });
+
+  it("no AGENTS.md at all: the primer stays silent (doctor.js reports the missing file)", () => {
+    expect(healthLine(healthContext(repoWithOctobots()))).toBeNull();
+  });
+
+  it("the lanes sentence comes after the reconcile, workflows and config-dir sentences", () => {
+    const ws = repoWithOctobots();
+    pendingJson(ws, caseText("rule-5-base-null"));
+    workflowsDir(ws, "campaigns/c1/workflows");
+    write(ws, "AGENTS.md", "# Project\n");
+    const configDir = join(ws, ".claude");
+    expect(healthLine(healthContext(ws, { configDir }))).toBe(
+      `${HEAD} Pending pack reconciles: mission-execution (.octobots/pack-updates/v57/). Leftover workflows/ folders: 1. CLAUDE_CONFIG_DIR is set to ${configDir}. ${LANES}`,
+    );
+  });
+
+  it("acknowledging the lanes finding never hides a pending reconcile", () => {
+    const ws = repoWithOctobots();
+    pendingJson(ws, caseText("rule-5-base-null"));
+    write(ws, "AGENTS.md", "# Project\n");
+    acks(ws, [{ finding: "lanes", path: "AGENTS.md" }]);
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} Pending pack reconciles: mission-execution (.octobots/pack-updates/v57/).`);
+  });
+
+  it("follows a symlinked AGENTS.md to a regular file (AGENTS.md -> CLAUDE.md is common)", () => {
+    const ws = repoWithOctobots();
+    write(ws, "CLAUDE.md", "# Project\n");
+    symlinkSync("CLAUDE.md", join(ws, "AGENTS.md"));
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} ${LANES}`);
+    write(ws, "CLAUDE.md", DECLARED);
+    expect(healthLine(healthContext(ws))).toBeNull();
+  });
+
+  it.skipIf(process.platform === "win32")("a FIFO, a directory, or an AGENTS.md over 1 MiB is not read and adds no line (and never hangs)", () => {
+    const fifo = repoWithOctobots();
+    execFileSync("mkfifo", [join(fifo, "AGENTS.md")]);
+    expect(healthLine(healthContext(fifo))).toBeNull();
+    const dir = repoWithOctobots();
+    mkdirSync(join(dir, "AGENTS.md"));
+    expect(healthLine(healthContext(dir))).toBeNull();
+    const big = repoWithOctobots();
+    write(big, "AGENTS.md", `${"x".repeat(1024 * 1024 + 1)}\n`);
+    expect(healthLine(healthContext(big))).toBeNull();
+  });
+
+  it("is a file read only: the primer still imports no child_process or network module", () => {
+    expect(PRIMER_SRC).not.toMatch(/node:child_process|node:net|node:http|node:https|\bfetch\(/);
+  });
+
+  describe("gives the verdict lanes.mjs gives (the doctor rule) on every shared case", () => {
+    it.each(LANES_CASES)("$name", ({ agents, declared }) => {
+      const ws = repoWithOctobots();
+      // an empty file is a file: the primer names it, like any AGENTS.md without the section
+      write(ws, "AGENTS.md", agents);
+      const line = healthLine(healthContext(ws));
+      expect(line).toBe(declared ? null : `${HEAD} ${LANES}`);
+    });
+  });
+});

@@ -158,6 +158,10 @@ function graphBlock(projectDir) {
 //    (`parsePending`, strict about the same fields). `test/pending-io-parity.test.ts` drives every
 //    case of `test/fixtures/pending-cases.json` through this script and asserts the skills it names
 //    are the fixture's `expected.reconcile` and the folder its `packVersion`.
+//  - `declaresTestLanes` is the primer's twin of `lanes.mjs`'s `parseTestLanes` (the rules are written
+//    there). `test/octobots-primer.test.ts` drives every case of `test/fixtures/lanes-cases.json`
+//    through this script, and `packages/board/test/scripts-cli-scenarios.test.ts` drives the same
+//    cases through doctor.js, so the two verdicts cannot drift apart.
 //  - `listWorkflowDirs` is the primer's twin of `legacy-workflows.mjs`'s `findLegacyWorkflowFolders`,
 //    counted per `workflows/` folder (the unit doctor-acks.json acknowledges). `test/octobots-primer.test.ts`
 //    runs both over the same trees and asserts the same number.
@@ -221,6 +225,7 @@ function readReconciles(projectDir) {
  *   {finding: "workflows",  path: "campaigns/<c>/workflows" | "campaigns/<c>/missions/<m>/workflows"}
  *       one per declined workflows/ folder; `path` is relative to `.octobots/`, `/`-separated
  *   {finding: "config-dir", path: ".claude"}   any `path` (or none) acknowledges it
+ *   {finding: "lanes", path: "AGENTS.md"}      any `path` (or none) acknowledges it
  * A pending reconcile is never acknowledgeable. `path` is compared after dropping a leading `./`,
  * trailing `/` and turning `\` into `/`; `date` is not read.
  */
@@ -233,6 +238,48 @@ function readAcks(projectDir) {
       .map((a) => ({ finding: a.finding, path: typeof a.path === "string" ? a.path.replace(/\\/g, "/").replace(/^(\.\/)+/, "").replace(/\/+$/, "") : null }));
   } catch {
     return [];
+  }
+}
+
+// AGENTS.md is the project's own file, read at EVERY session start: only a regular file (a symlink to one
+// is fine, AGENTS.md -> CLAUDE.md is common; a FIFO or /dev/zero is not, its read would block the
+// session start) of at most 1 MiB is read. Anything else is "not read", which names nothing.
+const MAX_AGENTS_BYTES = 1024 * 1024;
+const LANES_HEADING = /^##[ \t]+Test lanes[ \t]*$/i;
+const LANES_FENCE = /^[ \t]{0,3}(`{3,}|~{3,})/;
+const LANES_DECLARATION = /^[ \t]*(?:[-*+][ \t]+)?(?:\*\*|__)?(fast|coverage)(?:\*\*|__)?[ \t]*:(?:\*\*|__)?[ \t]*(.*)$/i;
+
+/** Whether `text` has a `## Test lanes` section that declares both `fast:` and `coverage:` (see lanes.mjs). */
+function declaresTestLanes(text) {
+  const found = { fast: false, coverage: false };
+  let inFence = null;
+  let inSection = false;
+  for (const line of text.split(/\r?\n/)) {
+    const fence = LANES_FENCE.exec(line);
+    if (fence) {
+      if (inFence === null) inFence = fence[1][0];
+      else if (inFence === fence[1][0]) inFence = null;
+      continue;
+    }
+    if (inFence === null) {
+      if (inSection && /^#{1,2}[ \t]/.test(line)) inSection = false;
+      if (LANES_HEADING.test(line)) { inSection = true; continue; }
+    }
+    const m = inSection ? LANES_DECLARATION.exec(line) : null;
+    if (m && m[2].replace(/^[\s`]+|[\s`]+$/g, "") !== "") found[m[1].toLowerCase()] = true;
+  }
+  return found.fast && found.coverage;
+}
+
+/** True when AGENTS.md exists, was read, and declares no test lanes; false otherwise (including when it was not read). */
+function lanesMissing(projectDir) {
+  try {
+    const file = join(projectDir, "AGENTS.md");
+    const st = statSync(file); // throws when absent
+    if (!st.isFile() || st.size > MAX_AGENTS_BYTES) return false;
+    return !declaresTestLanes(readFileSync(file, "utf8"));
+  } catch {
+    return false;
   }
 }
 
@@ -279,6 +326,8 @@ function healthLine(projectDir) {
     if (ccd && resolve(ccd) === projectConfig && !acks.some((a) => a.finding === "config-dir")) {
       sentences.push(`CLAUDE_CONFIG_DIR is set to ${projectConfig}.`);
     }
+    // Any `path` (or none) acknowledges the lanes finding, as for config-dir.
+    if (!acks.some((a) => a.finding === "lanes") && lanesMissing(projectDir)) sentences.push("AGENTS.md declares no test lanes.");
     return sentences.length ? [HEALTH_HEAD, ...sentences].join(" ") : "";
   } catch {
     return ""; // a health check must never cost the session its primer

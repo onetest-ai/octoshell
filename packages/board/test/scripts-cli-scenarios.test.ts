@@ -22,6 +22,11 @@ const SCRIPTS = resolve(
   "../../../apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts",
 );
 
+/** AGENTS.md cases shared with the primer's twin of the lanes parser (apps/vscode-extension/test/octobots-primer.test.ts). */
+const LANES_CASES = (JSON.parse(
+  readFileSync(resolve(__dirname, "../../../apps/vscode-extension/test/fixtures/lanes-cases.json"), "utf8"),
+) as { cases: { name: string; agents: string; declared: boolean }[] }).cases;
+
 /** pending.json text for a case of the shared fixture (the one the extension's readers are tested against). */
 const PENDING_CASES = (JSON.parse(
   readFileSync(resolve(__dirname, "../../../apps/vscode-extension/test/fixtures/pending-cases.json"), "utf8"),
@@ -776,6 +781,78 @@ describe("pack doctor.js", () => {
     it("no workflows/ folders: no board warn", () => {
       createCampaign(boardRoot, { name: "Clean" });
       expect(findings(projectDir).filter((x) => x.area === "board" && x.level === "warn")).toHaveLength(0);
+    });
+
+    describe("lanes (AGENTS.md § Test lanes, M5 AC7)", () => {
+      type F = { level: string; area: string; msg: string; fix?: string };
+      const lanes = (root: string) => findings(root).filter((x) => x.area === "lanes") as F[];
+      const agents = (text: string) => writeFileSync(join(projectDir, "AGENTS.md"), text);
+
+      it("warns {level: warn, area: lanes} when AGENTS.md has no `## Test lanes` section, and points at octobots-doctor", () => {
+        agents("# Project\n\nRun pnpm test.\n");
+        const f = lanes(projectDir);
+        expect(f).toHaveLength(1);
+        expect(f[0]).toMatchObject({ level: "warn", area: "lanes" });
+        expect(f[0]!.msg).toContain("## Test lanes");
+        expect(f[0]!.fix).toContain("octobots-doctor");
+      });
+
+      it("warns, naming what is missing, when only one of fast: and coverage: is declared", () => {
+        agents("## Test lanes\n- fast: npm test\n");
+        const f = lanes(projectDir);
+        expect(f).toHaveLength(1);
+        expect(f[0]!.level).toBe("warn");
+        expect(f[0]!.msg).toMatch(/coverage:/);
+        expect(f[0]!.msg).not.toMatch(/\bfast:/);
+      });
+
+      it("warns when AGENTS.md is missing, and when it is not a readable regular file", () => {
+        expect(lanes(projectDir)).toMatchObject([{ level: "warn", area: "lanes" }]);
+        expect(lanes(projectDir)[0]!.msg).toMatch(/no AGENTS\.md/);
+        mkdirSync(join(projectDir, "AGENTS.md"));
+        expect(lanes(projectDir)).toMatchObject([{ level: "warn", area: "lanes" }]);
+        expect(lanes(projectDir)[0]!.msg).toMatch(/not a readable regular file/);
+        rmSync(join(projectDir, "AGENTS.md"), { recursive: true });
+        agents(`${"x".repeat(1024 * 1024 + 1)}\n`);
+        expect(lanes(projectDir)[0]!.msg).toMatch(/not a readable regular file/);
+      });
+
+      it("reports no lanes warning, and one ok finding naming both commands, when both are declared", () => {
+        agents("## Test lanes\n- fast: `pnpm --filter <pkg> test`\n- coverage: `pnpm coverage`\n");
+        const f = lanes(projectDir);
+        expect(f).toHaveLength(1);
+        expect(f[0]!.level).toBe("ok");
+        expect(f[0]!.msg).toContain("pnpm --filter <pkg> test");
+        expect(f[0]!.msg).toContain("pnpm coverage");
+      });
+
+      it("still lists the finding when .octobots/doctor-acks.json acknowledges it (only the primer honours acks)", () => {
+        agents("# Project\n");
+        writeFileSync(join(projectDir, ".octobots", "doctor-acks.json"), JSON.stringify({ acknowledged: [{ finding: "lanes", path: "AGENTS.md", date: "2026-10-06" }] }));
+        expect(lanes(projectDir)).toMatchObject([{ level: "warn", area: "lanes" }]);
+      });
+
+      it("never turns the run into a failure: a lanes warning leaves the exit code to the other checks", () => {
+        agents("# Project\n");
+        const fails = (JSON.parse(run(projectDir).out).findings as F[]).filter((x) => x.level === "fail").map((x) => x.area);
+        expect(fails).not.toContain("lanes");
+      });
+
+      it.each(LANES_CASES)("shared case: $name", ({ agents: text, declared }) => {
+        agents(text);
+        const f = lanes(projectDir);
+        expect(f).toHaveLength(1);
+        expect(f[0]!.level).toBe(declared ? "ok" : "warn");
+      });
+
+      it("parseTestLanes returns the commands it found", async () => {
+        const { parseTestLanes } = await import(join(SCRIPTS, "lanes.mjs"));
+        expect(parseTestLanes("## Test lanes\n- **fast:** `npm test`\n- coverage: npm run cov  \n")).toEqual({
+          section: true, fast: "npm test", coverage: "npm run cov",
+        });
+        expect(parseTestLanes("# nothing\n")).toEqual({ section: false, fast: null, coverage: null });
+        expect(parseTestLanes("## Test lanes\nprose only\n")).toEqual({ section: true, fast: null, coverage: null });
+      });
     });
 
     it("skills that disagree on version, or a primer behind the skills, fail", () => {

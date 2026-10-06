@@ -1,0 +1,155 @@
+{
+  "description": "Shared AGENTS.md cases for the `## Test lanes` declaration. lanes.mjs (doctor.js), primer.mjs's twin and the tests drive these; `declared` is the expected verdict.",
+  "cases": [
+    {
+      "name": "bullets with backticked commands",
+      "agents": "# Project\n\n## Test lanes\n\n- fast: `pnpm --filter <pkg> test`\n- coverage: `pnpm coverage`\n",
+      "declared": true
+    },
+    {
+      "name": "no section at all",
+      "agents": "# Project\n\nRun the tests with pnpm test.\n",
+      "declared": false
+    },
+    {
+      "name": "heading in any case",
+      "agents": "## test LANES\nfast: npm test\ncoverage: npm run cov\n",
+      "declared": true
+    },
+    {
+      "name": "h3 heading is not the section",
+      "agents": "### Test lanes\nfast: npm test\ncoverage: npm run cov\n",
+      "declared": false
+    },
+    {
+      "name": "h1 heading is not the section",
+      "agents": "# Test lanes\nfast: npm test\ncoverage: npm run cov\n",
+      "declared": false
+    },
+    {
+      "name": "indented heading is not the section",
+      "agents": " ## Test lanes\nfast: npm test\ncoverage: npm run cov\n",
+      "declared": false
+    },
+    {
+      "name": "only fast",
+      "agents": "## Test lanes\n- fast: npm test\n",
+      "declared": false
+    },
+    {
+      "name": "only coverage",
+      "agents": "## Test lanes\n- coverage: npm run cov\n",
+      "declared": false
+    },
+    {
+      "name": "empty values",
+      "agents": "## Test lanes\n- fast:\n- coverage:   \n",
+      "declared": false
+    },
+    {
+      "name": "backticks around nothing",
+      "agents": "## Test lanes\n- fast: ``\n- coverage: ` `\n",
+      "declared": false
+    },
+    {
+      "name": "declared after the next h2",
+      "agents": "## Test lanes\n\nTBD\n\n## Build\n- fast: npm test\n- coverage: npm run cov\n",
+      "declared": false
+    },
+    {
+      "name": "declared before the heading",
+      "agents": "- fast: npm test\n- coverage: npm run cov\n\n## Test lanes\nTBD\n",
+      "declared": false
+    },
+    {
+      "name": "one lane in the section, one after it",
+      "agents": "## Test lanes\n- fast: npm test\n## Other\n- coverage: npm run cov\n",
+      "declared": false
+    },
+    {
+      "name": "a heading inside a fence is not a heading",
+      "agents": "```md\n## Test lanes\nfast: a\ncoverage: b\n```\n",
+      "declared": false
+    },
+    {
+      "name": "a fenced h2 does not end the section",
+      "agents": "## Test lanes\nfast: a\n```md\n## Other\n```\ncoverage: b\n",
+      "declared": true
+    },
+    {
+      "name": "declarations in a fence inside the section",
+      "agents": "## Test lanes\n\n```\nfast: npm test\ncoverage: npm run cov\n```\n",
+      "declared": true
+    },
+    {
+      "name": "tilde fence",
+      "agents": "~~~\n## Test lanes\nfast: a\ncoverage: b\n~~~\n",
+      "declared": false
+    },
+    {
+      "name": "plain lines with no bullet",
+      "agents": "## Test lanes\nfast: npm test\ncoverage: npm run cov\n",
+      "declared": true
+    },
+    {
+      "name": "star and plus bullets",
+      "agents": "## Test lanes\n* fast: npm test\n+ coverage: npm run cov\n",
+      "declared": true
+    },
+    {
+      "name": "bold keys",
+      "agents": "## Test lanes\n- **fast:** npm test\n- **coverage**: npm run cov\n",
+      "declared": true
+    },
+    {
+      "name": "keys in any case",
+      "agents": "## Test lanes\nFast: npm test\nCOVERAGE: npm run cov\n",
+      "declared": true
+    },
+    {
+      "name": "space before the colon",
+      "agents": "## Test lanes\nfast : npm test\ncoverage : npm run cov\n",
+      "declared": true
+    },
+    {
+      "name": "longer words are not keys",
+      "agents": "## Test lanes\nfastest: npm test\nfast-lane: npm test\ncoverage-gate: npm run cov\n",
+      "declared": false
+    },
+    {
+      "name": "a key mid-line is not a declaration",
+      "agents": "## Test lanes\nrun fast: npm test\nthe coverage: npm run cov\n",
+      "declared": false
+    },
+    {
+      "name": "CRLF line endings",
+      "agents": "## Test lanes\r\n- fast: npm test\r\n- coverage: npm run cov\r\n",
+      "declared": true
+    },
+    {
+      "name": "section last in the file, no trailing newline",
+      "agents": "# P\n## Test lanes\nfast: a\ncoverage: b",
+      "declared": true
+    },
+    {
+      "name": "trailing spaces on the heading",
+      "agents": "## Test lanes   \nfast: a\ncoverage: b\n",
+      "declared": true
+    },
+    {
+      "name": "a trailing colon on the heading is a different heading",
+      "agents": "## Test lanes:\nfast: a\ncoverage: b\n",
+      "declared": false
+    },
+    {
+      "name": "a nested list under the section",
+      "agents": "## Test lanes\n\n- lanes:\n  - fast: npm test\n  - coverage: npm run cov\n",
+      "declared": true
+    },
+    {
+      "name": "empty file",
+      "agents": "",
+      "declared": false
+    }
+  ]
+}

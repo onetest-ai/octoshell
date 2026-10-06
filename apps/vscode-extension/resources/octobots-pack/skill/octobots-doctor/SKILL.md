@@ -1,6 +1,6 @@
 ---
 name: octobots-doctor
-description: Use when the session context says "Octobots health: run the octobots-doctor skill", when .octobots/pack-updates/pending.json lists a pending pack reconcile (a pack skill this workspace changed locally, staged by a pack update), or when doctor.js or validate.js report a pack or board health finding (pack reconcile pending, leftover workflows/ folders, CLAUDE_CONFIG_DIR, tests-pairing warnings), or when set-status.js warns about a legacy plan-review record, in a repo with an .octobots/ directory. Not for planning or recording board work (that is mission-planner) and not for building a planned task (that is mission-execution).
+description: Use when the session context says "Octobots health: run the octobots-doctor skill", when .octobots/pack-updates/pending.json lists a pending pack reconcile (a pack skill this workspace changed locally, staged by a pack update), or when doctor.js or validate.js report a pack or board health finding (pack reconcile pending, leftover workflows/ folders, CLAUDE_CONFIG_DIR, tests-pairing warnings), or when set-status.js warns about a legacy plan-review record, or when doctor.js reports a `lanes` finding or the session context says AGENTS.md declares no test lanes, in a repo with an .octobots/ directory. Not for planning or recording board work (that is mission-planner) and not for building a planned task (that is mission-execution).
 version: 57
 ---
 
@@ -21,7 +21,7 @@ node .claude/skills/octobots-doctor/scripts/pack-reconcile.mjs list
 ```
 
 Act on their findings: `pack reconcile pending` (§2-§3), leftover `workflows/` folders (§4), the
-`config-dir` finding (§5), validate.js's tests-pairing warnings (§7) and set-status.js's legacy plan-review warnings (§8). Skip a finding that
+`config-dir` finding (§5), the `lanes` finding (§9), validate.js's tests-pairing warnings (§7) and set-status.js's legacy plan-review warnings (§8). Skip a finding that
 `.octobots/doctor-acks.json` already acknowledges (§6).
 
 ## 2. Pending pack reconciles
@@ -79,7 +79,7 @@ For each named folder `.octobots/pack-updates/v<N>/<skill>/`:
    UPSTREAM-CANDIDATES.md.
 10. If any `- ESCALATED:` entry is open, stop work on this skill: the whole live SKILL.md stays
     untouched (no line, no non-conflicting change, no marker) until every escalation of this skill
-    is answered. Do not run done. Ask in your reply (§9).
+    is answered. Do not run done. Ask in your reply (§10).
 11. Otherwise install. In merged.md's frontmatter replace the `version:` line with
     `version: <N>+local` and add the line `reconciled-from: <sha256>` below it, both values exactly
     as `pack-reconcile.mjs list` prints them for this skill under `marker:`. Then copy merged.md byte for byte to `.claude/skills/<skill>/SKILL.md` and run:
@@ -140,8 +140,8 @@ user picks such a name, say so and ask for another.
 ### What you may write
 
 Write nothing outside `.claude/skills/<skill>/`, its staging folder and `.octobots/doctor-acks.json`
-(a retired skill's directory may also move to the new name the user chose, as above). Never CLAUDE.md, AGENTS.md,
-another skill, `.octobots/campaigns/` or pending.json.
+(a retired skill's directory may also move to the new name the user chose, as above). Never CLAUDE.md, AGENTS.md
+(except the `## Test lanes` section, §9, with the user's OK), another skill, `.octobots/campaigns/` or pending.json.
 
 ## 3. Open escalations and answers
 
@@ -172,7 +172,7 @@ cannot change their environment yourself; tell them. Never set or recommend
 
 ## 6. Declined findings: `.octobots/doctor-acks.json`
 
-When the user declines to act on a `workflows/` or config-dir finding, add an entry so the
+When the user declines to act on a `workflows/`, config-dir or `lanes` finding, add an entry so the
 SessionStart notice stops naming it (doctor.js and validate.js still list it). Create the file if it
 is absent, append, and keep every other entry. A pending reconcile is never acknowledged.
 
@@ -181,7 +181,8 @@ is absent, append, and keep every other entry. A pending reconcile is never ackn
   "acknowledged": [
     { "finding": "workflows", "path": "campaigns/<c>/workflows", "date": "<YYYY-MM-DD>" },
     { "finding": "workflows", "path": "campaigns/<c>/missions/<m>/workflows", "date": "<YYYY-MM-DD>" },
-    { "finding": "config-dir", "path": ".claude", "date": "<YYYY-MM-DD>" }
+    { "finding": "config-dir", "path": ".claude", "date": "<YYYY-MM-DD>" },
+    { "finding": "lanes", "path": "AGENTS.md", "date": "<YYYY-MM-DD>" }
   ]
 }
 ```
@@ -218,7 +219,32 @@ refuses. Write through `entity-io.mjs`: `loadEntity` the YAML, insert the two li
 heading line in `notes`, and `dumpEntity` it back, as mission-planner § Plan review shows. Never
 edit the YAML text by hand. Then run `validate.js` on the entity.
 
-## 9. Your reply
+## 9. Test lanes
+
+`doctor.js` reports a `lanes` finding when AGENTS.md has no `## Test lanes` section declaring both
+`fast:` and `coverage:` commands, and the SessionStart notice then ends with
+`AGENTS.md declares no test lanes.` The lanes are the commands `mission-execution` and the completion
+gate run: the fast lane for the full suite, and the coverage lane, run once, for coverage.
+
+Propose the section from the project's documented commands. Read the scripts in `package.json` (or the
+project's Makefile, tox file or CI workflow), and CLAUDE.md and AGENTS.md, then pick the command that
+runs the whole suite quickly (fast) and the command that measures coverage (coverage). Show the user
+the section you would add, in this form:
+
+```markdown
+## Test lanes
+
+- fast: `<the project's fast test command>`
+- coverage: `<the project's coverage command>`
+```
+
+Write it to AGENTS.md (appending the section; creating the file when there is none) only with the
+user's OK. Never invent a command the project does not document: when a lane has no documented
+command, tell the user and write that lane only with the command they name. Never change another part
+of AGENTS.md or CLAUDE.md. When the user declines, record the `lanes` entry in
+`.octobots/doctor-acks.json` (§6); doctor.js still lists the finding, but the primer stops naming it.
+
+## 10. Your reply
 
 End your reply with this block, filled in:
 
