@@ -4,7 +4,7 @@ title: "The panel uses theme tokens only, and every status shows a word and a di
 mission: M1
 covers: [M1-AC8, M1-AC9]
 kind: unit
-status: pass
+status: blocked
 last_run: {date: 2026-10-06, evidence: .octobots/campaigns/octoshell-0-1-1/tests/m1/runs/RUN-2026-10-06-001.md}
 priority: medium
 size: S
