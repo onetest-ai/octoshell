@@ -107,6 +107,28 @@ export function coversOf(data) {
   return Array.isArray(raw) ? raw : null;
 }
 
+/**
+ * A legacy TC: its frontmatter parses but carries none of `status`, `kind` or `mission` (the fields the TC
+ * format contract added; solo's uwb campaign predates them). It still lists, as status `unknown`; the
+ * migrate suggestion is the one line `legacyMessage`. Twin of tc-io.ts.
+ */
+export function isLegacyTc(data) {
+  return [data.status, data.kind, data.mission].every((v) => v === undefined || v === null);
+}
+
+/** The one-line suggestion for a legacy TC; the command is the one set-test-status.js (M6 T6.2) takes. */
+export const LEGACY_TC_MESSAGE = "legacy test case (no status, kind or mission) lists as unknown: run set-test-status.js <tc-file> --migrate";
+
+/**
+ * The migrate suggestion for the TC file `text` (a warning line, after the path), or null: set when the file is
+ * a legacy one (frontmatter parses, no status/kind/mission). Kept apart from `tcProblems`, which is the format
+ * contract M4 defined; callers add it after the problems of the same file.
+ */
+export function legacyTcNote(text) {
+  const fm = parseFrontmatter(text);
+  return fm.ok && isLegacyTc(fm.data) ? LEGACY_TC_MESSAGE : null;
+}
+
 const show = (v) => JSON.stringify(v);
 
 /** "M3b" for the folder token "m3b". */
@@ -149,6 +171,7 @@ export function tcProblems({ fileName, folder, text, acIds }) {
       const v = d[key];
       if (v !== undefined && v !== null && !allowed.includes(v)) out.push(`${key} ${show(v)} is not one of ${allowed.join(", ")}`);
     }
+
   }
   for (const heading of REQUIRED_SECTIONS) {
     if (!new RegExp(`^## ${heading}[ \\t]*$`, "m").test(fm.body)) out.push(`missing the "## ${heading}" section`);
@@ -254,7 +277,8 @@ export function missionTestsFindings({ campaignDir, campaign, base, mission }) {
   }
 
   for (const t of tcs) {
-    for (const p of tcProblems({ fileName: t.fileName, folder, text: t.text, acIds })) out.push(`${rel}/${t.fileName}: ${p}`);
+    const note = legacyTcNote(t.text);
+    for (const p of [...tcProblems({ fileName: t.fileName, folder, text: t.text, acIds }), ...(note ? [note] : [])]) out.push(`${rel}/${t.fileName}: ${p}`);
   }
   return out;
 }

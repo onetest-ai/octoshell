@@ -19,6 +19,8 @@ export const uiMessage = z.discriminatedUnion("type", [
   z.object({ type: z.literal("newBugInMission"), id: z.string() }),
   z.object({ type: z.literal("deleteBug"), bugId: z.string() }),
   z.object({ type: z.literal("openFile"), path: z.string() }),
+  /** A TC file, as its board-relative path (TestCase.path): the host resolves it and runs the guarded open command. */
+  z.object({ type: z.literal("openTestFile"), path: z.string() }),
 ]);
 export type UiMessage = z.infer<typeof uiMessage>;
 export type UiMessageType = UiMessage["type"];

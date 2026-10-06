@@ -1,6 +1,6 @@
 // apps/vscode-extension/src/protocol/rpc-contract.ts
 import { z } from "zod";
-import type { Campaign, Mission, Task, Bug } from "@octoshell/board";
+import type { Campaign, Mission, Task, Bug, TestCase, TestCaseStatus, MissionCoverage } from "@octoshell/board";
 import type { Appearance } from "../host/appearance-store.js";
 import type { Report as TokenomicsReport } from "@octoshell/tokenomics";
 
@@ -56,6 +56,43 @@ export interface CampaignSummary {
   cancelled: number;
   draft: number;
 }
+
+/** One count per TC status, every key always present (so a panel can render a zero or omit it). */
+export type TestStatusCounts = Record<TestCaseStatus, number>;
+
+/**
+ * One mission's row of the test summary: a `tests/m<n>/` folder and/or a board mission with an `M<n>` name token.
+ * `missionId` is null for a tests folder no mission names; `total` is 0 for a mission with no TCs.
+ */
+export interface MissionTestSummary {
+  missionId: string | null;
+  /** `M<n>` token. */
+  mission: string;
+  /** `m<n>` folder name under `tests/`. */
+  folder: string;
+  title: string | null;
+  missionStatus: string | null;
+  total: number;
+  counts: TestStatusCounts;
+  /** Uncovered AC ids, in order. Always empty for a cancelled mission and for a folder with no mission. */
+  uncovered: string[];
+}
+
+/** Test summary of one campaign (the campaign panel and the sidebar's Tests node). */
+export interface TestSummary {
+  campaignId: string;
+  total: number;
+  counts: TestStatusCounts;
+  /** Sum of `uncovered.length` over the rows: cancelled missions excluded, a live mission with no tests folder counts all its ACs. */
+  uncovered: number;
+  /** By mission number; rows of a mission with no TCs are included (total 0). */
+  missions: MissionTestSummary[];
+}
+
+/** A board id: non-empty and bounded, so a malformed call is rejected at the boundary. */
+const ID = z.string().min(1).max(200);
+/** A mission's tests folder token: `m2`, `M2`, `3b`. Anything else is rejected, never turned into a path. */
+const TEST_FOLDER = z.string().regex(/^[mM]?\d{1,4}[a-zA-Z]{0,3}$/);
 
 // ── Argument schemas (validated at the host boundary). projectId omitted unless the
 //    handler actually reads it (project:open). Unknown keys (e.g. an injected projectId)
@@ -137,6 +174,10 @@ export const rpcArgs = {
   "bug:setStatus": z.object({ bugId: z.string(), status: z.string() }),
   "bug:delete": z.object({ bugId: z.string() }),
   "bug:sync": z.object({ campaignId: z.string().optional(), missionId: z.string().optional() }),
+  // tests (M6): read-only views of the campaign's tests/m<n>/TC-*.md
+  "tests:list": z.object({ campaignId: ID, mission: TEST_FOLDER.optional() }),
+  "tests:coverage": z.object({ missionId: ID }),
+  "tests:summary": z.object({ campaignId: ID }),
 } satisfies Record<string, z.ZodType>;
 
 /** A single project entry returned by project:list (workspace = the open folder). */
@@ -193,6 +234,12 @@ export interface RpcResults {
   "bug:setStatus": { ok: true };
   "bug:delete": { ok: true };
   "bug:sync": { created: number };
+  /** The campaign's TCs (all missions, or the one named), by mission then file. Empty for an unknown campaign. */
+  "tests:list": TestCase[];
+  /** Which TCs cover each AC of the mission. `mission` is null (and `acs` empty) for an unknown mission or one with no `M<n>` token. */
+  "tests:coverage": MissionCoverage;
+  /** null for an unknown campaign. */
+  "tests:summary": TestSummary | null;
 }
 
 export type RpcMethod = keyof typeof rpcArgs & keyof RpcResults;

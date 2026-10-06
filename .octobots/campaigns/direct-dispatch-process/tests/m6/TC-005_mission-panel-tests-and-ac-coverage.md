@@ -4,7 +4,8 @@ title: "Mission panel: Tests section and AC coverage with uncovered ACs highligh
 mission: M6
 covers: [M6-AC4]
 kind: ui
-status: draft
+status: blocked
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-001.md}
 priority: critical
 size: L
 ---

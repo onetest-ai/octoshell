@@ -2,7 +2,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { boardRootOf, findLegacyWorkflowFolders, isCampaignDir, legacyWorkflowsWarning } from "./legacy-workflows.mjs";
-import { acIdsOf, missionToken, missionTestsFindings, readTestsText, tcProblems } from "./tc-io.mjs";
+import { acIdsOf, legacyTcNote, missionToken, missionTestsFindings, readTestsText, tcProblems } from "./tc-io.mjs";
 import { readPending, workspaceRootOf, MALFORMED_PENDING_NOTE } from "./pending-io.mjs";
 import { readEntity, resolveEntityFile, KIND_KEYS, KNOWN_KEYS } from "./entity-io.mjs";
 
@@ -142,7 +142,9 @@ function checkTcFile(file) {
     if (token?.folder === folder) { acIds = acIdsOf(token.id, m.acceptanceCriteria.length); break; }
   }
   const rel = relative(base, file).split(sep).join("/");
-  const problems = tcProblems({ fileName: basename(file), folder, text: readTestsText(file) ?? "", acIds });
+  const text = readTestsText(file) ?? "";
+  const note = legacyTcNote(text);
+  const problems = [...tcProblems({ fileName: basename(file), folder, text, acIds }), ...(note ? [note] : [])];
   console.log(`OK ${file}`);
   for (const p of problems) console.log(`warning: ${rel}: ${p}`);
   process.exit(0);

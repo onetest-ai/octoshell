@@ -3,7 +3,7 @@
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join10, relative as relative3 } from "node:path";
+import { join as join11, relative as relative3 } from "node:path";
 
 // src/harvest.ts
 import { execFileSync } from "node:child_process";
@@ -3774,8 +3774,206 @@ function loadEntity(text) {
 }
 
 // ../board/dist/board-model.js
-import { readdirSync as readdirSync3, readFileSync as readFileSync6, statSync as statSync2 } from "node:fs";
-import { basename as basename2, dirname as dirname2, join as join7 } from "node:path";
+import { readdirSync as readdirSync5, readFileSync as readFileSync7, statSync as statSync4 } from "node:fs";
+import { basename as basename2, dirname as dirname2, join as join8 } from "node:path";
+
+// ../board/dist/test-cases.js
+import { readdirSync as readdirSync4, statSync as statSync3 } from "node:fs";
+import { join as join7 } from "node:path";
+
+// ../board/dist/tc-io.js
+import { closeSync, constants, fstatSync, openSync, readdirSync as readdirSync3, readFileSync as readFileSync6, statSync as statSync2 } from "node:fs";
+var TC_KINDS = ["api", "ui", "cli", "unit"];
+var TC_STATUSES = ["draft", "ready", "pass", "fail", "blocked", "unknown"];
+var MAX_TC_BYTES = 4194304;
+function lineAt(text, pos) {
+  const i = text.indexOf("\n", pos);
+  return i < 0 ? { line: text.slice(pos), end: text.length } : { line: text.slice(pos, i), end: i + 1 };
+}
+function splitFrontmatter(text) {
+  const bom = text.charCodeAt(0) === 65279 ? 1 : 0;
+  const first = lineAt(text, bom);
+  if (first.line.trimEnd() !== "---")
+    return null;
+  let pos = first.end;
+  while (pos < text.length) {
+    const next = lineAt(text, pos);
+    if (next.line.trimEnd() === "---") {
+      return {
+        head: text.slice(0, first.end),
+        yaml: text.slice(first.end, pos),
+        tail: text.slice(pos, next.end),
+        body: text.slice(next.end)
+      };
+    }
+    pos = next.end;
+  }
+  return null;
+}
+function parseFrontmatter(text) {
+  const parts = splitFrontmatter(text);
+  if (!parts)
+    return { ok: false, body: text };
+  let data;
+  try {
+    data = /\S/.test(parts.yaml.replace(/^\s*#.*$/gm, "")) ? load(parts.yaml) ?? {} : {};
+  } catch {
+    return { ok: false, body: parts.body };
+  }
+  if (typeof data !== "object" || data === null || Array.isArray(data))
+    return { ok: false, body: parts.body };
+  return { ok: true, data, body: parts.body };
+}
+function coversOf(data) {
+  const raw = data.covers ?? data.requirements;
+  return Array.isArray(raw) ? raw : null;
+}
+var missionIdOfFolder = (folder) => `M${folder.slice(1)}`;
+function readTestsText(p) {
+  let fd;
+  try {
+    fd = openSync(p, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+  } catch {
+    return null;
+  }
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size > MAX_TC_BYTES)
+      return null;
+    return readFileSync6(fd, "utf8");
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+function missionToken(name) {
+  const m = /^(M\d+[a-z]*)\b/i.exec(String(name ?? "").trim());
+  return m ? { id: `M${m[1].slice(1).toLowerCase()}`, folder: m[1].toLowerCase() } : null;
+}
+
+// ../board/dist/test-cases.js
+var isoDay = (v) => {
+  if (v instanceof Date && !Number.isNaN(v.getTime()))
+    return v.toISOString().slice(0, 10);
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+};
+var h1Of = (body) => /^#[ \t]+(.+?)[ \t]*$/m.exec(body)?.[1] ?? null;
+function parseTestCase(opts) {
+  const { fileName, folder, text, path } = opts;
+  const stem = fileName.replace(/\.md$/, "");
+  const fm = parseFrontmatter(text);
+  const data = fm.ok ? fm.data : {};
+  const title = typeof data.title === "string" && data.title.trim() ? data.title.trim() : h1Of(fm.body) ?? stem;
+  const covers = [...new Set((coversOf(data) ?? []).filter((c) => typeof c === "string"))];
+  const kind = TC_KINDS.includes(data.kind) ? data.kind : null;
+  const status = TC_STATUSES.includes(data.status) ? data.status : "unknown";
+  const tc = { id: stem.split("_")[0], title, mission: missionIdOfFolder(folder), covers, kind, status, path };
+  const run = data.last_run;
+  if (typeof run === "object" && run !== null && !Array.isArray(run)) {
+    const date = isoDay(run.date);
+    const evidence = run.evidence;
+    if (date)
+      tc.lastRun = typeof evidence === "string" && evidence ? { date, evidence } : { date };
+  }
+  return tc;
+}
+var isDir = (p) => {
+  try {
+    return statSync3(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
+var statOrNull = (p) => {
+  try {
+    return statSync3(p);
+  } catch {
+    return null;
+  }
+};
+var stamp = (st) => `${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`;
+var missionFolderOf = (mission) => `m${String(mission).trim().replace(/^[mM]/, "").toLowerCase()}`;
+var folderOrder = (folder) => {
+  const m = /^m(\d+)(.*)$/.exec(folder);
+  return [Number(m?.[1] ?? 0), m?.[2] ?? ""];
+};
+var TestCaseReader = class {
+  root;
+  cache = /* @__PURE__ */ new Map();
+  constructor(root) {
+    this.root = root;
+  }
+  clear() {
+    this.cache.clear();
+  }
+  /** The campaign's TCs (all missions, or the one `mission` names), by mission then file name. `campaignFolder` is `campaigns/<slug>`. */
+  list(campaignFolder, mission) {
+    if (!this.root)
+      return [];
+    const testsDir = join7(this.root, campaignFolder, "tests");
+    let folders;
+    try {
+      folders = readdirSync4(testsDir).filter((d) => /^m\d+[a-z]*$/.test(d) && isDir(join7(testsDir, d)));
+    } catch {
+      return [];
+    }
+    if (mission !== void 0) {
+      const want = missionFolderOf(mission);
+      folders = folders.filter((d) => d === want);
+    }
+    folders.sort((a, b) => {
+      const [na, sa] = folderOrder(a);
+      const [nb, sb] = folderOrder(b);
+      return na - nb || (sa < sb ? -1 : sa > sb ? 1 : 0);
+    });
+    const live = /* @__PURE__ */ new Set();
+    const out = [];
+    for (const folder of folders) {
+      const dir = join7(testsDir, folder);
+      let names;
+      try {
+        names = readdirSync4(dir).filter((n) => /^TC-.*\.md$/.test(n)).sort();
+      } catch {
+        continue;
+      }
+      for (const fileName of names) {
+        const abs = join7(dir, fileName);
+        const st = statOrNull(abs);
+        if (!st?.isFile())
+          continue;
+        const path = `${campaignFolder}/tests/${folder}/${fileName}`;
+        live.add(path);
+        const key = stamp(st);
+        let hit = this.cache.get(path);
+        if (!hit || hit.stamp !== key) {
+          hit = { stamp: key, tc: parseTestCase({ fileName, folder, text: readTestsText(abs) ?? "", path }) };
+          this.cache.set(path, hit);
+        }
+        out.push({ ...hit.tc, covers: [...hit.tc.covers], ...hit.tc.lastRun ? { lastRun: { ...hit.tc.lastRun } } : {} });
+      }
+    }
+    if (mission === void 0) {
+      for (const p of [...this.cache.keys()])
+        if (p.startsWith(`${campaignFolder}/tests/`) && !live.has(p))
+          this.cache.delete(p);
+    }
+    return out;
+  }
+};
+function computeCoverage(opts) {
+  const { missionId, mission, criteria, cases } = opts;
+  if (!mission)
+    return { missionId, mission, acs: [], uncovered: [] };
+  const acs = criteria.map((text, i) => {
+    const ac = `${mission}-AC${i + 1}`;
+    const tcs = cases.filter((t) => t.mission === mission && t.covers.includes(ac)).map((t) => t.id);
+    return { ac, text, tcs, covered: tcs.length > 0 };
+  });
+  return { missionId, mission, acs, uncovered: acs.filter((a) => !a.covered).map((a) => a.ac) };
+}
+
+// ../board/dist/board-model.js
 var BoardModel = class {
   root;
   // Entity maps keyed by id
@@ -3799,8 +3997,13 @@ var BoardModel = class {
   bugByFolder = /* @__PURE__ */ new Map();
   // Files without an id marker
   missingIds = [];
+  // Test cases live in markdown under campaigns/<c>/tests/, not in the entity maps: read lazily, per campaign.
+  testCases;
+  // Each mission's criterion texts, whole (a YAML criterion may span lines; the rendered checklist cannot hold that).
+  missionCriteria = /* @__PURE__ */ new Map();
   constructor(artifactsRoot) {
     this.root = artifactsRoot;
+    this.testCases = new TestCaseReader(artifactsRoot);
   }
   /** Re-parse the entire disk tree. All internal state is reset first. */
   rebuild() {
@@ -3817,9 +4020,11 @@ var BoardModel = class {
     this.taskByFolder.clear();
     this.bugByFolder.clear();
     this.missingIds = [];
+    this.testCases.clear();
+    this.missionCriteria.clear();
     if (!this.root)
       return;
-    const campaignsDir = join7(this.root, "campaigns");
+    const campaignsDir = join8(this.root, "campaigns");
     const cSlugs = safeReaddir(campaignsDir);
     for (const cslug of cSlugs) {
       const cFolder = `campaigns/${cslug}`;
@@ -3848,10 +4053,10 @@ var BoardModel = class {
       this.campaignByFolder.set(cFolder, cId);
       this.missionsByCampaign.set(cId, []);
       this.bugsByCampaign.set(cId, []);
-      const cText = cRead.isYaml ? "" : safeReadFile(join7(this.root, cFolder, "campaign.md")) ?? "";
+      const cText = cRead.isYaml ? "" : safeReadFile(join8(this.root, cFolder, "campaign.md")) ?? "";
       const cBugStatuses = parseSectionBoardStatuses(cText, "## Bugs");
       const cMissionStatuses = parseSectionBoardStatuses(cText, "## Missions");
-      const cBugsDir = join7(this.root, cFolder, "bugs");
+      const cBugsDir = join8(this.root, cFolder, "bugs");
       const bSlugs = safeReaddir(cBugsDir);
       for (const bslug of bSlugs) {
         const bFolder = `${cFolder}/bugs/${bslug}`;
@@ -3885,7 +4090,7 @@ var BoardModel = class {
         this.bugByFolder.set(bFolder, bId);
         this.bugsByCampaign.get(cId).push(bId);
       }
-      const missionsDir = join7(this.root, cFolder, "missions");
+      const missionsDir = join8(this.root, cFolder, "missions");
       const mSlugs = safeReaddir(missionsDir);
       for (const mslug of mSlugs) {
         const mFolder = `${cFolder}/missions/${mslug}`;
@@ -3910,14 +4115,15 @@ var BoardModel = class {
           updatedAt: mRead.mtime
         };
         this.missions.set(mId, mission);
+        this.missionCriteria.set(mId, mf.criteria ? mf.criteria.map((c) => c.text) : checklistTexts(mf.acceptanceCriteria));
         this.missionByFolder.set(mFolder, mId);
         this.missionsByCampaign.get(cId).push(mId);
         this.tasksByMission.set(mId, []);
         this.bugsByMission.set(mId, []);
-        const mText = mRead.isYaml ? "" : safeReadFile(join7(this.root, mFolder, "mission.md")) ?? "";
+        const mText = mRead.isYaml ? "" : safeReadFile(join8(this.root, mFolder, "mission.md")) ?? "";
         const mBugStatuses = parseSectionBoardStatuses(mText, "## Bugs");
         const mTaskStatuses = parseSectionBoardStatuses(mText, "## Tasks");
-        const mBugsDir = join7(this.root, mFolder, "bugs");
+        const mBugsDir = join8(this.root, mFolder, "bugs");
         const mbSlugs = safeReaddir(mBugsDir);
         for (const bslug of mbSlugs) {
           const bFolder = `${mFolder}/bugs/${bslug}`;
@@ -3950,7 +4156,7 @@ var BoardModel = class {
           this.bugByFolder.set(bFolder, bId);
           this.bugsByMission.get(mId).push(bId);
         }
-        const tasksDir = join7(this.root, mFolder, "tasks");
+        const tasksDir = join8(this.root, mFolder, "tasks");
         const tSlugs = safeReaddir(tasksDir);
         for (const tslug of tSlugs) {
           const tFolder = `${mFolder}/tasks/${tslug}`;
@@ -4022,6 +4228,27 @@ var BoardModel = class {
   getBug(id) {
     return this.bugs.get(id) ?? null;
   }
+  // ── Test cases ───────────────────────────────────────────────────────────────
+  /**
+   * The campaign's test cases (`<campaign>/tests/m<n>/TC-*.md`, nothing else), by mission then file name;
+   * `mission` (`"m2"`, `"M2"`, `"2"` or `2`) narrows to one. Read lazily and cached per file on its
+   * size/mtime/ctime, so a status written to a TC shows on the next call; `rebuild()` drops the cache.
+   * Empty for a campaign the board does not have. Lenient: a malformed or legacy file is listed.
+   */
+  listTestCases(campaignId, mission) {
+    const campaign = this.campaigns.get(campaignId);
+    return campaign ? this.testCases.list(campaign.folderPath, mission) : [];
+  }
+  /** Which test cases cover each acceptance criterion of a mission (`covers`, else legacy `requirements`). */
+  getTestCoverage(missionId) {
+    const mission = this.missions.get(missionId);
+    if (!mission)
+      return { missionId, mission: null, acs: [], uncovered: [] };
+    const token2 = missionToken(mission.title);
+    const criteria = this.missionCriteria.get(missionId) ?? [];
+    const cases = token2 ? this.listTestCases(mission.campaignId, token2.folder) : [];
+    return computeCoverage({ missionId, mission: token2?.id ?? null, criteria, cases });
+  }
   // ── FolderPath → id indexes ──────────────────────────────────────────────
   campaignIdByFolderPath(folderPath) {
     return this.campaignByFolder.get(folderPath) ?? null;
@@ -4085,24 +4312,27 @@ function parseSectionBoardStatuses(text, sectionHeading) {
 }
 function safeReaddir(dir) {
   try {
-    return readdirSync3(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+    return readdirSync5(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
   } catch {
     return [];
   }
 }
 function safeReadFile(path) {
   try {
-    return readFileSync6(path, "utf8");
+    return readFileSync7(path, "utf8");
   } catch {
     return null;
   }
 }
 function safeMtime(path) {
   try {
-    return statSync2(path).mtimeMs;
+    return statSync4(path).mtimeMs;
   } catch {
     return Date.now();
   }
+}
+function checklistTexts(s) {
+  return s.split("\n").map((l) => /^- \[[ xX]\] (.*)$/.exec(l)?.[1]).filter((t) => t !== void 0);
 }
 function renderCriteria(cs) {
   return cs.map((c) => `- [${c.done ? "x" : " "}] ${c.text}`).join("\n");
@@ -4115,8 +4345,8 @@ function resolveStatus(raw) {
   return mapBoardStatus(raw) ?? "draft";
 }
 function readEntity(root, folderPath, kind) {
-  const yamlPath = join7(root, folderPath, `${kind}.yaml`);
-  const mdPath = join7(root, folderPath, `${kind}.md`);
+  const yamlPath = join8(root, folderPath, `${kind}.yaml`);
+  const mdPath = join8(root, folderPath, `${kind}.md`);
   const yText = safeReadFile(yamlPath);
   if (yText !== null) {
     const f = loadEntity(yText);
@@ -4128,6 +4358,7 @@ function readEntity(root, folderPath, kind) {
         name: f.name,
         description: f.description,
         acceptanceCriteria: renderCriteria(f.acceptanceCriteria),
+        criteria: f.acceptanceCriteria,
         ownStatus: resolveStatus(f.status),
         role: f.role,
         target: f.target,
@@ -4471,10 +4702,10 @@ function diffImpact(changed, edges, files, notes, limit = 20, minSupport = 2) {
 
 // src/doctor.ts
 import { existsSync as existsSync5 } from "node:fs";
-import { join as join8, relative as relative2 } from "node:path";
+import { join as join9, relative as relative2 } from "node:path";
 function doctor(repoRoot, config) {
   const checks = [];
-  if (!existsSync5(join8(repoRoot, ".git"))) {
+  if (!existsSync5(join9(repoRoot, ".git"))) {
     checks.push({
       name: "repository",
       state: "missing",
@@ -4534,7 +4765,7 @@ function doctor(repoRoot, config) {
   }
   const outDir = resolveOut(repoRoot, config);
   const outRel = relative2(repoRoot, outDir) || outDir;
-  if (isIgnored(repoRoot, join8(outDir, "clusters.json"))) {
+  if (isIgnored(repoRoot, join9(outDir, "clusters.json"))) {
     checks.push({
       name: "artifact durability",
       state: "warn",
@@ -4684,7 +4915,7 @@ function drift(edges, files, spine, limit = 20, minSupport = 2, notes = []) {
 }
 
 // src/own.ts
-import { statSync as statSync3 } from "node:fs";
+import { statSync as statSync5 } from "node:fs";
 
 // src/attribution.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
@@ -4824,7 +5055,7 @@ function isRepoFile(repoRoot, path) {
   const abs = insideRepo(repoRoot, path);
   if (abs === null) return false;
   try {
-    return statSync3(abs).isFile();
+    return statSync5(abs).isFile();
   } catch {
     return false;
   }
@@ -5015,8 +5246,8 @@ function renderMap(analysis, budgetTokens, purpose) {
 }
 
 // src/worklog.ts
-import { readFileSync as readFileSync7 } from "node:fs";
-import { join as join9 } from "node:path";
+import { readFileSync as readFileSync8 } from "node:fs";
+import { join as join10 } from "node:path";
 function optString2(raw, key) {
   const v = raw[key];
   return typeof v === "string" ? v : null;
@@ -5057,7 +5288,7 @@ function readWorklog(repoRoot, warn = defaultWarn) {
   if (root === null) return [];
   let text;
   try {
-    text = readFileSync7(join9(root, "tokenomics", "worklog.jsonl"), "utf8");
+    text = readFileSync8(join10(root, "tokenomics", "worklog.jsonl"), "utf8");
   } catch {
     return [];
   }
@@ -5320,7 +5551,7 @@ function runMapCommand(repoRoot, config, since, now, json) {
   const purpose = purposeByModule(answers, notes, files, spine.moduleOf);
   const mapText = renderMap(analysis, config.budgetTokens, purpose);
   mkdirSync2(outDir, { recursive: true });
-  writeFileSync2(join10(outDir, "map.md"), mapText);
+  writeFileSync2(join11(outDir, "map.md"), mapText);
   writeArtifact(outDir, {
     version: 1,
     clusters: analysisToClusters(analysis),

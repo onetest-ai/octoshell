@@ -1,0 +1,10 @@
+## step2 diff vs origin/feat/direct-dispatch-process
+--- a/apps/vscode-extension/scripts/graph-payload-versions.json
++++ b/apps/vscode-extension/scripts/graph-payload-versions.json
+-  "57": "ace3408c2457bb0db41cd1f7ea720f6bd49fcfc8b65c721e3824d966cdb86c66"
++  "57": "12c27149c08d945c4df065c97302c1713bdb6065fd623edecaf264766d46bc6a"
+## step3
+NO_NEW_RUNTIME_DEPS
+ ✓ test/validate-tc-parity.test.ts > TC warnings: validate.js and validateBoard > say the same text for malformed and legacy files on a synthetic board, and `validate.js <tc>` prints it too
+ ✓ test/validate-tc-parity.test.ts > TC warnings: validate.js and validateBoard > agree as sets over real boards, and the legacy suggestions are exactly the files with no status, kind or mission
+      Tests  2 passed (2)

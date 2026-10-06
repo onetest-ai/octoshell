@@ -4,7 +4,8 @@ title: "0.1.0 VSIX: workflow grep hits only the allow-list, new scripts present,
 mission: M6
 covers: [M6-AC8]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-002.md}
 priority: critical
 size: M
 ---
@@ -68,7 +69,7 @@ pnpm lint && pnpm build && pnpm typecheck && pnpm test && pnpm coverage && echo 
 | # | Action | Expected Result |
 |---|--------|----------------|
 | 1 | Read the release commit and version | Subject `chore(ext): release 0.1.0 with workflow pack v57`; the only file is apps/vscode-extension/package.json; version 0.1.0 |
-| 2 | Classify every line of vsix-hits.txt | Each hit is one of: the validate/doctor 'no longer read' text; the legacy-folder paragraph in a skill (octobots-doctor's included); tokenomics' wf_ transcript reader; the installer's RETIRED_SKILLS/RETIRED_FILES lists in dist/extension.js; extension/resources/shipped-skills.json.br (the brotli-compressed store of historical SKILL.md bodies); the disposing octoshell.workflow serializer. Any other hit FAILs |
+| 2 | Classify every line of vsix-hits.txt | Each hit is one of: the validate/doctor 'no longer read' text; the legacy-folder paragraph in a skill (octobots-doctor's included); tokenomics' wf_ transcript reader; the installer's RETIRED_SKILLS/RETIRED_FILES lists in dist/extension.js; extension/resources/shipped-skills.json.br (the brotli-compressed store of historical SKILL.md bodies); the disposing octoshell.workflow serializer; the mission-execution SKILL.md section headed `## No \`Workflow\` tool, no \`workflow.js\`` (heading plus the lines in it naming workflow.js); extension/changelog.md's removed-commands line naming octoshell.newWorkflow. Any other hit FAILs |
 | 3 | Check the new scripts, skills, store and markers | qa-env.mjs, scan-parked.js, add-tests.js, set-test-status.js, tc-io.mjs, pack-reconcile.mjs, octobots-doctor and the store present; no workflow-designer; every `version:` and `octobots-pack-version` reads 57 |
 | 4 | Install the VSIX's pack into one solo copy with the default, and into another with Overwrite | Default: `pending` is [mission-execution, mission-completion-gate], both with base source workspace-git and version 56, `after` upToDate false, upToDateExceptLocal true. Overwrite: `changed` is the same two (workflow-designer is not a deviation); `.before` false, `.after.upToDate` true with 0 deviations; workflow-designer and the 7 retired files gone; create-team.js and solo's non-pack skills kept |
 | 5 | One reconcile against the 0.1.0 pack on a git copy of solo (one rep) | Both forks `57+local`; `make edgeserver-test-fast`, `0 xfailed` and the perl alarm each present; `rules 1..n`; the no-`timeout` rule stated exactly once (M5's rule and solo's merged, not duplicated); an ESCALATED entry in DECISIONS.md is BLOCKED on the user's answer only when its two sides really differ in `diff base.md upstream.md`, and a FAIL otherwise |

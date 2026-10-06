@@ -1,0 +1,3 @@
+chore(ext): release 0.1.0 with workflow pack v57
+apps/vscode-extension/package.json
+0.1.0

@@ -127,3 +127,26 @@ describe("test/ conventions", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * M6 T6.4 review: the webview bundle must not reach into `src/host/` (extension-host, Node side). Shared, pure
+ * code lives in `src/protocol/`. A host import from the webview is one edit away from pulling Node APIs into the
+ * vite bundle, so the boundary is enforced here rather than by convention.
+ */
+describe("webview/host boundary", () => {
+  const WEBVIEW_DIR = join(TEST_DIR, "..", "src", "webview");
+  it("no src/webview file imports from src/host", () => {
+    const offenders = listTestFiles(WEBVIEW_DIR).filter((rel) =>
+      /from\s+["'](\.\.\/)+host\/|import\(\s*["'](\.\.\/)+host\//.test(readFileSync(join(WEBVIEW_DIR, rel), "utf8")),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it("the shared protocol modules import nothing Node-only", () => {
+    const PROTOCOL_DIR = join(TEST_DIR, "..", "src", "protocol");
+    const offenders = listTestFiles(PROTOCOL_DIR).filter((rel) =>
+      /from\s+["'](node:|fs["']|path["']|os["']|child_process["']|vscode["'])/.test(readFileSync(join(PROTOCOL_DIR, rel), "utf8")),
+    );
+    expect(offenders).toEqual([]);
+  });
+});

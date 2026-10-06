@@ -1,11 +1,23 @@
 name: 'T6.3 - Host: Tests node in the sidebar tree and BoardHost API'
-status: draft
+status: done
 role: js-dev
 description: 'Scope: BoardHost test API (list/coverage/summary) over BoardModel; CampaignsTree `Tests` node grouped by mission with status counts and TC leaf items (status icon, click opens the file via the existing openFile path); RPC methods tests:list / tests:coverage; watcher refresh without a reload loop. Out of scope: webview panels (T6.4). Downstream: T6.4 consumes the RPC.'
 acceptance_criteria:
   - text: apps/vscode-extension/test/campaigns-tree-tests.test.ts proves the Tests node, per-mission count labels and TC leaves behave per mission AC3 on this campaign's tests and, when OCTOBOTS_BOARD_COPIES is set, on a copy of solo's uwb tests
-    done: false
+    done: true
   - text: tests:* RPC contract schemas added and covered in apps/vscode-extension/test/contract.test.ts and apps/vscode-extension/test/rpc-dispatcher.test.ts; no rebuild from runs/ or evidence/ writes (M4-AC6)
-    done: false
+    done: true
   - text: apps/vscode-extension/test/board-watcher.test.ts proves a TC status change on disk (a set-test-status.js write to tests/m<n>/TC-*.md) updates the Tests node counts and the open mission panel within one debounce, with exactly one rebuild
-    done: false
+    done: true
+notes: |
+  ## QA verification (2026-10-06)
+
+  Verdict: PASS for the automated half; TC-004 live sidebar half BLOCKED (manual F5, script appended as Part D of tests/m7/manual/T7.4-F5-script.md). TC-004 frontmatter not touched (T6.5).
+
+  Harness: real CampaignsTree + BoardHost, stubbed vscode module, on cp -R copies of this .octobots and of solo (read only, solo git status unchanged).
+  - Tests node, this campaign: description "86 · 71✓ 4 blocked 11 draft"; groups "m1 · 11 · 11✓", "m2 · 12 · 12✓", "m3 · 10 · 8✓ 2 blocked", "m4 · 12 · 12✓", "m5 · 13 · 12✓ 1 blocked", "m6 · 11 · 11 draft", "m7 · 17 · 16✓ 1 blocked". Counts equal the TC files on disk.
+  - Solo uwb copy: "116 · 116 unknown", groups m1..m5 (22/32/22/23/17 unknown); no m6 group (uwb has no tests/m6). Campaigns without TCs (octograph etc.) have no Tests node.
+  - Leaf icons (m6 draft): ThemeIcon "edit" with theme token testing.iconUnset; no hardcoded colour. Click command octoshell.openTestFile, argument the absolute TC path (e.g. .../tests/m6/TC-004_sidebar-tests-node-counts.md).
+  - Live update: set-test-status.js TC-004 pass on the copy, then one BoardHost.reconcile(): Tests "86 · 71✓ 4 blocked 11 draft" -> "86 · 72✓ 4 blocked 10 draft", m6 group -> "m6 · 11 · 1✓ 10 draft"; 1 rebuild counted (the debounce itself is proven by board-watcher.test.ts).
+  - Path guard testFileToOpen: real TC admitted; ../../etc/hosts, /etc/hosts, campaign.yaml, tests/m1/README.md, undefined all null.
+  - Gate: pnpm build, typecheck, lint, test (tokenomics 102, board 800, extension 1150, graph 655), coverage:pack all exit 0. gh pr checks 166: build pass (both runs).

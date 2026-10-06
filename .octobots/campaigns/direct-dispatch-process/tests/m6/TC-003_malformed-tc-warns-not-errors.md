@@ -4,7 +4,8 @@ title: "A malformed TC is a warning in validateBoard and validate.js, never an e
 mission: M6
 covers: [M6-AC2, M6-AC7]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-001.md}
 priority: high
 size: M
 ---

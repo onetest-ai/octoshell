@@ -1,11 +1,11 @@
 name: M6 - Test cases are first-class on the board
-status: draft
+status: done
 description: Test cases become a board concept, not just files. The board library parses .octobots/campaigns/<c>/tests/m<n>/TC-*.md into a TestCase entity per M4's TC format contract (frontmatter id, title, mission, covers, kind, status, optional last_run). The extension shows a Tests node per campaign grouped by mission with status counts, a Tests section and AC coverage view on the mission panel, and a test summary on the campaign panel (uncovered ACs highlighted in warning style). QA writes results back to each TC's status through set-test-status.js, so the board reflects the run. Legacy TC files without the new frontmatter still list, as status `unknown`, with a one-line migrate suggestion. Ends with the 0.1.0 release (T6.6). Depends on M3 (workflow removal) and M4 (tests folder convention, add-tests.js, TC format contract, tc-io.mjs); the release (T6.6) also needs M7 (the reconcile installer and octobots-doctor ship in the same VSIX).
 acceptance_criteria:
   - text: '@octoshell/board parses .octobots/campaigns/<c>/tests/m<n>/TC-*.md into TestCase { id, title, mission, covers, kind, status, lastRun?, path } per M4''s TC format contract (status draft|ready|pass|fail|blocked, `unknown` when absent; lastRun from last_run {date, evidence}); only TC-*.md files are parsed (README.md, runs/, evidence/ are not); exposes listTestCases(campaign[, mission]) and per-mission AC coverage computed from frontmatter covers (or requirements); the YAML entity model and ids are unchanged'
-    done: false
+    done: true
   - text: A malformed TC (unparseable frontmatter, unknown status or kind, id not matching the filename) is reported by validate (validateBoard and validate.js) as a warning, never an error, and is still listed; a legacy TC with no status/kind/mission frontmatter (solo's uwb campaign) lists with status `unknown`, accepts `requirements` as the alias of `covers`, derives mission from the m<n> folder, and gets a one-line migrate suggestion naming set-test-status.js --migrate
-    done: false
+    done: true
   - text: The extension sidebar shows a `Tests` node under each campaign (when it has TCs), grouped by mission, each group labelled with counts by status (e.g. `m2 · 32 · 30✓ 1✗ 1 blocked`); expanding lists the TCs with a status icon; clicking a TC opens its file
     done: false
   - text: The mission panel has a Tests section listing the mission's TCs with status, and an AC coverage view mapping each mission AC to its covering TCs, with uncovered ACs highlighted in warning style (never error style); a mission with no tests shows an empty state with the add-tests.js hint
@@ -13,11 +13,11 @@ acceptance_criteria:
   - text: 'The campaign panel shows a test summary across all missions: totals by status (incl. unknown) and the count of uncovered ACs, with each mission''s row linking to its mission panel'
     done: false
   - text: '`set-test-status.js <tc-file> <status> [--evidence <path>] [--date <YYYY-MM-DD>]` (status: draft|ready|pass|fail|blocked) updates only the frontmatter status and last_run {date, evidence} (body byte-identical), is idempotent, and exits 2 on an invalid status (including `unknown`) or a non-TC path; `set-test-status.js <tc-file> --migrate [<status>]` takes no status by default, adds the missing frontmatter to a legacy file (id from the filename, title from the H1, mission from the folder, covers from requirements) and sets status `unknown` unless a status is given, body byte-identical; the gate''s QA phase and the last QA task skill text call it for every TC they run, mapping PASS -> pass, FAIL -> fail, BLOCKED and UNREACHABLE -> blocked; the extension picks the write up through the watcher''s normal debounced rebuild (M4-AC6) with no reload loop'
-    done: false
+    done: true
   - text: pnpm lint/build/typecheck/test/coverage are green and coverage:pack passes; graph payload regenerated with the 57 hash rewritten in a visible diff line; pack validate.js and packages/board validate.ts emit identical TC messages (parity test); the extension gains no runtime dependency
-    done: false
-  - text: 'Given the 0.1.0 VSIX built from feat/direct-dispatch-process after T6.1-T6.5 (release commit `chore(ext): release 0.1.0 with workflow pack v57`, touching only apps/vscode-extension/package.json): grepping its extension/ tree for `Workflow(`, workflow.js, add-workflow, sync-meta, add-run, mission-input, workflow-designer and octoshell.newWorkflow hits only the validate/doctor ''no longer read'' text, the legacy-folder paragraph, tokenomics'' wf_ reader, the installer''s RETIRED_SKILLS/RETIRED_FILES lists, extension/resources/shipped-skills.json.br (the shipped-skill store) and the disposing octoshell.workflow serializer; it contains qa-env.mjs, scan-parked.js, add-tests.js, set-test-status.js, tc-io.mjs, skill/octobots-doctor/SKILL.md, pack-reconcile.mjs and resources/shipped-skills.json.br, and every pack marker reads 57; installing its pack into a copy of solo''s .claude with the default Reconcile stages exactly mission-execution and mission-completion-gate (base source workspace-git, v56) and leaves them byte-identical, and with Overwrite (`--local-changes=overwrite`; M7-AC3) removes workflow-designer and the 7 retired scripts, keeps create-team.js, and gives packStatus upToDate: true with no deviations; one fresh agent running octobots-doctor on a further git copy of solo staged by that pack reconciles both forks to `57+local` with the dispatch, lane, no-xfail and macOS-timeout anchors kept, the § Dispatch rules numbered without duplicates and no rule stated twice (the 0.1.0 text includes M5''s dispatch rules, which overlap solo''s), an ESCALATED entry being a BLOCKED (on the user''s answer) only when its two sides really differ in `diff base.md upstream.md` and a FAIL otherwise; validate.js reports no tests-pairing warning on any of this campaign''s seven missions; scan-parked.js on octoshell exits 0 with 0 unsigned hits; pnpm lint/build/typecheck/test/coverage are green'
-    done: false
+    done: true
+  - text: 'Given the 0.1.0 VSIX built from feat/direct-dispatch-process after T6.1-T6.5 (release commit `chore(ext): release 0.1.0 with workflow pack v57`, touching only apps/vscode-extension/package.json): grepping its extension/ tree for `Workflow(`, workflow.js, add-workflow, sync-meta, add-run, mission-input, workflow-designer and octoshell.newWorkflow hits only the validate/doctor ''no longer read'' text, the legacy-folder paragraph, tokenomics'' wf_ reader, the installer''s RETIRED_SKILLS/RETIRED_FILES lists, extension/resources/shipped-skills.json.br (the shipped-skill store) and the disposing octoshell.workflow serializer; the mission-execution SKILL.md section headed `## No \`Workflow\` tool, no \`workflow.js\`` (its heading and the lines in it that name workflow.js); the release notes extension/changelog.md naming the removed command octoshell.newWorkflow; it contains qa-env.mjs, scan-parked.js, add-tests.js, set-test-status.js, tc-io.mjs, skill/octobots-doctor/SKILL.md, pack-reconcile.mjs and resources/shipped-skills.json.br, and every pack marker reads 57; installing its pack into a copy of solo''s .claude with the default Reconcile stages exactly mission-execution and mission-completion-gate (base source workspace-git, v56) and leaves them byte-identical, and with Overwrite (`--local-changes=overwrite`; M7-AC3) removes workflow-designer and the 7 retired scripts, keeps create-team.js, and gives packStatus upToDate: true with no deviations; one fresh agent running octobots-doctor on a further git copy of solo staged by that pack reconciles both forks to `57+local` with the dispatch, lane, no-xfail and macOS-timeout anchors kept, the § Dispatch rules numbered without duplicates and no rule stated twice (the 0.1.0 text includes M5''s dispatch rules, which overlap solo''s), an ESCALATED entry being a BLOCKED (on the user''s answer) only when its two sides really differ in `diff base.md upstream.md` and a FAIL otherwise; validate.js reports no tests-pairing warning on any of this campaign''s seven missions; scan-parked.js on octoshell exits 0 with 0 unsigned hits; pnpm lint/build/typecheck/test/coverage are green'
+    done: true
 documents:
   - label: M6 functional test cases
     target: .octobots/campaigns/direct-dispatch-process/tests/m6/README.md
@@ -25,7 +25,7 @@ tokenomics:
   effort_days: 3.5
   size_tshirt: L
   complexity_score: 17
-notes: |-
+notes: |
   ## Planning notes (Rio, 2026-10-05)
 
   Requested by the user on 2026-10-05 as a first-class concern: test cases are a critical part of every campaign.
@@ -38,3 +38,65 @@ notes: |-
   ## Release (plan-review fix, 2026-10-05)
 
   Decision 5 (0.1.0) is owned here: AC8 and T6.6. T6.6 runs AFTER the QA task T6.5 on purpose: the release is cut from the QA-passed tree, and its own TC-011 (VSIX verification) is executed black-box by a qa-engineer dispatch and recorded with set-test-status.js. The pack inside the VSIX is installed through apps/vscode-extension/scripts/qa/install-pack.mjs --pack-root <unzipped>/extension/resources/octobots-pack. After publishing, re-run "Octobots: Install Octobots Pack" in octoshell's own checkout and in every dev workspace that took an intermediate v57 install from an M1-M5 build (packStatus compares integers only, so 0.1.0 will not re-prompt them).
+
+  ## QA verification (T6.5, qa-engineer, 2026-10-06; full record in the T6.5 task notes)
+
+  Verdict: TC-001..010 run on the real boards (octoshell's own, solo's copies); 7 PASS, 3 BLOCKED (TC-004/005/006: automatable halves PASS, live F5 halves manual and pending the user's run of `tests/m7/manual/T7.4-F5-script.md` Parts D and E), 0 FAIL, no bug filed. TC-011 (AC8) is T6.6's and was not run. Run file: `.octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-001.md`. Every result was written with the pack's `set-test-status.js` (dogfood): the board shows M6 pass 7, blocked 3, draft 1. Solo was read only (status, HEAD and the 1209-file `.octobots` digest unchanged).
+
+  Mission criteria with evidence (not ticked here; the gate ticks them):
+  - M6-AC1 board library parses TC files: TC-001 (86 TCs, 0 mismatches), TC-002 (22 of 22 uwb m1). PASS.
+  - M6-AC2 malformed/legacy warning, unknown, migrate suggestion: TC-002, TC-003, TC-008. PASS.
+  - M6-AC3 sidebar Tests node: TC-004 automatable half PASS (18 tests); the live tree is manual and pending F5 Part D. Partly evidenced.
+  - M6-AC4 mission panel Tests + AC coverage: TC-005 automatable half PASS (10 tests; real gap M1-AC11 surfaced in the data); live panel pending F5 Part E. Partly evidenced.
+  - M6-AC5 campaign test summary: TC-006 automatable half PASS (5 tests; real gaps M1-AC11, M2-AC10, M6 x5); live panel pending F5 Part E. Partly evidenced.
+  - M6-AC6 set-test-status.js writes back, gate/QA call it: TC-007, TC-008, TC-009 (this run's own write-back and the skill text). PASS.
+  - M6-AC7 gates, parity, payload: TC-003, TC-010 (all gates exit 0; coverage:pack 97.95/88.09/98.05/97.95; one payload line; no new dependency). PASS.
+  - M6-AC8 0.1.0 VSIX: TC-011, not run (T6.6, needs the VSIX cut from this QA-passed tree). No evidence yet.
+  Not pass: TC-004, TC-005, TC-006 are `blocked` (manual live halves pending, no live UI claim made).
+
+  ## AC8 allow-list amendment (T6.6, 2026-10-06)
+
+  Per T6.6-AC4 (input from the M2 T2.3 review) the campaign-AC2 VSIX grep allow-list now names mission-execution/SKILL.md's '## No `Workflow` tool, no `workflow.js`' section, and the 0.1.0 release notes (extension/changelog.md), whose removed-commands list must name octoshell.newWorkflow (T6.6-AC1/AC8). Applied to M6-AC8 and TC-011 step 2 by the orchestrator.
+
+  ## Completion gate (2026-10-06): GREEN
+
+  - **Base:** feat/direct-dispatch-process.
+  - **Mission branch:** feat/direct-dispatch-process-m6.
+  - **PRs:**
+    - #164 T6.1 TestCase entity, coverage and migrate warnings in the board library
+    - #165 T6.2 set-test-status.js and gate/QA skill text
+    - #166 T6.3 Tests node in the sidebar and the tests:* RPC
+    - #167 T6.4 mission Tests + AC coverage and campaign test summary
+    - #168 T6.5 mission QA run (tests/m6; RUN-2026-10-06-001; 7 pass, 3 blocked manual)
+    - #169 T6.6 release 0.1.0 with workflow pack v57 (build half)
+
+  1. **Tests + coverage (phase 1, run as written in the shipped gate skill):** build, typecheck, lint and test all exit 0.
+     - Counts: tokenomics 102, board 800, extension 1176, graph 655.
+     - Coverage: board 93.99%, pack 97.95%.
+     - scan-parked: 0 unsigned, 10 allowed.
+     - The shipped-skill store is append-only (474 to 486, 0 removed or changed).
+     - Payload: a clean rebuild is byte-identical; the 57 hash is one visible line.
+     - Changed-line coverage 95.8% (825/861, counting dump-tests.mjs measured by c8). Files under 80%: package-vsix.mjs (vsce glue; its step plan in package-steps.mjs is 55/55), extension.ts (command registration; the guard is tested directly), chat-entry.tsx (1 line).
+  2. **Black-box QA (Sage):** see T6.5's `## QA verification` block and T6.6's `## QA verification` block (TC-011 against the 0.1.0 VSIX) rather than a copy of them.
+  3. **Critical review (Rio):** GREEN, no blocking findings, no fix PR, no release re-cut.
+     - Release commit ea432393 is intact and touches only apps/vscode-extension/package.json. Nothing in apps/ or packages/ changed after it.
+     - Release artifact: apps/vscode-extension/octobots-0.1.0.vsix, built at ea432393. Rio re-grepped it: 12 hits, all on the AC8 allow-list.
+     - The CHANGELOG is accurate against git history.
+  4. **Tokenomics:** M6 cost $30.81 API-equivalent, 605 turns, orchestrator 24% (29 sub-agent dispatches).
+     - Command (installed v57 scripts): for s in collect rollup render; do node .octobots/tokenomics/$s.mjs --project-dir /Users/arozumenko/Development/octoshell; done. Read from .octobots/tokenomics/runs.json, row direct-dispatch-process/M6. Collected at the moment of the gate, so the turns after it (this record, the mission PR) are not in it. The tokenomics files are not committed.
+  5. **Acceptance-criteria rulings:**
+     - **AC1, AC2, AC6, AC7, AC8 TICKED** on the evidence in T6.5's and T6.6's QA blocks.
+     - **AC3, AC4, AC5 left UNTICKED.** Their automatable halves pass (TC-004/005/006), but the live UI halves need the user's F5 run of `tests/m7/manual/T7.4-F5-script.md` Parts D and E. Same as the M3 AC5 / M5 AC2 precedent. The mission is set done with these open.
+
+  **Manual items still open:** AC3 (Tests node in the live sidebar, Part D) and AC4/AC5 (mission panel Tests + AC coverage, campaign test summary, Part E). They are the user's.
+
+  **Open, not blocking:**
+  1. CHANGELOG.md:13 wording contradicts itself ("If you still have such files, they were already migrated away"). It ships inside the 0.1.0 VSIX, so fixing it needs a re-cut or a later patch release; the user decides.
+  2. The CHANGELOG omits M1's campaign-level cost rows.
+  3. package-vsix.mjs does not build the packages first (existing behaviour); run `pnpm build` before `pnpm package`.
+  4. testFileToOpen accepts any TC-*.md at depth 4 or more under tests/ (harmless).
+  5. The tree recomputes testSummary per group, causing many stats per refresh (fine at current sizes).
+  6. A cancelled mission shows no uncovered ACs in the campaign summary but does in its own panel (documented choice).
+  7. Pending user decisions from TC-011's micro-test: solo's land-step full-suite rule, and solo's gate green rule (`0 xfailed` vs `0 xfailed or todo` + scan-parked).
+  8. Octoshell's doctor reports 5 leftover workflows/ folders in the octograph campaign. Each is removed only with the user's per-folder yes.
+  9. Process: during the gate review, the orchestrator installed the v57 pack into octoshell (user-approved, T6.6 AC3, commit 67717f5d). It is board-only, with no code impact.

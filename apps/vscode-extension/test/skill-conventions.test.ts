@@ -469,7 +469,11 @@ describe("QA runs the test cases on real data (M4-AC5): the gate and the last ta
     ["ticks exactly the criteria with evidence", /tick(s)? exactly the criteria (that have|with) evidence/i],
     ["could not drive the browser / log in is BLOCKED", /could not drive the browser[^.]*log in[^.]*BLOCKED/i],
     ["notes a manual (F5/human) execution as manual in the RUN file", /manual[^.]*\(F5[^.]*\)[^.]*noted as manual in the RUN file|noted as manual in the RUN file/i],
-    ["edits the TC frontmatter status by hand for now", /frontmatter `status`[^.]*by hand/],
+    ["calls set-test-status.js for every TC run, at its installed path", /Call `set-test-status\.js` for every TC run[\s\S]{0,60}`\.claude\/skills\/mission-planner\/scripts\/set-test-status\.js`/],
+    ["maps PASS -> pass, FAIL -> fail, BLOCKED and UNREACHABLE -> blocked", /PASS -> `pass`, FAIL -> `fail`, BLOCKED and UNREACHABLE -> `blocked`/],
+    ["gives a literal set-test-status.js example with --evidence", /`node \.claude\/skills\/mission-planner\/scripts\/set-test-status\.js \.octobots\/campaigns\/<c>\/tests\/m<n>\/TC-003_<slug>\.md pass --evidence \.octobots\/campaigns\/<c>\/tests\/m<n>\/runs\/RUN-2026-10-06-001\.md`/],
+    ["sends a legacy TC through --migrate", /legacy TC[\s\S]{0,200}`[^`]*--migrate`/],
+    ["never edits the status by hand", /Never edit the status (or `last_run` )?by hand/],
   ];
 
   for (const [label, re] of terms) {
@@ -499,6 +503,9 @@ describe("QA runs the test cases on real data (M4-AC5): the gate and the last ta
 
 describe("T4.3 reviewer nits", () => {
   const planner = skill("mission-planner").replace(/\s+/g, " ");
+  it("mission-planner: --migrate renames requirements to covers when covers is absent", () => {
+    expect(planner).toMatch(/`--migrate` renames a legacy `requirements` to `covers` when `covers` is absent/);
+  });
   it("mission-planner: the TC id equals the filename prefix before the first `_`", () => {
     expect(planner).toMatch(/filename prefix before the first `_`/);
   });
@@ -528,9 +535,14 @@ describe("T4.4 review: the last-task live run does not contradict the rest of th
     expect(planner).not.toMatch(/`T\d+\.\d+ - End-to-end:/);
     expect(planner).toMatch(/`T6\.6 - Mission QA: run tests\/m6 live: /);
   });
-  it("both QA blocks carry last_run with the by-hand status edit", () => {
-    expect(exec).toMatch(/frontmatter `status` \(and `last_run`\) by hand/);
-    expect(gate).toMatch(/frontmatter `status` \(and `last_run`:/);
+  it("both QA blocks say the script writes last_run {date, evidence}, and neither leaves a by-hand seam", () => {
+    expect(exec).toMatch(/frontmatter `status` and `last_run: \{date, evidence\}` only/);
+    expect(gate).toMatch(/frontmatter `status` and\s+`last_run: \{date, evidence: <RUN file>\}` and nothing else/);
+    for (const text of [exec, gate]) {
+      expect(text).not.toMatch(/Until a status script exists/);
+      expect(text).not.toMatch(/Statuses are written by hand/);
+      expect(text).not.toMatch(/single seam a status-writing script will replace/);
+    }
   });
 });
 

@@ -12,6 +12,8 @@ import { parseManagedBlock, mapBoardStatus, boardLineEntityName, type EntityKind
 import { loadEntity, ENTITY_STATUSES, type AcceptanceCriterion, type Tokenomics } from "./entity-schema.js";
 import type { Campaign, Mission, Task, Bug, BugSeverity } from "./types.js";
 import type { BugParent } from "./types.js";
+import { TestCaseReader, computeCoverage, type MissionCoverage, type TestCase } from "./test-cases.js";
+import { missionToken } from "./tc-io.js";
 
 /** Entry in the missingIdFiles() list — an .md that had no `<!-- octobots:id ... -->` marker. */
 export interface MissingIdFile {
@@ -48,8 +50,14 @@ export class BoardModel {
   // Files without an id marker
   private missingIds: MissingIdFile[] = [];
 
+  // Test cases live in markdown under campaigns/<c>/tests/, not in the entity maps: read lazily, per campaign.
+  private readonly testCases: TestCaseReader;
+  // Each mission's criterion texts, whole (a YAML criterion may span lines; the rendered checklist cannot hold that).
+  private missionCriteria = new Map<string, string[]>();
+
   constructor(artifactsRoot: string | null) {
     this.root = artifactsRoot;
+    this.testCases = new TestCaseReader(artifactsRoot);
   }
 
   /** Re-parse the entire disk tree. All internal state is reset first. */
@@ -68,6 +76,8 @@ export class BoardModel {
     this.taskByFolder.clear();
     this.bugByFolder.clear();
     this.missingIds = [];
+    this.testCases.clear();
+    this.missionCriteria.clear();
 
     if (!this.root) return;
 
@@ -170,6 +180,7 @@ export class BoardModel {
           updatedAt: mRead.mtime,
         };
         this.missions.set(mId, mission);
+        this.missionCriteria.set(mId, mf.criteria ? mf.criteria.map((c) => c.text) : checklistTexts(mf.acceptanceCriteria));
         this.missionByFolder.set(mFolder, mId);
         this.missionsByCampaign.get(cId)!.push(mId);
         this.tasksByMission.set(mId, []);
@@ -298,6 +309,29 @@ export class BoardModel {
     return this.bugs.get(id) ?? null;
   }
 
+  // ── Test cases ───────────────────────────────────────────────────────────────
+
+  /**
+   * The campaign's test cases (`<campaign>/tests/m<n>/TC-*.md`, nothing else), by mission then file name;
+   * `mission` (`"m2"`, `"M2"`, `"2"` or `2`) narrows to one. Read lazily and cached per file on its
+   * size/mtime/ctime, so a status written to a TC shows on the next call; `rebuild()` drops the cache.
+   * Empty for a campaign the board does not have. Lenient: a malformed or legacy file is listed.
+   */
+  listTestCases(campaignId: string, mission?: string | number): TestCase[] {
+    const campaign = this.campaigns.get(campaignId);
+    return campaign ? this.testCases.list(campaign.folderPath, mission) : [];
+  }
+
+  /** Which test cases cover each acceptance criterion of a mission (`covers`, else legacy `requirements`). */
+  getTestCoverage(missionId: string): MissionCoverage {
+    const mission = this.missions.get(missionId);
+    if (!mission) return { missionId, mission: null, acs: [], uncovered: [] };
+    const token = missionToken(mission.title);
+    const criteria = this.missionCriteria.get(missionId) ?? [];
+    const cases = token ? this.listTestCases(mission.campaignId, token.folder) : [];
+    return computeCoverage({ missionId, mission: token?.id ?? null, criteria, cases });
+  }
+
   // ── FolderPath → id indexes ──────────────────────────────────────────────
 
   campaignIdByFolderPath(folderPath: string): string | null {
@@ -421,6 +455,14 @@ function safeMtime(path: string): number {
 }
 
 /** Render structured criteria back to the checklist string the entity API exposes. */
+/** The criterion texts of a rendered `- [ ] text` checklist (a legacy md mission's only form). */
+function checklistTexts(s: string): string[] {
+  return s
+    .split("\n")
+    .map((l) => /^- \[[ xX]\] (.*)$/.exec(l)?.[1])
+    .filter((t): t is string => t !== undefined);
+}
+
 function renderCriteria(cs: AcceptanceCriterion[]): string {
   return cs.map((c) => `- [${c.done ? "x" : " "}] ${c.text}`).join("\n");
 }
@@ -447,6 +489,8 @@ interface EntityRead {
     name: string;
     description: string;
     acceptanceCriteria: string;
+    /** The structured criteria, for a YAML entity only (a legacy md has just the checklist text). */
+    criteria?: AcceptanceCriterion[];
     ownStatus?: string;
     role?: string;
     target?: string;
@@ -485,6 +529,7 @@ function readEntity(root: string, folderPath: string, kind: "campaign" | "missio
         name: f.name,
         description: f.description,
         acceptanceCriteria: renderCriteria(f.acceptanceCriteria),
+        criteria: f.acceptanceCriteria,
         ownStatus: resolveStatus(f.status),
         role: f.role,
         target: f.target,

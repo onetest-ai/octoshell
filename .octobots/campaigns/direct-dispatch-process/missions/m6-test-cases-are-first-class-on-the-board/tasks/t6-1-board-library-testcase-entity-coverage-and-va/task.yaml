@@ -1,13 +1,23 @@
 name: 'T6.1 - Board library: TestCase entity, coverage and validate warnings'
-status: draft
+status: done
 role: js-dev
 description: 'Scope: packages/board TestCase type and a frontmatter parser built on the TS mirror of tc-io (M4 T4.2; lenient: `requirements` alias, derived mission, `unknown` status), listTestCases and per-mission coverage on BoardModel (lazy per campaign, mtime cache), validate.ts warnings for malformed/legacy TCs and the pack validate.js mirror (messages with .octobots/-relative paths), parity vitest, graph payload regeneration + 57 hash (campaign notes § Test conventions rule 8). Add the QA harness apps/vscode-extension/scripts/qa/dump-tests.mjs <octobots-dir> <campaign-slug> [--board-dist <path>]: plain node, prints the JSON array listTestCases returns ({id, title, mission, covers, kind, status, lastRun, path}). Out of scope: UI, write-back. Downstream: T6.3, T6.4; M6 TC-001/002.'
 acceptance_criteria:
   - text: packages/board/test/test-cases-own-campaign.test.ts proves TestCase parsing and listTestCases/coverage per mission AC1 on this campaign's own tests (the repo's .octobots/) and, when OCTOBOTS_BOARD_COPIES is set, on a copy of solo's uwb tests (legacy)
-    done: false
+    done: true
   - text: packages/board/test/test-cases-malformed.test.ts and packages/board/test/validate-tc-parity.test.ts prove malformed and legacy TCs warn with identical text in validate.ts and validate.js and are still listed; a legacy file lists as unknown with the migrate suggestion (mission AC2, AC7 parity)
-    done: false
+    done: true
   - text: apps/vscode-extension/scripts/qa/dump-tests.mjs exists with the contract above, and apps/vscode-extension/test/qa-dump-tests.test.ts runs it over the repo's .octobots/ and asserts one entry per TC-*.md of this campaign
-    done: false
+    done: true
   - text: after a root `pnpm build`, `pnpm --filter @octoshell/vscode-extension graph:payload:write` leaves graph-payload.mjs --verify green, and the 57 hash is rewritten in a visible diff line if the bytes changed
-    done: false
+    done: true
+notes: |
+  ## QA verification (qa-engineer, 2026-10-06, PR #164 head c7406590)
+
+  Black-box, on copies under scratchpad/t61qa (solo and octoshell .octobots copied; solo git status identical before and after). TC frontmatter NOT updated here (T6.5).
+
+  - TC-001 PASS: test-cases-own-campaign.test.ts 7/7. dump-tests.mjs on the octoshell copy lists m1..m7 = 11/12/10/12/13/11/17 TCs, equal to the TC-*.md files on disk per folder; 0 non-TC ids, 0 README/runs/evidence entries, all kinds in api|ui|cli|unit; M6 TC-001..003 have id, mission, covers, kind, status, path matching their files.
+  - TC-002 PASS: uwb m1 via dump-tests.mjs = 22 TCs (22 on disk), all status unknown, covers from requirements, mission M1; uwb m6 = 0. validate.js on TC-003_set-ranging-mode-persists.md: exit 0, one warning "legacy test case ... lists as unknown: run set-test-status.js <tc-file> --migrate".
+  - TC-003 PASS: test-cases-malformed.test.ts + validate-tc-parity.test.ts 7/7; validate.js on a copied TC with status: passing -> exit 0, one warning naming the invalid status. Parity and own-campaign/malformed/validate-tests-parity/plan-review-parity suites pass with OCTOBOTS_BOARD_COPIES=<solo copy>:<octo copy> (31/31).
+  - Multi-line criteria: solo h0004 m2 (15 ACs), m6 (10), m9 (1) are all multi-line in YAML; getTestCoverage text equals the YAML text (whitespace-normalised) for 15/15, 10/10, 1/1.
+  - Gates: pnpm build, typecheck, lint, test (board, graph 655, extension 1108) green; coverage:pack exit 0; graph-payload.mjs --verify "payload is current"; scan-parked --root . 0 unsigned, 10 allowed; gh pr checks 164: both build jobs pass on c7406590.

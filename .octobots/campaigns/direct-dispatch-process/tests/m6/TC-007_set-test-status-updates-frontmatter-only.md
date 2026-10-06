@@ -4,7 +4,8 @@ title: "set-test-status.js changes only status/last_run; body byte-identical; id
 mission: M6
 covers: [M6-AC6]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-001.md}
 priority: critical
 size: M
 ---

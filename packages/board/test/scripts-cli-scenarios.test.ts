@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, linkSync, mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createCampaign, createMission, createTask, createBug, setStatusChecked } from "../src/write.js";
@@ -1706,5 +1706,395 @@ describe("doctor.js lanes on octoshell's own AGENTS.md (mission AC7)", () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
+  });
+});
+
+// Mission M6 AC6: set-test-status.js writes a TC's status and last_run, and migrates a legacy file.
+describe("set-test-status.js — writing a test case's status and last_run", () => {
+  const LEGACY = readFileSync(join(__dirname, "fixtures", "legacy-uwb-TC-003.md"), "utf8"); // solo's uwb m1 TC-003, copied
+  const BODY = "\n# TC-001: logout\n\n## Steps\n\n1. do it (\u00e9 \u2713)\n\n## Expected Final State\n\nok\n  trailing  \n";
+  const GOOD = `---\nid: TC-001\ntitle: logout\nmission: M1\ncovers: [M1-AC1]\nkind: cli\nstatus: draft\n---\n${BODY}`;
+
+  let tcDir: string;
+  beforeEach(() => {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    tcDir = join(boardRoot, c.folderPath, "tests", "m1");
+    mkdirSync(tcDir, { recursive: true });
+  });
+
+  const put = (name: string, text: string): string => {
+    const p = join(tcDir, name);
+    writeFileSync(p, text, "utf8");
+    return p;
+  };
+  const sts = (args: string[]): { status: number; stdout: string; stderr: string } => {
+    const r = spawnSync("node", [join(SCRIPTS, "set-test-status.js"), ...args], { cwd: projectDir, encoding: "utf8" });
+    return { status: r.status ?? -1, stdout: r.stdout, stderr: r.stderr };
+  };
+  /** Everything after the closing `---` of the frontmatter block. */
+  const bodyOf = (text: string): string => text.split("\n").slice(text.split("\n").indexOf("---", 1) + 1).join("\n");
+  const today = (): string => new Date().toISOString().slice(0, 10);
+  const listed = (id: string) => board().listTestCases(board().listCampaigns()[0]?.id ?? "").find((t) => t.id === id);
+
+  it("sets pass with last_run {date, evidence}; only the frontmatter changes (body byte-identical)", () => {
+    const p = put("TC-001_logout.md", GOOD);
+    const r = sts([p, "pass", "--evidence", ".octobots/campaigns/camp/tests/m1/runs/RUN-2026-10-06-001.md", "--date", "2026-10-06"]);
+    expect(r.status).toBe(0);
+    const out = readFileSync(p, "utf8");
+    expect(out).toBe(
+      "---\nid: TC-001\ntitle: logout\nmission: M1\ncovers: [M1-AC1]\nkind: cli\nstatus: pass\n" +
+        "last_run: {date: 2026-10-06, evidence: .octobots/campaigns/camp/tests/m1/runs/RUN-2026-10-06-001.md}\n---\n" + BODY,
+    );
+  });
+
+  it("a run status without --date dates the run today (UTC), and without --evidence records the date alone", () => {
+    const p = put("TC-001_logout.md", GOOD);
+    expect(sts([p, "fail"]).status).toBe(0);
+    expect(readFileSync(p, "utf8")).toContain(`status: fail\nlast_run: {date: ${today()}}\n---\n`);
+  });
+
+  it("a new run replaces last_run wholesale (a stale evidence path is never carried over)", () => {
+    const p = put("TC-001_logout.md", GOOD.replace("status: draft", "status: fail\nlast_run: {date: 2026-10-01, evidence: runs/OLD.md}"));
+    expect(sts([p, "pass", "--date", "2026-10-06"]).status).toBe(0);
+    const out = readFileSync(p, "utf8");
+    expect(out).toContain("status: pass\nlast_run: {date: 2026-10-06}\n---\n");
+    expect(out).not.toContain("OLD.md");
+  });
+
+  it("maps blocked like a run (last_run set); draft and ready are authoring states and leave last_run alone", () => {
+    const p = put("TC-001_logout.md", GOOD);
+    expect(sts([p, "blocked", "--date", "2026-10-06"]).status).toBe(0);
+    expect(readFileSync(p, "utf8")).toContain("status: blocked\nlast_run: {date: 2026-10-06}\n");
+    for (const s of ["ready", "draft"]) {
+      expect(sts([p, s]).status).toBe(0);
+      const out = readFileSync(p, "utf8");
+      expect(out).toContain(`status: ${s}\nlast_run: {date: 2026-10-06}\n`); // the last run is still the last run
+    }
+    expect(bodyOf(readFileSync(p, "utf8"))).toBe(bodyOf(GOOD));
+  });
+
+  it("refuses --evidence and --date on draft/ready and on a bare --migrate (they only describe a run)", () => {
+    const p = put("TC-001_logout.md", GOOD);
+    for (const args of [[p, "draft", "--date", "2026-10-06"], [p, "ready", "--evidence", "runs/R.md"], [p, "--migrate", "--date", "2026-10-06"]]) {
+      const r = sts(args);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/only apply to pass, fail or blocked/);
+    }
+    expect(readFileSync(p, "utf8")).toBe(GOOD);
+  });
+
+  it("is idempotent: a second identical run writes nothing (same bytes, same mtime) and says so", () => {
+    const p = put("TC-001_logout.md", GOOD);
+    const args = [p, "pass", "--evidence", "runs/R.md", "--date", "2026-10-06"];
+    expect(sts(args).status).toBe(0);
+    const once = readFileSync(p);
+    const mtime = statSync(p).mtimeMs;
+    const again = sts(args);
+    expect(again.status).toBe(0);
+    expect(again.stdout).toContain("(already)");
+    expect(readFileSync(p).equals(once)).toBe(true);
+    expect(statSync(p).mtimeMs).toBe(mtime);
+  });
+
+  it("touches only the status and last_run lines: comments, other keys, dates, CRLF and a BOM survive", () => {
+    const fm = ["# hand note", "id: TC-001", "title: \"a: b\"", "created: 2026-01-02", "mission: M1", "covers:", "  - M1-AC1", "  - M1-AC2", "kind: api", "status: draft  # tbd", "priority: high", ""].join("\r\n");
+    const text = `\uFEFF---\r\n${fm}---\r\n${BODY.replace(/\n/g, "\r\n")}`;
+    const p = put("TC-001_logout.md", text);
+    expect(sts([p, "pass", "--date", "2026-10-06"]).status).toBe(0);
+    expect(readFileSync(p, "utf8")).toBe(
+      text.replace("status: draft  # tbd\r\n", "status: pass\r\nlast_run: {date: 2026-10-06}\r\n"),
+    );
+  });
+
+  it("quotes an evidence path that is not a plain YAML scalar and reads it back unchanged", () => {
+    const p = put("TC-001_logout.md", GOOD);
+    const ev = "runs/RUN: a #b {c}.md";
+    expect(sts([p, "pass", "--evidence", ev, "--date", "2026-10-06"]).status).toBe(0);
+    expect(listed("TC-001")?.lastRun).toEqual({ date: "2026-10-06", evidence: ev });
+  });
+
+  it("rewrites a multi-line last_run block and leaves the key after it alone", () => {
+    const p = put("TC-001_logout.md", GOOD.replace("status: draft", "status: pass\nlast_run:\n  date: 2026-10-01\n  evidence: runs/OLD.md\npriority: high"));
+    expect(sts([p, "fail", "--date", "2026-10-06"]).status).toBe(0);
+    expect(readFileSync(p, "utf8")).toContain("status: fail\nlast_run: {date: 2026-10-06}\npriority: high\n---\n");
+  });
+
+  // T6.2 review: the line editor only ever matches a top-level key, and the re-parse guard refuses any edit it cannot prove.
+  it("edits only the top-level status: a nested `status:` and one inside a block scalar are left alone, a comment after it survives", () => {
+    const fm = "id: TC-001\nmeta:\n  status: draft\nnotes: |\n  status: draft\nstatus: ready\n# about kind\nkind: api\n";
+    const p = put("TC-001_logout.md", `---\n${fm}---\n${BODY}`);
+    expect(sts([p, "pass", "--date", "2026-10-06"]).status).toBe(0);
+    expect(readFileSync(p, "utf8")).toBe(`---\n${fm.replace("status: ready\n", "status: pass\nlast_run: {date: 2026-10-06}\n")}---\n${BODY}`);
+  });
+
+  it("refuses (exit 2, file untouched) when the re-parsed result is not exactly the old data plus the new status", () => {
+    // A quoted key, an anchored status another key aliases, and a flow-mapping frontmatter: the line edit cannot be proved.
+    for (const fm of ["id: TC-001\n\"status\": draft\n", "id: TC-001\nstatus: &s draft\nprev: *s\n", "{id: TC-001, status: draft}\n"]) {
+      const text = `---\n${fm}---\n${BODY}`;
+      const p = put("TC-001_logout.md", text);
+      const r = sts([p, "pass", "--date", "2026-10-06"]);
+      expect(r.status, fm).toBe(2);
+      expect(r.stderr, fm).toMatch(/could not edit the frontmatter of .* safely/);
+      expect(r.stderr, fm).toMatch(/Fix the frontmatter so it parses/);
+      expect(r.stderr, fm).not.toMatch(/by hand/);
+      expect(readFileSync(p, "utf8"), fm).toBe(text);
+      expect(readdirSync(tcDir), fm).toEqual(["TC-001_logout.md"]);
+    }
+  });
+
+  describe("exit 2, and the file is left untouched", () => {
+    const cases: Array<[string, (p: string) => string[], RegExp]> = [
+      ["no arguments", () => [], /usage/],
+      ["no status", (p) => [p], /usage/],
+      ["an invalid status", (p) => [p, "passed"], /invalid status "passed"/],
+      ["`unknown` without --migrate", (p) => [p, "unknown"], /only --migrate writes unknown/],
+      ["`unknown` given to --migrate", (p) => [p, "--migrate", "unknown"], /omit the status/],
+      ["a second status", (p) => [p, "pass", "fail"], /usage/],
+      ["an unknown flag", (p) => [p, "pass", "--force"], /unknown option/],
+      ["--date that is not YYYY-MM-DD", (p) => [p, "pass", "--date", "10/06/2026"], /--date/],
+      ["--date that is not a calendar day", (p) => [p, "pass", "--date", "2026-02-30"], /--date/],
+      ["--evidence with no value", (p) => [p, "pass", "--evidence"], /--evidence needs/],
+      ["--evidence that climbs out with ..", (p) => [p, "pass", "--evidence", "../outside/RUN.md"], /--evidence/],
+      ["--evidence that climbs out in the middle", (p) => [p, "pass", "--evidence", "runs/../../RUN.md"], /--evidence/],
+      ["--evidence that is absolute", (p) => [p, "pass", "--evidence", "/etc/passwd"], /--evidence/],
+      ["--evidence with a drive letter", (p) => [p, "pass", "--evidence", "C:/x/RUN.md"], /--evidence/],
+      ["--evidence with a backslash", (p) => [p, "pass", "--evidence", "runs\\..\\RUN.md"], /--evidence/],
+      ["--evidence holding a newline", (p) => [p, "pass", "--evidence", "runs/a\nstatus: pass"], /--evidence/],
+    ];
+    for (const [label, args, msg] of cases) {
+      it(label, () => {
+        const p = put("TC-001_logout.md", GOOD);
+        const r = sts(args(p));
+        expect(r.status).toBe(2);
+        expect(r.stderr).toMatch(msg);
+        expect(readFileSync(p, "utf8")).toBe(GOOD);
+      });
+    }
+
+    it("a path that is not a TC file: README.md, a TC outside tests/m<n>/, an entity file, a directory, a missing path", () => {
+      const readme = put("README.md", "# Suite\n");
+      const wrong = join(projectDir, "TC-001_x.md");
+      writeFileSync(wrong, GOOD);
+      const notTests = join(boardRoot, "campaigns", "camp", "other", "m1");
+      mkdirSync(notTests, { recursive: true });
+      writeFileSync(join(notTests, "TC-001_x.md"), GOOD);
+      const yaml = join(boardRoot, "campaigns", "camp", "campaign.yaml");
+      for (const target of [readme, wrong, join(notTests, "TC-001_x.md"), yaml, tcDir, join(tcDir, "TC-404_none.md")]) {
+        const r = sts([target, "pass"]);
+        expect(r.status, target).toBe(2);
+        expect(r.stderr, target).toMatch(/not a test case file|not found/);
+      }
+      expect(readFileSync(wrong, "utf8")).toBe(GOOD);
+      expect(readFileSync(readme, "utf8")).toBe("# Suite\n");
+    });
+
+    it("a TC whose frontmatter is unparseable (nothing is guessed), and a non-migrate call on a file with no frontmatter", () => {
+      const bad = put("TC-001_bad.md", `---\nid: [unclosed\n---\n${BODY}`);
+      const r = sts([bad, "pass"]);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/unparseable/);
+      expect(readFileSync(bad, "utf8")).toBe(`---\nid: [unclosed\n---\n${BODY}`);
+      expect(sts([bad, "--migrate"]).status).toBe(2); // migrating does not repair a broken block either
+
+      const none = put("TC-002_none.md", BODY);
+      const n = sts([none, "pass"]);
+      expect(n.status).toBe(2);
+      expect(n.stderr).toMatch(/no frontmatter[^\n]*--migrate/);
+      expect(readFileSync(none, "utf8")).toBe(BODY);
+    });
+
+    it("a file larger than the TC size cap (read through the regular-file reader, never in full)", () => {
+      const big = put("TC-001_big.md", GOOD + "x".repeat(4194304));
+      const r = sts([big, "pass"]);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/larger than/);
+    });
+
+    it("a FIFO named TC-*.md does not hang the script", () => {
+      const fifo = join(tcDir, "TC-003_fifo.md");
+      execFileSync("mkfifo", [fifo]);
+      const r = sts([fifo, "pass"]);
+      expect(r.status).toBe(2);
+    });
+  });
+
+  describe("--migrate", () => {
+    it("on a copy of solo's legacy uwb TC-003 adds id/title/mission/covers, status unknown, and keeps the body byte-identical", () => {
+      const p = put("TC-003_set-ranging-mode-persists.md", LEGACY);
+      const before = spawnSync("node", [join(SCRIPTS, "validate.js"), p], { encoding: "utf8" }).stdout;
+      expect(before).toContain("legacy test case (no status, kind or mission) lists as unknown: run set-test-status.js <tc-file> --migrate");
+
+      const r = sts([p, "--migrate"]);
+      expect(r.status).toBe(0);
+      const out = readFileSync(p, "utf8");
+      expect(bodyOf(out)).toBe(bodyOf(LEGACY));
+      expect(out.split("\n").slice(0, out.split("\n").indexOf("---", 1) + 1)).toEqual([
+        "---",
+        "id: TC-003",
+        "title: Set ranging mode with layout id and 0 mm tag height and read it back after reload and restart",
+        "mission: M1",
+        "priority: critical",
+        "type: functional",
+        "module: venue-ingest-mode",
+        "size: M",
+        "covers: [M1-AC2, M1-AC5]",
+        "tags: [uwb-ranging-m1, api, persistence, api-tbd]",
+        "status: unknown",
+        "---",
+      ]);
+      const after = spawnSync("node", [join(SCRIPTS, "validate.js"), p], { encoding: "utf8" }).stdout;
+      expect(after).not.toContain("legacy test case");
+      const tc = board().listTestCases(board().listCampaigns()[0]?.id ?? "")[0];
+      expect(tc).toMatchObject({ id: "TC-003", mission: "M1", covers: ["M1-AC2", "M1-AC5"], status: "unknown" });
+    });
+
+    it("is idempotent, and never downgrades a status that is already set", () => {
+      const p = put("TC-003_set-ranging-mode-persists.md", LEGACY);
+      expect(sts([p, "--migrate"]).status).toBe(0);
+      const once = readFileSync(p);
+      const again = sts([p, "--migrate"]);
+      expect(again.stdout).toContain("(already)");
+      expect(readFileSync(p).equals(once)).toBe(true);
+
+      expect(sts([p, "pass", "--date", "2026-10-06"]).status).toBe(0);
+      const passed = readFileSync(p);
+      expect(sts([p, "--migrate"]).status).toBe(0);
+      expect(readFileSync(p).equals(passed)).toBe(true);
+    });
+
+    it("--migrate <status> sets that status in the same write (a run status also records last_run)", () => {
+      const p = put("TC-003_set-ranging-mode-persists.md", LEGACY);
+      expect(sts([p, "--migrate", "blocked", "--date", "2026-10-06"]).status).toBe(0);
+      const out = readFileSync(p, "utf8");
+      expect(out).toContain("status: blocked\nlast_run: {date: 2026-10-06}\n---\n");
+      expect(bodyOf(out)).toBe(bodyOf(LEGACY));
+      const q = put("TC-004_x.md", LEGACY.replace("TC-003", "TC-004"));
+      expect(sts([q, "--migrate", "ready"]).status).toBe(0);
+      expect(readFileSync(q, "utf8")).toContain("status: ready\n---\n");
+      expect(readFileSync(q, "utf8")).not.toContain("last_run");
+    });
+
+    it("keeps an existing covers (and an existing mission, kind and title); requirements is converted only when covers is absent", () => {
+      const p = put("TC-001_logout.md", `---\nid: TC-001\ntitle: keep me\nmission: M1\nkind: ui\ncovers: [M1-AC1]\nrequirements: [M1-AC9]\n---\n${BODY}`);
+      expect(sts([p, "--migrate"]).status).toBe(0);
+      expect(readFileSync(p, "utf8")).toBe(`---\nid: TC-001\ntitle: keep me\nmission: M1\nkind: ui\ncovers: [M1-AC1]\nrequirements: [M1-AC9]\nstatus: unknown\n---\n${BODY}`);
+    });
+
+    it("derives the mission from a lettered folder (m3b -> M3b) and the id from the filename", () => {
+      const dir = join(boardRoot, "campaigns", "camp", "tests", "m3b");
+      mkdirSync(dir, { recursive: true });
+      const p = join(dir, "TC-012_x.md");
+      writeFileSync(p, `---\ntitle: t\nrequirements:\n  - M3b-AC1\n---\n${BODY}`);
+      expect(sts([p, "--migrate"]).status).toBe(0);
+      expect(readFileSync(p, "utf8")).toBe(`---\nid: TC-012\ntitle: t\nmission: M3b\ncovers:\n  - M3b-AC1\nstatus: unknown\n---\n${BODY}`);
+    });
+
+    it("a BOM on a file with no frontmatter stays first, before the new block, and the H1 after it still gives the title", () => {
+      const rest = BODY.replace(/^\n/, "");
+      const p = put("TC-002_none.md", `\uFEFF${rest}`);
+      expect(sts([p, "--migrate"]).status).toBe(0);
+      expect(readFileSync(p, "utf8")).toBe(`\uFEFF---\nid: TC-002\ntitle: 'TC-001: logout'\nmission: M1\nstatus: unknown\n---\n${rest}`);
+      const again = sts([p, "--migrate"]);
+      expect(again.stdout).toContain("(already)");
+    });
+
+    it("a TC with no frontmatter gets a new block (id, title from the H1, mission, status unknown); the old text is the body", () => {
+      const p = put("TC-002_none.md", BODY.replace(/^\n/, ""));
+      expect(sts([p, "--migrate"]).status).toBe(0);
+      expect(readFileSync(p, "utf8")).toBe(`---\nid: TC-002\ntitle: 'TC-001: logout'\nmission: M1\nstatus: unknown\n---\n${BODY.replace(/^\n/, "")}`);
+      // covers cannot be derived, so validate says so (the author fills it in); nothing else is invented
+      const v = spawnSync("node", [join(SCRIPTS, "validate.js"), p], { encoding: "utf8" }).stdout;
+      expect(v).toContain("covers (or legacy requirements) is missing or empty");
+      expect(v).not.toContain("legacy test case");
+    });
+  });
+
+  describe("never writes through a link, and writes atomically", () => {
+    it("refuses a TC file that is a symlink (the target outside the board is not written)", () => {
+      const outside = mkdtempSync(join(tmpdir(), "stc-outside-"));
+      try {
+        const target = join(outside, "real.md");
+        writeFileSync(target, GOOD);
+        const link = join(tcDir, "TC-001_logout.md");
+        symlinkSync(target, link);
+        const r = sts([link, "pass"]);
+        expect(r.status).toBe(2);
+        expect(r.stderr).toMatch(/symlink/);
+        expect(readFileSync(target, "utf8")).toBe(GOOD);
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    });
+
+    it("refuses a symlinked tests/m<n>/ or tests/ directory", () => {
+      const outside = mkdtempSync(join(tmpdir(), "stc-outside-"));
+      try {
+        writeFileSync(join(outside, "TC-001_logout.md"), GOOD);
+        const camp = join(boardRoot, "campaigns", "linked");
+        mkdirSync(join(camp, "tests"), { recursive: true });
+        symlinkSync(outside, join(camp, "tests", "m1"));
+        expect(sts([join(camp, "tests", "m1", "TC-001_logout.md"), "pass"]).stderr).toMatch(/symlink/);
+        const camp2 = join(boardRoot, "campaigns", "linked2");
+        mkdirSync(camp2, { recursive: true });
+        mkdirSync(join(outside, "m1"));
+        writeFileSync(join(outside, "m1", "TC-001_logout.md"), GOOD);
+        symlinkSync(outside, join(camp2, "tests"));
+        const r = sts([join(camp2, "tests", "m1", "TC-001_logout.md"), "pass"]);
+        expect(r.status).toBe(2);
+        expect(r.stderr).toMatch(/symlink/);
+        expect(readFileSync(join(outside, "TC-001_logout.md"), "utf8")).toBe(GOOD);
+        expect(readFileSync(join(outside, "m1", "TC-001_logout.md"), "utf8")).toBe(GOOD);
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    });
+
+    it("replaces the file by rename: a hard link to the old bytes still reads the old text, no temp file is left, the mode is kept", () => {
+      const p = put("TC-001_logout.md", GOOD);
+      chmodSync(p, 0o640);
+      const twin = join(projectDir, "twin.md");
+      linkSync(p, twin);
+      expect(sts([p, "pass", "--date", "2026-10-06"]).status).toBe(0);
+      expect(readFileSync(twin, "utf8")).toBe(GOOD); // an in-place write would have changed this too
+      expect(readFileSync(p, "utf8")).toContain("status: pass");
+      expect(readdirSync(tcDir)).toEqual(["TC-001_logout.md"]);
+      expect(statSync(p).mode & 0o777).toBe(0o640);
+    });
+
+    it("a failed write (read-only folder) leaves the original bytes and no temp file", () => {
+      const p = put("TC-001_logout.md", GOOD);
+      chmodSync(tcDir, 0o555);
+      try {
+        const r = sts([p, "pass", "--date", "2026-10-06"]);
+        expect(r.status).toBe(2);
+        expect(r.stderr).toMatch(/set-test-status: cannot write/);
+        expect(readFileSync(p, "utf8")).toBe(GOOD);
+        expect(readdirSync(tcDir)).toEqual(["TC-001_logout.md"]);
+      } finally {
+        chmodSync(tcDir, 0o755);
+      }
+    });
+  });
+
+  describe("the board sees the write at once (T6.1's listTestCases, cached by size/mtime/ctime)", () => {
+    it("shows the new status and lastRun on the very next listing, every time", () => {
+      put("TC-001_logout.md", GOOD);
+      const b = board();
+      const camp = b.listCampaigns()[0]!.id;
+      const p = join(tcDir, "TC-001_logout.md");
+      expect(b.listTestCases(camp)[0]).toMatchObject({ status: "draft" });
+      expect(b.listTestCases(camp)[0]?.lastRun).toBeUndefined();
+
+      expect(sts([p, "pass", "--evidence", "runs/R1.md", "--date", "2026-10-06"]).status).toBe(0);
+      expect(b.listTestCases(camp)[0]).toMatchObject({ status: "pass", lastRun: { date: "2026-10-06", evidence: "runs/R1.md" } });
+
+      expect(sts([p, "fail", "--evidence", "runs/R2.md", "--date", "2026-10-07"]).status).toBe(0);
+      expect(b.listTestCases(camp)[0]).toMatchObject({ status: "fail", lastRun: { date: "2026-10-07", evidence: "runs/R2.md" } });
+
+      const q = put("TC-002_legacy.md", LEGACY.replace("TC-003", "TC-002"));
+      expect(b.listTestCases(camp).find((t) => t.id === "TC-002")).toMatchObject({ status: "unknown" });
+      expect(sts([q, "--migrate", "blocked"]).status).toBe(0);
+      expect(b.listTestCases(camp).find((t) => t.id === "TC-002")).toMatchObject({ status: "blocked", mission: "M1", covers: ["M1-AC2", "M1-AC5"] });
+    });
   });
 });

@@ -40,3 +40,12 @@ describe("routeUiMessage", () => {
     expect(newBugInMission).toHaveBeenCalledWith({ type: "newBugInMission", id: "m1" });
   });
 });
+
+describe("routeUiMessage: openTestFile (M6 T6.4)", () => {
+  it("routes a TC open request and rejects one without a path", () => {
+    const openTestFile = vi.fn();
+    expect(routeUiMessage({ type: "openTestFile", path: "campaigns/c/tests/m1/TC-001_x.md" }, { openTestFile })).toBe(true);
+    expect(openTestFile).toHaveBeenCalledWith({ type: "openTestFile", path: "campaigns/c/tests/m1/TC-001_x.md" });
+    expect(routeUiMessage({ type: "openTestFile" }, { openTestFile })).toBe(false);
+  });
+});

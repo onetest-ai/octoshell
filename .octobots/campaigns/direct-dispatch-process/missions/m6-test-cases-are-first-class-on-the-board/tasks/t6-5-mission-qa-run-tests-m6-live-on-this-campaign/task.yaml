@@ -1,9 +1,29 @@
 name: 'T6.5 - Mission QA: run tests/m6 live on this campaign''s tests and solo''s uwb campaign'
-status: draft
+status: done
 role: qa-engineer
 description: 'Scope: TC-001..010; UI cases are manual Extension Development Host sessions with screenshots (noted as manual in the RUN file). Uses set-test-status.js to record its own results on this mission''s TCs (dogfood). TC-011 belongs to T6.6 (needs the VSIX). Out of scope: fixes. Downstream: M6 gate, then the release T6.6.'
 acceptance_criteria:
   - text: every TC-001..010 has PASS, FAIL, BLOCKED or UNREACHABLE with evidence and a named pre-existing record (manual executions noted as manual in the RUN file); its frontmatter status is pass, fail or blocked (UNREACHABLE recorded as blocked with the reason in the RUN file)
-    done: false
+    done: true
   - text: this mission's own TC files carry the QA results in status/last_run and the board shows them
-    done: false
+    done: true
+notes: |-
+  ## QA verification (qa-engineer, 2026-10-06, branch qa/direct-dispatch-process-m6-t5 from feat/direct-dispatch-process-m6 85ad5073)
+
+  Verdict: TC-001..010 all run; 7 PASS, 3 BLOCKED (TC-004, TC-005, TC-006: the automatable halves PASS, the live Extension Development Host halves are manual and pending the user's F5 run of `tests/m7/manual/T7.4-F5-script.md` Parts D and E), 0 FAIL, no bug filed. TC-011 is T6.6's and stays draft. Run file: `.octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-001.md`; evidence in `tests/m6/evidence/`. Data safety: solo's `git status --short` and HEAD f3a0a8f4 identical before and after; the sha256 manifest of solo's `.octobots` (1209 files) has the same digest before and after (e2c8d9b0...ac924); octoshell's `.octobots` outside this campaign (209 files) is identical; every mutating case ran on a `cp -R` copy.
+
+  Per case (pre-existing record, observed value):
+  - TC-001 PASS: this campaign's real tests/m1..m7: 86 TC files, 86 entities, per-mission counts equal the files on disk (11, 12, 10, 12, 13, 11, 17), 0 field mismatches, README.md/runs/evidence not parsed, entity ids identical with and without tests/.
+  - TC-002 PASS: copy of solo's uwb m1: 22 of 22 legacy TCs listed `unknown`, covers from `requirements` (TC-003 gives M1-AC2, M1-AC5), validate.js exit 0 with the one `--migrate` suggestion, m6 has no TCs and no error.
+  - TC-003 PASS: board vitest 7 passed (two suites); a copy of this campaign's real TC-001 with `status: passing`: validate.js exit 0 with one warning, still listed. Case text drift: its awk targets `status: draft`, the file is `pass` now; repeated with the real value.
+  - TC-004 BLOCKED (manual): automatable half PASS (campaigns-tree-tests 18 passed over copies of both boards; octograph has 0 TCs so no Tests node); live tree half pending F5 Part D.
+  - TC-005 BLOCKED (manual): automatable half PASS (mission-tests-panel 10 passed; board data: uwb M1 uncovered M1-AC11, this campaign's M6 uncovered none); live panel half pending F5 Part E.
+  - TC-006 BLOCKED (manual): automatable half PASS (campaign-tests-summary 5 passed; uwb uncovered M1-AC11, M2-AC10, M6 x5; this campaign none); live half pending F5 Part E.
+  - TC-007 PASS: copy of this campaign's real m1 TC-001: only last_run changed, body byte-identical, a second call `(already)` and identical, `passing`/`unknown`/README all exit 2 and unchanged. The case's own date/evidence equal the file's, so they were varied.
+  - TC-008 PASS: copy of solo's real uwb m1 TC-003: --migrate exit 0 added mission M1, covers [M1-AC2, M1-AC5], status unknown, kept priority/type/module/size/tags, body identical, validate.js 0 migrate mentions.
+  - TC-009 PASS: every result written with the pack's `set-test-status.js` (no hand edit); dump-tests.mjs on the real board shows M6 pass 7, blocked 3, draft 1 with last_run set; the T6.3/T6.4 harness on a post-write copy (18 + 10 + 5 passed) and the board model agree; 0 lines other than status/last_run changed in tests/m6; validate.js clean on all 11 TC files and 0 errors on the whole board; the gate and execution skills instruct calling set-test-status.js. The live Dev Host watcher reflection (step 2) is not run: manual, pending F5.
+  - TC-010 PASS: lint, typecheck, build, test (tokenomics 102, board 800, extension 1171, graph 655), coverage (board 93.99/83.69/95.17/93.99) and coverage:pack (97.95/88.09/98.05/97.95) exit 0; the payload diff is one line (the 57 hash); no new runtime dependency; validate-tc-parity 2 passed.
+
+  Not pass: TC-004, TC-005, TC-006 are `blocked` because their live halves are manual and not yet run (VS Code is not drivable by Playwright MCP and there is no @vscode/test-electron harness); they are not skipped silently and no live UI claim is made.
+
+  Criteria: AC1 met (all ten TCs carry a result, evidence and a named record; manual ones noted in the RUN file; frontmatter pass/pass/pass/blocked/blocked/blocked/pass/pass/pass/pass). AC2 met (the mission's own TC files carry status and last_run written by set-test-status.js, and dump-tests plus the tree/panel harness show them).

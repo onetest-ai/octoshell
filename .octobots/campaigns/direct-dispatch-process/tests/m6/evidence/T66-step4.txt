@@ -1,0 +1,102 @@
+default exit=0
+2 skill(s) need reconcile
+{
+  "pending": [
+    "mission-execution",
+    "mission-completion-gate"
+  ],
+  "bases": [
+    {
+      "skill": "mission-execution",
+      "reason": "label"
+    },
+    {
+      "skill": "mission-completion-gate",
+      "reason": "label"
+    }
+  ],
+  "after": {
+    "upToDate": false,
+    "upToDateExceptLocal": true,
+    "pendingReconcile": [
+      "mission-execution",
+      "mission-completion-gate"
+    ]
+  }
+}
+{"skill":"mission-execution","base":{"version":56,"sha256":"9af2c928b8310dddbff78f015f00264251592ca727ae1d07741f363bd4a9c523","source":"workspace-git"}}
+{"skill":"mission-completion-gate","base":{"version":56,"sha256":"008de10a952f5afeb5e85fb02cf1814179cd516d537bf57016b3e071105dd4cc","source":"workspace-git"}}
+--- live forks byte-identical to solo's
+mission-execution live identical
+mission-completion-gate live identical
+/private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/t66qa/solo-rec/.octobots/pack-updates/v57/mission-completion-gate:
+RECONCILE.md
+base.md
+local.md
+upstream.md
+
+/private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/t66qa/solo-rec/.octobots/pack-updates/v57/mission-execution:
+RECONCILE.md
+base.md
+local.md
+upstream.md
+=== OVERWRITE
+exit=0
+{
+  "changed": [
+    "mission-execution",
+    "mission-completion-gate"
+  ],
+  "before": false,
+  "after": {
+    "upToDate": true,
+    "n": 0
+  }
+}
+brainstorming
+browser-verify
+bugfix-workflow
+code-review
+completing-a-task
+dispatching-parallel-agents
+fastapi
+fastmcp-server
+git-workflow
+implement-feature
+issue-tracking
+knowledge-explorer
+memory
+mission-completion-gate
+mission-execution
+mission-planner
+mobile-testing
+octobots-doctor
+plan-feature
+playwright-best-practices
+playwright-cli
+playwright-testing
+receiving-code-review
+reproducing-issues
+requesting-code-review
+root-cause-analysis
+seeding-a-project
+session-retrospective
+subagent-driven-development
+systematic-debugging
+tdd
+test-automation-workflow
+test-case-analysis
+vercel-react-best-practices
+verification-before-completion
+writing-skills
+xlsx-reader
+create-team KEPT
+add-workflow.js gone
+sync-meta.js gone
+add-run.js gone
+mission-input.js gone
+extract-meta.mjs gone
+workflow-meta.mjs gone
+vendor/acorn.mjs gone
+workflow-designer gone
+workflow-designer
