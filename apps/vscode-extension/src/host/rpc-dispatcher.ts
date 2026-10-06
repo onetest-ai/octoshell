@@ -113,6 +113,9 @@ const handlers: { [M in RpcMethod]: RpcHandler<M> } = {
   "bug:setStatus": (a, c) => applyStatus(c, "bug", a.bugId, a.status),
   "bug:delete": (a, c) => { c.board.deleteBug(a.bugId); return { ok: true }; },
   "bug:sync": (a, c) => c.board.syncBugsFromBoard(a.campaignId ? { campaignId: a.campaignId } : { missionId: a.missionId }),
+  "tests:list": (a, c) => c.board.listTests(a.campaignId, a.mission),
+  "tests:coverage": (a, c) => c.board.testCoverage(a.missionId),
+  "tests:summary": (a, c) => c.board.testSummary(a.campaignId),
 };
 
 /** Exported for the exhaustiveness test (Task 11). */

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { updateBrief } from "@octoshell/board";
 import { dispatch } from "../src/host/rpc-dispatcher.js";
@@ -407,3 +407,77 @@ describe("mission:setStatus with a plan-review confirm", () => {
   });
 });
 
+
+// ── tests:* (M6 T6.3) ────────────────────────────────────────────────────────────────────────────
+
+describe("tests:* routes", () => {
+  function testsFixture() {
+    const { board, repoRoot } = makeBoardWithRoot();
+    const camp = board.createCampaign({ name: "C" });
+    const m1 = board.createMission({ title: "M1 - Thing", campaignId: camp.id });
+    const m2 = board.createMission({ title: "M2 - Other", campaignId: camp.id });
+    board.updateBrief("mission", m1.id, { acceptanceCriteria: "- [ ] first\n- [ ] second" });
+    const dir = join(repoRoot, ".octobots", camp.folderPath, "tests");
+    const put = (folder: string, id: string, status: string, covers: string) => {
+      mkdirSync(join(dir, folder), { recursive: true });
+      writeFileSync(join(dir, folder, `${id}_x.md`), `---\nid: ${id}\ntitle: t ${id}\nmission: ${folder.toUpperCase()}\ncovers: [${covers}]\nkind: unit\nstatus: ${status}\n---\n\n# ${id}\n`);
+    };
+    put("m1", "TC-001", "pass", "M1-AC1");
+    put("m1", "TC-002", "fail", "M1-AC1");
+    put("m2", "TC-001", "blocked", "M2-AC1");
+    board.reconcile();
+    return { board, camp, m1, m2, dir };
+  }
+
+  it("routes tests:list to board.listTests, whole campaign or one mission", async () => {
+    const { board, camp } = testsFixture();
+    const all = (await dispatch("tests:list", { campaignId: camp.id }, ctx(board) as never)) as Array<{ id: string; mission: string; status: string }>;
+    expect(all.map((t) => `${t.mission}/${t.id}/${t.status}`)).toEqual(["M1/TC-001/pass", "M1/TC-002/fail", "M2/TC-001/blocked"]);
+    const one = (await dispatch("tests:list", { campaignId: camp.id, mission: "M2" }, ctx(board) as never)) as unknown[];
+    expect(one).toHaveLength(1);
+  });
+
+  it("routes tests:coverage to board.testCoverage", async () => {
+    const { board, m1 } = testsFixture();
+    const cov = (await dispatch("tests:coverage", { missionId: m1.id }, ctx(board) as never)) as { mission: string; acs: Array<{ ac: string; tcs: string[]; covered: boolean }>; uncovered: string[] };
+    expect(cov.mission).toBe("M1");
+    expect(cov.acs.map((a) => [a.ac, a.tcs, a.covered])).toEqual([["M1-AC1", ["TC-001", "TC-002"], true], ["M1-AC2", [], false]]);
+    expect(cov.uncovered).toEqual(["M1-AC2"]);
+  });
+
+  it("routes tests:summary to board.testSummary, null for an unknown campaign", async () => {
+    const { board, camp } = testsFixture();
+    const s = (await dispatch("tests:summary", { campaignId: camp.id }, ctx(board) as never)) as { total: number; counts: Record<string, number>; uncovered: number };
+    expect(s.total).toBe(3);
+    expect(s.counts).toMatchObject({ pass: 1, fail: 1, blocked: 1, unknown: 0 });
+    expect(s.uncovered).toBe(1);
+    expect(await dispatch("tests:summary", { campaignId: "nope" }, ctx(board) as never)).toBeNull();
+  });
+
+  it("rejects malformed ids and mission tokens before any handler runs", async () => {
+    const { board, camp } = testsFixture();
+    const spy = vi.spyOn(board, "listTests");
+    for (const args of [{ campaignId: "" }, { campaignId: camp.id, mission: "../../etc" }, { campaignId: 5 }, {}])
+      await expect(dispatch("tests:list", args, ctx(board) as never)).rejects.toThrow();
+    await expect(dispatch("tests:coverage", { missionId: "" }, ctx(board) as never)).rejects.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("unknown ids answer with empty results, never a throw", async () => {
+    const { board } = testsFixture();
+    expect(await dispatch("tests:list", { campaignId: "nope" }, ctx(board) as never)).toEqual([]);
+    expect(await dispatch("tests:coverage", { missionId: "nope" }, ctx(board) as never)).toMatchObject({ mission: null, acs: [], uncovered: [] });
+  });
+
+  it("writes nothing: runs/ and evidence/ files and the TCs are untouched by every tests:* call", async () => {
+    const { board, camp, m1, dir } = testsFixture();
+    mkdirSync(join(dir, "m1", "runs"), { recursive: true });
+    writeFileSync(join(dir, "m1", "runs", "RUN-1.md"), "run");
+    const snap = () => readdirSync(join(dir, "m1"), { recursive: true }).map(String).sort().map((f) => f + statSync(join(dir, "m1", f)).mtimeMs).join("|");
+    const before = snap();
+    await dispatch("tests:list", { campaignId: camp.id }, ctx(board) as never);
+    await dispatch("tests:coverage", { missionId: m1.id }, ctx(board) as never);
+    await dispatch("tests:summary", { campaignId: camp.id }, ctx(board) as never);
+    expect(snap()).toBe(before);
+  });
+});
