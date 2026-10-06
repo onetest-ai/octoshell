@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { dispatch } from "../src/host/rpc-dispatcher.js";
 import { BoardHost } from "../src/host/board-host.js";
@@ -17,11 +18,11 @@ function makeBoard(): BoardHost {
   return makeBoardWithRoot().board;
 }
 
-function ctx(board?: BoardHost) {
+function ctx(board?: BoardHost, confirm: (message: string, actionLabel: string) => Promise<boolean> = async () => false) {
   const { board: defaultBoard, repoRoot } = makeBoardWithRoot();
   const b = board ?? defaultBoard;
   const appearanceStore = new AppearanceStore(new FakeMemento());
-  return { board: b, appearanceStore, workspaceFolderPath: repoRoot, dialog: { openFiles: async () => ["x"] }, editor: { openReadonly: async () => {}, openFile: async () => {} } };
+  return { board: b, appearanceStore, workspaceFolderPath: repoRoot, dialog: { openFiles: async () => ["x"], confirm }, editor: { openReadonly: async () => {}, openFile: async () => {} } };
 }
 
 describe("dispatch", () => {
@@ -54,7 +55,7 @@ describe("dispatch", () => {
     const b = makeBoard();
     const camp = b.createCampaign({ name: "Q4" });
     const m = b.createMission({ title: "M", campaignId: camp.id });
-    b.setStatus("mission", m.id, "executing");
+    b.setStatus("mission", m.id, "executing", { force: "test" });
     const c = ctx(b);
     const res = await dispatch("campaign:get", { projectId: "p1", campaignId: camp.id }, c as never);
     const typed = res as { campaign: { id: string; name: string }; summary: { rollupStatus: string; counts: Record<string, number> } };
@@ -298,3 +299,72 @@ describe("dispatch", () => {
     await expect(dispatch("campaign:setStatus", { campaignId: 123, status: "draft" }, c as never)).rejects.toThrow();
   });
 });
+
+// ── mission:setStatus plan-review confirm (mission M5 AC2) ───────────────────────────────────────
+
+const STRICT = "## Plan review (ba + tech-lead, 2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved";
+const LEGACY = "## Plan review (Alex + Rio, 2026-10-02)\nLooked fine.";
+
+function missionFixture(notes?: { mission?: string; campaign?: string }) {
+  const { board, repoRoot } = makeBoardWithRoot();
+  const camp = board.createCampaign({ name: "C" });
+  if (notes?.campaign !== undefined) board.updateBrief("campaign", camp.id, { notes: notes.campaign });
+  const m = board.createMission({ title: "M1 - Thing", campaignId: camp.id });
+  if (notes?.mission !== undefined) board.updateBrief("mission", m.id, { notes: notes.mission });
+  const file = join(repoRoot, ".octobots", m.folderPath, "mission.yaml");
+  return { board, m, file };
+}
+
+describe("mission:setStatus with a plan-review confirm", () => {
+  it("Cancel leaves the YAML byte-identical and returns the stored status; the modal names the missing review", async () => {
+    const { board, m, file } = missionFixture({ mission: "## Plan review (Alex, 2026-10-05)\nonly one" });
+    const before = readFileSync(file, "utf8");
+    const confirm = vi.fn(async () => false);
+    const res = await dispatch("mission:setStatus", { missionId: m.id, status: "active" }, ctx(board, confirm) as never);
+    expect(res).toEqual({ ok: true, status: "draft" });
+    expect(readFileSync(file, "utf8")).toBe(before);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    const [message, label] = confirm.mock.calls[0] as unknown as [string, string];
+    expect(message).toContain("## Plan review (Alex, 2026-10-05)");
+    expect(message).toContain("heading does not name the tech-lead");
+    expect(message).toContain("Reviewers: ba (<name>), tech-lead (<name>)");
+    expect(label).toBeTruthy();
+  });
+
+  it("Confirm flips the status and appends the overridden note with the dropdown reason", async () => {
+    const { board, m } = missionFixture({ mission: "Existing." });
+    const confirm = vi.fn(async () => true);
+    const res = await dispatch("mission:setStatus", { missionId: m.id, status: "executing" }, ctx(board, confirm) as never);
+    expect(res).toEqual({ ok: true });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    const day = new Date().toISOString().slice(0, 10);
+    expect(board.getMission(m.id)!.status).toBe("executing");
+    expect(board.getMission(m.id)!.notes).toBe(`Existing.\n\n## Plan review overridden (${day})\nconfirmed in the extension's status dropdown`);
+  });
+
+  it("never calls confirm for a strict review, a legacy review, or a move that is not into executing", async () => {
+    const confirm = vi.fn(async () => true);
+    const strict = missionFixture({ mission: STRICT });
+    expect(await dispatch("mission:setStatus", { missionId: strict.m.id, status: "executing" }, ctx(strict.board, confirm) as never)).toEqual({ ok: true });
+    const legacy = missionFixture({ campaign: LEGACY });
+    expect(await dispatch("mission:setStatus", { missionId: legacy.m.id, status: "active" }, ctx(legacy.board, confirm) as never)).toEqual({ ok: true });
+    expect(legacy.board.getMission(legacy.m.id)!.notes ?? "").toBe("");
+    for (const to of ["done", "awaitingApproval", "failed", "cancelled"]) {
+      const plain = missionFixture();
+      expect(await dispatch("mission:setStatus", { missionId: plain.m.id, status: to }, ctx(plain.board, confirm) as never)).toEqual({ ok: true });
+    }
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("campaign, task and bug status changes never ask", async () => {
+    const confirm = vi.fn(async () => true);
+    const { board, m } = missionFixture();
+    const t = board.createTask({ missionId: m.id, name: "T" });
+    const camp = board.listCampaigns()[0]!;
+    const c = ctx(board, confirm);
+    expect(await dispatch("campaign:setStatus", { campaignId: camp.id, status: "executing" }, c as never)).toEqual({ ok: true });
+    expect(await dispatch("task:setStatus", { taskId: t.id, status: "executing" }, c as never)).toEqual({ ok: true });
+    expect(confirm).not.toHaveBeenCalled();
+  });
+});
+

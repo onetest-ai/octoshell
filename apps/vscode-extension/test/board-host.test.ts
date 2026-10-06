@@ -1,9 +1,11 @@
 // apps/vscode-extension/test/board-host.test.ts
 import { describe, it, expect } from "vitest";
-import { writeFileSync } from "node:fs";
+import { cpSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { BoardHost } from "../src/host/board-host.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
+import { SET_STATUS } from "./fixtures/status-flip-board.js";
 
 function host(): { board: BoardHost; octo: string } {
   const repo = mkdtempClean("boardhost-");
@@ -58,7 +60,7 @@ describe("BoardHost", () => {
     const { board } = host();
     const c = board.createCampaign({ name: "C" });
     const m = board.createMission({ title: "M", campaignId: c.id });
-    board.setStatus("mission", m.id, "executing");
+    board.setStatus("mission", m.id, "executing", { force: "test" });
     expect(board.campaignRollup(c.id)!.rollupStatus).toBe("active");
   });
 
@@ -155,7 +157,7 @@ describe("BoardHost", () => {
     const c = board.createCampaign({ name: "C" });
     const m1 = board.createMission({ title: "M1", campaignId: c.id });
     const m2 = board.createMission({ title: "M2", campaignId: c.id });
-    board.setStatus("mission", m1.id, "executing");
+    board.setStatus("mission", m1.id, "executing", { force: "test" });
     board.setStatus("mission", m2.id, "done");
 
     const summary = board.campaignSummary(c.id);
@@ -253,5 +255,152 @@ describe("BoardHost", () => {
     const r2 = board.syncBugsFromBoard({ missionId: m.id });
     expect(r1).toEqual({ created: 0 });
     expect(r2).toEqual({ created: 0 });
+  });
+});
+
+// ── Plan review enforcement (mission M5 AC2) ─────────────────────────────────────────────────────
+
+const STRICT = "## Plan review (ba + tech-lead, 2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved";
+const LEGACY = "## Plan review (Alex + Rio, 2026-10-02)\nLooked fine.";
+const DROPDOWN_REASON = "confirmed in the extension's status dropdown";
+
+function missionBoard(opts: { missionNotes?: string; campaignNotes?: string } = {}) {
+  const { board, octo } = host();
+  const c = board.createCampaign({ name: "C" });
+  if (opts.campaignNotes !== undefined) board.updateBrief("campaign", c.id, { notes: opts.campaignNotes });
+  const m = board.createMission({ title: "M1 - Thing", campaignId: c.id });
+  if (opts.missionNotes !== undefined) board.updateBrief("mission", m.id, { notes: opts.missionNotes });
+  const file = join(octo, m.folderPath, "mission.yaml");
+  return { board, octo, c, m, file };
+}
+
+describe("BoardHost.setStatus plan-review gate", () => {
+  it("refuses a mission moving into executing without a review: plan-review-missing, YAML byte-identical", () => {
+    const { board, m, file } = missionBoard();
+    const before = readFileSync(file, "utf8");
+    const res = board.setStatus("mission", m.id, "executing");
+    expect(res).toMatchObject({ ok: false, reason: "plan-review-missing" });
+    expect((res as { message: string }).message).toMatch(/no `## Plan review \(\.\.\.\)` heading/);
+    expect(readFileSync(file, "utf8")).toBe(before);
+    expect(board.getMission(m.id)!.status).toBe("draft");
+  });
+
+  it("gates every spelling that maps to executing", () => {
+    for (const spelling of ["active", "in progress", "running", "executing"]) {
+      const { board, m } = missionBoard();
+      expect(board.setStatus("mission", m.id, spelling), spelling).toMatchObject({ ok: false, reason: "plan-review-missing" });
+    }
+  });
+
+  it("names the candidate heading and what it lacks in the message", () => {
+    const { board, m } = missionBoard({ missionNotes: "## Plan review (Alex, 2026-10-05)\nonly one" });
+    const res = board.setStatus("mission", m.id, "executing") as { message: string };
+    expect(res.message).toContain("## Plan review (Alex, 2026-10-05)");
+    expect(res.message).toContain("heading does not name the tech-lead");
+    expect(res.message).toContain("Reviewers: ba (<name>), tech-lead (<name>)");
+  });
+
+  it("{force} flips it and appends the overridden note after the existing notes, bytes preserved", () => {
+    const { board, m } = missionBoard({ missionNotes: "Existing prose.\n\n  indented\n" });
+    expect(board.setStatus("mission", m.id, "executing", { force: DROPDOWN_REASON })).toEqual({ ok: true });
+    const day = new Date().toISOString().slice(0, 10);
+    expect(board.getMission(m.id)!.status).toBe("executing");
+    expect(board.getMission(m.id)!.notes).toBe(`Existing prose.\n\n  indented\n\n## Plan review overridden (${day})\n${DROPDOWN_REASON}`);
+  });
+
+  it("dates the overridden note with the injected clock (UTC)", () => {
+    const repo = mkdtempClean("boardhost-clock-");
+    const board = new BoardHost(join(repo, ".octobots"), () => new Date("2031-02-03T23:59:59Z"));
+    const c = board.createCampaign({ name: "C" });
+    const m = board.createMission({ title: "M1 - Thing", campaignId: c.id });
+    board.setStatus("mission", m.id, "executing", { force: "r" });
+    expect(board.getMission(m.id)!.notes).toBe("## Plan review overridden (2031-02-03)\nr");
+  });
+
+  it("escapes a #-led force reason so it cannot forge a review heading", () => {
+    const { board, m } = missionBoard();
+    board.setStatus("mission", m.id, "executing", { force: "## Plan review (ba, tech-lead)" });
+    expect(board.getMission(m.id)!.notes).toMatch(/\n\\## Plan review \(ba, tech-lead\)$/);
+    // a later plain start from another status still has no review
+    board.setStatus("mission", m.id, "draft");
+    expect(board.setStatus("mission", m.id, "executing")).toMatchObject({ ok: false, reason: "plan-review-missing" });
+  });
+
+  it("a strict record in the mission notes flips it with no override note", () => {
+    const { board, m } = missionBoard({ missionNotes: STRICT });
+    expect(board.setStatus("mission", m.id, "executing")).toEqual({ ok: true });
+    expect(board.getMission(m.id)!.notes).toBe(STRICT);
+  });
+
+  it("a strict record in the campaign notes flips it", () => {
+    const { board, m } = missionBoard({ campaignNotes: STRICT });
+    expect(board.setStatus("mission", m.id, "active")).toEqual({ ok: true });
+    expect(board.getMission(m.id)!.status).toBe("executing");
+  });
+
+  it("a legacy record flips it, silently, with no override note", () => {
+    const { board, m } = missionBoard({ campaignNotes: LEGACY });
+    expect(board.setStatus("mission", m.id, "executing")).toEqual({ ok: true });
+    expect(board.getMission(m.id)!.notes ?? "").toBe("");
+  });
+
+  it("a forced move that the rule already allows adds no note", () => {
+    const { board, m } = missionBoard({ missionNotes: STRICT });
+    board.setStatus("mission", m.id, "executing", { force: "x" });
+    expect(board.getMission(m.id)!.notes).toBe(STRICT);
+  });
+
+  it("does not check draft -> done or draft -> awaitingApproval", () => {
+    for (const to of ["done", "awaitingApproval", "failed", "cancelled", "draft"]) {
+      const { board, m } = missionBoard();
+      if (to !== "draft") expect(board.setStatus("mission", m.id, to), to).toEqual({ ok: true });
+      else expect(board.setStatus("mission", m.id, to)).toEqual({ ok: true });
+    }
+  });
+
+  it("does not check executing -> executing (a spelling of the stored state is no transition)", () => {
+    const { board, m, file } = missionBoard();
+    board.setStatus("mission", m.id, "executing", { force: "x" });
+    const before = readFileSync(file, "utf8");
+    expect(board.setStatus("mission", m.id, "active")).toEqual({ ok: true });
+    expect(readFileSync(file, "utf8")).toBe(before);
+  });
+
+  it("campaign, task and bug status changes are never gated and return {ok: true}", () => {
+    const { board, c, m } = missionBoard();
+    const t = board.createTask({ missionId: m.id, name: "T" });
+    const b = board.createBug({ title: "B", severity: "low", missionId: m.id });
+    expect(board.setStatus("campaign", c.id, "executing")).toEqual({ ok: true });
+    expect(board.setStatus("task", t.id, "executing")).toEqual({ ok: true });
+    expect(board.setStatus("bug", b.id, "executing")).toEqual({ ok: true });
+    expect(board.getCampaign(c.id)!.status).toBe("executing");
+  });
+
+  it("throws for an unknown entity or status instead of returning a refusal", () => {
+    const { board, m } = missionBoard();
+    expect(() => board.setStatus("mission", "nope", "executing")).toThrow(/could not set status/i);
+    expect(() => board.setStatus("mission", m.id, "bogus")).toThrow(/could not set status/i);
+  });
+
+  it("writes the same bytes as set-status.js --force on a twin board", () => {
+    const { board, octo, c, m, file } = missionBoard({ missionNotes: "Existing prose.\n" });
+    const twinRepo = mkdtempClean("boardhost-twin-");
+    const twinOcto = join(twinRepo, ".octobots");
+    cpSync(octo, twinOcto, { recursive: true });
+    const twinCampaign = join(twinOcto, c.folderPath);
+    execFileSync("node", [SET_STATUS, twinCampaign, "M1 - Thing", "executing", `--force=${DROPDOWN_REASON}`], { encoding: "utf8" });
+    board.setStatus("mission", m.id, "executing", { force: DROPDOWN_REASON });
+    const twinFile = join(twinOcto, m.folderPath, "mission.yaml");
+    expect(readFileSync(file, "utf8")).toBe(readFileSync(twinFile, "utf8"));
+  });
+
+  it("writes the same bytes as set-status.js --force for a #-led reason and an empty notes field", () => {
+    const { board, octo, c, m, file } = missionBoard();
+    const twinOcto = join(mkdtempClean("boardhost-twin2-"), ".octobots");
+    cpSync(octo, twinOcto, { recursive: true });
+    const reason = "# heading-like   reason";
+    execFileSync("node", [SET_STATUS, join(twinOcto, c.folderPath), "M1 - Thing", "active", `--force=${reason}`], { encoding: "utf8" });
+    board.setStatus("mission", m.id, "executing", { force: reason });
+    expect(readFileSync(file, "utf8")).toBe(readFileSync(join(twinOcto, m.folderPath, "mission.yaml"), "utf8"));
   });
 });

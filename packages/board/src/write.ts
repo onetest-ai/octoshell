@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
+import { planReviewStatus, type PlanReviewCandidate } from "./plan-review.js";
 import { parseManagedBlock, mapBoardStatus, boardLineEntityName, parseDocumentLinks, type EntityKind, type ManagedFields } from "./managed-block.js";
 import { slugify, uniqueSlug } from "./slug.js";
 import { type BugParent, type BugSeverity } from "./types.js";
@@ -132,14 +133,15 @@ function loadCurrentFields(root: string, kind: YamlKind, folderPath: string, res
  * Read-modify-write an entity's `<kind>.yaml`. Reading tolerates a legacy `<kind>.md` (which the
  * write then migrates to YAML, trashing the `.md`). Returns false if the entity isn't found.
  */
-function patchEntity(root: string, kind: YamlKind, id: string, mutate: (f: EntityFields) => void): boolean {
+function patchEntity(root: string, kind: YamlKind, id: string, mutate: (f: EntityFields, folderPath: string) => void | false): boolean {
   const board = new BoardModel(root);
   board.rebuild();
   const folderPath = entityFolderPath(kind, id, board);
   if (!folderPath) return false;
   const fields = loadCurrentFields(root, kind, folderPath, entityStatus(kind, id, board));
   if (!fields) return false;
-  mutate(fields);
+  // `false` from the mutator means "nothing to write" (a refused or no-op change): the file is untouched.
+  if (mutate(fields, folderPath) === false) return true;
   const abs = join(root, folderPath);
   mkdirSync(abs, { recursive: true });
   writeFileSync(join(abs, `${kind}.yaml`), dumpEntity(kind, fields), "utf8");
@@ -553,6 +555,99 @@ export function setStatus(root: string, kind: EntityKind, id: string, state: str
   return patchEntity(root, kind, id, (f) => {
     f.status = mapped;
   });
+}
+
+/** Outcome of {@link setStatusChecked}. `not-found` covers an unknown entity and an unknown state. */
+export type SetStatusResult =
+  | { ok: true }
+  | { ok: false; reason: "not-found" }
+  | { ok: false; reason: "plan-review-missing"; message: string };
+
+/**
+ * `setStatus` plus the plan-review rule (mission M5 AC2; the pack's set-status.js is the other
+ * implementation). Only a MISSION moving into `executing` from a different stored status is checked:
+ * it needs a plan review in its own or its campaign's notes (`planReviewStatus`). Without one the
+ * file is left byte-identical and `plan-review-missing` comes back with a message naming what is
+ * missing and how to record a review. `opts.force` (a reason) overrides: the mission notes get
+ * `## Plan review overridden (<YYYY-MM-DD UTC>)` + the reason appended, as set-status.js writes it.
+ * A legacy record is allowed silently; the warning is script output only (campaign decision 12).
+ * Every other kind and every other move behaves as `setStatus`.
+ */
+export function setStatusChecked(
+  root: string,
+  kind: EntityKind,
+  id: string,
+  state: string,
+  opts: { force?: string; now?: () => Date } = {},
+): SetStatusResult {
+  const mapped = mapBoardStatus(state);
+  if (!mapped) return { ok: false, reason: "not-found" };
+  let refusal: SetStatusResult | null = null;
+  const found = patchEntity(root, kind, id, (f, folderPath) => {
+    // The before-state as the board shows it: `Done` / `awaiting approval` are the canonical values.
+    const from = mapBoardStatus(f.status ?? "") ?? "draft";
+    if (kind === "mission" && mapped === "executing" && from !== "executing") {
+      const { notes: campaignNotes, error } = campaignNotesOf(root, folderPath);
+      const review = planReviewStatus(f.notes, campaignNotes);
+      if (!review.ok) {
+        const reason = normaliseForceReason(opts.force);
+        if (reason === null) {
+          refusal = { ok: false, reason: "plan-review-missing", message: planReviewRefusal(f.name, review.candidates, error) };
+          return false;
+        }
+        const day = (opts.now?.() ?? new Date()).toISOString().slice(0, 10);
+        const note = `## Plan review overridden (${day})\n${reason}`;
+        const old = f.notes ?? "";
+        f.notes = old ? `${old}${old.endsWith("\n") ? "\n" : "\n\n"}${note}` : note;
+      }
+    }
+    f.status = mapped;
+  });
+  if (refusal) return refusal;
+  return found ? { ok: true } : { ok: false, reason: "not-found" };
+}
+
+/**
+ * A `--force` reason as set-status.js records it: whitespace collapsed and trimmed, and a leading `#`
+ * escaped (`\#`) so the override note can never forge a `## Plan review (...)` heading. `null` when
+ * there is no reason (no override asked for).
+ */
+function normaliseForceReason(force: string | undefined): string | null {
+  if (force === undefined) return null;
+  const reason = force.replace(/\s+/g, " ").trim();
+  if (!reason) return null;
+  return reason.startsWith("#") ? `\\${reason}` : reason;
+}
+
+/**
+ * The notes of the campaign holding mission `missionId` (`<mission dir>/../../campaign.yaml`, as the
+ * script reads it). An unreadable campaign file is empty notes plus the error, never a throw.
+ */
+function campaignNotesOf(root: string, missionFolderPath: string): { notes: string; error: string | null } {
+  const campaignFolder = join(missionFolderPath, "..", "..");
+  try {
+    return { notes: loadCurrentFields(root, "campaign", campaignFolder, undefined)?.notes ?? "", error: null };
+  } catch (e) {
+    return { notes: "", error: `${join(campaignFolder, "campaign.yaml")}: ${String((e as Error).message).split("\n")[0]}` };
+  }
+}
+
+/** Why a move into executing is refused, and how to record a review or override. (set-status.js prints the same.) */
+function planReviewRefusal(title: string, candidates: PlanReviewCandidate[], campaignError: string | null): string {
+  const lines = [`Cannot move "${title}" into executing: no plan review is recorded.`];
+  if (campaignError) lines.push(`The campaign notes could not be read (${campaignError}).`);
+  if (candidates.length === 0) {
+    lines.push("There is no `## Plan review (...)` heading in the mission notes or the campaign notes.");
+  } else {
+    for (const c of candidates) lines.push(`${c.where} notes: "${c.heading}": ${c.missing.join("; ")}`);
+  }
+  lines.push(
+    "To record a review, add this to the mission notes or the campaign notes:",
+    "## Plan review (<names or roles>, <date>)",
+    "Reviewers: ba (<name>), tech-lead (<name>)",
+    "Verdict: approved | approved with nits",
+  );
+  return lines.join("\n");
 }
 
 // ── md → yaml entity migration ────────────────────────────────────────────────

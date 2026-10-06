@@ -98,4 +98,19 @@ describe("MissionView", () => {
     const header = container.querySelector("header");
     expect(header?.textContent ?? "").not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
   });
+
+  it("re-renders the stored status when the move is cancelled (the optimistic choice is not kept)", async () => {
+    const rpc = fakeRpc({
+      "mission:get": { id: "m1", campaignId: "camp1", title: "Draft a Q3 report", status: "draft", description: "", acceptanceCriteria: "" },
+      "mission:setStatus": { ok: true, status: "draft" },
+    });
+    render(<MissionView id="m1" rpc={rpc as never} onOpenTask={() => {}} onNewTask={() => {}} />);
+    await screen.findByText("Draft a Q3 report");
+    const sel = screen.getByLabelText("Status") as HTMLSelectElement;
+    expect(sel.value).toBe("draft");
+    fireEvent.change(sel, { target: { value: "executing" } });
+    await waitFor(() => expect(rpc.calls.some((c) => c.method === "mission:setStatus")).toBe(true));
+    await waitFor(() => expect((screen.getByLabelText("Status") as HTMLSelectElement).value).toBe("draft"));
+    expect(document.querySelector('[data-status="draft"]')).toBeTruthy();
+  });
 });

@@ -3144,8 +3144,8 @@ var STOPWORDS = new Set(
 function tokenize(text) {
   return text.split(/[/.\-_\s]+/).flatMap((word) => word.split(/(?<=[a-z0-9])(?=[A-Z0-9])/)).map((t) => t.toLowerCase()).filter((t) => t.length > 1 && !STOPWORDS.has(t) && !/^\d+$/.test(t));
 }
-function idf(df, candidateCount, token) {
-  const d = df.get(token);
+function idf(df, candidateCount, token2) {
+  const d = df.get(token2);
   if (d === void 0 || d === 0) return 0;
   return Math.log(candidateCount / d);
 }
@@ -3249,8 +3249,8 @@ function readVault(repoRoot, vaultPath = DEFAULT_VAULT_PATH) {
 var PATH_TOKEN = /[A-Za-z0-9_@.-]+(?:\/[A-Za-z0-9_@.-]+)+/gu;
 function citedPaths(note, candidates) {
   const found = /* @__PURE__ */ new Set();
-  for (const token of note.body.matchAll(PATH_TOKEN)) {
-    const raw = token[0];
+  for (const token2 of note.body.matchAll(PATH_TOKEN)) {
+    const raw = token2[0];
     const cleaned = raw.replace(/[.,;:)\]]+$/u, "");
     if (candidates.has(cleaned)) found.add(cleaned);
   }
@@ -4182,6 +4182,14 @@ function sortEntities(entities) {
     return a.folderPath < b.folderPath ? -1 : a.folderPath > b.folderPath ? 1 : 0;
   });
 }
+
+// ../board/dist/plan-review.js
+var NOT_WORD = "[\\p{L}\\p{N}_-]";
+var token = (word, flags) => new RegExp(`(?<!${NOT_WORD})${word}(?!${NOT_WORD})`, `u${flags}`);
+var BA = token("ba", "i");
+var TECH_LEAD = token("tech-lead", "i");
+var ALEX = token("Alex", "");
+var RIO = token("Rio", "");
 
 // ../board/dist/write.js
 function parseCriteriaString(s) {
