@@ -29,3 +29,17 @@ export function formatCounts(counts: TestStatusCounts): string {
 export function groupLabel(folder: string, total: number, counts: TestStatusCounts): string {
   return `${folder} · ${total} · ${formatCounts(counts)}`;
 }
+
+/** The worst status inside a set of counts, as the Tests node and each mission group show it. */
+export type TestAggregate = "fail" | "blocked" | "pass" | "neutral";
+
+/**
+ * `fail` if any fail; else `blocked` if any blocked; else `pass` when there is at least one case and every
+ * case passes; else `neutral` (empty, or draft/ready/unknown in the mix).
+ */
+export function aggregateStatus(counts: TestStatusCounts): TestAggregate {
+  if (counts.fail > 0) return "fail";
+  if (counts.blocked > 0) return "blocked";
+  const total = TEST_STATUS_ORDER.reduce((n, s) => n + counts[s], 0);
+  return total > 0 && counts.pass === total ? "pass" : "neutral";
+}
