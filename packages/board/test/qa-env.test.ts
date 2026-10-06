@@ -77,6 +77,22 @@ describe("qa-env.mjs refusals (exit 3, command not run)", () => {
     expect(qa(["qa_", "--", ...touch()]).status).toBe(0);
   });
 
+  it("says the match is whole-name when the pattern only matches a part of the db", () => {
+    writeConfig({ ...CFG, name_pattern: "^qa_" });
+    const r = qa(["qa_x", "--", ...touch()]);
+    expect(r.status).toBe(3);
+    expect(r.stderr).toMatch(/must match the WHOLE name/);
+    writeConfig({ ...CFG, name_pattern: "^qa_" });
+    expect(qa(["prod", "--", ...touch()]).stderr).not.toMatch(/WHOLE name/);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("refuses a trailing newline even when the pattern ends in $", () => {
+    writeConfig(CFG);
+    expect(qa(["qa_x\n", "--", ...touch()]).status).toBe(3);
+    expect(existsSync(marker)).toBe(false);
+  });
+
   it("anchors an alternation that merely starts with ^ and ends with $", () => {
     writeConfig({ ...CFG, name_pattern: "^qa_|_scratch$" });
     expect(qa(["qa_prod_users", "--", ...touch()]).status).toBe(3);
@@ -220,6 +236,23 @@ describe("qa-env.mjs probe (exit 4, command not run)", () => {
     expect(r.status).toBe(4);
   });
 
+  it("kills the probe's process group and exits 128+n when interrupted during the probe", async () => {
+    const pidFile = join(dir, "probe.pid");
+    writeConfig({ ...CFG, probe: `echo $$ > ${JSON.stringify(pidFile)}; sleep 60; echo qa_x` });
+    for (const [sig, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
+      rmSync(pidFile, { force: true });
+      const child = spawn("node", [SCRIPT, "qa_x", "--", ...touch()], { cwd: dir, stdio: "ignore" });
+      const exited = new Promise<number | null>((res) => child.on("exit", (c) => res(c)));
+      for (let i = 0; i < 100 && !existsSync(pidFile); i++) await new Promise((r) => setTimeout(r, 50));
+      const pid = Number(readFileSync(pidFile, "utf8").trim());
+      child.kill(sig);
+      expect(await exited).toBe(code);
+      await new Promise((r) => setTimeout(r, 200));
+      expect(() => process.kill(-pid, 0)).toThrow(); // the probe's whole group is gone
+      expect(existsSync(marker)).toBe(false);
+    }
+  });
+
   it("defaults the probe timeout to 30 s (documented in the usage text)", () => {
     expect(readFileSync(SCRIPT, "utf8")).toMatch(/30_000|30000/);
   });
@@ -246,9 +279,19 @@ describe("qa-env.mjs running the command", () => {
     expect(ranEnv().DATABASE_URL).toBe("postgres://localhost/qa_x");
   });
 
-  it("accepts a config with no vars at all", () => {
+  it("refuses a config that declares no vars, so an inherited DATABASE_URL cannot slip through", () => {
     writeConfig({ vars: {}, name_pattern: "^qa_.*" });
-    expect(qa(["qa_x", "--", ...touch()]).status).toBe(0);
+    const r = qa(["qa_x", "--", ...touch()], { DATABASE_URL: "postgres://prod/real" });
+    expect(r.status).toBe(3);
+    expect(r.stderr).toMatch(/declares no variable/);
+    expect(r.stderr).not.toContain("target database");
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("passes an undeclared inherited var through unchanged (documented: declare every DB var)", () => {
+    writeConfig(CFG);
+    expect(qa(["qa_x", "--", ...touch()], { OTHER_DB_URL: "postgres://prod/real" }).status).toBe(0);
+    expect(ranEnv().OTHER_DB_URL).toBe("postgres://prod/real");
   });
 
   it("reads --config <path> and --config=<path>, before or after the db", () => {

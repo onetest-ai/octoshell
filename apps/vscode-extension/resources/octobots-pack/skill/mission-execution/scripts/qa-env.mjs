@@ -13,16 +13,20 @@
 // See qa-env.example.json next to this file. What it does, in order:
 //   1. exit 2 on a usage error (no `--`, no <db>, no <cmd>, an unknown option);
 //   2. exit 3, naming the expected path, when the config is missing or unreadable; exit 3 when it
-//      is malformed (bad JSON, `vars` not an object, `name_pattern` missing or not a regex, a value
-//      that is not a string, a name that cannot be an environment variable, a non-string `probe`);
+//      is malformed (bad JSON, `vars` not an object or empty, `name_pattern` missing or not a regex,
+//      a value that is not a string, a name that cannot be an environment variable, a non-string
+//      `probe`);
 //   3. exit 3 when <db> does not match `name_pattern`;
 //   4. exit 3, naming the variable, when any `vars` template lacks `{db}`;
 //   5. export every var with every `{db}` replaced by <db>;
 //   6. when `probe` is set, run it as a shell command with those vars in its environment; exit 4
 //      unless its trimmed stdout equals <db> (also on a non-zero exit, a launch failure, or a
 //      timeout: a hung probe is killed after 30 s, process group included; the override
-//      QA_ENV_PROBE_TIMEOUT_MS exists for tests). The probe text is NOT templated: it reads the db
-//      through the exported vars, e.g. `psql -tAc 'select current_database()'` using DATABASE_URL;
+//      QA_ENV_PROBE_TIMEOUT_MS exists for tests). A probe that prints the right name but exits
+//      non-zero, or prints any extra line, is refused. SIGINT/SIGTERM during the probe kill its
+//      process group and exit 128+n. The probe text is NOT templated: it reads the db through the
+//      exported vars, e.g. `psql "$DATABASE_URL" -tAc 'select current_database()'`. Quote every var
+//      in the probe text: the shell expands an unquoted `$VAR`, and <db> is inside it;
 //   7. print `qa-env: target database = <db>` to stderr, run <cmd> with the inherited stdio, and
 //      exit with its exit code (128+n when it dies from signal n; 127 / 126 when it cannot start).
 //      SIGINT and SIGTERM sent to this process are forwarded to <cmd>.
@@ -30,12 +34,24 @@
 // of shell metacharacters stays inert (the probe is a shell command by contract, but never sees
 // <db> spliced into its text, only in the environment).
 //
+// Environment: <cmd> and the probe get this process's environment with every declared var set
+// (a declared var always overrides an inherited one of the same name). An UNDECLARED var passes
+// through unchanged, so a DATABASE_URL=prod already in the shell still reaches <cmd> unless the
+// config declares DATABASE_URL. Declare every variable the app reads to locate its database.
+//
+// Exit codes 2, 3 and 4 are the guard's own only when the "qa-env: target database" line was not
+// printed; after it, every exit code is <cmd>'s, which may itself be 2, 3 or 4.
+//
 // Safety decisions:
 //   * `name_pattern` is ALWAYS anchored: it is compiled as `^(?:<pattern>)$`, so the whole name
 //     must match. The pattern is first compiled on its own, so one that only works wrapped
 //     (`a)|(b`) is rejected. An unanchored `qa_` therefore never matches `prod_qa_x`, and an
 //     alternation like `^qa_|_scratch$` cannot match a prefix or suffix alone. An unanchored
-//     match would be a bypass of the guard.
+//     match would be a bypass of the guard. To allow every name starting with qa_, write a
+//     character class, `^qa_[a-z0-9_]+$`, not `^qa_.*`: <db> is spliced into URLs and DSNs, so
+//     a pattern that admits `?`, `/`, `@`, `=` or spaces admits `qa_x?dbname=prod`.
+//   * `vars` must declare at least one variable: with none, <cmd> would run on whatever database
+//     the inherited environment names, while this script claims the target is <db>.
 //   * The config is read only when it is a regular file of at most 1 MiB: opened non-blocking and
 //     checked with fstat on that descriptor (the hardened reader the other pack scripts use), so a
 //     FIFO, a directory or /dev/zero cannot hang or flood the guard. A symlink to a regular file
@@ -115,6 +131,7 @@ function loadConfig(path) {
   if (typeof cfg !== "object" || cfg === null || Array.isArray(cfg)) bad("the root must be an object");
   const { vars, name_pattern: pattern, probe } = cfg;
   if (typeof vars !== "object" || vars === null || Array.isArray(vars)) bad("`vars` must be an object of NAME: template");
+  if (Object.keys(vars).length === 0) bad("`vars` declares no variable, so nothing would point the command at the QA database");
   for (const [name, tpl] of Object.entries(vars)) {
     if (!ENV_NAME.test(name)) bad(`var name ${JSON.stringify(name)} is not a valid environment variable name`);
     if (typeof tpl !== "string") bad(`var ${name} must be a string template`);
@@ -139,10 +156,15 @@ function runProbe(probe, env) {
     const child = spawn(probe, { shell: true, env, detached: posix, stdio: ["ignore", "pipe", "inherit"] });
     let out = "";
     let finished = false;
+    const onSignal = (sig) => {
+      kill();
+      process.exit(128 + (osc.signals[sig] ?? 0));
+    };
     const finish = (r) => {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
+      for (const sig of ["SIGINT", "SIGTERM"]) process.off(sig, onSignal);
       done(r);
     };
     const kill = () => {
@@ -153,6 +175,7 @@ function runProbe(probe, env) {
         /* already gone */
       }
     };
+    for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, onSignal);
     const timer = setTimeout(() => {
       kill();
       finish({ ok: false, why: `probe timed out after ${timeoutMs} ms and was killed` });
@@ -195,7 +218,12 @@ function runCommand(cmd, env, db) {
 async function main() {
   const { config, db, cmd } = parseArgs(process.argv.slice(2));
   const { vars, re, pattern, probe, file } = loadConfig(config);
-  if (!re.test(db)) fail(3, `refusing ${JSON.stringify(db)}: it does not match name_pattern ${JSON.stringify(pattern)} (anchored, whole name) in ${file}`);
+  if (!re.test(db)) {
+    const partial = new RegExp(pattern).test(db)
+      ? `; name_pattern must match the WHOLE name, not a part of it (for a prefix, write e.g. ^qa_[a-z0-9_]+$)`
+      : "";
+    fail(3, `refusing ${JSON.stringify(db)}: it does not match name_pattern ${JSON.stringify(pattern)} (anchored, whole name) in ${file}${partial}`);
+  }
   for (const [name, tpl] of Object.entries(vars)) {
     if (!tpl.includes("{db}")) fail(3, `var ${name} template ${JSON.stringify(tpl)} lacks {db}, so it could point at a real database (${file})`);
   }
