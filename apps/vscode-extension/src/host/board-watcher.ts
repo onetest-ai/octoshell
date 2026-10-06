@@ -41,10 +41,16 @@ export function createQuiescentDebouncer(opts: {
  * screenshots that QA writes while a mission is verified. They hold no board entity, so a write there
  * must not cost a rebuild. A TC file or README directly under `tests/m<n>/` is NOT ignored: it still
  * triggers the normal debounced rebuild (M6 shows TC status changes through it).
- * A path check, because a `RelativePattern` glob cannot negate.
+ * A path check, because a `RelativePattern` glob cannot negate. Only the part below the LAST
+ * `.octobots/campaigns/` is judged: the workspace's own ancestors (a repo checked out under some
+ * `campaigns/x/tests/y/runs/` folder) must never silence the board.
  */
 export function isTestsRunOrEvidencePath(fsPath: string): boolean {
-  return /[\\/]campaigns[\\/][^\\/]+[\\/]tests[\\/](?:[^\\/]+[\\/])*(?:runs|evidence)[\\/]/.test(fsPath);
+  const anchors = [...fsPath.matchAll(/[\\/]\.octobots[\\/]campaigns[\\/]/g)];
+  const last = anchors[anchors.length - 1];
+  if (!last) return false;
+  const inBoard = fsPath.slice(last.index + last[0].length);
+  return /^[^\\/]+[\\/]tests[\\/](?:[^\\/]+[\\/])*(?:runs|evidence)[\\/]/.test(inBoard);
 }
 
 /**

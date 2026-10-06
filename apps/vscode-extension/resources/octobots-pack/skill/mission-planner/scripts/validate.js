@@ -101,11 +101,23 @@ function testsWarnings() {
     return forMission(campaignDir, fields);
   }
   if (kind !== "campaign" || !isCampaignDir(dir)) return [];
-  const missions = join(dir, "missions");
+  const out = [];
+  for (const { fields: m } of campaignMissions(dir)) out.push(...forMission(dir, m));
+  return out;
+}
+
+/**
+ * The parsed `mission.yaml` of every mission folder of the campaign at `campaignDir`. A mission whose
+ * file does not parse is left out: validating THAT mission reports its error, and one broken sibling
+ * must not crash validate.js on the campaign or on a TC file (warnings never change the exit code).
+ */
+function campaignMissions(campaignDir) {
+  const missions = join(campaignDir, "missions");
   const out = [];
   for (const e of existsSync(missions) ? readdirSync(missions, { withFileTypes: true }) : []) {
     const file = join(missions, e.name, "mission.yaml");
-    if (e.isDirectory() && existsSync(file)) out.push(...forMission(dir, readEntity(file, "yaml")));
+    if (!e.isDirectory() || !existsSync(file)) continue;
+    try { out.push({ file, fields: readEntity(file, "yaml") }); } catch { /* reported when that mission is validated */ }
   }
   return out;
 }
@@ -125,11 +137,7 @@ function checkTcFile(file) {
   const base = boardRootOf(dir);
   // The mission this folder belongs to (its criteria bound what `covers` may name); unknown -> prefix check only.
   let acIds = null;
-  const missions = join(campaignDir, "missions");
-  for (const e of existsSync(missions) ? readdirSync(missions, { withFileTypes: true }) : []) {
-    const mf = join(missions, e.name, "mission.yaml");
-    if (!e.isDirectory() || !existsSync(mf)) continue;
-    const m = readEntity(mf, "yaml");
+  for (const { fields: m } of campaignMissions(campaignDir)) {
     const token = missionToken(m.name);
     if (token?.folder === folder) { acIds = acIdsOf(token.id, m.acceptanceCriteria.length); break; }
   }

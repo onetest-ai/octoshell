@@ -101,6 +101,19 @@ describe("isTestsRunOrEvidencePath", () => {
       `${CAMPAIGN}/tests`,
     ]) expect(isTestsRunOrEvidencePath(p), p).toBe(false);
   });
+
+  it("judges only the part below .octobots/campaigns/, never the workspace's own ancestors (M4 gate)", () => {
+    // A workspace that itself lives under a `campaigns/<x>/tests/<y>/runs/` folder must still rebuild on
+    // every entity write; an unanchored match would silence the whole board.
+    const ws = "/home/u/campaigns/acme/tests/e2e/runs/repo/.octobots/campaigns/c";
+    expect(isTestsRunOrEvidencePath(`${ws}/missions/m1-x/mission.yaml`)).toBe(false);
+    expect(isTestsRunOrEvidencePath(`${ws}/tests/m1/TC-001_a.md`)).toBe(false);
+    expect(isTestsRunOrEvidencePath(`${ws}/tests/m1/runs/RUN-1.md`)).toBe(true);
+    const win = "C:\\campaigns\\a\\tests\\b\\evidence\\repo\\.octobots\\campaigns\\c";
+    expect(isTestsRunOrEvidencePath(`${win}\\campaign.yaml`)).toBe(false);
+    expect(isTestsRunOrEvidencePath(`${win}\\tests\\m1\\evidence\\a.png`)).toBe(true);
+    expect(isTestsRunOrEvidencePath("/tmp/campaigns/c/tests/m1/runs/RUN-1.md")).toBe(false); // not a board path
+  });
 });
 
 describe("registerBoardWatcher: tests/ writes", () => {
