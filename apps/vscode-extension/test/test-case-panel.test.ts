@@ -118,6 +118,23 @@ describe("openTestCase", () => {
     const { manager } = setup();
     manager.openTestCase(TC4);
     manager.openTestCase(TC4.replace("/tests/m6/", "/tests/m6/../m6/"));
+    manager.openTestCase(`./${TC4}`);
+    manager.openTestCase(TC4.replace("/m6/", "/m6//"));
+    expect(h.panels).toHaveLength(1);
+  });
+
+  it("another letter case of the same TC never keys a second panel (a case-insensitive file system opens the same file)", () => {
+    // Review finding (0.1.1 T1.3): on macOS `TC-004_SIDEBAR-...md` and `campaigns/Direct-dispatch-process/...` passed the
+    // guard and opened a second panel on the same file (the second one with no mission: `mission M6 not found`).
+    const { manager } = setup();
+    expect(manager.openTestCase(TC4)).toBe(true);
+    const variants = [
+      TC4.replace("TC-004_sidebar", "TC-004_SIDEBAR"),
+      TC4.replace("direct-dispatch-process", "Direct-dispatch-process"),
+      TC4.replace("/m6/", "/M6/"),
+      TC4.replace("campaigns/", "CAMPAIGNS/"),
+    ];
+    for (const v of variants) expect(manager.openTestCase(v), v).toBe(false);
     expect(h.panels).toHaveLength(1);
   });
 

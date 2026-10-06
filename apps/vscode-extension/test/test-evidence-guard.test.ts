@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BoardHost } from "../src/host/board-host.js";
-import { evidenceFileToOpen, testFileToOpen, testFileArgFromWebview } from "../src/host/test-file-guard.js";
+import { evidenceFileToOpen, spelledAsOnDisk, testFileToOpen, testFileArgFromWebview } from "../src/host/test-file-guard.js";
 import { trackedBoardCopies } from "./fixtures/real-board.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
@@ -98,5 +98,15 @@ describe("the guard module", () => {
     const tree = await import("../src/host/campaigns-tree.js");
     expect(tree.testFileToOpen).toBe(testFileToOpen);
     expect(tree.testFileArgFromWebview).toBe(testFileArgFromWebview);
+  });
+});
+
+describe("spelledAsOnDisk (the test-case panel key, 0.1.1 T1.3 review)", () => {
+  it("accepts the exact on-disk spelling and rejects any other letter case, a missing segment and an unreadable parent", () => {
+    const octo = trackedBoardCopies()[0]!;
+    expect(spelledAsOnDisk(octo, TC4)).toBe(true);
+    for (const v of [TC4.replace("TC-004_sidebar", "TC-004_Sidebar"), TC4.replace("/m6/", "/M6/"), TC4.replace("campaigns/", "Campaigns/"), `${TC4}x`, ""])
+      expect(spelledAsOnDisk(octo, v), v).toBe(false);
+    expect(spelledAsOnDisk(join(octo, "nope"), TC4)).toBe(false);
   });
 });

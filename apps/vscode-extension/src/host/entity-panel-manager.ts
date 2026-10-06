@@ -2,7 +2,7 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import * as vscode from "vscode";
 import { dispatch, type DispatchCtx } from "./rpc-dispatcher.js";
 import { OPEN_TEST_FILE_COMMAND, testFileArgFromWebview } from "./campaigns-tree.js";
-import { testFileToOpen } from "./test-file-guard.js";
+import { spelledAsOnDisk, testFileToOpen } from "./test-file-guard.js";
 import { buildWebviewHtml } from "./webview-html.js";
 import { routeUiMessage, type UiActions, type BindMessage } from "../protocol/index.js";
 
@@ -49,7 +49,7 @@ export class EntityPanelManager {
    * Open the panel of the TC at `arg` (a board-relative TestCase.path). The argument is never trusted (a webview or any
    * command caller supplies it): it is joined under the board and accepted only through the same guard as
    * `octoshell.openTestFile`, so a `..` path, an absolute path, a link leaving the board or a non-TC file opens
-   * nothing. The panel is keyed by the normalized path: one panel per TC. Returns whether a panel is now open.
+   * nothing. The panel is keyed by the normalized path in its on-disk spelling: one panel per TC. Returns whether a panel is now open.
    */
   openTestCase(arg: unknown): boolean {
     if (typeof arg !== "string") return false;
@@ -57,6 +57,8 @@ export class EntityPanelManager {
     const abs = testFileToOpen(root, testFileArgFromWebview(root, arg));
     if (!abs) return false;
     const rel = relative(resolve(root), abs).split(sep).join("/");
+    // A case-insensitive file system accepts other spellings of the same file: only the on-disk one keys a panel.
+    if (!spelledAsOnDisk(resolve(root), rel)) return false;
     const detail = this.ctx.board.getTestCaseDetail(rel);
     if (!detail) return false;
     this.open("testCase", rel, TEST_CASE_VIEW_TYPE, this.testCaseTitle(detail.tc));

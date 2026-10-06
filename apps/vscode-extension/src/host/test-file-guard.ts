@@ -1,6 +1,6 @@
 // The path guard behind every webview-supplied test-case path: VS Code free (board-host.ts uses it, and must not
 // import vscode), re-exported from campaigns-tree.ts so its callers and open-test-file-webview.test.ts are unchanged.
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const inside = (root: string, p: string): string | null => {
@@ -49,4 +49,24 @@ export function evidenceFileToOpen(repoRoot: string, evidence: unknown): string 
   } catch {
     return null;
   }
+}
+
+/**
+ * True when every `/`-separated segment of `rel` (board-relative) is spelled exactly as its directory entry on disk.
+ * On a case-insensitive file system (macOS, Windows) `TC-004_X.md` and `TC-004_x.md` name one file; the test-case
+ * panel is keyed by its path, so only the on-disk spelling (the one TestCase.path carries) may key a panel.
+ */
+export function spelledAsOnDisk(boardRoot: string, rel: string): boolean {
+  let dir = boardRoot;
+  for (const seg of rel.split("/")) {
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      return false;
+    }
+    if (!names.includes(seg)) return false;
+    dir = join(dir, seg);
+  }
+  return true;
 }

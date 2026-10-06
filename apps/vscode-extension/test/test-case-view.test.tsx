@@ -342,13 +342,20 @@ describe("test-case panel: sanitized rendering", () => {
   it("renders `<id of first SCHEDULED match …>` literally and creates no script or img element for hostile bodies", async () => {
     const octo = trackedBoardCopies()[0]!;
     const rel = derive(octo, "TC-097_hostile.md", (t) =>
-      t + `\n| 7 | ${UWB_TC006_CELL} | ok |\n\n<script>window.pwned = 1</script>\n\n<img src=x onerror="window.pwned = 2">\n`);
+      t + `\n| 7 | ${UWB_TC006_CELL} | ok |\n\n<script>window.pwned = 1</script>\n\n<img src=x onerror="window.pwned = 2">\n` +
+      `\n[click](javascript:window.pwned=3) [shout](JAVASCRIPT:window.pwned=4) <a href="javascript:window.pwned=5">raw</a>\n`);
     show(realRpc(octo), rel);
     const body = await screen.findByTestId("tc-body");
     expect(body.textContent).toContain("<id of first SCHEDULED match");
     expect(body.querySelector("script")).toBeNull();
     expect(body.querySelector("img")).toBeNull();
+    expect(body.querySelector("iframe,object,embed")).toBeNull();
     expect((window as unknown as { pwned?: number }).pwned).toBeUndefined();
+    // rehype-sanitize DROPS embedded HTML; without it react-markdown would show it as escaped text. Neither the markup
+    // nor a javascript: URL survives (review finding: the assertions above passed with the sanitizer removed).
+    expect(body.textContent).not.toMatch(/<script|onerror|window\.pwned/i);
+    expect(body.innerHTML).not.toMatch(/javascript:/i);
+    for (const a of body.querySelectorAll("a")) expect(a.getAttribute("href") ?? "").not.toMatch(/^\s*javascript:/i);
   });
 });
 
