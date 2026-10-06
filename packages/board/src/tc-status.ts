@@ -26,8 +26,8 @@
 // (no array spread, no `new Set(ident)`, no `new RegExp`, no top-level calls). `graph-payload.mjs --verify`
 // gates it.
 
-import { chmodSync, closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, renameSync, rmSync, writeFileSync, type Stats } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { chmodSync, closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync, type Stats } from "node:fs";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { load as yamlLoad } from "js-yaml";
 import { MAX_TC_BYTES, parseFrontmatter, splitFrontmatter } from "./tc-io.js";
 import { parseTestCase } from "./test-cases.js";
@@ -181,14 +181,14 @@ export function editTestCaseStatus(text: string, status: SettableTcStatus, date:
 
 // ── reading ──────────────────────────────────────────────────────────────────────
 
-type ReadResult = { ok: true; text: string } | { ok: false; reason: TcWriteRefusal; message: string };
+export type ReadResult = { ok: true; text: string } | { ok: false; reason: TcWriteRefusal; message: string };
 
 /**
  * The text of a TC: opened non-blocking and without following a symlink, checked with fstat on that same
  * descriptor (a FIFO or a link to /dev/zero named TC-*.md must not block the extension host), at most MAX_TC_BYTES.
  * Own copy of the no-follow reader (pending-io.mjs `readRegularFile`): tc-io.ts is not edited for it.
  */
-function readTcFile(file: string): ReadResult {
+export function readTcFile(file: string): ReadResult {
   let fd: number;
   try {
     fd = openSync(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) | (constants.O_NOFOLLOW ?? 0));
@@ -241,7 +241,7 @@ function hasControlOrBackslash(s: string): boolean {
 }
 
 /** The path segments of `relPath` when it is `campaigns/<c>/tests/m<n>/TC-*.md`, else null. */
-function tcSegments(relPath: string): string[] | null {
+export function tcSegments(relPath: string): string[] | null {
   if (typeof relPath !== "string") return null;
   const segs = relPath.split("/");
   if (segs.length !== 5 || segs[0] !== "campaigns" || segs[2] !== "tests") return null;
@@ -260,7 +260,8 @@ function refusedWrite(reason: TcWriteRefusal, message: string): WriteTestCaseSta
  * edit from those bytes, writes it to a temp file in the same folder (the file's mode kept), re-reads the TC, and renames
  * only when its bytes are still the ones the edit was computed from. Anything else writes nothing and leaves no temp file.
  * The window between that final re-read and the rename is the script's own and accepted: there is no lock file.
- * A TC, `m<n>` folder or `tests` folder that is a symlink is refused (nothing is written through a link).
+ * A TC, `m<n>` folder or `tests` folder that is a symlink is refused (nothing is written through a link), and so is
+ * a file that does not resolve to a TC inside the board (a symlinked campaign folder leaving it, say).
  */
 export function writeTestCaseStatus(boardRoot: string, relPath: string, opts: WriteTestCaseStatusOptions): WriteTestCaseStatusResult {
   const segs = tcSegments(relPath);
@@ -275,6 +276,15 @@ export function writeTestCaseStatus(boardRoot: string, relPath: string, opts: Wr
     if ((p === file ? st : lstatOrNull(p))?.isSymbolicLink()) return refusedWrite("symlink", `refusing to write: ${relPath} is, or sits in, a symlink`);
   }
   if (!st.isFile()) return refusedWrite("not-regular", `not a regular file: ${relPath}`);
+  // The three links above are the script's rule; a symlinked campaign folder (or any other ancestor) is caught here:
+  // the file must resolve to a TC inside the board, or nothing is written.
+  try {
+    if (!tcSegments(relative(realpathSync(boardRoot), realpathSync(file)).split(sep).join("/"))) {
+      return refusedWrite("symlink", `refusing to write: ${relPath} resolves outside the board's tests folders`);
+    }
+  } catch (e) {
+    return refusedWrite("unreadable", `cannot resolve ${relPath}: ${String((e as Error).message).split("\n")[0]}`);
+  }
 
   const read = readTcFile(file);
   if (!read.ok) return refusedWrite(read.reason, read.message);

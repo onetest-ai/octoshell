@@ -18,8 +18,8 @@ export interface RealRpc {
   emit: (payload: Record<string, unknown>) => void;
 }
 
-export function realRpc(octo: string = trackedBoardCopies()[0]!): RealRpc {
-  const board = new BoardHost(octo);
+export function realRpc(octo: string = trackedBoardCopies()[0]!, now?: () => Date): RealRpc {
+  const board = new BoardHost(octo, now);
   const ctx = {
     board,
     appearanceStore: new AppearanceStore(new FakeMemento()),

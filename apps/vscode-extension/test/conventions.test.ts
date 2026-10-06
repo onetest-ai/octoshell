@@ -150,3 +150,58 @@ describe("webview/host boundary", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+
+/**
+ * T1.2: `src/protocol` and `src/webview` take only TYPES from `@octoshell/board`. The webview bundle must not pull
+ * the board library (Node `fs`, js-yaml) into vite, and the protocol is shared with it, so a value import (even a
+ * constant such as a status list) is one edit away from that. Use `import type`, or a local zod enum.
+ * Scans the raw source line-wise: a multi-line `import { ... } from "@octoshell/board"` and `export ... from`
+ * re-exports count; `import type` and `export type` do not.
+ */
+describe("protocol and webview take only types from @octoshell/board", () => {
+  const SRC_DIR = join(TEST_DIR, "..", "src");
+
+  /** The statements in `source` that import or re-export `@octoshell/board` as a VALUE (a bare, dynamic or require import counts). */
+  function valueBoardImports(source: string): string[] {
+    const uncommented = source.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " ")).replace(/^[ \t]*\/\/.*$/gm, "");
+    const hits: string[] = [];
+    for (const m of uncommented.matchAll(/(^|\n)[ \t]*(import|export)\b([^;]*?)["']@octoshell\/board["']/g)) {
+      if (!/^\s+type\b/.test(m[3]!) && !/^\s*type\s*\{/.test(m[3]!)) hits.push(m[0].trim());
+    }
+    for (const m of uncommented.matchAll(/(?:import|require)\(\s*["']@octoshell\/board["']\s*\)/g)) hits.push(m[0]);
+    return hits;
+  }
+
+  it("the scan itself: flags value, bare, inline-type, dynamic and re-export forms; passes type-only forms", () => {
+    const bad = [
+      'import { MAX_TC_BYTES } from "@octoshell/board";',
+      'import {\n  MAX_TC_BYTES,\n} from "@octoshell/board";',
+      'import "@octoshell/board";',
+      'import * as board from "@octoshell/board";',
+      'import Board, { type TestCase } from "@octoshell/board";',
+      'export { parseTestCase } from "@octoshell/board";',
+      'export * from "@octoshell/board";',
+      'const b = await import("@octoshell/board");',
+    ];
+    for (const src of bad) expect(valueBoardImports(src), src).not.toEqual([]);
+    const good = [
+      'import type { TestCase } from "@octoshell/board";',
+      'import type {\n  TestCase,\n  Mission,\n} from "@octoshell/board";',
+      'export type { TestCase } from "@octoshell/board";',
+      '// import { x } from "@octoshell/board"\n/* import { y } from "@octoshell/board" */',
+      'import { z } from "zod";',
+    ];
+    for (const src of good) expect(valueBoardImports(src), src).toEqual([]);
+  });
+
+  it("no src/protocol or src/webview file value-imports @octoshell/board", () => {
+    const offenders: string[] = [];
+    for (const dir of ["protocol", "webview"]) {
+      for (const rel of listTestFiles(join(SRC_DIR, dir))) {
+        for (const hit of valueBoardImports(readFileSync(join(SRC_DIR, dir, rel), "utf8"))) offenders.push(`${dir}/${rel}: ${hit}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
