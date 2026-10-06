@@ -4,6 +4,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Campaign, Mission, Task, Bug, TestCase, TestCaseStatus } from "@octoshell/board";
 import { formatCounts, groupLabel, TEST_STATUS_ORDER } from "./test-summary.js";
+import { aggregateStatus, type TestAggregate, type TestStatusCounts } from "../protocol/index.js";
 
 type Node =
   | { type: "campaign"; campaign: Campaign }
@@ -15,11 +16,26 @@ type Node =
   | { type: "testGroup"; campaignId: string; folder: string }
   | { type: "testCase"; test: TestCase };
 
+/** Warning/orange theme colour for blocked tests: shared by the leaf and the group/Tests-node aggregate so they agree. */
+const BLOCKED_COLOR = "list.warningForeground";
+
+/** Theme colour ids of a Tests node / group beaker by aggregate; `neutral` has none (the plain beaker). */
+const AGGREGATE_COLOR: Record<Exclude<TestAggregate, "neutral">, string> = {
+  fail: "testing.iconFailed",
+  blocked: BLOCKED_COLOR,
+  pass: "testing.iconPassed",
+};
+
+const beaker = (counts: TestStatusCounts): vscode.ThemeIcon => {
+  const agg = aggregateStatus(counts);
+  return agg === "neutral" ? new vscode.ThemeIcon("beaker") : new vscode.ThemeIcon("beaker", new vscode.ThemeColor(AGGREGATE_COLOR[agg]));
+};
+
 /** Status icon of a TC leaf: a codicon plus a `testing.*` theme colour (never a hardcoded one). */
 const TEST_ICON: Record<TestCaseStatus, { icon: string; color: string }> = {
   pass: { icon: "pass", color: "testing.iconPassed" },
   fail: { icon: "error", color: "testing.iconFailed" },
-  blocked: { icon: "circle-slash", color: "testing.iconSkipped" },
+  blocked: { icon: "circle-slash", color: BLOCKED_COLOR },
   ready: { icon: "circle-large-outline", color: "testing.iconQueued" },
   draft: { icon: "edit", color: "testing.iconUnset" },
   unknown: { icon: "question", color: "testing.iconUnset" },
@@ -139,7 +155,8 @@ export class CampaignsTree implements vscode.TreeDataProvider<Node> {
     const s = this.board.testSummary(campaignId);
     const item = new vscode.TreeItem("Tests", vscode.TreeItemCollapsibleState.Collapsed);
     item.id = `tests:${campaignId}`;
-    item.iconPath = new vscode.ThemeIcon("beaker");
+    if (s) item.iconPath = beaker(s.counts);
+    else item.iconPath = new vscode.ThemeIcon("beaker");
     item.contextValue = "octoshell.tests";
     if (s) item.description = `${s.total} · ${formatCounts(s.counts)}`;
     return item;
@@ -149,7 +166,7 @@ export class CampaignsTree implements vscode.TreeDataProvider<Node> {
     const row = this.board.testSummary(campaignId)?.missions.find((m) => m.folder === folder);
     const item = new vscode.TreeItem(row ? groupLabel(folder, row.total, row.counts) : folder, vscode.TreeItemCollapsibleState.Collapsed);
     item.id = `tests:${campaignId}:${folder}`;
-    item.iconPath = new vscode.ThemeIcon("beaker");
+    item.iconPath = row ? beaker(row.counts) : new vscode.ThemeIcon("beaker");
     item.contextValue = "octoshell.testGroup";
     if (row) {
       const lines = [row.title ?? `${row.mission} (no matching mission)`];
