@@ -1,0 +1,91 @@
+R=
+Merge pull request #178 from onetest-ai/feat/octoshell-0-1-1-m1-t4
+chore(ext): release 0.1.1 (T1.4: CHANGELOG, version bump, VSIX self-check)
+
+ apps/vscode-extension/CHANGELOG.md | 32 +++++++++++++++++++++++++++++---
+ apps/vscode-extension/package.json |  2 +-
+ 2 files changed, 30 insertions(+), 4 deletions(-)
+TREE-IS-RELEASE
+0.1.1
+onWebviewPanel:octoshell.testCase
+muddled count:
+0
+3:## 0.1.1
+## 0.1.1
+
+Octobots pack unchanged at v57, so a workspace already on v57 is not prompted to reinstall.
+
+### Test-case panel
+
+- **Test cases open in their own panel.** It shows the header, the acceptance criteria the case
+  covers, the rendered body and an "Open source file" link to the raw markdown.
+- **Status dropdown.** Choosing a status writes it the way `set-test-status.js` does and records
+  `last_run` as the date only, with no evidence. It never overwrites a status that was changed
+  outside the panel since it was loaded; reload and choose again.
+- **Legacy test cases.** An older-format case can still have its status set, and the panel points
+  you at `--migrate` to bring it to the current format.
+- **Single click opens the panel.** A single click on a test case in the sidebar or in the mission
+  panel now opens this panel; the raw file is one click away through "Open source file".
+
+### Sidebar
+
+- **Status-coloured Tests icons.** The Tests node and each mission's Tests group take the colour of
+  their worst result, and a blocked test is now orange, matching its leaf.
+
+### Internal
+
+- The `qa-env` test no longer flakes, and turbo's strict environment mode passes the board-copy and
+  test variables through, so a cached test run reflects the real environment.
+
+----0.1.0 section
+## 0.1.0
+
+Octobots pack v57. This release removes the Workflow feature end to end and replaces it with
+direct sub-agent dispatch.
+
+### Read this first: legacy `workflows/` folders
+
+**Every release from commit a192780c through 0.0.51 DELETED any legacy
+`workflows/<slug>/workflow.md` on every activation.** The migration (`migrateLegacyWorkflows`)
+derived a `runs.jsonl` from the file's `## Runs` section and then permanently removed
+`workflow.md`. If any of those releases ran in your workspace, it deleted each `workflow.md` it
+found, and git history holds the only copy.
+
+**0.1.0 no longer touches `workflows/` at all.** A leftover `workflows/` folder is ignored by the
+board, and `validate.js` and `doctor.js` warn that it is no longer read.
+
+### Removed commands
+
+These commands no longer exist. A keybinding you bound to any of them now reports
+"command not found":
+
+- `octoshell.newWorkflow`
+- `octoshell.deleteWorkflow`
+- `octoshell.openWorkflowById`
+
+The Workflow tree nodes, the Workflow editor panel and its diagram are gone too.
+
+### Pack v57 and upgrading
+
+The pack is versioned as one unit and is now at v57. When you install or update it in a workspace
+PACK-IDENTICAL
+STORE-IDENTICAL
+codicon-B16ygVZF.ttf
+index-B2jrGbbR.css
+index-CzihnElV.js
+assets/index-CzihnElV.js
+assets/index-B2jrGbbR.css
+url(./codicon-B16ygVZF.ttf?38dcd33a732ebca5a557e04831e9e235)
+--- workflow grep
+<scratch>/work/v011/extension/changelog.md:50:- `octoshell.newWorkflow`
+<scratch>/work/v011/extension/dist/extension.js:22319:var RETIRED_SKILLS = ["octobots", "workf
+<scratch>/work/v011/extension/dist/extension.js:22336:  "workflow-designer": ["SKILL.md"]
+<scratch>/work/v011/extension/dist/extension.js:22898:  "skills/mission-planner/scripts/add-wo
+<scratch>/work/v011/extension/dist/extension.js:22899:  "skills/mission-planner/scripts/sync-m
+<scratch>/work/v011/extension/dist/extension.js:22900:  "skills/mission-planner/scripts/add-ru
+<scratch>/work/v011/extension/dist/extension.js:22901:  "skills/mission-planner/scripts/missio
+<scratch>/work/v011/extension/resources/octobots-pack/skill/mission-execution/SKILL.md:61:## N
+<scratch>/work/v011/extension/resources/octobots-pack/skill/mission-execution/SKILL.md:64:tool
+<scratch>/work/v011/extension/resources/octobots-pack/skill/mission-execution/SKILL.md:65:If a
+<scratch>/work/v011/extension/resources/octobots-pack/skill/mission-planner/SKILL.md:526:Older
+<scratch>/work/v011/extension/resources/octobots-pack/skill/mission-planner/SKILL.md:528:workf

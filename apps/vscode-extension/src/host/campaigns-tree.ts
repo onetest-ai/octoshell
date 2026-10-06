@@ -1,9 +1,8 @@
 import * as vscode from "vscode";
 import type { BoardHost, CampaignRollup } from "./board-host.js";
-import { existsSync, realpathSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Campaign, Mission, Task, Bug, TestCase, TestCaseStatus } from "@octoshell/board";
 import { formatCounts, groupLabel, TEST_STATUS_ORDER } from "./test-summary.js";
+import { aggregateStatus, type TestAggregate, type TestStatusCounts } from "../protocol/index.js";
 
 type Node =
   | { type: "campaign"; campaign: Campaign }
@@ -15,47 +14,39 @@ type Node =
   | { type: "testGroup"; campaignId: string; folder: string }
   | { type: "testCase"; test: TestCase };
 
+/** Warning/orange theme colour for blocked tests: shared by the leaf and the group/Tests-node aggregate so they agree. */
+const BLOCKED_COLOR = "list.warningForeground";
+
+/** Theme colour ids of a Tests node / group beaker by aggregate; `neutral` has none (the plain beaker). */
+const AGGREGATE_COLOR: Record<Exclude<TestAggregate, "neutral">, string> = {
+  fail: "testing.iconFailed",
+  blocked: BLOCKED_COLOR,
+  pass: "testing.iconPassed",
+};
+
+const beaker = (counts: TestStatusCounts): vscode.ThemeIcon => {
+  const agg = aggregateStatus(counts);
+  return agg === "neutral" ? new vscode.ThemeIcon("beaker") : new vscode.ThemeIcon("beaker", new vscode.ThemeColor(AGGREGATE_COLOR[agg]));
+};
+
 /** Status icon of a TC leaf: a codicon plus a `testing.*` theme colour (never a hardcoded one). */
 const TEST_ICON: Record<TestCaseStatus, { icon: string; color: string }> = {
   pass: { icon: "pass", color: "testing.iconPassed" },
   fail: { icon: "error", color: "testing.iconFailed" },
-  blocked: { icon: "circle-slash", color: "testing.iconSkipped" },
+  blocked: { icon: "circle-slash", color: BLOCKED_COLOR },
   ready: { icon: "circle-large-outline", color: "testing.iconQueued" },
   draft: { icon: "edit", color: "testing.iconUnset" },
   unknown: { icon: "question", color: "testing.iconUnset" },
 };
 
-/** The command a TC leaf runs: extension.ts routes it to the dispatcher's `editor.openFile`. */
+/** The raw-file command (the panel's Open source file): extension.ts routes it to the dispatcher's `editor.openFile`. */
 export const OPEN_TEST_FILE_COMMAND = "octoshell.openTestFile";
 
-const inside = (root: string, p: string): string | null => {
-  const rel = relative(root, p);
-  return rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel) ? null : rel;
-};
+/** The command a TC leaf runs: the TC's panel (0.1.1). Its argument is the TC's board-relative path (TestCase.path). */
+export const OPEN_TEST_CASE_COMMAND = "octoshell.openTestCase";
 
-/**
- * The file {@link OPEN_TEST_FILE_COMMAND} may open: an existing `TC-*.md` under `<board>/campaigns/<c>/tests/`,
- * after resolving `..` and symlinks, or null (no argument, a non-string, another file, a path that leaves the
- * board). The command is callable by anything that can run a command, so its argument is never trusted.
- */
-export function testFileToOpen(boardRoot: string, arg: unknown): string | null {
-  if (typeof arg !== "string" || arg.length === 0) return null;
-  const abs = resolve(arg);
-  if (!existsSync(abs) || !existsSync(boardRoot)) return null;
-  const rel = inside(realpathSync(boardRoot), realpathSync(abs));
-  if (!rel || inside(resolve(boardRoot), abs) === null) return null;
-  const parts = rel.split(sep);
-  return parts.length >= 4 && parts[0] === "campaigns" && parts[2] === "tests" && /^TC-[^\\/]*\.md$/.test(parts[parts.length - 1]!)
-    ? abs
-    : null;
-}
-
-/**
- * The {@link OPEN_TEST_FILE_COMMAND} argument for a webview `openTestFile` message: its board-relative path
- * (TestCase.path) joined under the board. Still untrusted: the command runs {@link testFileToOpen} on it, so a
- * crafted `../` path or an absolute one never opens anything outside the board's tests folders.
- */
-export const testFileArgFromWebview = (boardRoot: string, boardRelPath: string): string => join(boardRoot, boardRelPath);
+// The guard lives in a VS Code-free module (board-host.ts needs it); re-exported so every caller keeps this import.
+export { testFileToOpen, testFileArgFromWebview } from "./test-file-guard.js";
 
 /** Map a mission/task status to its contributed status color (see package.json contributes.colors). */
 function statusColor(status: string): vscode.ThemeColor {
@@ -139,7 +130,8 @@ export class CampaignsTree implements vscode.TreeDataProvider<Node> {
     const s = this.board.testSummary(campaignId);
     const item = new vscode.TreeItem("Tests", vscode.TreeItemCollapsibleState.Collapsed);
     item.id = `tests:${campaignId}`;
-    item.iconPath = new vscode.ThemeIcon("beaker");
+    if (s) item.iconPath = beaker(s.counts);
+    else item.iconPath = new vscode.ThemeIcon("beaker");
     item.contextValue = "octoshell.tests";
     if (s) item.description = `${s.total} · ${formatCounts(s.counts)}`;
     return item;
@@ -149,7 +141,7 @@ export class CampaignsTree implements vscode.TreeDataProvider<Node> {
     const row = this.board.testSummary(campaignId)?.missions.find((m) => m.folder === folder);
     const item = new vscode.TreeItem(row ? groupLabel(folder, row.total, row.counts) : folder, vscode.TreeItemCollapsibleState.Collapsed);
     item.id = `tests:${campaignId}:${folder}`;
-    item.iconPath = new vscode.ThemeIcon("beaker");
+    item.iconPath = row ? beaker(row.counts) : new vscode.ThemeIcon("beaker");
     item.contextValue = "octoshell.testGroup";
     if (row) {
       const lines = [row.title ?? `${row.mission} (no matching mission)`];
@@ -163,14 +155,13 @@ export class CampaignsTree implements vscode.TreeDataProvider<Node> {
 
   private testCaseItem(tc: TestCase): vscode.TreeItem {
     const item = new vscode.TreeItem(`${tc.id}: ${tc.title}`, vscode.TreeItemCollapsibleState.None);
-    const abs = join(this.board.artifactsRoot, tc.path);
     const icon = TEST_ICON[tc.status];
     item.id = `tc:${tc.path}`;
     item.description = tc.status;
     item.iconPath = new vscode.ThemeIcon(icon.icon, new vscode.ThemeColor(icon.color));
     item.tooltip = [tc.path, tc.lastRun ? `last run ${tc.lastRun.date}` : "never run"].join("\n");
     item.contextValue = "octoshell.testCase";
-    item.command = { command: OPEN_TEST_FILE_COMMAND, title: "Open Test Case", arguments: [abs] };
+    item.command = { command: OPEN_TEST_CASE_COMMAND, title: "Open Test Case", arguments: [tc.path] };
     return item;
   }
 

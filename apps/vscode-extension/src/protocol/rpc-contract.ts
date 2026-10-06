@@ -1,6 +1,6 @@
 // apps/vscode-extension/src/protocol/rpc-contract.ts
 import { z } from "zod";
-import type { Campaign, Mission, Task, Bug, TestCase, TestCaseStatus, MissionCoverage } from "@octoshell/board";
+import type { Campaign, Mission, Task, Bug, TestCase, TestCaseStatus, MissionCoverage, TcBody, TcWritable, TcWriteRefusal } from "@octoshell/board";
 import type { Appearance } from "../host/appearance-store.js";
 import type { Report as TokenomicsReport } from "@octoshell/tokenomics";
 
@@ -89,8 +89,46 @@ export interface TestSummary {
   missions: MissionTestSummary[];
 }
 
+/** One covered criterion of a TC: its id and the mission's text for it, `null` when the mission has no such criterion. */
+export interface TestCaseCriterion {
+  ac: string;
+  text: string | null;
+}
+
+/**
+ * Everything the test-case panel renders for one TC (`tests:get`). `mission` is null when no mission of the campaign
+ * matches the TC's `m<n>` folder (the panel says `mission M<n> not found`); a cancelled mission still matches.
+ * `evidence.exists` is true only for a regular file inside the workspace folder, i.e. one the evidence link can open.
+ */
+export interface TestCaseDetail {
+  tc: TestCase;
+  body: TcBody;
+  campaignId: string | null;
+  missionId: string | null;
+  mission: { id: string; title: string; status: string } | null;
+  criteria: TestCaseCriterion[];
+  evidence: { path: string; exists: boolean } | null;
+  /** The frontmatter parses but `kind` or `mission` is absent from it. */
+  legacy: boolean;
+  writable: TcWritable;
+}
+
+/**
+ * `tests:setStatus`' answer. `stale`: the file's status or last run is not what the panel showed; nothing was
+ * written and `current` is what the file holds. Any other refusal writes nothing too: `refused` is a path the guard
+ * rejects, otherwise the writer's own reason (`symlink`, `unparseable`, `no-frontmatter`, `write-failed`, ...).
+ */
+export type SetTestStatusResult =
+  | { ok: true; changed: boolean; tc: TestCase }
+  | { ok: false; reason: "stale"; current: TestCase }
+  | { ok: false; reason: "refused" | TcWriteRefusal; message: string };
+
 /** A board id: non-empty and bounded, so a malformed call is rejected at the boundary. */
 const ID = z.string().min(1).max(200);
+/** The statuses a pick can record. `unknown` is what a file with no status lists as: never settable. A local enum, so protocol takes only types from @octoshell/board. */
+const SETTABLE_TEST_STATUS = z.enum(["draft", "ready", "pass", "fail", "blocked"]);
+/** A TC path, board-relative (TestCase.path); the host's guard decides whether it is one. */
+const TEST_PATH = z.string().min(1).max(2000);
 /** A mission's tests folder token: `m2`, `M2`, `3b`. Anything else is rejected, never turned into a path. */
 const TEST_FOLDER = z.string().regex(/^[mM]?\d{1,4}[a-zA-Z]{0,3}$/);
 
@@ -178,6 +216,17 @@ export const rpcArgs = {
   "tests:list": z.object({ campaignId: ID, mission: TEST_FOLDER.optional() }),
   "tests:coverage": z.object({ missionId: ID }),
   "tests:summary": z.object({ campaignId: ID }),
+  // tests (0.1.1 T1.2): the panel's read and its status dropdown. The webview never sends file text: `base` is the
+  // status and last run the panel showed, so the host can refuse (stale) when the file moved since.
+  "tests:get": z.object({ path: TEST_PATH }),
+  "tests:setStatus": z.object({
+    path: TEST_PATH,
+    status: SETTABLE_TEST_STATUS,
+    base: z.object({
+      status: z.enum(["draft", "ready", "pass", "fail", "blocked", "unknown"]),
+      lastRun: z.object({ date: z.string().min(1).max(40), evidence: z.string().max(2000).optional() }).nullable(),
+    }),
+  }),
 } satisfies Record<string, z.ZodType>;
 
 /** A single project entry returned by project:list (workspace = the open folder). */
@@ -240,6 +289,9 @@ export interface RpcResults {
   "tests:coverage": MissionCoverage;
   /** null for an unknown campaign. */
   "tests:summary": TestSummary | null;
+  /** The TC's panel data; null for a path the guard rejects or a file that is gone. */
+  "tests:get": TestCaseDetail | null;
+  "tests:setStatus": SetTestStatusResult;
 }
 
 export type RpcMethod = keyof typeof rpcArgs & keyof RpcResults;

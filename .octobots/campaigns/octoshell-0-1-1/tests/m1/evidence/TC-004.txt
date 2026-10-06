@@ -1,0 +1,27 @@
+The CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > shows the header, Status row, criteria, rendered body, hint and Open source file 611ms
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > a pick sends {path, status, base} equal to what the panel rendered; after it: the new status, today's date, `no evidence`, no link, no notice; the dropdown is disabled in flight 578ms
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > an agent's newer status makes the pick stale: nothing written, the panel shows the agent's status and a role=status notice that survives a spine event until the next pick 648ms
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > a non-stale refusal shows the writer's message inline as role=status, writes nothing and notifies nothing 527ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a legacy TC (uwb m1 TC-003 shape): unknown is the current, unselectable option; the dropdown is enabled; kind none; never run; the --migrate note stays after a pick 515ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > an evidence file that does not exist shows the date and the path as plain text marked `not found` 506ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > covers [] says `none listed`; a TC that never ran says `never run` 509ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > unparseable frontmatter: id from the filename, title from the H1, unknown, none, `none listed`, the text after the block, and a disabled dropdown whose aria-describedby names the reason 495ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > no frontmatter: the whole file as plain text, a disabled dropdown and the --migrate hint 495ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > over 4 MiB: `too large to show; Open source file`, a disabled dropdown, and the button still works 513ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a symlinked TC inside the board reads but is never writable: disabled with its reason 523ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a tests folder with no matching mission (m9): `mission M9 not found` once and no criterion links 516ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a TC of a cancelled mission renders normally: dropdown enabled, criterion links open the mission 504ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > the file deleted, then a spine event: `This test case no longer exists` and no dropdown 575ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a path the guard rejects shows the no-longer-exists state, not an error 494ms
+ ✓ test/test-case-view.test.tsx > test-case panel: sanitized rendering > renders `<id of first SCHEDULED match …>` literally and creates no script or img element for hostile bodies 505ms
+ ✓ test/test-case-view.test.tsx > test-case panel over solo's real uwb TCs (when OCTOBOTS_BOARD_COPIES names solo) > TC-003 (legacy), TC-006 (the sanitizer record) and the cancelled-mission TC (m5) read from the real files 604ms
+
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+   Start at  16:05:02
+   Duration  9.63s (transform 95ms, setup 41ms, collect 176ms, tests 9.12s, environment 92ms, prepare 32ms)
+

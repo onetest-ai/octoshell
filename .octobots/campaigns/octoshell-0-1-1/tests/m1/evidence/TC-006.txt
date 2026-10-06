@@ -1,0 +1,45 @@
+The CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > coalesces a burst of triggers into ONE settle after the debounce window
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > defers the settle while git is non-quiescent, then runs exactly once after it settles
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > dispose cancels a pending settle
+ ✓ test/board-watcher.test.ts > isTestsRunOrEvidencePath > is true for anything under tests/**/runs/ or tests/**/evidence/
+ ✓ test/board-watcher.test.ts > isTestsRunOrEvidencePath > is false for a TC file, a README, an entity file and a runs/ or evidence/ folder outside tests/
+ ✓ test/board-watcher.test.ts > isTestsRunOrEvidencePath > judges only the part below .octobots/campaigns/, never the workspace's own ancestors (M4 gate)
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > watches the whole campaigns tree, so TC and README writes reach the handler
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > triggers no rebuild for a write under tests/**/runs/** or tests/**/evidence/**, on any event
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a write to a TC file triggers exactly one debounced rebuild, however many events it raises
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a README write triggers exactly one rebuild, and so does a TC delete
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a run report written in the same window as a TC write still costs exactly one rebuild
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > entity files outside tests/ rebuild as before
+ ✓ test/board-watcher.test.ts > a set-test-status.js write reaches the Tests node and open panels with one rebuild > updates the Tests node counts and notifies an open panel within one debounce, with exactly one rebuild
+ ✓ test/board-watcher.test.ts > a set-test-status.js write reaches the Tests node and open panels with one rebuild > an OPEN mission panel is refreshed once within one debounce and its reload over tests:* sees the new status
+ ✓ test/board-watcher.test.ts > a set-test-status.js write reaches the Tests node and open panels with one rebuild > the temp-file rename costs ONE rebuild, whether the watcher reports it as a change or as delete + create
+ ✓ test/board-watcher.test.ts > a set-test-status.js write reaches the Tests node and open panels with one rebuild > the temp name itself is not a board path: a bare tmp create/delete rebuilds nothing
+ ✓ test/board-watcher.test.ts > a set-test-status.js write reaches the Tests node and open panels with one rebuild > a QA run writes RUN + evidence + the TC status in one window: exactly one rebuild, none for runs/ or evidence/ alone
+ ✓ test/board-watcher.test.ts > a set-test-status.js write reaches the Tests node and open panels with one rebuild > set-test-status.js leaves no temp file behind, so a late tmp event cannot arrive
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > shows the header, Status row, criteria, rendered body, hint and Open source file 669ms
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > a pick sends {path, status, base} equal to what the panel rendered; after it: the new status, today's date, `no evidence`, no link, no notice; the dropdown is disabled in flight 535ms
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > an agent's newer status makes the pick stale: nothing written, the panel shows the agent's status and a role=status notice that survives a spine event until the next pick 643ms
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > a non-stale refusal shows the writer's message inline as role=status, writes nothing and notifies nothing 527ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a legacy TC (uwb m1 TC-003 shape): unknown is the current, unselectable option; the dropdown is enabled; kind none; never run; the --migrate note stays after a pick 506ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > an evidence file that does not exist shows the date and the path as plain text marked `not found` 502ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > covers [] says `none listed`; a TC that never ran says `never run` 512ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > unparseable frontmatter: id from the filename, title from the H1, unknown, none, `none listed`, the text after the block, and a disabled dropdown whose aria-describedby names the reason 514ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > no frontmatter: the whole file as plain text, a disabled dropdown and the --migrate hint 498ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > over 4 MiB: `too large to show; Open source file`, a disabled dropdown, and the button still works 511ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a symlinked TC inside the board reads but is never writable: disabled with its reason 504ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a tests folder with no matching mission (m9): `mission M9 not found` once and no criterion links 512ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a TC of a cancelled mission renders normally: dropdown enabled, criterion links open the mission 503ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > the file deleted, then a spine event: `This test case no longer exists` and no dropdown 513ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a path the guard rejects shows the no-longer-exists state, not an error 543ms
+ ✓ test/test-case-view.test.tsx > test-case panel: sanitized rendering > renders `<id of first SCHEDULED match …>` literally and creates no script or img element for hostile bodies 496ms
+ ✓ test/test-case-view.test.tsx > test-case panel over solo's real uwb TCs (when OCTOBOTS_BOARD_COPIES names solo) > TC-003 (legacy), TC-006 (the sanitizer record) and the cancelled-mission TC (m5) read from the real files 595ms
+
+ Test Files  2 passed (2)
+      Tests  35 passed (35)
+   Start at  16:05:23
+   Duration  9.63s (transform 182ms, setup 85ms, collect 296ms, tests 9.37s, environment 79ms, prepare 56ms)
+

@@ -1,0 +1,25 @@
+   │  ├─ index.html [0.39 KB]
+   │  ├─ octoshell.png [9.36 KB]
+   │  ├─ octoshell.svg [5.57 KB]
+   │  ├─ assets/
+   │  │  ├─ codicon-B16ygVZF.ttf [78.31 KB]
+   │  │  ├─ index-B2jrGbbR.css [40.08 KB]
+   │  │  └─ index-CzihnElV.js [605.28 KB]
+   │  └─ providers/
+   │     ├─ claude-acp.svg [1.13 KB]
+   │     └─ github-copilot-cli.svg [2.51 KB]
+   └─ resources/
+      ├─ shipped-skills.json.br [76.52 KB]
+      └─ octobots-pack/
+         ├─ graph/ (1 file) [218.05 KB]
+         ├─ hooks/ (5 files) [39.37 KB]
+         ├─ skill/ (37 files) [402.35 KB]
+         ├─ statusline/ (1 file) [6.19 KB]
+         └─ tokenomics/ (12 files) [152.14 KB]
+
+=> Run vsce ls --tree to see all included files.
+
+ DONE  Packaged: /Users/arozumenko/Development/octoshell/apps/vscode-extension/octobots-0.1.1.vsix (73 files, 750.78 KB)
+
+VSIX written: /Users/arozumenko/Development/octoshell/apps/vscode-extension/octobots-0.1.1.vsix
+Install with: code --install-extension "/Users/arozumenko/Development/octoshell/apps/vscode-extension/octobots-0.1.1.vsix"

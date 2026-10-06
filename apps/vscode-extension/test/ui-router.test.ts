@@ -49,3 +49,17 @@ describe("routeUiMessage: openTestFile (M6 T6.4)", () => {
     expect(routeUiMessage({ type: "openTestFile" }, { openTestFile })).toBe(false);
   });
 });
+
+describe("routeUiMessage: openTestCase and openTestEvidence (0.1.1 T1.3)", () => {
+  it("routes both with a path and rejects either without one", () => {
+    const openTestCase = vi.fn();
+    const openTestEvidence = vi.fn();
+    const path = "campaigns/c/tests/m1/TC-001_x.md";
+    expect(routeUiMessage({ type: "openTestCase", path }, { openTestCase, openTestEvidence })).toBe(true);
+    expect(routeUiMessage({ type: "openTestEvidence", path }, { openTestCase, openTestEvidence })).toBe(true);
+    expect(openTestCase).toHaveBeenCalledWith({ type: "openTestCase", path });
+    expect(openTestEvidence).toHaveBeenCalledWith({ type: "openTestEvidence", path });
+    expect(routeUiMessage({ type: "openTestCase" }, { openTestCase })).toBe(false);
+    expect(routeUiMessage({ type: "openTestEvidence", path: 7 }, { openTestEvidence })).toBe(false);
+  });
+});

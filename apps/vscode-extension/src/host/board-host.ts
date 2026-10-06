@@ -7,7 +7,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { EventEmitter } from "node:events";
 import {
   BoardModel,
@@ -26,6 +26,11 @@ import {
   migrateEntitiesToYaml as migrateEntitiesToYamlFile,
   parseDocumentLinks,
   loadEntity,
+  readTestCaseDetail,
+  writeTestCaseStatus,
+  type SettableTcStatus,
+  type TestCaseRun,
+  type TestCaseStatus,
   type EntityKind,
   type ManagedFields,
   type Campaign,
@@ -38,7 +43,8 @@ import {
   type MissionCoverage,
 } from "@octoshell/board";
 import { rollupCampaign, type Rollup } from "./board-rollup.js";
-import type { DocLink, DocFile, CampaignSummary, MissionProposal, TestSummary } from "../protocol/index.js";
+import type { DocLink, DocFile, CampaignSummary, MissionProposal, TestSummary, TestCaseDetail, SetTestStatusResult } from "../protocol/index.js";
+import { evidenceFileToOpen, testFileArgFromWebview, testFileToOpen } from "./test-file-guard.js";
 import { summarizeTests } from "./test-summary.js";
 
 export interface CampaignRollup extends Rollup {
@@ -128,6 +134,77 @@ export class BoardHost {
       id: m.id, title: m.title, status: m.status, coverage: this.model.getTestCoverage(m.id),
     }));
     return summarizeTests({ campaignId, cases: this.model.listTestCases(campaignId), missions });
+  }
+
+  // ── Test-case panel API (0.1.1 T1.2) ──────────────────────────────────────────────────────────
+  // Every `path` is a TestCase.path (board-relative) from a webview: joined under the board root and accepted only
+  // through `testFileToOpen`, then again by the board library's own path rule. Nothing here takes file text.
+
+  /** The TC file's board-relative `path`, or null when the guard rejects it (a `..` path, a non-TC file, a link out of the board). */
+  private guardedTestPath(path: string): string | null {
+    return testFileToOpen(this.octobotsDir, testFileArgFromWebview(this.octobotsDir, path)) ? path : null;
+  }
+
+  /** What the test-case panel renders for the TC at `path`; null for a path the guard rejects or a file that is gone. */
+  getTestCaseDetail(path: string): TestCaseDetail | null {
+    if (!this.guardedTestPath(path)) return null;
+    const file = readTestCaseDetail(this.octobotsDir, path);
+    if (!file) return null;
+    const { tc } = file;
+    const campaignId = this.model.campaignIdByFolderPath(path.split("/").slice(0, 2).join("/"));
+    // The mission whose `M<n>` token is the TC's folder; a cancelled one still matches.
+    let mission: { id: string; title: string; status: string } | null = null;
+    let coverage: ReturnType<BoardModel["getTestCoverage"]> | null = null;
+    for (const m of campaignId ? this.model.listMissions(campaignId) : []) {
+      const cov = this.model.getTestCoverage(m.id);
+      if (cov.mission === tc.mission) {
+        mission = { id: m.id, title: m.title, status: m.status };
+        coverage = cov;
+        break;
+      }
+    }
+    const evidencePath = tc.lastRun?.evidence;
+    return {
+      tc,
+      body: file.body,
+      campaignId,
+      missionId: mission?.id ?? null,
+      mission,
+      criteria: tc.covers.map((ac) => ({ ac, text: coverage?.acs.find((a) => a.ac === ac)?.text ?? null })),
+      evidence: evidencePath ? { path: evidencePath, exists: evidenceFileToOpen(dirname(this.octobotsDir), evidencePath) !== null } : null,
+      legacy: file.legacy,
+      writable: file.writable,
+    };
+  }
+
+  /**
+   * Record `status` in the TC at `path`, as `set-test-status.js` does (pass, fail and blocked also write
+   * `last_run: {date: today UTC}`, no evidence), unless the file no longer holds what the panel showed (`base`):
+   * then nothing is written (`stale`). Requesting the status the file already holds is a no-op. The board reconciles
+   * (one `entities:changed`) only when the file changed; a refusal or a no-op emits nothing.
+   */
+  setTestStatus(path: string, status: SettableTcStatus, base: { status: TestCaseStatus; lastRun: TestCaseRun | null }): SetTestStatusResult {
+    if (!this.guardedTestPath(path)) return { ok: false, reason: "refused", message: "not a test case file of this board" };
+    const res = writeTestCaseStatus(this.octobotsDir, path, {
+      status,
+      date: this.now().toISOString().slice(0, 10),
+      expect: { status: base.status, lastRun: base.lastRun },
+      skipIfCurrent: true,
+    });
+    if (!res.ok) {
+      if (res.reason !== "stale") return { ok: false, reason: res.reason, message: res.message };
+      const current = readTestCaseDetail(this.octobotsDir, path)?.tc;
+      return current ? { ok: false, reason: "stale", current } : { ok: false, reason: "not-found", message: `not found: ${path}` };
+    }
+    if (res.changed) this.reconcile();
+    const tc = readTestCaseDetail(this.octobotsDir, path)?.tc;
+    return tc ? { ok: true, changed: res.changed, tc } : { ok: false, reason: "not-found", message: `not found: ${path}` };
+  }
+
+  /** The absolute path of the evidence file the TC at `path` records in its `last_run`, read from the TC on disk; null unless it is a regular file in the workspace. */
+  testEvidencePath(path: string): string | null {
+    if (!this.guardedTestPath(path)) return null;
+    return evidenceFileToOpen(dirname(this.octobotsDir), readTestCaseDetail(this.octobotsDir, path)?.tc.lastRun?.evidence);
   }
 
   /** Resolve a relative doc path inside a campaign's folder to an absolute path. */

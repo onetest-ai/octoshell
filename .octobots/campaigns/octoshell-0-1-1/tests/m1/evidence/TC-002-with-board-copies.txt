@@ -1,0 +1,48 @@
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/board
+
+ ✓ test/tc-status-parity.test.ts > tc-status parity: shared case table (shipped script vs editTestCaseStatus) > holds every shape the plan lists, each with a note
+ ✓ test/tc-status-write.test.ts > editTestCaseStatus (the pure edit) > replaces status in place and writes last_run {date} after it for a run status, leaving the body byte for byte
+ ✓ test/tc-status-write.test.ts > editTestCaseStatus (the pure edit) > leaves last_run alone for draft and ready, and ignores a date given with them
+ ✓ test/tc-status-write.test.ts > editTestCaseStatus (the pure edit) > re-dates last_run for a run status the file already holds, as the script does
+ ✓ test/tc-status-write.test.ts > editTestCaseStatus (the pure edit) > reports changed: false and the same text when nothing would change
+ ✓ test/tc-status-write.test.ts > editTestCaseStatus (the pure edit) > refuses an invalid status, and a run status with no calendar date
+ ✓ test/tc-status-write.test.ts > editTestCaseStatus (the pure edit) > refuses a file with no frontmatter, unparseable frontmatter and an edit it cannot prove
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: what it refuses > writes a symlinked TC file through nothing: the link and its target are untouched
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: what it refuses > refuses a symlinked m<n> folder and a symlinked tests folder
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: what it refuses > refuses a TC reached through a symlinked campaign folder that leaves the board; the outside file is untouched
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: what it refuses > still writes through a symlinked campaign folder that resolves to a TC inside the board (the script's rule)
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: what it refuses > refuses a path that is not campaigns/<c>/tests/m<n>/TC-*.md
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: what it refuses > refuses a TC that is not there
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: what it refuses > refuses a file over MAX_TC_BYTES, and a FIFO, without reading or writing them
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: what it refuses > refuses no frontmatter, unparseable frontmatter and an unprovable edit, leaving the file and the folder as they were
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: what it refuses > refuses an invalid status or date before touching anything
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: the atomic write > writes the edit, keeps the file mode and leaves no temp file
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: the atomic write > leaves the TC unchanged and no temp file when the folder cannot be written (the temp file is the first write)
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: the atomic write > returns stale, writes nothing and leaves no temp file when the bytes move between the temp write and the rename
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: expect (the panel's view) and skipIfCurrent (the host's no-op) > returns stale with the file's current status and last run, and writes nothing, when expect is not what the file holds
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: expect (the panel's view) and skipIfCurrent (the host's no-op) > returns stale when the status matches but the last run moved, and when an evidence link differs
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: expect (the panel's view) and skipIfCurrent (the host's no-op) > writes when expect equals what the file holds (a legacy file lists as unknown with no last run)
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: expect (the panel's view) and skipIfCurrent (the host's no-op) > with skipIfCurrent, requesting the status the file holds writes nothing: bytes and mtime unchanged, even for pass
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: expect (the panel's view) and skipIfCurrent (the host's no-op) > without skipIfCurrent the result equals the script's: pass on a pass file re-dates last_run and drops the evidence
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: expect (the panel's view) and skipIfCurrent (the host's no-op) > reports changed: false and writes nothing when the edit changes nothing (pass on the same date)
+ ✓ test/tc-status-write.test.ts > writeTestCaseStatus: expect (the panel's view) and skipIfCurrent (the host's no-op) > checks expect before skipIfCurrent: a stale view is stale even when the file already holds the requested status
+ ✓ test/tc-status-parity.test.ts > tc-status parity: shared case table (shipped script vs editTestCaseStatus) > writes the same bytes as the script for every case and status, and refuses exactly the recorded pairs for the recorded reason 1102ms
+stdout | test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > tracked board (git archive HEAD .octobots)
+tc-status parity [tracked]: 98 TCs, 392 (TC, status) pairs compared, 0 script refusals
+
+ ✓ test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > tracked board (git archive HEAD .octobots) 2051ms
+stdout | test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > OCTOBOTS_BOARD_COPIES[0] <scratch>/work/octo-ws/.octobots
+tc-status parity [copies[0] <scratch>/work/octo-ws/.octobots]: 98 TCs, 392 (TC, status) pairs compared, 0 script refusals
+
+ ✓ test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > OCTOBOTS_BOARD_COPIES[0] <scratch>/work/octo-ws/.octobots 1916ms
+stdout | test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > OCTOBOTS_BOARD_COPIES[1] <scratch>/work/solo-ws/.octobots
+tc-status parity [copies[1] <scratch>/work/solo-ws/.octobots]: 116 TCs, 580 (TC, status) pairs compared, 0 script refusals
+
+ ✓ test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > OCTOBOTS_BOARD_COPIES[1] <scratch>/work/solo-ws/.octobots 2864ms
+
+ Test Files  2 passed (2)
+      Tests  30 passed (30)
+   Start at  16:11:36
+   Duration  8.14s (transform 70ms, setup 0ms, collect 149ms, tests 7.98s, environment 0ms, prepare 55ms)
+

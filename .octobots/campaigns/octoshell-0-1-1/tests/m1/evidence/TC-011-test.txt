@@ -1,0 +1,373 @@
+
+> octoshell@0.0.0 test /Users/arozumenko/Development/octoshell
+> turbo run test
+
+• Packages in scope: @octoshell/board, @octoshell/graph, @octoshell/tokenomics, @octoshell/vscode-extension
+• Running test in 4 packages
+• Remote caching disabled
+@octoshell/board:test: cache bypass, force executing 60a01c6810ca10c9
+@octoshell/board:build: cache hit, replaying logs d113524685d68639
+@octoshell/board:build: 
+@octoshell/board:build: > @octoshell/board@0.0.0 build /Users/arozumenko/Development/octoshell/packages/board
+@octoshell/board:build: > tsc -p tsconfig.json
+@octoshell/board:build: 
+@octoshell/graph:test: cache bypass, force executing c7826e8cd5f04542
+@octoshell/tokenomics:test: cache bypass, force executing 4abda44463e9cf5e
+@octoshell/tokenomics:build: cache hit, replaying logs b9f7fab6181fca87
+@octoshell/tokenomics:build: 
+@octoshell/tokenomics:build: > @octoshell/tokenomics@0.0.0 build /Users/arozumenko/Development/octoshell/packages/tokenomics
+@octoshell/tokenomics:build: > tsc -p tsconfig.json
+@octoshell/tokenomics:build: 
+@octoshell/vscode-extension:test: cache bypass, force executing faf2e494d90eefd6
+@octoshell/board:test: 
+@octoshell/board:test: > @octoshell/board@0.0.0 test /Users/arozumenko/Development/octoshell/packages/board
+@octoshell/board:test: > vitest run
+@octoshell/board:test: 
+@octoshell/graph:test: 
+@octoshell/graph:test: > @octoshell/graph@0.0.0 test /Users/arozumenko/Development/octoshell/packages/graph
+@octoshell/graph:test: > vitest run
+@octoshell/graph:test: 
+@octoshell/tokenomics:test: 
+@octoshell/tokenomics:test: > @octoshell/tokenomics@0.0.0 test /Users/arozumenko/Development/octoshell/packages/tokenomics
+@octoshell/tokenomics:test: > vitest run
+@octoshell/tokenomics:test: 
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: > @octoshell/vscode-extension@0.1.1 test /Users/arozumenko/Development/octoshell/apps/vscode-extension
+@octoshell/vscode-extension:test: > vitest run --passWithNoTests
+@octoshell/vscode-extension:test: 
+@octoshell/board:test: 
+@octoshell/board:test:  RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/board
+@octoshell/board:test: 
+@octoshell/tokenomics:test: 
+@octoshell/tokenomics:test:  RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/tokenomics
+@octoshell/tokenomics:test: 
+@octoshell/graph:test: 
+@octoshell/graph:test:  RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/graph
+@octoshell/graph:test: 
+@octoshell/vscode-extension:test: The CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test:  RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+@octoshell/vscode-extension:test: 
+@octoshell/tokenomics:test:  ✓ test/claude-source.test.ts  (15 tests) 12ms
+@octoshell/tokenomics:test:  ✓ test/estimates.test.ts  (10 tests) 7ms
+@octoshell/tokenomics:test:  ✓ test/render.test.ts  (15 tests) 11ms
+@octoshell/board:test:  ✓ test/entity-io-unit.test.ts  (23 tests) 13ms
+@octoshell/board:test:  ✓ test/entity-roundtrip-passthrough.test.ts  (30 tests) 14ms
+@octoshell/graph:test:  ✓ test/conflicts.test.ts  (19 tests) 4ms
+@octoshell/tokenomics:test:  ✓ test/prices.test.ts  (12 tests) 142ms
+@octoshell/graph:test:  ✓ test/conventions.test.ts  (32 tests) 113ms
+@octoshell/graph:test:  ✓ test/spine.test.ts  (24 tests) 73ms
+@octoshell/tokenomics:test:  ✓ test/claude-source-parity.test.ts  (6 tests) 448ms
+@octoshell/board:test:  ✓ test/test-cases-malformed.test.ts  (5 tests) 237ms
+@octoshell/board:test:  ✓ test/migrate-entities.test.ts  (7 tests) 207ms
+@octoshell/board:test: usage: add-task.js <mission-dir|mission.yaml> "<title>" [--role <name>] [--description <text>]
+@octoshell/board:test:  ✓ test/tc-status-write.test.ts  (25 tests) 204ms
+@octoshell/tokenomics:test:  ✓ test/rollup.test.ts  (12 tests) 96ms
+@octoshell/board:test: usage: add-campaign.js "<name>" [--description <text>] [--target <text>] [--root <dir>]
+@octoshell/board:test: add-bug: invalid severity "urgent" (expected one of: blocker, critical, major, minor, trivial)
+@octoshell/board:test: add-doc: documents attach to campaigns and missions only (not task/bug entities)
+@octoshell/board:test: add-bug: not a campaign/mission folder: /tmp/scripts-cli-DnKNiH/.octobots/campaigns/q3-rollout/missions/m1-auth/tasks/t1-1-jwt
+@octoshell/board:test: usage: add-bug.js <campaign-dir|mission-dir|entity.yaml> "<title>" [--severity blocker|critical|major|minor|trivial]
+@octoshell/board:test:  ✓ test/write-delete.test.ts  (21 tests) 378ms
+@octoshell/board:test: usage: add-mission.js <campaign-dir|campaign.yaml> "<title>" [--description <text>]
+@octoshell/board:test:  ✓ test/validate-stranded.test.ts  (9 tests) 130ms
+@octoshell/graph:test:  ✓ test/drift.test.ts  (17 tests) 3ms
+@octoshell/graph:test:  ✓ test/artifact.test.ts  (36 tests) 30ms
+@octoshell/board:test: delete-bug: no bug titled "B9 - Never existed" found (no bug.yaml/.md folder)
+@octoshell/board:test: usage: delete-bug.js <campaign-dir|mission-dir|entity.yaml> "<bug title>"
+@octoshell/board:test: set-status: no entity named "Nonexistent Task" found under /tmp/scripts-smoke-f3iYr5/.octobots/campaigns/camp/missions/m1-mission (self, missions/, tasks/, or bugs/)
+@octoshell/board:test:  ✓ test/tc-io.test.ts  (99 tests) 1049ms
+@octoshell/board:test:  ✓ test/validate.test.ts  (15 tests) 5ms
+@octoshell/graph:test:  ✓ test/config.test.ts  (26 tests) 54ms
+@octoshell/graph:test:  ✓ test/working-sets.test.ts  (14 tests) 435ms
+@octoshell/board:test: delete-task: no task named "No Such Task" found (no task.yaml/.md folder)
+@octoshell/vscode-extension:test:  ✓ test/skill-conventions.test.ts  (150 tests) 441ms
+@octoshell/graph:test:  ✓ test/noise.test.ts  (24 tests) 2ms
+@octoshell/board:test: INVALID /tmp/scripts-smoke-yIkSkZ/.octobots/campaigns/q3/missions/m1-mission/tasks/t1-1-no-ac-task/task.yaml:
+@octoshell/board:test:   - no acceptance criteria — add at least one `acceptance_criteria` item (use set-criterion.js); a task/mission without a verifiable criterion is not well-formed
+@octoshell/board:test: INVALID /tmp/scripts-preserve-XzaYYi/.octobots/campaigns/camp/missions/m1-auth/tasks/t1-1-jwt/task.yaml:
+@octoshell/board:test:   - no acceptance criteria — add at least one `acceptance_criteria` item (use set-criterion.js); a task/mission without a verifiable criterion is not well-formed
+@octoshell/board:test:   - 2 acceptance criterion-shaped line(s) stranded in `notes` (first: "expired tokens are rejected with 401") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+@octoshell/board:test: validate: file not found: /tmp/scripts-smoke-VwI7ks/.octobots/nonexistent.yaml
+@octoshell/board:test:  ✓ test/tc-detail.test.ts  (8 tests) 244ms
+@octoshell/board:test: INVALID /tmp/scripts-preserve-HpdGZr/.octobots/campaigns/camp/missions/m1-auth/tasks/t1-1-jwt/task.yaml:
+@octoshell/board:test:   - 2 acceptance criterion-shaped line(s) stranded in `notes` (first: "expired tokens are rejected with 401") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+@octoshell/graph:test:  ✓ test/setup-io.test.ts  (13 tests) 362ms
+@octoshell/board:test: INVALID /tmp/scripts-preserve-6B2ppZ/.octobots/campaigns/camp/missions/m1-auth/tasks/t1-1-jwt/task.yaml:
+@octoshell/board:test:   - 2 acceptance criterion-shaped line(s) stranded in `notes` (first: "expired tokens are rejected with 401") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+@octoshell/board:test:  ✓ test/scripts-smoke.test.ts  (17 tests) 2180ms
+@octoshell/board:test: show: file not found: /tmp/scripts-cli-Z4LC71/.octobots/nope.yaml
+@octoshell/graph:test:  ✓ test/graphify.test.ts  (15 tests) 171ms
+@octoshell/graph:test:  ✓ test/vault.test.ts  (21 tests) 77ms
+@octoshell/board:test: show: not an entity file or folder: /tmp/scripts-cli-Z4LC71/.octobots/README.md
+@octoshell/board:test: INVALID /tmp/scripts-preserve-B9PZRU/.octobots/campaigns/camp/campaign.yaml:
+@octoshell/board:test:   - 1 acceptance criterion-shaped line(s) stranded in `notes` (first: "every mission is merged") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+@octoshell/board:test: INVALID /tmp/scripts-preserve-B9PZRU/.octobots/campaigns/camp/missions/m1-auth/mission.yaml:
+@octoshell/board:test:   - 1 acceptance criterion-shaped line(s) stranded in `notes` (first: "auth reviewed") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+@octoshell/board:test:  ✓ test/scripts-data-preservation.test.ts  (23 tests) 2908ms
+@octoshell/board:test:  ✓ test/pending-io-unit.test.ts  (5 tests) 536ms
+@octoshell/board:test:  ✓ test/campaign-tokenomics-roundtrip.test.ts  (5 tests) 946ms
+@octoshell/board:test:  ✓ test/validate-tc-parity.test.ts  (2 tests) 2176ms
+@octoshell/board:test:  ✓ test/write-create.test.ts  (5 tests) 189ms
+@octoshell/board:test: set-criterion: index out of range (1..1)
+@octoshell/board:test: set-criterion: unknown op 'toggle'
+@octoshell/board:test:  ✓ test/pack-reconcile-unit.test.ts  (7 tests) 2599ms
+@octoshell/board:test: set-criterion add: missing text
+@octoshell/board:test: set-criterion: not a campaign/mission/task entity file (bugs have no acceptance criteria)
+@octoshell/graph:test:  ✓ test/board.test.ts  (6 tests) 198ms
+@octoshell/graph:test:  ✓ test/stability.test.ts  (16 tests) 28ms
+@octoshell/board:test:  ✓ test/plan-review.test.ts  (99 tests) 80ms
+@octoshell/board:test: usage: set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>
+@octoshell/board:test: usage: set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>
+@octoshell/board:test:  ✓ test/write-legacy-md-notes.test.ts  (3 tests) 38ms
+@octoshell/board:test:  ✓ test/entity-schema.test.ts  (6 tests) 64ms
+@octoshell/vscode-extension:test:  ✓ test/board-watcher.test.ts  (18 tests) 1568ms
+@octoshell/vscode-extension:test:  ✓ test/board-host.test.ts  (38 tests) 1565ms
+@octoshell/board:test:  ✓ test/write-notes.test.ts  (4 tests) 281ms
+@octoshell/graph:test:  ✓ test/paths.test.ts  (8 tests) 18ms
+@octoshell/graph:test: fatal: your current branch 'main' does not have any commits yet
+@octoshell/vscode-extension:test:  ✓ test/rpc-dispatcher.test.ts  (40 tests) 1319ms
+@octoshell/graph:test: fatal: your current branch 'main' does not have any commits yet
+@octoshell/board:test:  ✓ test/write-status.test.ts  (7 tests) 245ms
+@octoshell/board:test:  ✓ test/mission-status.test.ts  (4 tests) 119ms
+@octoshell/board:test:  ✓ test/write-edit.test.ts  (4 tests) 71ms
+@octoshell/board:test:  ✓ test/skill-marker-unit.test.ts  (2 tests) 268ms
+@octoshell/board:test: set-status: invalid state "nearly-done" (expected one of: draft, active, executing, awaiting approval, done, failed, cancelled)
+@octoshell/board:test: set-status: path not found: /tmp/scripts-cli-Qkx95s/.octobots/nope
+@octoshell/board:test:  ✓ test/legacy-workflows-unit.test.ts  (1 test) 140ms
+@octoshell/board:test: usage: set-status.js <parent-dir|entity.yaml> "<entity title>" <state> [--force=<reason>]
+@octoshell/board:test:   state: draft | active | executing | awaiting approval | done | failed | cancelled
+@octoshell/graph:test:  ✓ test/rollup.test.ts  (15 tests) 4ms
+@octoshell/board:test: INVALID /tmp/scripts-cli-J6TAzd/.octobots/campaigns/camp/missions/m1-auth/tasks/t1/task.yaml:
+@octoshell/board:test:   - name "T1" is just an id/placeholder — use the form `<id> - descriptive name` (e.g. "M3 - Skills workspace", "T3.1 - Add JWT validation to /login"); the bare id alone is not a name
+@octoshell/vscode-extension:test:  ✓ test/pack-updates-hardening.test.ts  (19 tests) 4311ms
+@octoshell/graph:test:  ✓ test/weights.test.ts  (11 tests) 3ms
+@octoshell/board:test:  ✓ test/plan-review-parity.test.ts  (2 tests) 1487ms
+@octoshell/board:test:  ✓ test/tests-folder-ignored.test.ts  (3 tests) 4361ms
+@octoshell/board:test: INVALID /tmp/scripts-cli-tXUt2J/.octobots/campaigns/camp/campaign.yaml:
+@octoshell/board:test:   - missing a `name`
+@octoshell/board:test:  ✓ test/slug.test.ts  (4 tests) 1ms
+@octoshell/board:test:  ✓ test/managed-block.test.ts  (3 tests) 2ms
+@octoshell/graph:test:  ✓ test/own.test.ts  (11 tests) 6009ms
+@octoshell/board:test: INVALID /tmp/scripts-cli-s5Lxmi/.octobots/campaigns/camp/missions/m1-auth/tasks/t1/task.yaml:
+@octoshell/board:test:   - name "T1" is just an id/placeholder — use the form `<id> - descriptive name` (e.g. "M3 - Skills workspace", "T3.1 - Add JWT validation to /login"); the bare id alone is not a name
+@octoshell/vscode-extension:test:  ✓ test/octobots-scripts.test.ts  (29 tests) 5150ms
+@octoshell/graph:test:  ✓ test/board-e2e-gate.test.ts  (4 tests) 6538ms
+@octoshell/vscode-extension:test:  ✓ test/octograph-command.test.ts  (12 tests) 212ms
+@octoshell/board:test:  ✓ test/board-model.test.ts  (6 tests) 6163ms
+@octoshell/vscode-extension:test:  ✓ test/graph-payload.test.ts  (20 tests) 2069ms
+@octoshell/vscode-extension:test:  ✓ test/octograph-e2e.test.ts  (14 tests) 5815ms
+@octoshell/graph:test:  ✓ test/louvain.test.ts  (9 tests) 85ms
+@octoshell/graph:test:  ✓ test/render.test.ts  (36 tests) 8232ms
+@octoshell/vscode-extension:test:  ✓ test/conventions.test.ts  (10 tests) 18ms
+@octoshell/vscode-extension:test:  ✓ test/pack-deviation-prompt.test.ts  (31 tests) 6ms
+@octoshell/vscode-extension:test:  ✓ test/octograph.test.ts  (19 tests) 149ms
+@octoshell/graph:test:  ✓ test/cochange.test.ts  (14 tests) 3ms
+@octoshell/graph:test:  ✓ test/lexical.test.ts  (8 tests) 2ms
+@octoshell/vscode-extension:test:  ✓ test/sdlc-bundles.test.ts  (19 tests) 74ms
+@octoshell/graph:test: octograph: worklog line is valid JSON but missing required field(s) (session_id) — dropped: {"task":"T1.1","at":"2026-08-09T11:00:00.000Z"}
+@octoshell/graph:test: octograph: worklog line is valid JSON but missing required field(s) (at) — dropped: {"session_id":"s2","task":"T1.2"}
+@octoshell/graph:test:  ✓ test/worklog.test.ts  (9 tests) 19ms
+@octoshell/graph:test:  ✓ test/impact.test.ts  (9 tests) 2ms
+@octoshell/graph:test:  ✓ test/diff-impact.test.ts  (17 tests) 6710ms
+@octoshell/graph:test:  ✓ test/components.test.ts  (6 tests) 78ms
+@octoshell/graph:test:  ✓ test/harvest.test.ts  (11 tests) 6098ms
+@octoshell/vscode-extension:test:  ✓ test/octobots-primer.test.ts  (92 tests) 9725ms
+@octoshell/vscode-extension:test:  ✓ test/octobots-worklog-sha-backfill.test.ts  (9 tests) 1315ms
+@octoshell/vscode-extension:test:  ✓ test/pack-reconcile-script.test.ts  (23 tests) 5137ms
+@octoshell/vscode-extension:test:  ✓ test/octobots-statusline.test.ts  (18 tests) 2372ms
+@octoshell/graph:test:  ✓ test/hubs.test.ts  (6 tests) 2ms
+@octoshell/vscode-extension:test:  ✓ test/tokenomics-verify-roots.test.ts  (27 tests) 10428ms
+@octoshell/graph:test:  ✓ test/vault-calibration.test.ts  (4 tests) 4ms
+@octoshell/graph:test:  ✓ test/e2e-gate.test.ts  (4 tests) 11024ms
+@octoshell/graph:test:  ✓ test/bundle.test.ts  (1 test) 1023ms
+@octoshell/vscode-extension:test:  ✓ test/campaigns-tree-tests.test.ts  (30 tests) 8879ms
+@octoshell/graph:test:  ✓ test/module-edge-direction.test.ts  (4 tests) 4544ms
+@octoshell/board:test: INVALID /tmp/scripts-cli-SUCx8h/.octobots/campaigns/octograph/campaign.yaml:
+@octoshell/board:test:  ✓ test/test-cases-own-campaign.test.ts  (7 tests) 8031ms
+@octoshell/board:test:  ✓ test/validate-tests-parity.test.ts  (17 tests) 9031ms
+@octoshell/board:test:   - missing a `name`
+@octoshell/board:test: validate: not an entity file (<kind>.yaml): /tmp/scripts-cli-7T4yim/.octobots/campaigns/octograph/missions/m3-part-m3/workflows/run/workflow.js
+@octoshell/board:test: validate: no entity (<kind>.yaml) in /tmp/scripts-cli-hcaKS4/.octobots/campaigns/empty
+@octoshell/board:test: validate: not an entity file (<kind>.yaml): /tmp/scripts-cli-Sa8nlM/.octobots/notes.txt
+@octoshell/board:test:  ✓ test/scan-parked.test.ts  (32 tests) 9801ms
+@octoshell/board:test:  ✓ test/qa-env.test.ts  (50 tests) 9937ms
+@octoshell/graph:test: [fixture retry] commit 1 of 1 failed in /tmp/octograph-Dgcyjd
+@octoshell/graph:test: [fixture retry] Command failed: git commit -q -m commit 1001
+@octoshell/graph:test: [fixture retry]   root exists: true
+@octoshell/graph:test: [fixture retry]   .git exists: true
+@octoshell/graph:test: [fixture retry]   HEAD file: ref: refs/heads/main
+@octoshell/graph:test: [fixture retry]   refs/heads: main
+@octoshell/graph:test: [fixture retry]   index.lock: false
+@octoshell/graph:test: [fixture retry]   git status: ## main | A  c.ts | A  d.ts
+@octoshell/graph:test: [fixture retry]   git rev-list --count --all: 1
+@octoshell/graph:test: [fixture retry]   git fsck: 
+@octoshell/graph:test: [fixture retry]   git cat-file -t HEAD: commit
+@octoshell/graph:test: [fixture retry]   loose object dirs: 5
+@octoshell/graph:test: [fixture retry]   objects/pack: (empty)
+@octoshell/graph:test: [fixture retry]   df: Filesystem   1024-blocks      Used  Available Capacity iused       ifree %iused  Mounted on | /dev/disk3s5  1948455240 544850620 1380574784    29% 8147185 13805747840    0%   /System/Volumes/Data
+@octoshell/graph:test: [fixture retry] retrying once — see the filed bug 'packages/graph e2e heaviest fixture'
+@octoshell/vscode-extension:test:  ✓ test/octobots-mission-gate.test.ts  (29 tests) 10254ms
+@octoshell/vscode-extension:test:  ✓ test/octobots-hooks.test.ts  (13 tests) 113ms
+@octoshell/graph:test:  ✓ test/rank.test.ts  (5 tests) 1ms
+@octoshell/graph:test:  ✓ test/diff-impact-truncated-rename.test.ts  (1 test) 1ms
+@octoshell/graph:test:  ✓ test/manifest-boundaries-survive-graphify.test.ts  (1 test) 1836ms
+@octoshell/vscode-extension:test:  ✓ test/tokenomics-prices-local.test.ts  (6 tests) 483ms
+@octoshell/graph:test:  ✓ test/layers.test.ts  (4 tests) 1ms
+@octoshell/vscode-extension:test:  ✓ test/pack-deviations.test.ts  (37 tests) 11052ms
+@octoshell/vscode-extension:test:  ✓ test/contract.test.ts  (12 tests) 7ms
+@octoshell/board:test:  ✓ test/validate-workflows-warning.test.ts  (7 tests) 12645ms
+@octoshell/graph:test: [fixture retry] rev-list --count --all failed in /tmp/octograph-Lct4cx
+@octoshell/graph:test: [fixture retry] Command failed: git rev-list --count --all | fatal: not a git repository (or any of the parent directories): .git
+@octoshell/graph:test: [fixture retry]   root exists: true
+@octoshell/graph:test: [fixture retry]   .git exists: true
+@octoshell/graph:test: [fixture retry]   HEAD file: broken forever
+@octoshell/graph:test: [fixture retry]   refs/heads: main
+@octoshell/graph:test: [fixture retry]   index.lock: false
+@octoshell/graph:test: [fixture retry]   git status: <failed: Command failed: git status --porcelain=v1 -b> stderr: fatal: not a git repository (or any of the parent directories): .git
+@octoshell/graph:test: [fixture retry]   git rev-list --count --all: <failed: Command failed: git rev-list --count --all> stderr: fatal: not a git repository (or any of the parent directories): .git
+@octoshell/graph:test: [fixture retry]   git fsck: <failed: Command failed: git fsck --no-progress --connectivity-only> stderr: fatal: not a git repository (or any of the parent directories): .git
+@octoshell/graph:test: [fixture retry]   git cat-file -t HEAD: <failed: Command failed: git cat-file -t HEAD> stderr: fatal: not a git repository (or any of the parent directories): .git
+@octoshell/graph:test: [fixture retry]   loose object dirs: 3
+@octoshell/graph:test: [fixture retry]   objects/pack: (empty)
+@octoshell/graph:test: [fixture retry]   df: Filesystem   1024-blocks      Used  Available Capacity iused       ifree %iused  Mounted on | /dev/disk3s5  1948455240 544856280 1380569116    29% 8146250 13805691160    0%   /System/Volumes/Data
+@octoshell/graph:test: [fixture retry] retrying once — see the filed bug 'packages/graph e2e heaviest fixture'
+@octoshell/graph:test:  ✓ test/attribution.test.ts  (20 tests) 12195ms
+@octoshell/vscode-extension:test:  ✓ test/octobots-skill.test.ts  (78 tests) 11319ms
+@octoshell/vscode-extension:test:  ✓ test/skill-marker-parity.test.ts  (19 tests) 3ms
+@octoshell/vscode-extension:test:  ✓ test/pending-io-parity.test.ts  (69 tests) 3266ms
+@octoshell/graph:test:  ✓ test/fixture-retry.test.ts  (2 tests) 1705ms
+@octoshell/graph:test:  ✓ test/git-hygiene.test.ts  (2 tests) 861ms
+@octoshell/board:test:  ✓ test/tc-status-toplevel.test.ts  (4 tests) 200ms
+@octoshell/vscode-extension:test:  ✓ test/tokenomics-rpc.test.ts  (4 tests) 79ms
+@octoshell/vscode-extension:test:  ✓ test/sdlc-bundles-command.test.ts  (5 tests) 2ms
+@octoshell/vscode-extension:test:  ✓ test/ui-router.test.ts  (7 tests) 3ms
+@octoshell/vscode-extension:test:  ✓ test/open-test-file-webview.test.ts  (3 tests) 20ms
+@octoshell/vscode-extension:test:  ✓ test/tokenomics-render-mjs.test.ts  (3 tests) 287ms
+@octoshell/graph:test:  ✓ test/setup-e2e-gate.test.ts  (9 tests) 13074ms
+@octoshell/vscode-extension:test:  ✓ test/octobots-status-flip.test.ts  (8 tests) 434ms
+@octoshell/vscode-extension:test:  ✓ test/qa-tokenomics-report.test.ts  (2 tests) 139ms
+@octoshell/vscode-extension:test:  ✓ test/pack-install-guard.test.ts  (7 tests) 3ms
+@octoshell/vscode-extension:test:  ✓ test/package-vsix-steps.test.ts  (5 tests) 2ms
+@octoshell/vscode-extension:test:  ✓ test/manifest-no-workflows.test.ts  (4 tests) 1ms
+@octoshell/vscode-extension:test:  ✓ test/octograph-install.test.ts  (13 tests) 2666ms
+@octoshell/vscode-extension:test:  ✓ test/tokenomics-selftest.test.ts  (14 tests) 1579ms
+@octoshell/vscode-extension:test:  ✓ test/pack-version-marker.test.ts  (32 tests) 23ms
+@octoshell/vscode-extension:test:  ✓ test/test-case-view-tokens.test.ts  (4 tests) 2ms
+@octoshell/graph:test:  ✓ test/cycle-ranks-and-omission.test.ts  (3 tests) 8122ms
+@octoshell/vscode-extension:test:  ✓ test/panel-restore-activation.test.ts  (2 tests) 3ms
+@octoshell/vscode-extension:test:  ✓ test/panel-serializer.test.ts  (3 tests) 1ms
+@octoshell/vscode-extension:test:  ✓ test/board-rollup.test.ts  (3 tests) 1ms
+@octoshell/vscode-extension:test:  ✓ test/octobots-work-log.test.ts  (22 tests) 5241ms
+@octoshell/vscode-extension:test:  ✓ test/appearance-store.test.ts  (1 test) 2ms
+@octoshell/vscode-extension:test:  ✓ test/campaigns-tree-real-board.test.ts  (1 test) 1878ms
+@octoshell/vscode-extension:test:  ✓ test/test-evidence-guard.test.ts  (9 tests) 3548ms
+@octoshell/tokenomics:test:  ✓ test/rollup-parity.test.ts  (32 tests) 15500ms
+@octoshell/tokenomics:test: 
+@octoshell/tokenomics:test:  Test Files  7 passed (7)
+@octoshell/tokenomics:test:       Tests  102 passed (102)
+@octoshell/tokenomics:test:    Start at  16:06:44
+@octoshell/tokenomics:test:    Duration  17.58s (transform 771ms, setup 0ms, collect 2.72s, tests 16.22s, environment 0ms, prepare 1.06s)
+@octoshell/tokenomics:test: 
+@octoshell/vscode-extension:test:  ✓ test/qa-dump-tests.test.ts  (3 tests) 2869ms
+@octoshell/vscode-extension:test:  ✓ test/notes-block.test.tsx  (22 tests) 481ms
+@octoshell/vscode-extension:test:  ✓ test/qa-install-pack.test.ts  (14 tests) 5124ms
+@octoshell/vscode-extension:test:  ✓ test/campaign-view.test.tsx  (7 tests) 359ms
+@octoshell/vscode-extension:test:  ✓ test/mission-view.test.tsx  (10 tests) 455ms
+@octoshell/board:test: add-tests: path not found: /tmp/scripts-cli-Yp5ier/.octobots/nope
+@octoshell/board:test: usage: add-tests.js <mission-dir|mission.yaml>
+@octoshell/board:test: add-tests: not a mission directory or mission.yaml: /tmp/scripts-cli-Yp5ier/.octobots/campaigns/camp
+@octoshell/vscode-extension:test:  ✓ test/field.test.tsx  (8 tests) 38ms
+@octoshell/board:test: add-tests: mission name must start with its id token M<n> (e.g. "M3 - ..."): Gate without an id
+@octoshell/board:test: add-tests: refusing to write: tests/m1/README.md is a symlink (/tmp/scripts-cli-Sl2ItV/.octobots/campaigns/camp-alpha/tests/m1/README.md)
+@octoshell/board:test: add-tests: refusing to write: tests is a symlink (/tmp/scripts-cli-flW8TG/.octobots/campaigns/camp-alpha/tests)
+@octoshell/board:test: add-tests: refusing to write: tests/m1 is a symlink (/tmp/scripts-cli-flW8TG/.octobots/campaigns/camp-alpha/tests/m1)
+@octoshell/board:test: add-tests: refusing to write: tests/m1/README.md is not a regular file (/tmp/scripts-cli-72xe8D/.octobots/campaigns/camp-alpha/tests/m1/README.md)
+@octoshell/board:test: add-tests: refusing to write: tests/m1 is not a directory (/tmp/scripts-cli-72xe8D/.octobots/campaigns/camp-alpha/tests/m1)
+@octoshell/vscode-extension:test:  ✓ test/tokenomics-view-campaign-rows.test.tsx  (6 tests) 267ms
+@octoshell/vscode-extension:test:  ✓ test/qa-dump-ids.test.ts  (3 tests) 3535ms
+@octoshell/vscode-extension:test:  ✓ test/task-view.test.tsx  (10 tests) 414ms
+@octoshell/vscode-extension:test:  ✓ test/checklist-field.test.tsx  (6 tests) 234ms
+@octoshell/vscode-extension:test:  ✓ test/octoshell-shim.test.ts  (3 tests) 3ms
+@octoshell/vscode-extension:test:  ✓ test/bug-view.test.tsx  (7 tests) 320ms
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > openTestCase > creates one panel of view type octoshell.testCase titled `TC-004: <title>`; a second call reveals it
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > openTestCase > one panel per TC however its path is spelled
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > openTestCase > another letter case of the same TC never keys a second panel (a case-insensitive file system opens the same file)
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > openTestCase > binds {kind: testCase, id: <path>} when the webview is ready
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > openTestCase > posts a spine event to the panel on entities:changed, and stops after it is disposed
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > openTestCase > refreshes the panel title when the TC's title changes on disk
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > openTestCase > the openTestCase UI message (the sidebar-independent path: a mission panel's TC row) opens the panel
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > restored panel > adopt binds a restored testCase panel to its path; a TC that is gone does not dispose it
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > restored panel > a restored panel answers tests:get with null for a gone TC (the webview shows the no-longer-exists state)
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > openTestEvidence and openTestFile > opens the evidence file the host reads from the TC on disk, never one the webview names
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > openTestEvidence and openTestFile > opens nothing for a TC with no evidence, a missing evidence file, or a path the guard rejects
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test: stderr | test/test-case-panel.test.ts > openTestEvidence and openTestFile > the Open source file button (openTestFile) still goes through the guarded raw-file command
+@octoshell/vscode-extension:test: [octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test:  ✓ test/test-case-panel.test.ts  (15 tests) 12251ms
+@octoshell/vscode-extension:test:  ✓ test/chat-entry-bound.test.ts  (6 tests) 1ms
+@octoshell/vscode-extension:test:  ✓ test/activation-workflows-untouched.test.ts  (3 tests) 3728ms
+@octoshell/graph:test:  ✓ test/map-reproducibility.test.ts  (4 tests) 20263ms
+@octoshell/board:test: stdout | test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > tracked board (git archive HEAD .octobots)
+@octoshell/board:test: tc-status parity [tracked]: 98 TCs, 392 (TC, status) pairs compared, 0 script refusals
+@octoshell/board:test: 
+@octoshell/board:test:  ✓ test/tc-status-parity.test.ts  (3 tests) 22361ms
+@octoshell/vscode-extension:test:  ✓ test/pack-install-reconcile.test.ts  (29 tests) 21264ms
+@octoshell/vscode-extension:test:  ✓ test/campaign-tests-summary.test.tsx  (5 tests) 5352ms
+@octoshell/vscode-extension:test:  ✓ test/mission-tests-panel.test.tsx  (11 tests) 6878ms
+@octoshell/graph:test:  ✓ test/setup.test.ts  (14 tests) 23880ms
+@octoshell/vscode-extension:test:  ✓ test/test-case-view.test.tsx  (17 tests) 8339ms
+@octoshell/vscode-extension:test:  ✓ test/tests-detail-rpc.test.ts  (24 tests) 21995ms
+@octoshell/board:test:  ✓ test/scripts-cli-scenarios.test.ts  (266 tests) 26739ms
+@octoshell/board:test: 
+@octoshell/board:test:  Test Files  39 passed (39)
+@octoshell/board:test:       Tests  840 passed (840)
+@octoshell/board:test:    Start at  16:06:44
+@octoshell/board:test:    Duration  27.71s (transform 7.84s, setup 0ms, collect 17.41s, tests 126.08s, environment 3ms, prepare 6.35s)
+@octoshell/board:test: 
+@octoshell/graph:test:  ✓ test/doctor.test.ts  (29 tests) 26940ms
+@octoshell/graph:test:  ✓ test/cli.test.ts  (80 tests) 29006ms
+@octoshell/graph:test:  ✓ test/e2e.test.ts  (12 tests) 32965ms
+@octoshell/vscode-extension:test:  ✓ test/shipped-skills.test.ts  (32 tests) 36597ms
+@octoshell/vscode-extension:test: 
+@octoshell/vscode-extension:test:  Test Files  69 passed (69)
+@octoshell/vscode-extension:test:       Tests  1274 passed (1274)
+@octoshell/vscode-extension:test:    Start at  16:06:44
+@octoshell/vscode-extension:test:    Duration  40.68s (transform 9.60s, setup 19.13s, collect 38.34s, tests 243.47s, environment 4.34s, prepare 7.71s)
+@octoshell/vscode-extension:test: 
+@octoshell/graph:test:  ✓ test/analyze.test.ts  (19 tests) 39601ms
+@octoshell/graph:test: 
+@octoshell/graph:test:  Test Files  47 passed (47)
+@octoshell/graph:test:       Tests  655 passed (655)
+@octoshell/graph:test:    Start at  16:06:44
+@octoshell/graph:test:    Duration  40.75s (transform 2.62s, setup 456ms, collect 15.09s, tests 262.40s, environment 7ms, prepare 8.92s)
+@octoshell/graph:test: 
+
+ Tasks:    6 successful, 6 total
+Cached:    2 cached, 6 total
+  Time:    41.147s 
+

@@ -6,6 +6,8 @@ import { performance } from "node:perf_hooks";
 import { BoardHost } from "../src/host/board-host.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { trackedBoardCopies } from "./fixtures/real-board.js";
+import { aggregateStatus, emptyCounts, TEST_STATUS_ORDER, type TestStatusCounts } from "../src/protocol/index.js";
+import type { TestCaseStatus } from "@octoshell/board";
 
 vi.mock("vscode", () => ({
   TreeItem: class { constructor(public label: string, public collapsibleState?: number) {} },
@@ -15,7 +17,7 @@ vi.mock("vscode", () => ({
   EventEmitter: class { event = (): void => {}; fire(): void {} },
 }));
 
-const { CampaignsTree, testFileToOpen, OPEN_TEST_FILE_COMMAND } = await import("../src/host/campaigns-tree.js");
+const { CampaignsTree, testFileToOpen, OPEN_TEST_FILE_COMMAND, OPEN_TEST_CASE_COMMAND } = await import("../src/host/campaigns-tree.js");
 type Tree = InstanceType<typeof CampaignsTree>;
 type Node = ReturnType<Tree["getChildren"]>[number];
 interface Item { label: string; id?: string; description?: string; tooltip?: string; collapsibleState?: number; iconPath?: { id: string; color?: { id: string } }; command?: { command: string; arguments?: unknown[] } }
@@ -108,19 +110,22 @@ describe("Tests node: structure and labels", () => {
     const icons = Object.fromEntries(leaves.map((l) => [item(tree, l).description, item(tree, l).iconPath]));
     expect(icons.pass).toMatchObject({ id: "pass", color: { id: "testing.iconPassed" } });
     expect(icons.fail).toMatchObject({ id: "error", color: { id: "testing.iconFailed" } });
-    expect(icons.blocked).toMatchObject({ id: "circle-slash", color: { id: "testing.iconSkipped" } });
+    expect(icons.blocked).toMatchObject({ id: "circle-slash", color: { id: "list.warningForeground" } });
     expect(icons.ready).toMatchObject({ id: "circle-large-outline", color: { id: "testing.iconQueued" } });
     expect(icons.draft).toMatchObject({ id: "edit", color: { id: "testing.iconUnset" } });
     expect(icons.unknown).toMatchObject({ id: "question", color: { id: "testing.iconUnset" } });
     for (const l of leaves) {
       expect(item(tree, l).collapsibleState).toBe(0);
       expect(item(tree, l).label).toMatch(/^TC-00\d: /);
-      // click opens the TC file through the editor's openFile path
+      // a single click opens the TC's panel (0.1.1 decision 2), by its board-relative path, never the raw file
       const cmd = item(tree, l).command!;
-      expect(cmd.command).toBe("octoshell.openTestFile");
-      const abs = cmd.arguments![0] as string;
-      expect(abs.startsWith(octo)).toBe(true);
-      expect(existsSync(abs)).toBe(true);
+      expect(cmd.command).toBe("octoshell.openTestCase");
+      expect(cmd.command).not.toBe("octoshell.openTestFile");
+      const rel = cmd.arguments![0] as string;
+      expect(cmd.arguments).toHaveLength(1);
+      expect(rel).toBe((l as { test: { path: string } }).test.path);
+      expect(rel.startsWith("campaigns/")).toBe(true);
+      expect(existsSync(join(octo, rel))).toBe(true);
     }
   });
 
@@ -180,14 +185,16 @@ describe("octoshell.openTestFile only opens a TC file inside the board (review f
     return s;
   }
 
-  it("accepts the path every TC leaf passes", () => {
+  it("accepts the path every TC leaf passes once joined under the board (the command joins it, as the webview's messages do)", () => {
     const { board } = board1();
     const tree = new CampaignsTree(board);
     const testsNode = kids(tree, kids(tree).find((n) => n.type === "campaign")!).find((n) => (n.type as string) === "tests")!;
     const leaf = item(tree, kids(tree, kids(tree, testsNode)[0])[0]!);
-    expect(leaf.command!.command).toBe(OPEN_TEST_FILE_COMMAND);
-    const arg = leaf.command!.arguments![0];
-    expect(testFileToOpen(board.artifactsRoot, arg)).toBe(arg);
+    expect(leaf.command!.command).toBe(OPEN_TEST_CASE_COMMAND);
+    const arg = leaf.command!.arguments![0] as string;
+    const abs = join(board.artifactsRoot, arg);
+    expect(testFileToOpen(board.artifactsRoot, abs)).toBe(abs);
+    expect(OPEN_TEST_FILE_COMMAND).toBe("octoshell.openTestFile"); // the raw file stays reachable through the panel's button
   });
 
   it("rejects a missing or non-string argument, a path that climbs out, a non-TC file and a symlink leaving the board", () => {
@@ -335,7 +342,7 @@ describe("Tests node over real boards", () => {
           const leaves = kids(tree, g);
           const label = item(tree, g).label;
           expect(leaves.length).toBe(Number(/ · (\d+) · /.exec(label)![1]));
-          for (const l of leaves) expect(existsSync((item(tree, l).command!.arguments![0] as string))).toBe(true);
+          for (const l of leaves) expect(existsSync(join(octo, item(tree, l).command!.arguments![0] as string))).toBe(true);
         }
       }
       if (withTests.length > 0) boardsWithTests++;
@@ -375,5 +382,116 @@ describe("Tests node over real boards", () => {
     const ms = performance.now() - t0;
     expect(count).toBeGreaterThan(116);
     expect(ms).toBeLessThan(1500);
+  });
+});
+
+// M6 B1: the Tests node and each mission group carry the worst status inside them as a theme-coloured beaker.
+describe("Tests node and group status icons (M6 B1)", () => {
+  const counts = (o: Partial<Record<TestCaseStatus, number>>): TestStatusCounts => ({ ...emptyCounts(), ...o });
+  const COLOUR = { fail: "testing.iconFailed", blocked: "list.warningForeground", pass: "testing.iconPassed" } as const;
+  const expectColour = (icon: Item["iconPath"], agg: "fail" | "blocked" | "pass" | "neutral"): void => {
+    expect(icon?.id).toBe("beaker");
+    if (agg === "neutral") expect(icon?.color).toBeUndefined();
+    else expect(icon?.color?.id).toBe(COLOUR[agg]);
+  };
+  const aggOf = (c: TestStatusCounts): "fail" | "blocked" | "pass" | "neutral" => (c.fail > 0 ? "fail" : c.blocked > 0 ? "blocked" : c.pass > 0 && c.pass === TEST_STATUS_ORDER.reduce((n, s) => n + c[s], 0) ? "pass" : "neutral");
+  const nodes = (tree: Tree) => {
+    const testsNode = kids(tree, kids(tree).find((n) => n.type === "campaign")!).find((n) => (n.type as string) === "tests")!;
+    return { testsNode, groups: kids(tree, testsNode) };
+  };
+
+  it.each([
+    ["fail wins over blocked and pass", { pass: 3, blocked: 2, fail: 1 }, "fail"],
+    ["blocked wins over pass", { pass: 3, blocked: 1 }, "blocked"],
+    ["all pass is green", { pass: 4 }, "pass"],
+    ["pass with a draft is neutral", { pass: 2, draft: 1 }, "neutral"],
+    ["draft/ready/unknown only is neutral", { draft: 1, ready: 2, unknown: 3 }, "neutral"],
+    ["an empty set is neutral", {}, "neutral"],
+  ] as const)("aggregateStatus: %s", (_n, c, want) => {
+    expect(aggregateStatus(counts(c))).toBe(want);
+  });
+
+  it("groups and the Tests node get the aggregate colour; the Tests node uses the campaign-wide counts", () => {
+    const { board, campaignDir } = seed([{ title: "M1 - a" }, { title: "M2 - b" }, { title: "M3 - c" }, { title: "M4 - d" }]);
+    many(campaignDir, "m1", "M1", { pass: 2 });
+    many(campaignDir, "m2", "M2", { pass: 2, blocked: 1 });
+    many(campaignDir, "m3", "M3", { draft: 2, ready: 1 });
+    many(campaignDir, "m4", "M4", { pass: 1, blocked: 1, fail: 1 });
+    board.reconcile();
+    const tree = new CampaignsTree(board);
+    const { testsNode, groups } = nodes(tree);
+    expect(groups.map((g) => item(tree, g).iconPath?.color?.id)).toEqual([COLOUR.pass, COLOUR.blocked, undefined, COLOUR.fail]);
+    groups.forEach((g) => expect(item(tree, g).iconPath?.id).toBe("beaker"));
+    expectColour(item(tree, testsNode).iconPath, "fail");
+  });
+
+  it("the Tests node is green only when every group is all-pass, blocked when blocked beats pass", () => {
+    const { board, campaignDir } = seed([{ title: "M1 - a" }, { title: "M2 - b" }]);
+    many(campaignDir, "m1", "M1", { pass: 2 });
+    many(campaignDir, "m2", "M2", { pass: 1 });
+    board.reconcile();
+    const tree = new CampaignsTree(board);
+    expectColour(item(tree, nodes(tree).testsNode).iconPath, "pass");
+    put(campaignDir, "m2", "TC-900_x.md", tc("TC-900", { mission: "M2", status: "blocked" }));
+    board.reconcile();
+    expectColour(item(tree, nodes(tree).testsNode).iconPath, "blocked");
+  });
+
+  it("a blocked leaf and a blocked group use the same colour", () => {
+    const { board, campaignDir } = seed([{ title: "M1 - a" }]);
+    many(campaignDir, "m1", "M1", { blocked: 1 });
+    board.reconcile();
+    const tree = new CampaignsTree(board);
+    const [group] = nodes(tree).groups;
+    expect(item(tree, kids(tree, group)[0]!).iconPath?.color?.id).toBe(item(tree, group!).iconPath?.color?.id);
+  });
+
+  it("the icon follows the counts when a status changes (recomputed on refresh)", () => {
+    const { board, campaignDir } = seed([{ title: "M1 - a" }]);
+    many(campaignDir, "m1", "M1", { pass: 2 });
+    board.reconcile();
+    const tree = new CampaignsTree(board);
+    expectColour(item(tree, nodes(tree).groups[0]!).iconPath, "pass");
+    writeFileSync(join(campaignDir, "tests", "m1", "TC-001_x.md"), tc("TC-001", { mission: "M1", status: "fail" }));
+    board.reconcile();
+    tree.refresh();
+    expectColour(item(tree, nodes(tree).groups[0]!).iconPath, "fail");
+    expectColour(item(tree, nodes(tree).testsNode).iconPath, "fail");
+  });
+
+  it("theme guard: every beaker colour is a ThemeColor id, never a hex value", () => {
+    const { board, campaignDir } = seed([{ title: "M1 - a" }, { title: "M2 - b" }, { title: "M3 - c" }]);
+    many(campaignDir, "m1", "M1", { fail: 1 });
+    many(campaignDir, "m2", "M2", { blocked: 1 });
+    many(campaignDir, "m3", "M3", { pass: 1 });
+    board.reconcile();
+    const tree = new CampaignsTree(board);
+    const { testsNode, groups } = nodes(tree);
+    for (const n of [testsNode, ...groups, ...groups.flatMap((g) => kids(tree, g))]) {
+      const c = item(tree, n).iconPath?.color;
+      expect(typeof c?.id).toBe("string");
+      expect(c!.id).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)+$/);
+      expect(c!.id).not.toMatch(/^#|rgb/i);
+    }
+  });
+
+  it("real board: each group's colour matches its counts, and the Tests node matches the campaign totals", () => {
+    let checked = 0;
+    for (const octo of trackedBoardCopies()) {
+      const board = new BoardHost(octo);
+      const tree = new CampaignsTree(board);
+      for (const campaign of kids(tree).filter((n) => n.type === "campaign")) {
+        const testsNode = kids(tree, campaign).find((n) => (n.type as string) === "tests");
+        if (!testsNode) continue;
+        const summary = board.testSummary((campaign as unknown as { campaign: { id: string } }).campaign.id)!;
+        expectColour(item(tree, testsNode).iconPath, aggOf(summary.counts));
+        for (const g of kids(tree, testsNode)) {
+          const row = summary.missions.find((m) => `tests:${summary.campaignId}:${m.folder}` === item(tree, g).id)!;
+          expectColour(item(tree, g).iconPath, aggOf(row.counts));
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

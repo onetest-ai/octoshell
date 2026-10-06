@@ -1,0 +1,88 @@
+name: Octoshell 0.1.1
+status: draft
+target: apps/vscode-extension 0.1.1 (pack stays v57, byte-identical)
+description: 'Release 0.1.1 of the Octobots extension. Test cases get their own rendered panel (header with id, title, a status dropdown, kind and last run with its evidence link; the covered criteria with their text, linking to the mission panel; the TC body rendered by the same sanitized markdown renderer as the notes panel; an Open source file button). A single click on a TC in the sidebar, or on a TC row in a mission panel (decision 4), opens that panel instead of the raw file. A legacy TC with frontmatter can be set from the dropdown, with an inline note pointing at --migrate (decision 5). The dropdown records status exactly as the pack''s set-test-status.js does and never writes over a newer status an agent wrote. Ships with M6 B1 (status-coloured Tests node and mission-group icons), already merged into the campaign branch feat/octoshell-0-1-1 by PR #172 (9c7d17af), a fix to the muddled CHANGELOG 0.1.0 sentence, and the 0.1.1 CHANGELOG entry and version bump, released and verified like 0.1.0. The pack is not touched: it stays v57 and byte-identical, so no workspace is prompted to reinstall.'
+acceptance_criteria:
+  - text: Given octobots-0.1.1.vsix installed in VS Code and this repo's board open, when the user single-clicks any TC in the sidebar's Tests node, or a TC row in a mission panel, then that TC's rendered panel opens (header with status dropdown, kind and last run with its evidence link; covered criteria with their text linking to the mission panel; the sanitized rendered body; Open source file) instead of the raw file (verified by M1-AC1, AC2, AC6, AC10 / T1.5)
+    done: false
+  - text: 'Given any real TC of this repo''s or solo''s board (on copies), when its status is changed in the panel to a status different from the file''s, then the file is byte-identical to what the shipped set-test-status.js writes (`set-test-status.js <tc> <status> --date <today UTC>` for pass/fail/blocked, `set-test-status.js <tc> <status>` for draft/ready: frontmatter status and last_run {date} only, no evidence, body untouched), the parity run shows the script refused zero real (TC, status) pairs, re-picking the current status writes nothing, and a pick made while an agent''s newer status had not yet reached the panel writes nothing (verified by M1-AC3, AC4, AC5 / T1.5)'
+    done: false
+  - text: The 0.1.1 VSIX ships M6 B1's status-coloured Tests node and mission-group icons, a CHANGELOG whose 0.1.0 section no longer says "If you still have such files, they were already migrated away" (it says conditionally that any release from a192780c through 0.0.51 that ran deleted each workflow.md) and whose 0.1.1 entry describes this release, and an octobots pack byte-identical to 0.1.0's (v57, no reinstall prompt in any workspace); it is cut from a standalone release commit touching only apps/vscode-extension/package.json (verified by M1-AC10 / T1.4, T1.5)
+    done: true
+  - text: Every mission of this campaign has tests/m<n>/README.md mapping every mission AC and at least one TC-NNN_*.md, linked as a mission document, and validate.js reports no tests-pairing warning on any of them
+    done: true
+documents: []
+notes: |-
+  ## User decisions (2026-10-06, verbatim from the planning request; final)
+
+  1. **Test-case panel.** A rendered panel for a single test case, the same kind of form missions, tasks, campaigns and bugs have. It shows:
+     - a header with id, title, a **status dropdown**, kind, and last_run (date plus a link that opens the evidence RUN file);
+     - a covered-criteria section listing each covered AC's id and text, linking to the mission panel;
+     - the Markdown body rendered (Objective, Preconditions, the Steps table, Expected Final State), using the same safe renderer as the notes panel (react-markdown + rehype-sanitize; see `notes-block.tsx`);
+     - an "Open source file" button.
+
+     It is **read view + status dropdown**. Editing the body happens via the source file. The dropdown must record status exactly as `set-test-status.js` does: frontmatter-only line edits, atomic writes, body byte-identical, and a pass/fail/blocked result writes `last_run` (decide what evidence a dropdown change records, e.g. none, or "manual"). It must be safe against concurrent agent edits. M3's B1/B2 lessons apply: re-read before writing, and never write a stale snapshot.
+  2. **A single click on a TC** in the sidebar tree opens this panel instead of the raw file. The raw file is one click away via the panel's button.
+  3. **Ship as 0.1.1, together with**:
+     - the coloured Tests-node and mission-group icons. That is board bug M6 B1, already being built as a separate PR into main; the plan depends on it landing and doesn't redo it;
+       *(Status, recorded by the planner 2026-10-06: B1 did not go into main. It is merged into this campaign's branch feat/octoshell-0-1-1 by PR #172, merge 9c7d17af, and reaches main with the campaign -> main PR. See § M6 B1 is already in.)*
+     - a fix to the muddled CHANGELOG.md line 13 ("If you still have such files, they were already migrated away");
+     - the CHANGELOG 0.1.1 entry and the version bump, released and verified like 0.1.0 (M6 T6.6 is the model: a standalone release commit touching only package.json, the VSIX built from it, verified black-box).
+
+  4. **D4 (2026-10-06).** TC rows in the mission panel also open the TC panel, same as the sidebar. The raw file stays one click away via "Open source file". In practice:
+     - `mission-tests.tsx` posts `openTestCase` instead of `openTestFile`, through the same guard;
+     - add this to T1.3's ACs;
+     - flip TC-008 step 7 and README assumption A2.
+  5. **D5 (2026-10-06).** On a legacy TC with frontmatter, the dropdown is ALLOWED: the pick writes `status`, same as set-test-status.js. While the file is still legacy (missing kind/mission), the panel shows an inline note with the exact command: `legacy test case: kind and mission not recorded; set-test-status.js <file> --migrate adds them`. That's panel content and fits decision 12. AC2 must state that a pick leaves kind and mission absent.
+
+  ## Planner decisions (tech-lead, 2026-10-06, revised after the plan review; detail and rationale in M1 notes)
+
+  - Host write path: a TypeScript port of set-test-status.js's non-migrate line edit in packages/board (new module tc-status.ts), with byte-parity tests that run the shipped script over every real TC and status. Not a spawned script: that would need Electron's ELECTRON_RUN_AS_NODE, and the stale-write guard would need a pack change and so a v58 pack bump. The pack is not touched in 0.1.1.
+  - Evidence a dropdown change records: none. pass/fail/blocked from the dropdown write `last_run: {date: <today UTC>}`, the same bytes as the script with no --evidence. Evidence stays a RUN-file path by contract.
+  - Concurrency: the webview never sends file text; the write carries the status and last_run the panel showed, and the host refuses (writes nothing, re-renders, tells the user inline) when the file moved; it writes the temp file, re-reads the bytes, then renames. Re-picking the current status is a host no-op (the pure edit stays identical to the script, which would re-date last_run).
+
+  ## M6 B1 is already in
+
+  M6 B1 (`.octobots/campaigns/direct-dispatch-process/missions/m6-test-cases-are-first-class-on-the-board/bugs/b1-tests-node-and-its-mission-groups-show-a-grey-b/bug.yaml`: status-coloured Tests node and mission-group icons) is merged into this campaign's branch feat/octoshell-0-1-1 by PR #172 (merge 9c7d17af). It is not on main; it reaches main with this campaign's -> main PR. It is not redone here, and no task waits for it.
+
+  ## Branching
+
+  - Campaign branch: `feat/octoshell-0-1-1` (contains 9c7d17af). One campaign -> main PR at the end, after the release commit; it carries B1 and this mission to main.
+  - Mission branch: `feat/octoshell-0-1-1-m1`, cut from the campaign branch; task branches `feat/octoshell-0-1-1-m1-t<k>`. Missions merge into the campaign branch, never straight to main.
+  - The release commit `chore(ext): release 0.1.1` lands on the campaign branch after T1.1-T1.3 and before T1.5's VSIX check; a fix found by T1.5 lands after it and the VSIX is rebuilt (TC-012 requires `git diff <release commit> HEAD -- apps packages` empty for the tree the VSIX is built from).
+
+  ## Board tracking
+
+  This campaign's board files live under the gitignored /.octobots/; like the other campaigns' they are force-tracked (`git add -f`) when the work lands.
+
+  ## Order
+
+  T1.1 (board writer) -> T1.2 (host RPC, path-guard module) -> T1.3 (panel, tree and mission-panel click) -> T1.4 (release) -> T1.5 (Mission QA, last). Strictly sequential: each consumes the previous one's contract.
+
+  ## Test conventions (every TC and QA task)
+
+  Reused from `.octobots/campaigns/direct-dispatch-process/campaign.yaml` notes § Test conventions, by number: rules 1 (vitest command form, at least 1 test passed in the named file), 2 (OCTOBOTS_BOARD_COPIES; CI falls back to the tracked board), 3 (QA harnesses are committed scripts under apps/vscode-extension/scripts/qa/, none new are planned), 4 (result words -> status; manual F5 noted as manual), 6 (portable BSD shell; body via awk) and 8 (packages/board change -> payload regen) apply unchanged. Rule 5 (tokenomics) and rule 7 (set-status.js / doctor.js shapes) are not exercised. Rule 9 (shipped-skills --write) does not arise: no pack SKILL.md changes, and any pack change would oblige a v58 bump (.agents/knowledge/architecture/pack-version-is-one-unit.md), which this campaign excludes.
+
+  Deltas for this campaign:
+  10. Rule 8 here: tc-status.ts is not reachable from BoardModel, its top level holds only literals, regex literals, imports and function declarations (no array spread, no `new Set(ident)`, no `new RegExp`, no top-level calls, no Object.freeze; or /* @__PURE__ */-marked), and tc-io.ts, test-cases.ts and board-model.ts are not edited, so `graph:payload:write` must leave octograph.mjs and graph-payload-versions.json unchanged and `graph-payload --verify` passes (Rio verified the pattern with the payload's own esbuild). If the bytes change, do NOT rewrite the 57 hash: 0.1.0 already shipped payload 57 and graphStatus compares only the integer, so every 0.1.0 workspace would keep the old payload silently. Stop and ask the user (v58 bump or accept).
+  11. Parity tests run the SHIPPED script (`node apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/set-test-status.js <tc> <status> --date <D>`) on one copy and the TS writer on another, with a pinned date, comparing bytes; refusals compare by outcome (both refuse).
+  12. UI cases have an automated half (vitest over real board copies, e.g. via test/fixtures/real-rpc.ts) and a manual half in an Extension Development Host (F5) on a copy workspace ($WORK/octo-ws, $WORK/solo-ws), never on $OCTO or $SOLO themselves. The stale-pick race is reproduced by holding `.git/index.lock` in the copy workspace (the watcher's git-quiescence gate defers the rebuild).
+  13. Solo (/Users/arozumenko/Development/auqanautica) is read only: every solo step runs on a cp -R copy; git status --short, HEAD and the sha256 manifest of solo's .octobots are recorded before and after each QA run and must be equal.
+
+  ## Real-data notes for QA (checked by the planner, 2026-10-06)
+
+  - This repo's direct-dispatch-process holds 86 TCs (m1..m7) with new frontmatter; every last_run evidence path exists; m7 TC-007's last_run has an extra `note:` key, which set-test-status.js drops on a re-run (checked on a copy: `last_run: {date: 2026-10-06}`).
+  - m6 TC-004 (status blocked, covers [M6-AC3], evidence RUN-2026-10-06-001.md, 6-row Steps table): `set-test-status.js <copy> pass --date 2026-10-06` changes exactly lines 7-8 to `status: pass` and `last_run: {date: 2026-10-06}`.
+  - Solo's uwb campaign holds 119 TCs, all with frontmatter (legacy: requirements, type; no status/kind/mission); no real TC anywhere is CRLF, has a BOM or lacks frontmatter, so those inputs are derived from named real files. On a legacy copy the script appends `status:` and `last_run:` after the last key.
+  - Solo uwb m1 TC-006 holds the literal text `<id of first SCHEDULED match from GET {{base_url}}/api/ops/matches>` in a Steps cell (the sanitizer record).
+  - apps/vscode-extension/octobots-0.1.0.vsix (761083 bytes) has an extension/resources/octobots-pack tree identical to the current tree's (diff -r empty), and no commit since release commit ea432393 touched the pack or shipped-skills.json.br.
+  - Solo uwb M5 is cancelled and has TCs (tests/m5, e.g. TC-001_emulator-v01-5hz-pacing-and-acks.md, requirements [M5-AC1]): the cancelled-mission record.
+
+  ## Plan review (Alex + Rio, 2026-10-06)
+
+  Reviewers: ba (Alex), tech-lead (Rio)
+  Verdict: approved with nits
+
+  Round 1 (both reviewers in parallel, read-only, model opus): changes requested. BA blocking: the B1 dependency named main (B1 is on feat/octoshell-0-1-1 at 9c7d17af); the parity oracle ran --date for draft/ready (the script refuses it); the panel after the user's own pick, malformed TCs, the legacy dropdown and cancelled/unmatched missions were undefined. Tech-lead blocking: the same oracle defect, 'current status writes nothing' contradicted byte parity, B1 wording, the rule 8 condition (tree-shaking holds only for a pure top level; tc-io.ts/test-cases.ts/board-model.ts must not be edited), and a shared parity fixture with the T6.2 edge shapes. User decisions taken to the user: D4 (mission-panel TC rows open the panel) and D5 (legacy pick allowed with the migrate note).
+  Fix round: the planner applied all 11 blocking findings and every nit. Re-check (Rio, read-only): all blocking resolved, validate.js OK with no warnings, one new contradiction (TC-004..TC-010 shared one $WORK copy, so later cases saw earlier picks) fixed by the orchestrator in tests/m1/README.md (fresh copies before each mutating case); M1-AC11's allowed top level now names imports.
+  Open nits (carried into build): TC-001/TC-002 node -e prints writeTestCaseStatus without await (fix if the writer is async); T1.2's boundary check is a new conventions test, not a strengthened one; T1.3's title names only the sidebar though D4 covers mission-panel rows.

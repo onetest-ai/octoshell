@@ -1,0 +1,29 @@
+# R = 9eae7ad8 (the release commit; found by subject on the m1 branch, not on feat/octoshell-0-1-1)
+9eae7ad808336338c3a874a9c8bbb98a7d234e66 chore(ext): release 0.1.1
+chore(ext): release 0.1.1
+Changes since 0.1.0 (full notes in apps/vscode-extension/CHANGELOG.md); pack unchanged at v57:
+- Test-case panel: header, covered criteria, rendered body, Open source file; status dropdown
+  writes status and last_run (date only, no evidence) and never overwrites a status changed
+  outside the panel; legacy cases can be set and are pointed at --migrate.
+- A single click on a test case in the sidebar or the mission panel opens the panel.
+- Status-coloured Tests node and mission-group icons; a blocked test is orange.
+- Internal: qa-env test flake fixed; turbo strict env passes board-copy and test variables.
+- CHANGELOG: 0.1.0 workflow.md deletion note reworded conditionally.
+
+Verification (pnpm lint, build, typecheck, test, coverage, graph-payload --verify, scan-parked all green):
+- tests passed: tokenomics 102, board 840, vscode-extension 1274, graph 655
+- coverage board (stmts/branch/funcs/lines): 93.98 / 84.98 / 95.85 / 93.98
+- coverage pack scripts (c8): 97.98 / 88.36 / 98.05 / 97.98
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+
+ apps/vscode-extension/package.json | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+TREE-IS-RELEASE
+HEAD=0aae9786e72e0489b8bcbc0269cc301b0685a3dd
+diff bytes:        0
+--- changelog commit
+
+ apps/vscode-extension/CHANGELOG.md | 32 +++++++++++++++++++++++++++++---
+ 1 file changed, 29 insertions(+), 3 deletions(-)
