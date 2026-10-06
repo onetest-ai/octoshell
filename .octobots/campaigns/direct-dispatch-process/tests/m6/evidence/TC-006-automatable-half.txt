@@ -1,0 +1,15 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/campaign-tests-summary.test.tsx > campaign panel: test summary > shows totals by status including unknown, and the uncovered-AC count 556ms
+ ✓ test/campaign-tests-summary.test.tsx > campaign panel: test summary > each mission row links to its mission panel through the open-mission handler 512ms
+ ✓ test/campaign-tests-summary.test.tsx > campaign panel: test summary > an orphan tests folder renders plainly with no link 501ms
+ ✓ test/campaign-tests-summary.test.tsx > campaign panel: test summary > lists a mission's uncovered ACs in warning style, and a cancelled mission contributes none 507ms
+ ✓ test/campaign-tests-summary.test.tsx > campaign panel: test summary > refreshes the summary after a TC status change, one fetch per spine event 519ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  12:40:02
+   Duration  3.08s (transform 93ms, setup 41ms, collect 167ms, tests 2.60s, environment 74ms, prepare 31ms)
+

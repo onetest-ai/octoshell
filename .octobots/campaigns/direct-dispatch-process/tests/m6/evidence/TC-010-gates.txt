@@ -1,0 +1,32 @@
+=== pnpm lint
+EXIT lint=0
+=== pnpm typecheck
+EXIT typecheck=0
+=== pnpm build
+EXIT build=0
+=== pnpm test
+@octoshell/tokenomics:test:  Test Files  7 passed (7)
+@octoshell/tokenomics:test:       Tests  102 passed (102)
+@octoshell/board:test:  Test Files  35 passed (35)
+@octoshell/board:test:       Tests  800 passed (800)
+@octoshell/vscode-extension:test:  Test Files  63 passed (63)
+@octoshell/vscode-extension:test:       Tests  1171 passed (1171)
+@octoshell/graph:test:  Test Files  47 passed (47)
+@octoshell/graph:test:       Tests  655 passed (655)
+EXIT test=0
+=== pnpm coverage
+ Test Files  35 passed (35)
+      Tests  800 passed (800)
+File              | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s  
+All files         |   93.99 |    83.69 |   95.17 |   93.99 |                    
+ Test Files  35 passed (35)
+      Tests  800 passed (800)
+File                       | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s             
+All files                  |   97.95 |    88.09 |   98.05 |   97.95 |                               
+EXIT coverage=0
+=== pnpm coverage:pack
+ Test Files  35 passed (35)
+      Tests  800 passed (800)
+File                       | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s             
+All files                  |   97.95 |    88.09 |   98.05 |   97.95 |                               
+EXIT coverage:pack=0

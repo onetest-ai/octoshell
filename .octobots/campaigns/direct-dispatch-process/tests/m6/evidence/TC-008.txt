@@ -1,0 +1,31 @@
+## legacy frontmatter
+id: TC-003
+title: Set ranging mode with layout id and 0 mm tag height and read it back after reload and restart
+priority: critical
+type: functional
+module: venue-ingest-mode
+size: M
+requirements: [M1-AC2, M1-AC5]
+tags: [uwb-ranging-m1, api, persistence, api-tbd]
+set-test-status: TC-003_set-ranging-mode-persists.md status unknown
+exit=0
+## new frontmatter
+id: TC-003
+title: Set ranging mode with layout id and 0 mm tag height and read it back after reload and restart
+mission: M1
+priority: critical
+type: functional
+module: venue-ingest-mode
+size: M
+covers: [M1-AC2, M1-AC5]
+tags: [uwb-ranging-m1, api, persistence, api-tbd]
+status: unknown
+BODY_IDENTICAL
+## revalidate
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m6qa/work/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_set-ranging-mode-persists.md
+exit=0
+migrate mentions: 0
+## listing
+{"id":"TC-003","title":"Set ranging mode with layout id and 0 mm tag height and read it back after reload and restart","mission":"M1","covers":["M1-AC2","M1-AC5"],"kind":null,"status":"unknown","path":"campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_set-ranging-mode-persists.md"}
+## solo original untouched
+SOLO_STATUS_SAME

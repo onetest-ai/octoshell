@@ -1,0 +1,20 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/mission-tests-panel.test.tsx > mission panel: Tests section > lists the real mission's TCs, each with its status as text and an Open button 505ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: Tests section > orders TCs pass, fail, blocked, ready, draft, unknown like the sidebar 470ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: Tests section > clicking a TC reports its board-relative path through onOpenTestFile 474ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: Tests section > a legacy `unknown` TC shows as unknown with no warning class (decision 12) 472ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: AC coverage > maps every AC to its covering TC ids; uncovered ACs use the warning token and never an error class 483ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: AC coverage > a mission with no tests folder: empty state with the add-tests.js hint, and every AC listed uncovered 460ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: AC coverage > solo's uwb campaign (legacy TCs): unknown status with no warning, m1 AC11 uncovered, m6 empty state 576ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: refresh > shows a changed TC status after one spine event, with one fetch of each tests route 473ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: refresh > a TC's covers edited on disk moves an AC from uncovered to covered after one spine event, one fetch each 529ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: refresh > an AC added to the mission appears in the coverage view, uncovered, after one spine event 500ms
+
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
+   Start at  12:39:56
+   Duration  5.46s (transform 97ms, setup 39ms, collect 190ms, tests 4.94s, environment 76ms, prepare 27ms)
+

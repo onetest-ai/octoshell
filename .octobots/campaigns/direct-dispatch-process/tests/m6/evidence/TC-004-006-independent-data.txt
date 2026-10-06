@@ -1,0 +1,17 @@
+CAMPAIGN uwb-ranging-ingest-vendor-v01 tcs 116 {"unknown":116}
+   M5 cancelled tcs 17 acs 5 uncovered []
+   M2 done tcs 32 acs 10 uncovered ["M2-AC10"]
+   M4 done tcs 23 acs 6 uncovered []
+   M6 done tcs 0 acs 5 uncovered ["M6-AC1","M6-AC2","M6-AC3","M6-AC4","M6-AC5"]
+   M3 done tcs 22 acs 9 uncovered []
+   M1 done tcs 22 acs 11 uncovered ["M1-AC11"]
+CAMPAIGN direct-dispatch-process tcs 86 {"pass":71,"blocked":4,"draft":11}
+   M6 executing tcs 11 acs 8 uncovered []
+   M3 done tcs 10 acs 7 uncovered []
+   M5 done tcs 13 acs 7 uncovered []
+   M2 done tcs 12 acs 8 uncovered []
+   M4 done tcs 12 acs 6 uncovered []
+   M7 done tcs 17 acs 8 uncovered []
+   M1 done tcs 11 acs 8 uncovered []
+no campaign octograph
+campaigns/octograph-code-architecture-graph tcs 0
