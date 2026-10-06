@@ -4,7 +4,8 @@ title: "Legacy, malformed, cancelled-mission, unmatched-folder and oversize TCs 
 mission: M1
 covers: [M1-AC2, M1-AC9]
 kind: ui
-status: draft
+status: blocked
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/octoshell-0-1-1/tests/m1/runs/RUN-2026-10-06-001.md}
 priority: high
 size: M
 ---

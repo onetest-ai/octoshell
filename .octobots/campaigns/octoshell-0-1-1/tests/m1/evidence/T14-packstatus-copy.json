@@ -1,0 +1,32 @@
+{
+  "before": {
+    "installed": true,
+    "upToDate": true,
+    "upToDateExceptLocal": true,
+    "currentVersion": 57,
+    "deviations": [],
+    "reconciled": [],
+    "pendingReconcile": [],
+    "newer": []
+  },
+  "deviations": [],
+  "result": {
+    "written": 52,
+    "hooksRegistered": true,
+    "statusline": "skipped",
+    "tools": "installed",
+    "pending": [],
+    "kept": [],
+    "keptFiles": []
+  },
+  "after": {
+    "installed": true,
+    "upToDate": true,
+    "upToDateExceptLocal": true,
+    "currentVersion": 57,
+    "deviations": [],
+    "reconciled": [],
+    "pendingReconcile": [],
+    "newer": []
+  }
+}

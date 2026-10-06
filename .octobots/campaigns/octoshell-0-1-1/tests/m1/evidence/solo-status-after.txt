@@ -1,0 +1,13 @@
+ M .claude/skills/mission-completion-gate/SKILL.md
+ M .claude/skills/mission-execution/SKILL.md
+ M .octobots/tokenomics/README.md
+ M .octobots/tokenomics/collect.mjs
+ M .octobots/tokenomics/selftest.mjs
+ M reports/metrics/all-runs.jsonl
+?? .agents/memory/js-dev/daily/2026-10-02.md
+?? .agents/memory/js-dev/daily/2026-10-03.md
+?? .agents/memory/python-dev/daily/2026-10-02.md
+?? .agents/memory/python-dev/daily/2026-10-03.md
+?? .agents/memory/qa-engineer/daily/2026-10-02.md
+?? .agents/memory/qa-engineer/daily/2026-10-03.md
+?? reports/metrics/RUN-2026-10-06-001.json

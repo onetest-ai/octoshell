@@ -1,0 +1,106 @@
+The CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/panel-restore-activation.test.ts > restored webview panels activate the extension > registers a serializer for the retired octoshell.workflow view type
+ ✓ test/panel-restore-activation.test.ts > restored webview panels activate the extension > declares onWebviewPanel:<viewType> for every view type it restores
+ ✓ test/mission-tests-panel.test.tsx > mission panel: Tests section > lists the real mission's TCs, each with its status as text and an Open button 792ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: Tests section > orders TCs pass, fail, blocked, ready, draft, unknown like the sidebar 793ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: Tests section > clicking a TC row opens its panel: reports its board-relative path through onOpenTestCase (decision 4), never openTestFile 714ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: Tests section > the mission panel's wiring in chat-entry posts openTestCase for a TC row and never openTestFile
+ ✓ test/campaigns-tree-tests.test.ts > Tests node: structure and labels > a campaign with no TCs has no Tests node
+ ✓ test/campaigns-tree-tests.test.ts > Tests node: structure and labels > groups by mission and labels each group exactly like the AC: `m2 · 32 · 30✓ 1✗ 1 blocked`
+ ✓ test/campaigns-tree-tests.test.ts > Tests node: structure and labels > shows statuses in the fixed order pass, fail, blocked, ready, draft, unknown and omits zero counts
+ ✓ test/campaigns-tree-tests.test.ts > Tests node: structure and labels > leaves carry a ThemeIcon coloured by a theme token, never a hardcoded colour
+ ✓ test/campaigns-tree-tests.test.ts > Tests node: structure and labels > rolls legacy `unknown` TCs up to a count and a tooltip: no per-file warning nodes, no warning icon
+ ✓ test/campaigns-tree-tests.test.ts > Tests node: structure and labels > gives every Tests node a stable id, so a refresh keeps it expanded
+ ✓ test/campaigns-tree-tests.test.ts > Tests node: missions without test cases (review fix) > a mission with no TCs gets no empty group, though its ACs still count as uncovered
+ ✓ test/campaigns-tree-tests.test.ts > octoshell.openTestFile only opens a TC file inside the board (review fix) > accepts the path every TC leaf passes once joined under the board (the command joins it, as the webview's messages do)
+ ✓ test/campaigns-tree-tests.test.ts > octoshell.openTestFile only opens a TC file inside the board (review fix) > rejects a missing or non-string argument, a path that climbs out, a non-TC file and a symlink leaving the board
+ ✓ test/campaigns-tree-tests.test.ts > octoshell.openTestFile only opens a TC file inside the board (review fix) > extension.ts routes the command through the guard, never straight to openFile
+ ✓ test/campaigns-tree-tests.test.ts > BoardHost test API: lists, coverage and the campaign summary > testSummary: totals by status incl. unknown, the uncovered-AC count and one row per mission
+ ✓ test/campaigns-tree-tests.test.ts > BoardHost test API: lists, coverage and the campaign summary > uncovered rule: a cancelled mission is excluded entirely; a live one with no tests folder counts all its ACs
+ ✓ test/campaigns-tree-tests.test.ts > BoardHost test API: lists, coverage and the campaign summary > a tests/ folder with no mission is totalled, listed with a null missionId and never uncovered
+ ✓ test/campaigns-tree-tests.test.ts > BoardHost test API: lists, coverage and the campaign summary > testSummary is null for an unknown campaign; listTests and testCoverage are empty
+ ✓ test/campaigns-tree-tests.test.ts > BoardHost test API: lists, coverage and the campaign summary > listTests narrows to a mission
+ ✓ test/campaigns-tree-tests.test.ts > Tests node over real boards > every campaign with TCs gets a Tests node whose group labels match the files on disk 970ms
+ ✓ test/campaigns-tree-tests.test.ts > Tests node over real boards > this campaign's tests are on the tree, one labelled group per mission folder 754ms
+ ✓ test/campaigns-tree-tests.test.ts > Tests node over real boards > expanding the whole tree stays fast on a solo-sized board (23 campaigns, 116 TCs) 486ms
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > aggregateStatus: fail wins over blocked and pass
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > aggregateStatus: blocked wins over pass
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > aggregateStatus: all pass is green
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > aggregateStatus: pass with a draft is neutral
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > aggregateStatus: draft/ready/unknown only is neutral
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > aggregateStatus: an empty set is neutral
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > groups and the Tests node get the aggregate colour; the Tests node uses the campaign-wide counts
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > the Tests node is green only when every group is all-pass, blocked when blocked beats pass
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > a blocked leaf and a blocked group use the same colour
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > the icon follows the counts when a status changes (recomputed on refresh)
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > theme guard: every beaker colour is a ThemeColor id, never a hex value
+ ✓ test/campaigns-tree-tests.test.ts > Tests node and group status icons (M6 B1) > real board: each group's colour matches its counts, and the Tests node matches the campaign totals 1002ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: Tests section > a legacy `unknown` TC shows as unknown with no warning class (decision 12) 767ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: AC coverage > maps every AC to its covering TC ids; uncovered ACs use the warning token and never an error class 671ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: AC coverage > a mission with no tests folder: empty state with the add-tests.js hint, and every AC listed uncovered 653ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: AC coverage > solo's uwb campaign (legacy TCs): unknown status with no warning, m1 AC11 uncovered, m6 empty state 797ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: refresh > shows a changed TC status after one spine event, with one fetch of each tests route 678ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: refresh > a TC's covers edited on disk moves an AC from uncovered to covered after one spine event, one fetch each 781ms
+ ✓ test/mission-tests-panel.test.tsx > mission panel: refresh > an AC added to the mission appears in the coverage view, uncovered, after one spine event 684ms
+stderr | test/test-case-panel.test.ts > openTestCase > creates one panel of view type octoshell.testCase titled `TC-004: <title>`; a second call reveals it
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > one panel per TC however its path is spelled
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > another letter case of the same TC never keys a second panel (a case-insensitive file system opens the same file)
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > binds {kind: testCase, id: <path>} when the webview is ready
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > posts a spine event to the panel on entities:changed, and stops after it is disposed
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > refreshes the panel title when the TC's title changes on disk
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > the openTestCase UI message (the sidebar-independent path: a mission panel's TC row) opens the panel
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > restored panel > adopt binds a restored testCase panel to its path; a TC that is gone does not dispose it
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > restored panel > a restored panel answers tests:get with null for a gone TC (the webview shows the no-longer-exists state)
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestEvidence and openTestFile > opens the evidence file the host reads from the TC on disk, never one the webview names
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestEvidence and openTestFile > opens nothing for a TC with no evidence, a missing evidence file, or a path the guard rejects
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestEvidence and openTestFile > the Open source file button (openTestFile) still goes through the guarded raw-file command
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+ ✓ test/test-case-panel.test.ts > TEST_CASE_VIEW_TYPE > is octoshell.testCase and is declared as an activation event and restored by a serializer
+ ✓ test/test-case-panel.test.ts > openTestCase > creates one panel of view type octoshell.testCase titled `TC-004: <title>`; a second call reveals it 860ms
+ ✓ test/test-case-panel.test.ts > openTestCase > one panel per TC however its path is spelled 748ms
+ ✓ test/test-case-panel.test.ts > openTestCase > another letter case of the same TC never keys a second panel (a case-insensitive file system opens the same file) 694ms
+ ✓ test/test-case-panel.test.ts > openTestCase > binds {kind: testCase, id: <path>} when the webview is ready 745ms
+ ✓ test/test-case-panel.test.ts > openTestCase > posts a spine event to the panel on entities:changed, and stops after it is disposed 681ms
+ ✓ test/test-case-panel.test.ts > openTestCase > refreshes the panel title when the TC's title changes on disk 636ms
+ ✓ test/test-case-panel.test.ts > openTestCase > rejects `..` paths, absolute paths, a TC symlink resolving outside the board and non-TC files: no panel 644ms
+ ✓ test/test-case-panel.test.ts > openTestCase > the openTestCase UI message (the sidebar-independent path: a mission panel's TC row) opens the panel 617ms
+ ✓ test/test-case-panel.test.ts > restored panel > adopt binds a restored testCase panel to its path; a TC that is gone does not dispose it 621ms
+ ✓ test/test-case-panel.test.ts > restored panel > a restored panel answers tests:get with null for a gone TC (the webview shows the no-longer-exists state) 624ms
+ ✓ test/test-case-panel.test.ts > openTestEvidence and openTestFile > opens the evidence file the host reads from the TC on disk, never one the webview names 591ms
+ ✓ test/test-case-panel.test.ts > openTestEvidence and openTestFile > opens nothing for a TC with no evidence, a missing evidence file, or a path the guard rejects 509ms
+ ✓ test/test-case-panel.test.ts > openTestEvidence and openTestFile > the Open source file button (openTestFile) still goes through the guarded raw-file command 499ms
+ ✓ test/test-case-panel.test.ts > the octoshell.openTestCase command > is registered in extension.ts through the panel manager's guard, and left out of the palette like openTestFile
+
+ Test Files  4 passed (4)
+      Tests  58 passed (58)
+   Start at  16:05:50
+   Duration  8.83s (transform 253ms, setup 191ms, collect 497ms, tests 19.13s, environment 83ms, prepare 115ms)
+
