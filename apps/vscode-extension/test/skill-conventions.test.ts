@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { planReviewStatus } from "../resources/octobots-pack/skill/mission-planner/scripts/plan-review.mjs";
 
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
@@ -675,31 +675,27 @@ describe("T5.3 review: the plan-review record is written through entity-io and s
   it("its entity-io command, run as written, records a strict review that set-status.js accepts", () => {
     const cmd = /```bash\n(node --input-type=module[\s\S]*?)```/.exec(section)?.[1];
     expect(cmd, "a bash block running entity-io").toBeDefined();
-    const ws = mkdtempSync(join(tmpdir(), "t53-plan-review-"));
-    try {
-      mkdirSync(join(ws, ".claude", "skills"), { recursive: true });
-      symlinkSync(join(PACK_SRC, "skill", "mission-planner"), join(ws, ".claude", "skills", "mission-planner"));
-      const campaign = join(ws, ".octobots", "campaigns", "c");
-      const mission = join(campaign, "missions", "m1");
-      mkdirSync(mission, { recursive: true });
-      writeFileSync(join(campaign, "campaign.yaml"), "name: C\nstatus: draft\ntarget: ''\ndescription: ''\n");
-      writeFileSync(
-        join(mission, "mission.yaml"),
-        "name: M1 - Small thing\nstatus: draft\ndescription: d\nacceptance_criteria:\n  - text: it works\n    done: false\nnotes: |-\n  ## Decision\n  keep it small\n",
-      );
-      execFileSync("bash", ["-c", cmd!.replace("<mission-dir>", mission)], { cwd: ws });
-      const yaml = readFileSync(join(mission, "mission.yaml"), "utf8");
-      expect(yaml).toContain("## Decision");
-      const out = execFileSync(
-        "node",
-        [join(ws, ".claude/skills/mission-planner/scripts/set-status.js"), campaign, "M1 - Small thing", "active"],
-        { cwd: ws, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-      );
-      expect(out).toMatch(/draft -> executing/);
-      expect(readFileSync(join(mission, "mission.yaml"), "utf8")).toMatch(/^status: executing$/m);
-    } finally {
-      rmSync(ws, { recursive: true, force: true });
-    }
+    const ws = mkdtempClean("t53-plan-review-");
+    mkdirSync(join(ws, ".claude", "skills"), { recursive: true });
+    symlinkSync(join(PACK_SRC, "skill", "mission-planner"), join(ws, ".claude", "skills", "mission-planner"));
+    const campaign = join(ws, ".octobots", "campaigns", "c");
+    const mission = join(campaign, "missions", "m1");
+    mkdirSync(mission, { recursive: true });
+    writeFileSync(join(campaign, "campaign.yaml"), "name: C\nstatus: draft\ntarget: ''\ndescription: ''\n");
+    writeFileSync(
+      join(mission, "mission.yaml"),
+      "name: M1 - Small thing\nstatus: draft\ndescription: d\nacceptance_criteria:\n  - text: it works\n    done: false\nnotes: |-\n  ## Decision\n  keep it small\n",
+    );
+    execFileSync("bash", ["-c", cmd!.replace("<mission-dir>", mission)], { cwd: ws });
+    const yaml = readFileSync(join(mission, "mission.yaml"), "utf8");
+    expect(yaml).toContain("## Decision");
+    const out = execFileSync(
+      "node",
+      [join(ws, ".claude/skills/mission-planner/scripts/set-status.js"), campaign, "M1 - Small thing", "active"],
+      { cwd: ws, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+    expect(out).toMatch(/draft -> executing/);
+    expect(readFileSync(join(mission, "mission.yaml"), "utf8")).toMatch(/^status: executing$/m);
   });
 });
 
