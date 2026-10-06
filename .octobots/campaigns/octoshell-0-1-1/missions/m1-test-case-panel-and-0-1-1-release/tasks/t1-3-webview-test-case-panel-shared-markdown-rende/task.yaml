@@ -1,5 +1,5 @@
 name: 'T1.3 - Webview: test-case panel, shared markdown renderer, single click from the sidebar tree'
-status: draft
+status: done
 role: js-dev
 description: |-
   The test-case panel and the click behaviour. Starts after T1.2 (it consumes the T1.2 contract); M6 B1 is already on the campaign branch (9c7d17af). Scope:
@@ -9,16 +9,41 @@ description: |-
   Out of scope: editing the body or any non-status field; --migrate; any board or pack change. Downstream: T1.4 (release contents), T1.5 (live F5 QA).
 acceptance_criteria:
   - text: 'apps/vscode-extension/test/test-case-view.test.tsx (real-rpc fixture over a copy of the tracked board): the panel for campaigns/direct-dispatch-process/tests/m6/TC-004_sidebar-tests-node-counts.md shows TC-004, its title, a Status row (visible label, select named Status) whose value, status word, codicon, kind and last-run date equal the values read from that file''s frontmatter in the test (never pinned from HEAD), a last-run link posting openTestEvidence with the TC path, a Covered criteria row M6-AC3 with M6''s AC3 text whose link posts openMission with M6''s id, a <table> whose body has 6 rows, Objective and Expected Final State headings and no `covers:` text, and the run-pick hint; Open source file posts openTestFile with the TC path. After a successful pick of pass, the panel shows pass, today''s UTC date with `no evidence` and no link, and no notice; the dropdown is disabled while the call is in flight'
-    done: false
+    done: true
   - text: 'same file: picking pass sends tests:setStatus with {path, status: pass, base: {status, lastRun}} equal to what the panel rendered; when the file was changed to fail on disk first, the panel shows fail and the role=status not-saved notice, the file still holds fail, and the notice stays after a later spine event until the next pick; a refused result shows its message inline (role=status) and no notification; a fixture derived from solo''s uwb m1 TC-003 shows unknown as a disabled current option with the dropdown enabled, kind none, never run, M1-AC2 and M1-AC5, the legacy --migrate note, and `not a criterion of M1` for M1-AC99; derived malformed (unparseable frontmatter) shows id from the filename, title from the H1, unknown, none, `none listed` and a disabled dropdown whose aria-describedby names the reason; no-frontmatter shows the whole file as plain text and the --migrate hint; over 4 MiB shows `too large to show; Open source file`; a tests/m9 copy shows `mission M9 not found` once and no criterion links; a cancelled-mission TC (derived from solo uwb m5 TC-001) renders with the dropdown enabled and links posting openMission; after the TC file is deleted and a spine event fires, the panel shows `This test case no longer exists` and no dropdown; a body derived from solo''s uwb m1 TC-006 renders `<id of first SCHEDULED match` literally, and a body with <script> and <img src=x onerror=...> creates no script or img element'
-    done: false
+    done: true
   - text: 'apps/vscode-extension/test/test-case-panel.test.ts: openTestCase(path) creates one panel of view type octoshell.testCase titled `TC-004: ...`, a second call reveals it (one createWebviewPanel call); the panel posts a testCase spine event on entities:changed; the serializer adopts a restored panel with state {kind: testCase, id: <path>}; the command octoshell.openTestCase with a `..` path, an absolute path outside the board, a TC symlink resolving outside the board or a non-TC file opens no panel; apps/vscode-extension/test/panel-restore-activation.test.ts passes with TEST_CASE_VIEW_TYPE exported and onWebviewPanel:octoshell.testCase declared'
-    done: false
+    done: true
   - text: 'apps/vscode-extension/test/campaigns-tree-tests.test.ts: a TC leaf''s command is octoshell.openTestCase with arguments [TestCase.path] (not octoshell.openTestFile), and M6 B1''s status-coloured Tests node and mission-group icon assertions still pass; apps/vscode-extension/test/mission-tests-panel.test.tsx: clicking a TC row posts openTestCase {path: TestCase.path} (user decision 4) and never openTestFile'
-    done: false
+    done: true
   - text: 'apps/vscode-extension/test/notes-block.test.tsx passes unchanged with NotesBlock rendering through the extracted src/webview/markdown.tsx; apps/vscode-extension/test/test-case-view-tokens.test.ts fails on a colour literal (#rgb, #rrggbb, rgb(, rgba(, hsl(, a named colour in a style attribute) in src/webview/test-case-view.tsx or src/webview/markdown.tsx and passes on the shipped files; apps/vscode-extension/test/contract.test.ts lists test-case-view.tsx in its hand-written file list (:28-40) and passes (every method it calls is in the contract)'
-    done: false
+    done: true
 tokenomics:
   effort_days: 3.5
   size_tshirt: L
   complexity_score: 21
+notes: |-
+  ## QA verification
+
+  Date 2026-10-06, PR #177 at 59c0bafc (base feat/octoshell-0-1-1-m1). Verified against the spec (task ACs, M1 ACs, TC-004..TC-009), data on cp -R copies (solo read only; solo `git status --short` identical before and after).
+
+  Automated halves (vitest, real dispatcher + BoardHost over copies of this repo's board and solo's uwb board, OCTOBOTS_BOARD_COPIES set; 12 files, 167 tests, 0 failed, 0 skipped):
+  - TC-004 PASS (automatable half): test-case-view.test.tsx 17 passed. Live F5 half BLOCKED (manual F5).
+  - TC-005 PASS (automatable half): test-case-view.test.tsx plus the solo-gated describe, which ran, not early-returned (legacy, malformed, cancelled M5, m9, oversize, sanitizer). Live F5 half BLOCKED (manual F5).
+  - TC-006 PASS (automatable half): test-case-view.test.tsx and board-watcher.test.ts (18 passed). Live F5 half BLOCKED (manual F5).
+  - TC-007 PASS (automatable half): test-case-view.test.tsx and tests-detail-rpc.test.ts (24 passed), stale cases included. Live F5 half BLOCKED (manual F5; needs the git index.lock quiescence gate).
+  - TC-008 PASS (automatable half): campaigns-tree-tests (30), test-case-panel (15), panel-restore-activation (2), mission-tests-panel (11). Live F5 half BLOCKED (manual F5).
+  - TC-009 PASS (unit, fully automated): tests-detail-rpc, test-case-panel, test-evidence-guard (9), open-test-file-webview (3).
+  - Also green: notes-block.test.tsx, test-case-view-tokens.test.ts (4), contract.test.ts.
+  - F5 steps: all five ui TCs (004-008) carry numbered F5 steps with expected results and exact commands; none missing. TC frontmatter not touched (T1.5).
+
+  Black-box (throwaway test through the real dispatcher/BoardHost, fresh copy per case, removed afterwards):
+  - Real m6 TC-004: pick of pass (was blocked) shows pass, last run today's date with `no evidence`, no link, no notice; file holds status: pass, last_run: {date}.
+  - Installed .claude set-test-status.js ran on it while open: after the spine event the panel showed the script's status (blocked -> ready).
+  - Stale pick (panel shows blocked, agent wrote ready, pick pass): notice "The status changed outside the panel and was not saved. The panel now shows the current status.", file bytes unchanged, panel shows ready, notice unchanged after a spine event.
+  - Solo uwb m1 TC-003: unknown, dropdown enabled, note reads exactly "legacy test case: kind and mission not recorded; set-test-status.js <file> --migrate adds them".
+  - Hostile body (<script>, <img onerror>, <iframe>, [x](javascript:...), <a href=javascript: onclick>): no script/img/iframe, no on* attribute, no javascript: anywhere in the rendered HTML, document.title unchanged; the markdown link survives as inert text.
+
+  Gate: pnpm build, typecheck, lint, test (tokenomics 102, board 841, extension 1274, graph 655: all passed), pnpm coverage (board 97.98 stmts, pack 93.98; thresholds met), graph-payload --verify (current), gh pr checks 177 (build pass x2 on 59c0bafc). VSIX packaged (apps/vscode-extension/octobots-0.1.0.vsix; contains onWebviewPanel:octoshell.testCase and octoshell.openTestCase); no tracked change. The 0.1.1 version bump is T1.4.
+
+  Verdict: all five ACs have automated evidence; live-UI halves remain for T1.5.
