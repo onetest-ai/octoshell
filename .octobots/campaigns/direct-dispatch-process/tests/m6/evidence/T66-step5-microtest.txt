@@ -1,0 +1,129 @@
+## live versions
+version: 57-local
+version: 57-local
+## anchors LIVE (live forks)
+1
+1
+1
+## rules live
+RULES BAD
+1
+## anchors MERGED
+/private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/t66qa/solo-rc/.octobots/pack-updates/v57/mission-completion-gate:
+DECISIONS.md
+RECONCILE.md
+base.md
+local.md
+merged.md
+upstream.md
+
+/private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/t66qa/solo-rc/.octobots/pack-updates/v57/mission-execution:
+DECISIONS.md
+RECONCILE.md
+base.md
+local.md
+merged.md
+upstream.md
+1
+0
+1
+## rules merged
+RULES BAD
+no timeout in merged:
+1
+129:   - Portability: macOS has no `timeout` binary. Use the Bash tool's own timeout, or
+131:7. **Long commands: foreground with `timeout: 600000`, never `run_in_background`.** Name the lane
+## live skill byte-identical to solo's
+mission-execution unchanged
+mission-completion-gate unchanged
+## changes under .claude/skills
+(none above = none)
+## project files
+CLAUDE/AGENTS identical
+9e5075e102fa422de05457428108afed5b803e741eb42baa2089e35b0dfbc65d  /Users/arozumenko/Development/auqanautica/CLAUDE.md
+f0960d2ebfb11cae3e2f61d490c18b0c33587bbcb0790d80ff7e1730d5e8d10e  /Users/arozumenko/Development/auqanautica/AGENTS.md
+1
+campaigns untouched
+["mission-execution","mission-completion-gate"]
+## ESCALATED lines
+/private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/t66qa/solo-rc/.octobots/pack-updates/v57/mission-execution/DECISIONS.md:18:- ESCALATED: what runs before a merge (per-agent test budget and the land step): local build runs scoped tests only, there is no local pre-push suite (removed 2026-10-02), the full suite runs in GitHub Actions on 
+/private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/t66qa/solo-rc/.octobots/pack-updates/v57/mission-completion-gate/DECISIONS.md:15:- ESCALATED: what counts as green (parked tests, the parked-test scan and the verdict's parked counts): local green means 0 failed, 0 xfailed and no skip without a stated environmental reason, with no scan; 
+--- mission-execution: sections
+## Kept local
+## Taken from upstream
+## Conflicts
+--- mission-completion-gate: sections
+## Kept local
+## Taken from upstream
+## Conflicts
+rules (any-heading stop) live:
+1 2 3 4 5 6 7 7 8 9 RULES BAD
+rules merged:
+1 2 3 4 5 6 7 8 9 10 11 rules 1..11
+rules upstream:
+rules 1..11
+rules local(=solo live copy):
+RULES BAD
+rules base:
+RULES BAD
+--- gate merged: xfail lines
+85:   <!-- ESCALATED: what counts as green (parked tests, the parked-test scan and the verdict's parked counts): awaiting the user's answer, see DECISIONS.md -->
+--- gate local xfail
+82:   **Green means 0 failed, 0 xfailed, and no skip without a stated environmental reason.** An `xfail`
+--- gate upstream xfail
+86:   **Green means 0 failed, 0 xfailed or todo, and no skip without a stated environmental reason.** An
+--- gate base xfail
+--- ESCALATED DECISIONS (full)
+- ESCALATED: what counts as green (parked tests, the parked-test scan and the verdict's parked counts): local green means 0 failed, 0 xfailed and no skip without a stated environmental reason, with no scan; upstream green means 0 failed, 0 xfailed or todo and no skip without a stated environmental reason, plus a mandatory `scan-parked.js --json` run (exit 1 on any unsigned parked test blocks phase 1, sign-offs only by the user in `.octobots/parked-signoff.txt`) and `parked` counts in the verdict; question should `todo` tests and the `scan-parked.js` check block phase 1 (upstream), or only failed, xfailed and bare skips (local)?
+- ESCALATED: what runs before a merge (per-agent test budget and the land step): local build runs scoped tests only, there is no local pre-push suite (removed 2026-10-02), the full suite runs in GitHub Actions on the PR and the land step waits for it with `gh pr checks --watch` before merging; upstream build runs scoped tests only, and the full fast lane runs at the QA + land step, which also waits for the PR's CI checks where the project has CI; question which does this project want at the land step: only the CI wait (local), or a full local fast-lane run and then the CI wait (upstream)?
+### gate: base vs upstream (Green means)
+153:>    **Green means 0 failed, 0 xfailed or todo, and no skip without a stated environmental reason.** An
+162:>    `node .claude/skills/mission-execution/scripts/scan-parked.js --json`. It lists the tests the repo
+### gate: base vs local (Green means)
+113:>    **Green means 0 failed, 0 xfailed, and no skip without a stated environmental reason.** An `xfail`
+### gate: local vs upstream differ?
+<    **Green means 0 failed, 0 xfailed, and no skip without a stated environmental reason.** An `xfail`
+>    **Green means 0 failed, 0 xfailed or todo, and no skip without a stated environmental reason.** An
+### exec: base vs upstream (land step)
+17:< order and the agents to call. Before you decide a sequence yourself, look for one:
+34:> it arrives and decides the next step, and a crashed agent is simply dispatched again. There is no run
+79:> 1. **Always pass `model:` explicitly.** The role definitions in `.claude/agents/*` pin
+104:>    - **Scoped tests** while building: the fast lane's scoped form, on the files the task touches.
+105:>    - **Full suite**: the fast lane, parallel and without coverage.
+112:>    build runs **scoped** tests only; the full fast lane runs at the QA + land step, which also waits for
+113:>    the PR's CI checks (`gh pr checks --watch`) before merging, where the project has CI. Functional
+119:>    reproducible defect, or security exposure with a PoC). Anything else is filed as a board bug.
+157:< one. Do not author `workflow.js` yourself mid-run: designing the execution graph is a decision to
+210:< the same tree. The fix is **sequencing, not a second tree**: fan-out inside a mission workflow is
+227:<    `status`, and **merges the PR**. On red it does **not** merge; it reports precisely and stops.
+240:>    was proven. On red it does **not** merge; it reports precisely and stops.
+305:> Re-run the tests at the boundary of each loop: after every build and fix round (scoped, fast lane), at
+306:> QA + land (the full fast lane), and again after any later mission lands on the same code. A green run
+### exec: base vs local
+104:>    build runs **scoped** tests only. In this repo there is no local pre-push suite (removed
+105:>    2026-10-02); the full suite runs in GitHub Actions on the PR, and the land step waits for it
+106:>    (`gh pr checks --watch`) before merging. Functional verification is manual QA against the
+### exec: local vs upstream
+<    - Full suite: `make edgeserver-test-fast` (xdist with a database per worker; ~60 s instead of ~11 min).
+<    build runs **scoped** tests only. In this repo there is no local pre-push suite (removed
+<    2026-10-02); the full suite runs in GitHub Actions on the PR, and the land step waits for it
+<    (`gh pr checks --watch`) before merging. Functional verification is manual QA against the
+>    - **Scoped tests** while building: the fast lane's scoped form, on the files the task touches.
+>    - **Full suite**: the fast lane, parallel and without coverage.
+>    build runs **scoped** tests only; the full fast lane runs at the QA + land step, which also waits for
+>    the PR's CI checks (`gh pr checks --watch`) before merging, where the project has CI. Functional
+> Re-run the tests at the boundary of each loop: after every build and fix round (scoped, fast lane), at
+> QA + land (the full fast lane), and again after any later mission lands on the same code. A green run
+### hunks files
+      17 /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/t66qa/rc-mission-completion-gate.hunks
+      33 /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/t66qa/rc-mission-execution.hunks
+      50 total
+### DECISIONS counts
+mission-execution
+   ## Conflicts 1
+   ## Taken from upstream 4
+   ## Kept local 3
+mission-completion-gate
+   ## Conflicts 1
+   ## Taken from upstream 3
+   ## Kept local 1

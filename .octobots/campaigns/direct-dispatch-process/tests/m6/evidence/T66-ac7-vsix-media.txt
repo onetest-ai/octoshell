@@ -1,0 +1,8 @@
+      396  10-06-2026 12:52   extension/media/index.html
+     9584  06-29-2026 09:40   extension/media/octoshell.png
+     5706  06-10-2026 09:17   extension/media/octoshell.svg
+    80188  10-06-2026 12:52   extension/media/assets/codicon-B16ygVZF.ttf
+    40935  10-06-2026 12:52   extension/media/assets/index-CkgWM0sJ.css
+   612925  10-06-2026 12:52   extension/media/assets/index-D4Ct9_oO.js
+     1155  06-10-2026 09:17   extension/media/providers/claude-acp.svg
+     2569  06-10-2026 09:17   extension/media/providers/github-copilot-cli.svg

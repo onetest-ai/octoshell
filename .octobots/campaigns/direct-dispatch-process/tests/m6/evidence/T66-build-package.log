@@ -1,0 +1,136 @@
+Scope: all 5 workspace projects
+(node:92375) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Lockfile is up to date, resolution step is skipped
+Already up to date
+
+Done in 571ms
+
+> octoshell@0.0.0 build /Users/arozumenko/Development/octoshell
+> turbo run build
+
+• Packages in scope: @octoshell/board, @octoshell/graph, @octoshell/tokenomics, @octoshell/vscode-extension
+• Running build in 4 packages
+• Remote caching disabled
+@octoshell/board:build: cache hit, replaying logs f94fc1eda4d8c557
+@octoshell/board:build: 
+@octoshell/board:build: > @octoshell/board@0.0.0 build /Users/arozumenko/Development/octoshell/packages/board
+@octoshell/board:build: > tsc -p tsconfig.json
+@octoshell/board:build: 
+@octoshell/tokenomics:build: cache hit, replaying logs 18a52c77ed07476c
+@octoshell/tokenomics:build: 
+@octoshell/tokenomics:build: > @octoshell/tokenomics@0.0.0 build /Users/arozumenko/Development/octoshell/packages/tokenomics
+@octoshell/tokenomics:build: > tsc -p tsconfig.json
+@octoshell/tokenomics:build: 
+@octoshell/vscode-extension:build: cache miss, executing f38d399f81f9fbd4
+@octoshell/graph:build: cache hit, replaying logs 102401321ef20aa9
+@octoshell/graph:build: 
+@octoshell/graph:build: > @octoshell/graph@0.0.0 build /Users/arozumenko/Development/octoshell/packages/graph
+@octoshell/graph:build: > tsc -p tsconfig.json
+@octoshell/graph:build: 
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build: > @octoshell/vscode-extension@0.1.0 build /Users/arozumenko/Development/octoshell/apps/vscode-extension
+@octoshell/vscode-extension:build: > node scripts/graph-payload.mjs --verify && node scripts/shipped-skills.mjs --verify && node esbuild.mjs && vite build
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build: octograph payload is current.
+@octoshell/vscode-extension:build: shipped-skills store is current.
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build:   dist/extension.js      873.5kb
+@octoshell/vscode-extension:build:   dist/extension.js.map    1.7mb
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build: ⚡ Done in 20ms
+@octoshell/vscode-extension:build: Bundled dist/extension.js
+@octoshell/vscode-extension:build: [33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+@octoshell/vscode-extension:build: vite v5.3.5 building for production...
+@octoshell/vscode-extension:build: transforming...
+@octoshell/vscode-extension:build: ✓ 390 modules transformed.
+@octoshell/vscode-extension:build: rendering chunks...
+@octoshell/vscode-extension:build: computing gzip size...
+@octoshell/vscode-extension:build: ../../media/index.html                     0.40 kB │ gzip:   0.27 kB
+@octoshell/vscode-extension:build: ../../media/assets/codicon-B16ygVZF.ttf   80.19 kB
+@octoshell/vscode-extension:build: ../../media/assets/index-CkgWM0sJ.css     39.80 kB │ gzip:   9.23 kB
+@octoshell/vscode-extension:build: ../../media/assets/index-D4Ct9_oO.js     612.85 kB │ gzip: 165.83 kB
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build: (!) Some chunks are larger than 500 kB after minification. Consider:
+@octoshell/vscode-extension:build: - Using dynamic import() to code-split the application
+@octoshell/vscode-extension:build: - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+@octoshell/vscode-extension:build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+@octoshell/vscode-extension:build: ✓ built in 824ms
+
+ Tasks:    4 successful, 4 total
+Cached:    3 cached, 4 total
+  Time:    1.264s 
+
+
+> @octoshell/vscode-extension@0.1.0 package /Users/arozumenko/Development/octoshell/apps/vscode-extension
+> node scripts/package-vsix.mjs
+
+octograph payload is current.
+shipped-skills store is current.
+
+  dist/extension.js      873.5kb
+  dist/extension.js.map    1.7mb
+
+⚡ Done in 21ms
+Bundled dist/extension.js
+npm warn Unknown env config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "recursive". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "_onetest-registry". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+[33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+vite v5.3.5 building for production...
+transforming...
+✓ 390 modules transformed.
+rendering chunks...
+computing gzip size...
+../../media/index.html                     0.40 kB │ gzip:   0.27 kB
+../../media/assets/codicon-B16ygVZF.ttf   80.19 kB
+../../media/assets/index-CkgWM0sJ.css     39.80 kB │ gzip:   9.23 kB
+../../media/assets/index-D4Ct9_oO.js     612.85 kB │ gzip: 165.83 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 789ms
+npm warn Unknown env config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "recursive". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "_onetest-registry". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+ WARNING  LICENSE, LICENSE.md, or LICENSE.txt not found
+ INFO  Files included in the VSIX:
+octobots-0.1.0.vsix
+├─ [Content_Types].xml 
+├─ extension.vsixmanifest 
+└─ extension/
+   ├─ .gitignore [0.05 KB]
+   ├─ changelog.md [3.9 KB]
+   ├─ esbuild.mjs [0.69 KB]
+   ├─ package.json [8.25 KB]
+   ├─ readme.md [3.14 KB]
+   ├─ dist/
+   │  └─ extension.js [873.46 KB]
+   ├─ media/
+   │  ├─ index.html [0.39 KB]
+   │  ├─ octoshell.png [9.36 KB]
+   │  ├─ octoshell.svg [5.57 KB]
+   │  ├─ assets/
+   │  │  ├─ codicon-B16ygVZF.ttf [78.31 KB]
+   │  │  ├─ index-CkgWM0sJ.css [39.98 KB]
+   │  │  └─ index-D4Ct9_oO.js [598.56 KB]
+   │  └─ providers/
+   │     ├─ claude-acp.svg [1.13 KB]
+   │     └─ github-copilot-cli.svg [2.51 KB]
+   └─ resources/
+      ├─ shipped-skills.json.br [76.52 KB]
+      └─ octobots-pack/
+         ├─ graph/ (1 file) [218.05 KB]
+         ├─ hooks/ (5 files) [39.37 KB]
+         ├─ skill/ (37 files) [402.35 KB]
+         ├─ statusline/ (1 file) [6.19 KB]
+         └─ tokenomics/ (12 files) [152.14 KB]
+
+=> Run vsce ls --tree to see all included files.
+
+ DONE  Packaged: /Users/arozumenko/Development/octoshell/apps/vscode-extension/octobots-0.1.0.vsix (73 files, 743.02 KB)
+
+VSIX written: /Users/arozumenko/Development/octoshell/apps/vscode-extension/octobots-0.1.0.vsix
+Install with: code --install-extension "/Users/arozumenko/Development/octoshell/apps/vscode-extension/octobots-0.1.0.vsix"
