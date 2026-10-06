@@ -34,9 +34,12 @@ import {
   type Bug,
   type BugParent,
   type BugSeverity,
+  type TestCase,
+  type MissionCoverage,
 } from "@octoshell/board";
 import { rollupCampaign, type Rollup } from "./board-rollup.js";
-import type { DocLink, DocFile, CampaignSummary, MissionProposal } from "../protocol/index.js";
+import type { DocLink, DocFile, CampaignSummary, MissionProposal, TestSummary } from "../protocol/index.js";
+import { summarizeTests } from "./test-summary.js";
 
 export interface CampaignRollup extends Rollup {
   campaignId: string;
@@ -101,6 +104,31 @@ export class BoardHost {
   getTask(id: string): Task | null { return this.model.getTask(id); }
   listBugs(parent: BugParent): Bug[] { return this.model.listBugs(parent); }
   getBug(id: string): Bug | null { return this.model.getBug(id); }
+
+  // ── Tests API (M6): read-only, over BoardModel's lazy, stat-cached TC reader ──────────────────────
+
+  /** The campaign's TCs (all missions, or the one `mission` names: `m2`, `M2`, `2`). Empty for an unknown campaign. */
+  listTests(campaignId: string, mission?: string | number): TestCase[] {
+    return this.model.listTestCases(campaignId, mission);
+  }
+
+  /** Which TCs cover each acceptance criterion of the mission. Empty (`mission: null`) for an unknown mission. */
+  testCoverage(missionId: string): MissionCoverage {
+    return this.model.getTestCoverage(missionId);
+  }
+
+  /**
+   * Totals by status (incl. `unknown`), the uncovered-AC count and one row per mission. A cancelled mission
+   * is excluded from the uncovered count entirely; a live mission with no tests folder counts all its ACs.
+   * Null for an unknown campaign.
+   */
+  testSummary(campaignId: string): TestSummary | null {
+    if (!this.model.getCampaign(campaignId)) return null;
+    const missions = this.model.listMissions(campaignId).map((m) => ({
+      id: m.id, title: m.title, status: m.status, coverage: this.model.getTestCoverage(m.id),
+    }));
+    return summarizeTests({ campaignId, cases: this.model.listTestCases(campaignId), missions });
+  }
 
   /** Resolve a relative doc path inside a campaign's folder to an absolute path. */
   campaignDocPath(campaignId: string, relPath: string): string {

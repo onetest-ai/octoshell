@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { join, basename, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { BoardHost } from "../src/host/board-host.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 import {
   BOARD_DEBOUNCE_MS,
   createQuiescentDebouncer,
@@ -15,6 +21,11 @@ const fake = vi.hoisted(() => {
   return { handlers, patterns };
 });
 vi.mock("vscode", () => ({
+  TreeItem: class { constructor(public label: string, public collapsibleState?: number) {} },
+  TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+  ThemeIcon: class { constructor(public id: string, public color?: unknown) {} },
+  ThemeColor: class { constructor(public id: string) {} },
+  EventEmitter: class { event = (): void => {}; fire(): void {} },
   RelativePattern: class {
     constructor(public base: unknown, public pattern: string) {}
   },
@@ -183,5 +194,136 @@ describe("registerBoardWatcher: tests/ writes", () => {
     fire("change", `${CAMPAIGN}/missions/m4-x/mission.yaml`);
     settle();
     expect(reconcile).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── M6 T6.3: a TC status written by set-test-status.js reaches the Tests node and the open panel, once ──
+
+const SET_TEST_STATUS = join(
+  dirname(fileURLToPath(import.meta.url)), "..", "resources", "octobots-pack", "skill", "mission-planner", "scripts", "set-test-status.js",
+);
+
+/** What VS Code's `.octobots/campaigns/**\/*.{md,yaml}` watcher reports: only paths that glob matches. */
+const globMatches = (fsPath: string): boolean => /[\\/]\.octobots[\\/]campaigns[\\/].*\.(md|yaml)$/.test(fsPath);
+const deliver = (kind: "change" | "create" | "delete", fsPath: string): void => { if (globMatches(fsPath)) fire(kind, fsPath); };
+
+describe("a set-test-status.js write reaches the Tests node and open panels with one rebuild", () => {
+  function fixture() {
+    const repo = mkdtempClean("watch-tc-");
+    const octo = join(repo, ".octobots");
+    const board = new BoardHost(octo);
+    const c = board.createCampaign({ name: "Camp" });
+    const m = board.createMission({ title: "M4 - Gate", campaignId: c.id });
+    board.updateBrief("mission", m.id, { acceptanceCriteria: "- [ ] one" });
+    const dir = join(octo, c.folderPath, "tests", "m4");
+    mkdirSync(join(dir, "runs"), { recursive: true });
+    mkdirSync(join(dir, "evidence"), { recursive: true });
+    const tcs = ["TC-001", "TC-002", "TC-003"].map((id) => {
+      const file = join(dir, `${id}_case.md`);
+      writeFileSync(file, `---\nid: ${id}\ntitle: case ${id}\nmission: M4\ncovers: [M4-AC1]\nkind: cli\nstatus: ready\n---\n\n# ${id}: case\n\nbody stays\n`);
+      return file;
+    });
+    board.reconcile();
+    return { board, octo, c, m, dir, tcs };
+  }
+  const setStatus = (file: string, status: string): void => {
+    execFileSync("node", [SET_TEST_STATUS, file, status, "--date", "2026-10-06"], { stdio: "pipe" });
+  };
+  const tmpOf = (file: string): string => join(dirname(file), `.${basename(file)}.${process.pid}.tmp`);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    fake.handlers.change.length = fake.handlers.create.length = fake.handlers.delete.length = 0;
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("updates the Tests node counts and notifies an open panel within one debounce, with exactly one rebuild", async () => {
+    const { board, m, c, tcs } = fixture();
+    const reconcile = vi.spyOn(board, "reconcile");
+    let panelRefreshes = 0;
+    board.on("entities:changed", () => { panelRefreshes++; });
+    const dispose = registerBoardWatcher({ folder: {} as never, board, repoRoot: "/ws" });
+
+    const { CampaignsTree } = await import("../src/host/campaigns-tree.js");
+    const tree = new CampaignsTree(board);
+    const groupLabel = (): string => {
+      const camp = tree.getChildren().find((n) => n.type === "campaign")!;
+      const tests = tree.getChildren(camp).find((n) => (n.type as string) === "tests")!;
+      return (tree.getTreeItem(tests.type === "tests" ? tree.getChildren(tests)[0]! : tests) as unknown as { label: string }).label;
+    };
+    expect(groupLabel()).toBe("m4 · 3 · 3 ready");
+
+    // the script's own sequence: write the temp file next to the TC, rename it over the TC
+    setStatus(tcs[0]!, "pass");
+    deliver("create", tmpOf(tcs[0]!)); // .TC-001_case.md.<pid>.tmp: the glob does not report it
+    deliver("change", tcs[0]!);        // the rename lands as a change of the TC
+
+    vi.advanceTimersByTime(BOARD_DEBOUNCE_MS - 1);
+    expect(reconcile).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(panelRefreshes).toBe(1);
+    expect(groupLabel()).toBe("m4 · 3 · 1✓ 2 ready");
+    expect(board.testCoverage(m.id).acs[0]).toMatchObject({ ac: "M4-AC1", covered: true });
+    expect(board.testSummary(c.id)!.counts).toMatchObject({ pass: 1, ready: 2 });
+
+    vi.advanceTimersByTime(BOARD_DEBOUNCE_MS * 10);
+    expect(reconcile).toHaveBeenCalledTimes(1); // no reload loop
+    expect(panelRefreshes).toBe(1);
+    dispose.dispose();
+  });
+
+  it("the temp-file rename costs ONE rebuild, whether the watcher reports it as a change or as delete + create", () => {
+    for (const events of [["change"], ["delete", "create"], ["create", "change"]] as const) {
+      const { board, tcs } = fixture();
+      const reconcile = vi.spyOn(board, "reconcile");
+      const seen: string[] = [];
+      board.on("entities:changed", () => { seen.push(readFileSync(tcs[1]!, "utf8").match(/^status: (\w+)/m)![1]!); });
+      const dispose = registerBoardWatcher({ folder: {} as never, board, repoRoot: "/ws" });
+      setStatus(tcs[1]!, "fail");
+      deliver("create", tmpOf(tcs[1]!));
+      for (const kind of events) deliver(kind, tcs[1]!);
+      deliver("delete", tmpOf(tcs[1]!));
+      vi.advanceTimersByTime(BOARD_DEBOUNCE_MS * 4);
+      expect(reconcile, events.join("+")).toHaveBeenCalledTimes(1);
+      expect(seen, events.join("+")).toEqual(["fail"]); // never a half state: the one rebuild sees the final file
+      expect(board.listTests(board.listCampaigns()[0]!.id).map((t) => t.status).sort()).toEqual(["fail", "ready", "ready"]);
+      dispose.dispose();
+    }
+  });
+
+  it("the temp name itself is not a board path: a bare tmp create/delete rebuilds nothing", () => {
+    const { board, tcs } = fixture();
+    const reconcile = vi.spyOn(board, "reconcile");
+    const dispose = registerBoardWatcher({ folder: {} as never, board, repoRoot: "/ws" });
+    for (const kind of ["create", "change", "delete"] as const) deliver(kind, tmpOf(tcs[0]!));
+    vi.advanceTimersByTime(BOARD_DEBOUNCE_MS * 4);
+    expect(reconcile).not.toHaveBeenCalled();
+    dispose.dispose();
+  });
+
+  it("a QA run writes RUN + evidence + the TC status in one window: exactly one rebuild, none for runs/ or evidence/ alone", () => {
+    const { board, dir, tcs } = fixture();
+    const reconcile = vi.spyOn(board, "reconcile");
+    const dispose = registerBoardWatcher({ folder: {} as never, board, repoRoot: "/ws" });
+    const run = join(dir, "runs", "RUN-2026-10-06-001.md");
+    const shot = join(dir, "evidence", "TC-003.md");
+    writeFileSync(run, "run");
+    writeFileSync(shot, "shot");
+    deliver("create", run); deliver("change", run); deliver("create", shot);
+    vi.advanceTimersByTime(BOARD_DEBOUNCE_MS * 4);
+    expect(reconcile).not.toHaveBeenCalled(); // M4-AC6: runs/ and evidence/ cost no rebuild
+    setStatus(tcs[2]!, "blocked");
+    deliver("change", run); deliver("change", tcs[2]!); deliver("change", shot);
+    vi.advanceTimersByTime(BOARD_DEBOUNCE_MS * 4);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    dispose.dispose();
+  });
+
+  it("set-test-status.js leaves no temp file behind, so a late tmp event cannot arrive", () => {
+    const { dir, tcs } = fixture();
+    setStatus(tcs[0]!, "pass");
+    expect(readdirSync(dir).filter((n) => n.endsWith(".tmp"))).toEqual([]);
+    expect(readdirSync(dir).filter((n) => n.startsWith("."))).toEqual([]);
   });
 });
