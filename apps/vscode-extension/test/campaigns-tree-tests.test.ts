@@ -17,7 +17,7 @@ vi.mock("vscode", () => ({
   EventEmitter: class { event = (): void => {}; fire(): void {} },
 }));
 
-const { CampaignsTree, testFileToOpen, OPEN_TEST_FILE_COMMAND } = await import("../src/host/campaigns-tree.js");
+const { CampaignsTree, testFileToOpen, OPEN_TEST_FILE_COMMAND, OPEN_TEST_CASE_COMMAND } = await import("../src/host/campaigns-tree.js");
 type Tree = InstanceType<typeof CampaignsTree>;
 type Node = ReturnType<Tree["getChildren"]>[number];
 interface Item { label: string; id?: string; description?: string; tooltip?: string; collapsibleState?: number; iconPath?: { id: string; color?: { id: string } }; command?: { command: string; arguments?: unknown[] } }
@@ -117,12 +117,15 @@ describe("Tests node: structure and labels", () => {
     for (const l of leaves) {
       expect(item(tree, l).collapsibleState).toBe(0);
       expect(item(tree, l).label).toMatch(/^TC-00\d: /);
-      // click opens the TC file through the editor's openFile path
+      // a single click opens the TC's panel (0.1.1 decision 2), by its board-relative path, never the raw file
       const cmd = item(tree, l).command!;
-      expect(cmd.command).toBe("octoshell.openTestFile");
-      const abs = cmd.arguments![0] as string;
-      expect(abs.startsWith(octo)).toBe(true);
-      expect(existsSync(abs)).toBe(true);
+      expect(cmd.command).toBe("octoshell.openTestCase");
+      expect(cmd.command).not.toBe("octoshell.openTestFile");
+      const rel = cmd.arguments![0] as string;
+      expect(cmd.arguments).toHaveLength(1);
+      expect(rel).toBe((l as { test: { path: string } }).test.path);
+      expect(rel.startsWith("campaigns/")).toBe(true);
+      expect(existsSync(join(octo, rel))).toBe(true);
     }
   });
 
@@ -182,14 +185,16 @@ describe("octoshell.openTestFile only opens a TC file inside the board (review f
     return s;
   }
 
-  it("accepts the path every TC leaf passes", () => {
+  it("accepts the path every TC leaf passes once joined under the board (the command joins it, as the webview's messages do)", () => {
     const { board } = board1();
     const tree = new CampaignsTree(board);
     const testsNode = kids(tree, kids(tree).find((n) => n.type === "campaign")!).find((n) => (n.type as string) === "tests")!;
     const leaf = item(tree, kids(tree, kids(tree, testsNode)[0])[0]!);
-    expect(leaf.command!.command).toBe(OPEN_TEST_FILE_COMMAND);
-    const arg = leaf.command!.arguments![0];
-    expect(testFileToOpen(board.artifactsRoot, arg)).toBe(arg);
+    expect(leaf.command!.command).toBe(OPEN_TEST_CASE_COMMAND);
+    const arg = leaf.command!.arguments![0] as string;
+    const abs = join(board.artifactsRoot, arg);
+    expect(testFileToOpen(board.artifactsRoot, abs)).toBe(abs);
+    expect(OPEN_TEST_FILE_COMMAND).toBe("octoshell.openTestFile"); // the raw file stays reachable through the panel's button
   });
 
   it("rejects a missing or non-string argument, a path that climbs out, a non-TC file and a symlink leaving the board", () => {
@@ -337,7 +342,7 @@ describe("Tests node over real boards", () => {
           const leaves = kids(tree, g);
           const label = item(tree, g).label;
           expect(leaves.length).toBe(Number(/ · (\d+) · /.exec(label)![1]));
-          for (const l of leaves) expect(existsSync((item(tree, l).command!.arguments![0] as string))).toBe(true);
+          for (const l of leaves) expect(existsSync(join(octo, item(tree, l).command!.arguments![0] as string))).toBe(true);
         }
       }
       if (withTests.length > 0) boardsWithTests++;

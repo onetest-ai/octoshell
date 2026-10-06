@@ -3,10 +3,10 @@ import * as vscode from "vscode";
 import { openBoard } from "./host/board-host.js";
 import { AppearanceStore } from "./host/appearance-store.js";
 import { LEGACY_WORKFLOW_VIEW_TYPE, legacyWorkflowPanelSerializer } from "./host/panel-serializers.js";
-import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE } from "./host/entity-panel-manager.js";
+import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE, TEST_CASE_VIEW_TYPE } from "./host/entity-panel-manager.js";
 import { TokenomicsPanel } from "./host/tokenomics-panel.js";
 import { isCampaignRun, renderReportHtml, type Report as TokenomicsReport } from "@octoshell/tokenomics";
-import { CampaignsTree, OPEN_TEST_FILE_COMMAND, testFileToOpen } from "./host/campaigns-tree.js";
+import { CampaignsTree, OPEN_TEST_FILE_COMMAND, OPEN_TEST_CASE_COMMAND, testFileToOpen } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
 import { packStatus, installPack, OCTOBOTS_PACK_VERSION } from "./host/octobots-skill.js";
@@ -228,6 +228,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         else panel.dispose();
       },
     }),
+    vscode.window.registerWebviewPanelSerializer(TEST_CASE_VIEW_TYPE, {
+      async deserializeWebviewPanel(panel, state) {
+        const id = (state as { id?: string } | undefined)?.id;
+        if (id) entityPanels.adopt(panel, "testCase", id);
+        else panel.dispose();
+      },
+    }),
     vscode.window.registerWebviewPanelSerializer(LEGACY_WORKFLOW_VIEW_TYPE, legacyWorkflowPanelSerializer),
   );
 
@@ -287,6 +294,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const abs = testFileToOpen(board.artifactsRoot, arg);
       if (abs) await dispatchCtx.editor.openFile(abs);
     }),
+    // A TC leaf (and a mission panel's TC row) opens the TC's panel. Its argument is the TC's board-relative path, joined
+    // under the board and guarded by the panel manager like openTestFile's; the raw file is the panel's Open source file.
+    vscode.commands.registerCommand(OPEN_TEST_CASE_COMMAND, (arg: unknown) => { entityPanels.openTestCase(arg); }),
     vscode.commands.registerCommand("octoshell.openBugById", (id: string) => entityPanels.openBug(id)),
     vscode.commands.registerCommand("octoshell.newCampaign", async () => {
       const name = await vscode.window.showInputBox({ prompt: "Campaign name", placeHolder: "e.g. Q3 Rollout" });

@@ -1,7 +1,8 @@
-import { basename, join } from "node:path";
+import { basename, join, relative, resolve, sep } from "node:path";
 import * as vscode from "vscode";
 import { dispatch, type DispatchCtx } from "./rpc-dispatcher.js";
 import { OPEN_TEST_FILE_COMMAND, testFileArgFromWebview } from "./campaigns-tree.js";
+import { testFileToOpen } from "./test-file-guard.js";
 import { buildWebviewHtml } from "./webview-html.js";
 import { routeUiMessage, type UiActions, type BindMessage } from "../protocol/index.js";
 
@@ -9,8 +10,9 @@ export const CAMPAIGN_VIEW_TYPE = "octoshell.campaign";
 export const MISSION_VIEW_TYPE = "octoshell.mission";
 export const TASK_VIEW_TYPE = "octoshell.task";
 export const BUG_VIEW_TYPE = "octoshell.bug";
+export const TEST_CASE_VIEW_TYPE = "octoshell.testCase";
 
-type Kind = "campaign" | "mission" | "task" | "bug";
+type Kind = "campaign" | "mission" | "task" | "bug" | "testCase";
 
 interface Rec {
   panel: vscode.WebviewPanel;
@@ -41,6 +43,24 @@ export class EntityPanelManager {
   }
   openBug(id: string): void {
     this.open("bug", id, BUG_VIEW_TYPE, this.bugTitle(id));
+  }
+
+  /**
+   * Open the panel of the TC at `arg` (a board-relative TestCase.path). The argument is never trusted (a webview or any
+   * command caller supplies it): it is joined under the board and accepted only through the same guard as
+   * `octoshell.openTestFile`, so a `..` path, an absolute path, a link leaving the board or a non-TC file opens
+   * nothing. The panel is keyed by the normalized path: one panel per TC. Returns whether a panel is now open.
+   */
+  openTestCase(arg: unknown): boolean {
+    if (typeof arg !== "string") return false;
+    const root = this.ctx.board.artifactsRoot;
+    const abs = testFileToOpen(root, testFileArgFromWebview(root, arg));
+    if (!abs) return false;
+    const rel = relative(resolve(root), abs).split(sep).join("/");
+    const detail = this.ctx.board.getTestCaseDetail(rel);
+    if (!detail) return false;
+    this.open("testCase", rel, TEST_CASE_VIEW_TYPE, this.testCaseTitle(detail.tc));
+    return true;
   }
 
   /** Dispose the entity's details panel if open (used after delete). */
@@ -86,6 +106,10 @@ export class EntityPanelManager {
   }
   private bugTitle(id: string): string {
     return this.ctx.board.getBug(id)?.title ?? "Bug";
+  }
+
+  private testCaseTitle(tc: { id: string; title: string }): string {
+    return `${tc.id}: ${tc.title}`;
   }
 
   private async newMissionInCampaign(campaignId: string): Promise<void> {
@@ -168,10 +192,15 @@ export class EntityPanelManager {
     }
   }
 
-  /** Nudge an open campaign/mission/task panel to reload by replaying a scoped spine event. */
+  /** Nudge an open campaign/mission/task/bug/test-case panel to reload by replaying a scoped spine event. */
   private refreshEntity(kind: Kind, id: string): void {
     const rec = this.records.get(`${kind}:${id}`);
     if (!rec) return;
+    if (kind === "testCase") {
+      // The title follows the file; a TC that is gone keeps its last title while the webview shows that it no longer exists.
+      const tc = this.ctx.board.getTestCaseDetail(id)?.tc;
+      if (tc && rec.panel.title !== this.testCaseTitle(tc)) rec.panel.title = this.testCaseTitle(tc);
+    }
     const payload =
       kind === "campaign"
         ? { projectId: "workspace", campaignId: id }
@@ -179,7 +208,9 @@ export class EntityPanelManager {
           ? { projectId: "workspace", missionId: id }
           : kind === "task"
             ? { projectId: "workspace", taskId: id }
-            : { projectId: "workspace", bugId: id };
+            : kind === "testCase"
+              ? { projectId: "workspace", testPath: id }
+              : { projectId: "workspace", bugId: id };
     void rec.panel.webview.postMessage({ type: "spine:event", payload });
   }
 
@@ -315,6 +346,12 @@ export class EntityPanelManager {
       deleteBug: (m) => void this.confirmDeleteBug(m.bugId),
       openFile: (m) => void vscode.window.showTextDocument(vscode.Uri.file(m.path)),
       // The command re-checks that the file is a TC inside this board, so the webview's string is never trusted.
+      openTestCase: (m) => { this.openTestCase(m.path); },
+      // The evidence path is read by the host from the TC on disk (never supplied by the webview) and must be a regular file in the workspace.
+      openTestEvidence: (m) => {
+        const evidence = this.ctx.board.testEvidencePath(m.path);
+        if (evidence) void this.ctx.editor.openFile(evidence);
+      },
       openTestFile: (m) => void vscode.commands.executeCommand(OPEN_TEST_FILE_COMMAND, testFileArgFromWebview(this.ctx.board.artifactsRoot, m.path)),
     };
 

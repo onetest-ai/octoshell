@@ -16,13 +16,13 @@ interface DocFile { name: string; kind: string; size: number; mtime: number }
 interface DocLink { id: string; target: string; label?: string }
 
 export function MissionView(
-  { id, rpc, onOpenTask, onOpenBug, onNewTask, onDeleteTask, onOpenDoc, onAddLink, onAttachFile, onOpenFile, onOpenTestFile }:
+  { id, rpc, onOpenTask, onOpenBug, onNewTask, onDeleteTask, onOpenDoc, onAddLink, onAttachFile, onOpenFile, onOpenTestCase }:
   {
     id: string; rpc: RpcClient;
     onOpenTask: (taskId: string) => void; onOpenBug: (bugId: string) => void; onNewTask: () => void;
     onDeleteTask: (taskId: string) => void;
     onOpenDoc: (relPath: string) => void; onAddLink: () => void; onAttachFile: () => void; onOpenFile: (path: string) => void;
-    onOpenTestFile?: (boardRelPath: string) => void;
+    onOpenTestCase?: (boardRelPath: string) => void;
   },
 ): JSX.Element {
   const [mission, setMission] = useState<Mission | null>(null);
@@ -197,7 +197,7 @@ export function MissionView(
         )}
       </section>
 
-      <MissionTests cases={tests.cases} coverage={tests.coverage} onOpenTestFile={onOpenTestFile} />
+      <MissionTests cases={tests.cases} coverage={tests.coverage} onOpenTestCase={onOpenTestCase} />
 
       <section>
         <h2 className="text-sm uppercase text-fg-muted mb-2">Bugs</h2>
