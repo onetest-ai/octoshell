@@ -205,3 +205,26 @@ describe("protocol and webview take only types from @octoshell/board", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * turbo runs tasks in strict env mode: a variable not declared in `turbo.json` never reaches
+ * vitest under `pnpm test` / `pnpm coverage`. These are the env inputs tests read, so each must
+ * stay declared or the real-board / real-ccusage checks silently fall back to the default path
+ * (0.1.1 M1 B2).
+ */
+describe("turbo.json env passthrough", () => {
+  const turbo = JSON.parse(
+    readFileSync(join(TEST_DIR, "..", "..", "..", "turbo.json"), "utf8"),
+  ) as { globalPassThroughEnv?: string[]; tasks?: Record<string, { passThroughEnv?: string[] }> };
+  const passed = new Set([
+    ...(turbo.globalPassThroughEnv ?? []),
+    ...(turbo.tasks?.test?.passThroughEnv ?? []),
+  ]);
+
+  it.each(["OCTOBOTS_BOARD_COPIES", "OCTOBOTS_TOKENOMICS_COPY", "OCTOBOTS_REAL_CCUSAGE"])(
+    "passes %s through to the test task",
+    (name) => {
+      expect(passed.has(name)).toBe(true);
+    },
+  );
+});
