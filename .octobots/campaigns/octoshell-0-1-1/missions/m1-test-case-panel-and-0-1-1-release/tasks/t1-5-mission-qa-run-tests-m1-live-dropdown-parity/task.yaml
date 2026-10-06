@@ -1,0 +1,19 @@
+name: 'T1.5 - Mission QA: run tests/m1 live: dropdown parity with set-test-status.js, no stale overwrite of an agent''s status, external refresh, 0.1.1 VSIX'
+status: draft
+role: qa-engineer
+description: 'Prove the mission as a whole, black-box, on real data: run every TC in .octobots/campaigns/octoshell-0-1-1/tests/m1/ (mission-execution § Mission QA: run the test cases live). Real records: cp -R copies of octoshell''s board (direct-dispatch-process tests, new frontmatter, real RUN files) and of solo''s board (uwb-ranging-ingest-vendor-v01 legacy TCs, read only at the source), and the 0.1.1 VSIX from T1.4. The hazards this mission put at risk, and the cases that catch them: the dropdown writing different bytes from set-test-status.js (TC-001, TC-002, TC-003); a dropdown pick overwriting a status an agent wrote (TC-003, TC-007); the panel or tree showing a stale status after an agent''s write, or a reload loop (TC-006); a single click in the sidebar or the mission panel still opening the raw file, a duplicate panel, or a panel lost on reload (TC-008); a legacy, malformed, cancelled-mission, unmatched-folder or oversize TC rendering wrongly or being written when it must not (TC-005); crafted paths reading or writing outside the board''s tests folders (TC-009); colour-only status or hardcoded colours (TC-010); a release that changed the pack or kept the muddled CHANGELOG sentence (TC-012). UI halves run in an Extension Development Host (F5) and are recorded as manual with screenshots under tests/m1/evidence/ (VS Code is Electron; no Playwright MCP, no @vscode/test-electron harness). Write runs/RUN-YYYY-MM-DD-NNN.md and record each TC with the pack''s set-test-status.js (PASS -> pass, FAIL -> fail, BLOCKED and UNREACHABLE -> blocked with the reason in the RUN file). Out of scope: fixing defects (file them as bugs on M1). Leaf: nothing consumes this.'
+acceptance_criteria:
+  - text: every TC in tests/m1/ (TC-001..TC-012) is executed against the records its Real data section names, a RUN file under tests/m1/runs/ holds each result with its evidence, and each TC's status and last_run are written with set-test-status.js --evidence <RUN file>; no criterion is passed on data the QA agent created
+    done: false
+  - text: 'TC-001 and TC-002 run with OCTOBOTS_BOARD_COPIES set to cp -R copies of octoshell''s and solo''s .octobots and pass: zero byte differences between the dropdown writer and set-test-status.js over every TC and every settable status'
+    done: false
+  - text: 'the manual F5 halves of TC-004..TC-008 are run in an Extension Development Host on a copy of octoshell''s board with screenshots under tests/m1/evidence/, including the stale pick (TC-007: an agent''s fail survives a pass picked on a panel still showing ready) and the external refresh (TC-006: set-test-status.js run in a terminal updates the open panel and the tree with no write by the extension), each recorded as manual'
+    done: false
+  - text: 'TC-012 is executed black-box against octobots-0.1.1.vsix and the 0.1.0 VSIX: `diff -r` of their extension/resources/octobots-pack trees is empty, and the version, activation event, CHANGELOG and asset checks pass'
+    done: false
+  - text: 'solo is read only: its git status --short, HEAD and the sha256 manifest of its .octobots are identical before and after the run (recorded in the RUN file); a `## QA verification` block with the verdict per mission AC is written into this task''s and the mission''s notes through entity-io.mjs'
+    done: false
+tokenomics:
+  effort_days: 1
+  size_tshirt: S
+  complexity_score: 12
