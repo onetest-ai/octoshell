@@ -49,8 +49,8 @@ will not be prompted again. Re-run "Octobots: Install Octobots Pack" there.
   accurately; `verify` gates cost only over models it can price.
 - **Direct dispatch.** `mission-execution` runs a mission by having the orchestrator dispatch one
   sub-agent per phase; the completion gate runs the same way and the session hooks confirm status
-  flips. `workflow-designer` and the workflow scripts (`add-workflow`, `sync-meta`, `add-run`,
-  `mission-input`, and the vendored parser) are retired from the pack and the installer. Support
+  flips. The workflow design skill and the workflow authoring and run-logging scripts (with their
+  vendored parser) are retired from the pack and the installer. Support
   for the Workflow tool is removed.
 - **Workflow removed from the extension.** The Workflow entity is gone from `@octoshell/board`;
   `validateBoard` warns about a leftover `workflows/` folder. Detail views no longer save stale
