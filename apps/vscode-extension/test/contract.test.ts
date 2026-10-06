@@ -35,6 +35,7 @@ describe("RPC contract drift guard", () => {
       "../src/webview/mission-view.tsx",
       "../src/webview/task-view.tsx",
       "../src/webview/bug-view.tsx",
+      "../src/webview/test-case-view.tsx",
     ];
     const called = files.flatMap((f) =>
       [...read(f).matchAll(/rpc\.call\("([a-zA-Z:]+)"/g)].map((m) => m[1]),

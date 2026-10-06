@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import type { BoardHost, CampaignRollup } from "./board-host.js";
-import { join } from "node:path";
 import type { Campaign, Mission, Task, Bug, TestCase, TestCaseStatus } from "@octoshell/board";
 import { formatCounts, groupLabel, TEST_STATUS_ORDER } from "./test-summary.js";
 import { aggregateStatus, type TestAggregate, type TestStatusCounts } from "../protocol/index.js";
@@ -40,8 +39,11 @@ const TEST_ICON: Record<TestCaseStatus, { icon: string; color: string }> = {
   unknown: { icon: "question", color: "testing.iconUnset" },
 };
 
-/** The command a TC leaf runs: extension.ts routes it to the dispatcher's `editor.openFile`. */
+/** The raw-file command (the panel's Open source file): extension.ts routes it to the dispatcher's `editor.openFile`. */
 export const OPEN_TEST_FILE_COMMAND = "octoshell.openTestFile";
+
+/** The command a TC leaf runs: the TC's panel (0.1.1). Its argument is the TC's board-relative path (TestCase.path). */
+export const OPEN_TEST_CASE_COMMAND = "octoshell.openTestCase";
 
 // The guard lives in a VS Code-free module (board-host.ts needs it); re-exported so every caller keeps this import.
 export { testFileToOpen, testFileArgFromWebview } from "./test-file-guard.js";
@@ -153,14 +155,13 @@ export class CampaignsTree implements vscode.TreeDataProvider<Node> {
 
   private testCaseItem(tc: TestCase): vscode.TreeItem {
     const item = new vscode.TreeItem(`${tc.id}: ${tc.title}`, vscode.TreeItemCollapsibleState.None);
-    const abs = join(this.board.artifactsRoot, tc.path);
     const icon = TEST_ICON[tc.status];
     item.id = `tc:${tc.path}`;
     item.description = tc.status;
     item.iconPath = new vscode.ThemeIcon(icon.icon, new vscode.ThemeColor(icon.color));
     item.tooltip = [tc.path, tc.lastRun ? `last run ${tc.lastRun.date}` : "never run"].join("\n");
     item.contextValue = "octoshell.testCase";
-    item.command = { command: OPEN_TEST_FILE_COMMAND, title: "Open Test Case", arguments: [abs] };
+    item.command = { command: OPEN_TEST_CASE_COMMAND, title: "Open Test Case", arguments: [tc.path] };
     return item;
   }
 
