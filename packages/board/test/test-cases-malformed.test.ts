@@ -5,10 +5,11 @@
  */
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BoardModel } from "../src/board-model.js";
 import { validateBoard } from "../src/validate.js";
+import { dumpEntity, loadEntity } from "../src/entity-schema.js";
 import { readmeText, scratch, synthBoard, tcText, writeTests } from "./fixtures/tests-board.js";
 
 const HINT = "legacy test case (no status, kind or mission) lists as unknown: run set-test-status.js <tc-file> --migrate";
@@ -99,5 +100,29 @@ describe("malformed and legacy test cases", () => {
     const listed = new Set(m.listTestCases(m.listCampaigns()[0]!.id).map((t) => t.path.split("/").pop()));
     const warned = new Set(validateBoard(root).map((f) => /\/(TC-[^:/]+\.md): /.exec(f.message)?.[1]).filter(Boolean));
     for (const f of warned) expect(listed.has(f)).toBe(true);
+  });
+
+  it("getTestCoverage keeps a multi-line criterion whole and numbers criteria as the YAML does (solo h0004 m2/m6/m9)", () => {
+    const root = scratch("tc-multiline-");
+    const c = synthBoard(root, [{ title: "M1 - Auth", acs: 3 }]);
+    const file = join(c.missionDirs.m1!, "mission.yaml");
+    const fields = loadEntity(readFileSync(file, "utf8"));
+    // the second criterion spans lines, and one of its lines even looks like a checklist item
+    const multi = "A row carries: session_id\n(FK, NOT NULL), match_id\n- [ ] not a criterion of its own";
+    fields.acceptanceCriteria = [{ text: "first", done: true }, { text: multi, done: false }, { text: "third", done: false }];
+    writeFileSync(file, dumpEntity("mission", fields), "utf8");
+    writeTests(c, "m1", { "README.md": readmeText([]), "TC-001_a.md": tcText(["id: TC-001", "title: a", "mission: M1", "covers: [M1-AC2]", "kind: api", "status: pass"]) });
+    const m = new BoardModel(root);
+    m.rebuild();
+    const cov = m.getTestCoverage(m.listMissions(m.listCampaigns()[0]!.id)[0]!.id);
+    expect(cov.acs).toEqual([
+      { ac: "M1-AC1", text: "first", tcs: [], covered: false },
+      { ac: "M1-AC2", text: multi, tcs: ["TC-001"], covered: true },
+      { ac: "M1-AC3", text: "third", tcs: [], covered: false },
+    ]);
+    expect(cov.uncovered).toEqual(["M1-AC1", "M1-AC3"]);
+    // and validate numbers them the same way
+    const warned = validateBoard(root).map((f) => / (M1-AC\d+) is not covered/.exec(f.message)?.[1]).filter(Boolean);
+    expect(warned).toEqual(cov.uncovered);
   });
 });

@@ -3999,6 +3999,8 @@ var BoardModel = class {
   missingIds = [];
   // Test cases live in markdown under campaigns/<c>/tests/, not in the entity maps: read lazily, per campaign.
   testCases;
+  // Each mission's criterion texts, whole (a YAML criterion may span lines; the rendered checklist cannot hold that).
+  missionCriteria = /* @__PURE__ */ new Map();
   constructor(artifactsRoot) {
     this.root = artifactsRoot;
     this.testCases = new TestCaseReader(artifactsRoot);
@@ -4019,6 +4021,7 @@ var BoardModel = class {
     this.bugByFolder.clear();
     this.missingIds = [];
     this.testCases.clear();
+    this.missionCriteria.clear();
     if (!this.root)
       return;
     const campaignsDir = join8(this.root, "campaigns");
@@ -4112,6 +4115,7 @@ var BoardModel = class {
           updatedAt: mRead.mtime
         };
         this.missions.set(mId, mission);
+        this.missionCriteria.set(mId, mf.criteria ? mf.criteria.map((c) => c.text) : checklistTexts(mf.acceptanceCriteria));
         this.missionByFolder.set(mFolder, mId);
         this.missionsByCampaign.get(cId).push(mId);
         this.tasksByMission.set(mId, []);
@@ -4241,7 +4245,7 @@ var BoardModel = class {
     if (!mission)
       return { missionId, mission: null, acs: [], uncovered: [] };
     const token2 = missionToken(mission.title);
-    const criteria = mission.acceptanceCriteria.split("\n").map((l) => /^- \[[ xX]\] (.*)$/.exec(l)?.[1]).filter((t) => t !== void 0);
+    const criteria = this.missionCriteria.get(missionId) ?? [];
     const cases = token2 ? this.listTestCases(mission.campaignId, token2.folder) : [];
     return computeCoverage({ missionId, mission: token2?.id ?? null, criteria, cases });
   }
@@ -4327,6 +4331,9 @@ function safeMtime(path) {
     return Date.now();
   }
 }
+function checklistTexts(s) {
+  return s.split("\n").map((l) => /^- \[[ xX]\] (.*)$/.exec(l)?.[1]).filter((t) => t !== void 0);
+}
 function renderCriteria(cs) {
   return cs.map((c) => `- [${c.done ? "x" : " "}] ${c.text}`).join("\n");
 }
@@ -4351,6 +4358,7 @@ function readEntity(root, folderPath, kind) {
         name: f.name,
         description: f.description,
         acceptanceCriteria: renderCriteria(f.acceptanceCriteria),
+        criteria: f.acceptanceCriteria,
         ownStatus: resolveStatus(f.status),
         role: f.role,
         target: f.target,

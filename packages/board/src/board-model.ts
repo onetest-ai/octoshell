@@ -52,6 +52,8 @@ export class BoardModel {
 
   // Test cases live in markdown under campaigns/<c>/tests/, not in the entity maps: read lazily, per campaign.
   private readonly testCases: TestCaseReader;
+  // Each mission's criterion texts, whole (a YAML criterion may span lines; the rendered checklist cannot hold that).
+  private missionCriteria = new Map<string, string[]>();
 
   constructor(artifactsRoot: string | null) {
     this.root = artifactsRoot;
@@ -75,6 +77,7 @@ export class BoardModel {
     this.bugByFolder.clear();
     this.missingIds = [];
     this.testCases.clear();
+    this.missionCriteria.clear();
 
     if (!this.root) return;
 
@@ -177,6 +180,7 @@ export class BoardModel {
           updatedAt: mRead.mtime,
         };
         this.missions.set(mId, mission);
+        this.missionCriteria.set(mId, mf.criteria ? mf.criteria.map((c) => c.text) : checklistTexts(mf.acceptanceCriteria));
         this.missionByFolder.set(mFolder, mId);
         this.missionsByCampaign.get(cId)!.push(mId);
         this.tasksByMission.set(mId, []);
@@ -323,10 +327,7 @@ export class BoardModel {
     const mission = this.missions.get(missionId);
     if (!mission) return { missionId, mission: null, acs: [], uncovered: [] };
     const token = missionToken(mission.title);
-    const criteria = mission.acceptanceCriteria
-      .split("\n")
-      .map((l) => /^- \[[ xX]\] (.*)$/.exec(l)?.[1])
-      .filter((t): t is string => t !== undefined);
+    const criteria = this.missionCriteria.get(missionId) ?? [];
     const cases = token ? this.listTestCases(mission.campaignId, token.folder) : [];
     return computeCoverage({ missionId, mission: token?.id ?? null, criteria, cases });
   }
@@ -454,6 +455,14 @@ function safeMtime(path: string): number {
 }
 
 /** Render structured criteria back to the checklist string the entity API exposes. */
+/** The criterion texts of a rendered `- [ ] text` checklist (a legacy md mission's only form). */
+function checklistTexts(s: string): string[] {
+  return s
+    .split("\n")
+    .map((l) => /^- \[[ xX]\] (.*)$/.exec(l)?.[1])
+    .filter((t): t is string => t !== undefined);
+}
+
 function renderCriteria(cs: AcceptanceCriterion[]): string {
   return cs.map((c) => `- [${c.done ? "x" : " "}] ${c.text}`).join("\n");
 }
@@ -480,6 +489,8 @@ interface EntityRead {
     name: string;
     description: string;
     acceptanceCriteria: string;
+    /** The structured criteria, for a YAML entity only (a legacy md has just the checklist text). */
+    criteria?: AcceptanceCriterion[];
     ownStatus?: string;
     role?: string;
     target?: string;
@@ -518,6 +529,7 @@ function readEntity(root: string, folderPath: string, kind: "campaign" | "missio
         name: f.name,
         description: f.description,
         acceptanceCriteria: renderCriteria(f.acceptanceCriteria),
+        criteria: f.acceptanceCriteria,
         ownStatus: resolveStatus(f.status),
         role: f.role,
         target: f.target,

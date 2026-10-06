@@ -9,6 +9,7 @@ import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync
 import { join } from "node:path";
 import { BoardModel } from "../src/board-model.js";
 import { validateBoard } from "../src/validate.js";
+import { loadEntity } from "../src/entity-schema.js";
 import { trackedBoardCopies } from "./fixtures/real-board.js";
 
 const STATUSES = ["draft", "ready", "pass", "fail", "blocked"];
@@ -98,13 +99,11 @@ describe("listTestCases over real boards", () => {
 describe("getTestCoverage", () => {
   it("maps each mission criterion to the TCs listing it in covers, and agrees with validate's uncovered warnings", () => {
     let rows = 0;
+    let compared = 0;
     for (const board of trackedBoardCopies()) {
       const m = new BoardModel(board);
       m.rebuild();
-      const warned = new Set(
-        validateBoard(board).map((f) => /: (M\d+[a-z]*-AC\d+) is not covered by any test case$/.exec(f.message)?.[1]).filter((x): x is string => !!x).map((ac) => ac),
-      );
-      const uncoveredSeen = new Set<string>();
+      const findings = validateBoard(board).map((f) => f.message);
       for (const camp of m.listCampaigns()) {
         const cases = m.listTestCases(camp.id);
         for (const mission of m.listMissions(camp.id)) {
@@ -112,26 +111,39 @@ describe("getTestCoverage", () => {
           const cov = m.getTestCoverage(mission.id);
           if (!token) { expect(cov.acs).toEqual([]); continue; }
           const id = `M${token[1]!.slice(1).toLowerCase()}`;
-          const criteria = mission.acceptanceCriteria.split("\n").filter((l) => /^- \[[ xX]\] /.test(l));
+          // the criterion texts, whole: from the YAML entity (a criterion may span lines), else the md checklist
+          const yamlFile = join(board, mission.folderPath, "mission.yaml");
+          const criteria = existsSync(yamlFile)
+            ? loadEntity(readFileSync(yamlFile, "utf8")).acceptanceCriteria.map((c) => c.text)
+            : mission.acceptanceCriteria.split("\n").filter((l) => /^- \[[ xX]\] /.test(l)).map((l) => l.replace(/^- \[[ xX]\] /, ""));
           expect(cov.missionId).toBe(mission.id);
           expect(cov.mission).toBe(id);
           expect(cov.acs.map((a) => a.ac)).toEqual(criteria.map((_, i) => `${id}-AC${i + 1}`));
           cov.acs.forEach((a, i) => {
             rows++;
-            expect(a.text).toBe(criteria[i]!.replace(/^- \[[ xX]\] /, ""));
+            expect(a.text).toBe(criteria[i]);
             const expected = cases.filter((t) => t.mission === id && t.covers.includes(a.ac)).map((t) => t.id).sort();
             expect([...a.tcs].sort()).toEqual(expected);
             expect(a.covered).toBe(expected.length > 0);
-            if (!a.covered) uncoveredSeen.add(a.ac);
           });
           expect(cov.uncovered).toEqual(cov.acs.filter((a) => !a.covered).map((a) => a.ac));
-          // a cancelled mission is exempt from the pairing warning, so only compare the non-cancelled ones
-          if (mission.status === "cancelled") for (const ac of cov.uncovered) uncoveredSeen.delete(ac);
+          // Validate's per-criterion lines, for this mission's own tests folder. It says them only for a live
+          // mission.yaml whose folder holds a README or a TC (a cancelled mission is exempt; a mission with
+          // neither gets the single "README missing" line instead), so compare exactly there, never by bare
+          // AC id (M1-AC1 exists in many campaigns).
+          const rel = `${camp.folderPath}/tests/${token[1]!.toLowerCase()}`;
+          const live = mission.status !== "cancelled" && existsSync(join(board, mission.folderPath, "mission.yaml"));
+          const pairedFolder = !findings.includes(`${rel}/README.md: missing — ${id} has no tests README; run add-tests.js to scaffold it`) || cases.some((t) => t.mission === id);
+          if (!live || !pairedFolder) continue;
+          const warned = findings
+            .map((msg) => new RegExp(`^${rel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: (${id}-AC\\d+) is not covered by any test case$`).exec(msg)?.[1])
+            .filter((x): x is string => !!x);
+          expect(warned).toEqual(cov.uncovered);
+          compared++;
         }
       }
-      // every uncovered criterion of a live mission is one validate warns about (a set, never a count)
-      for (const ac of uncoveredSeen) expect(warned.has(ac)).toBe(true);
     }
+    expect(compared).toBeGreaterThan(0);
     expect(rows).toBeGreaterThan(0);
   });
 

@@ -51,12 +51,29 @@ describe("TC warnings: validate.js and validateBoard", () => {
       const mine = validateBoard(board).filter((f) => isTc(f.message)).map((f) => `warning: ${f.message}`).sort();
       expect(pack).toEqual(mine);
 
-      // independent expectation of "legacy": parseable frontmatter without a status, kind or mission line
+      // independent expectation of "legacy": parseable frontmatter without a status, kind or mission line, in
+      // a folder validate checks: one owned by a live (not cancelled) mission.yaml (M4: a cancelled mission's
+      // tests are exempt from every tests finding, the migrate suggestion included; solo's uwb m5 is one)
+      const checkedFolders = (d: string): Set<string> => {
+        const out = new Set<string>();
+        const missions = join(d, "missions");
+        if (!existsSync(missions)) return out;
+        for (const md of readdirSync(missions)) {
+          const y = join(missions, md, "mission.yaml");
+          if (!existsSync(y)) continue;
+          const text = readFileSync(y, "utf8");
+          const name = /^name:\s*["']?(M\d+[a-z]*)\b/im.exec(text)?.[1];
+          const status = /^status:\s*["']?(\w+)/m.exec(text)?.[1];
+          if (name && status !== "cancelled") out.add(name.toLowerCase());
+        }
+        return out;
+      };
       const expected: string[] = [];
       for (const d of campaigns) {
         const tests = join(d, "tests");
         if (!existsSync(tests)) continue;
-        for (const folder of readdirSync(tests).filter((f) => /^m\d+[a-z]*$/.test(f))) {
+        const live = checkedFolders(d);
+        for (const folder of readdirSync(tests).filter((f) => /^m\d+[a-z]*$/.test(f) && live.has(f))) {
           for (const f of readdirSync(join(tests, folder)).filter((n) => /^TC-.*\.md$/.test(n) && statSync(join(tests, folder, n)).isFile())) {
             const lines = readFileSync(join(tests, folder, f), "utf8").split("\n");
             const end = lines.indexOf("---", 1);
