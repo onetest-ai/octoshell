@@ -1,0 +1,40 @@
+56c56
+<   ## Plan review (Alex + Rio, 2026-10-02)
+---
+>   ## Plan review (Alex, 2026-10-02)
+56a57
+>   Verdict: changes requested
+set status of "M5 - Emulator v01 gateway and end-to-end ranging match" to executing
+octobots: status mission "M5 - Emulator v01 gateway and end-to-end ranging match" cancelled -> executing
+legacy exit=0
+warning: legacy plan review "## Plan review (Alex + Rio, 2026-10-02)" (campaign notes) has no Reviewers:/Verdict: lines; accepted
+2:status: executing
+one exit=3
+set-status: refusing to move "M5 - Emulator v01 gateway and end-to-end ranging match" into executing: a plan review is recorded but does not approve the start.
+  campaign notes: "## Plan review (Alex, 2026-10-02)": heading does not name the tech-lead (tech-lead or Rio)
+To record a review, write the record below into the mission notes or the campaign notes with entity-io.mjs
+(loadEntity/dumpEntity; see mission-planner SKILL.md, Plan review), never by editing the YAML text.
+Fill the placeholders and keep one verdict. The lines between the markers start in column 0:
+--- record template (paste into the mission or campaign notes) ---
+## Plan review (<names or roles>, <date>)
+Reviewers: ba (<name>), tech-lead (<name>)
+Verdict: approved | approved with nits
+--- end of record template ---
+To start without one, re-run with --force=<reason>; the reason is recorded in the mission notes.
+2:status: cancelled
+cr exit=3
+set-status: refusing to move "M5 - Emulator v01 gateway and end-to-end ranging match" into executing: a plan review is recorded but does not approve the start.
+  campaign notes: "## Plan review (Alex + Rio, 2026-10-02)": no Reviewers: line naming ba and tech-lead; no Verdict: approved line
+To record a review, write the record below into the mission notes or the campaign notes with entity-io.mjs
+(loadEntity/dumpEntity; see mission-planner SKILL.md, Plan review), never by editing the YAML text.
+Fill the placeholders and keep one verdict. The lines between the markers start in column 0:
+--- record template (paste into the mission or campaign notes) ---
+## Plan review (<names or roles>, <date>)
+Reviewers: ba (<name>), tech-lead (<name>)
+Verdict: approved | approved with nits
+--- end of record template ---
+To start without one, re-run with --force=<reason>; the reason is recorded in the mission notes.
+2:status: cancelled
+<scratchpad>/m5qa/work/uwb-one/missions/m5-emulator-v01-gateway-and-end-to-end-ranging-mat/mission.yaml: OK
+<scratchpad>/m5qa/work/uwb-cr/missions/m5-emulator-v01-gateway-and-end-to-end-ranging-mat/mission.yaml: OK
+0

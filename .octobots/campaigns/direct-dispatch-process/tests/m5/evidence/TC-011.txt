@@ -1,0 +1,15 @@
+--- step1
+[{"file":"test_m6_solve_over_the_wire_e2e.py","line":474,"text":"pytest.xfail("}]
+history exit=1
+scan-parked: <scratchpad>/m5qa/work/solo-hist/edgeserver/tests
+unsigned (1):
+  test_m6_solve_over_the_wire_e2e.py:474: pytest.xfail(
+1 unsigned, 0 allowed
+Fix each one, or sign it off in .octobots/parked-signoff.txt as: <path>:<line> <who> <YYYY-MM-DD>
+--- step2 cross-check
+edgeserver/tests/test_m6_solve_over_the_wire_e2e.py:474:        pytest.xfail(
+--- step3
+{"unsigned":0,"allowed":0}
+today exit=0
+scan-parked: <solo>/edgeserver/tests
+0 unsigned, 0 allowed

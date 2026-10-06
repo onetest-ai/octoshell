@@ -1,0 +1,151 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.0.5 <octoshell>/apps/vscode-extension
+
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > § Dispatch rules are numbered 1..n with no duplicates or gaps
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > carries the rule keyword: Agent tool
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > carries the rule keyword: foreground
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > carries the rule keyword: explicit model:
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > carries the rule keyword: fenced JSON verdict
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > carries the rule keyword: missing verdict is BLOCKED
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > carries the rule keyword: relay questions instead of nested spawning
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > carries the rule keyword: resume from board + git
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > carries the rule keyword: fast lane
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > carries the rule keyword: coverage lane
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > the rule keywords sit in § Dispatch rules, not only elsewhere in the file
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > does not contain Workflow( tool call
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > does not contain Workflow script path
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > does not contain workflow resume id
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > does not contain workflow run logging / meta scripts
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > does not contain retired workflow-designer skill
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > does not contain a backticked make command
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > does not contain make ci / make <x>-test
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > does not contain edgeserver
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > does not contain uv run
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > never instructs running a workflow.js: any paragraph naming it is the historical-reference note
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > stays at the shared pack version
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > rule 10 (dead agent) indents its continuation lines by 4 spaces like every other rule
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > the Fixing loop sends a bug fix through review, then QA + land, before merge
+ ✓ test/skill-conventions.test.ts > mission-execution: direct sub-agent dispatch > § The mission gate speaks direct dispatch: base branch goes in the briefs, no workflow-era names
+ ✓ test/skill-conventions.test.ts > mission-completion-gate: orchestrator-dispatched phases > states the 5 phases as orchestrator dispatches with the Agent tool, in the foreground
+ ✓ test/skill-conventions.test.ts > mission-completion-gate: orchestrator-dispatched phases > relays the Sage-Alex and Rio-devs exchanges through the orchestrator
+ ✓ test/skill-conventions.test.ts > mission-completion-gate: orchestrator-dispatched phases > defines blocking: an AC demonstrably unmet, a reproducible defect, or a security exposure with a PoC
+ ✓ test/skill-conventions.test.ts > mission-completion-gate: orchestrator-dispatched phases > allows one review round plus one fix round, residue filed as board bugs; blocks on stillOpen only
+ ✓ test/skill-conventions.test.ts > mission-completion-gate: orchestrator-dispatched phases > defines green: 0 failed, 0 xfailed or todo, no skip without an environmental reason
+ ✓ test/skill-conventions.test.ts > mission-completion-gate: orchestrator-dispatched phases > runs coverage on the coverage lane only, and names no project-specific command
+ ✓ test/skill-conventions.test.ts > mission-completion-gate: orchestrator-dispatched phases > words the test lanes exactly as mission-execution does (one phrasing in both skills)
+ ✓ test/skill-conventions.test.ts > mission-completion-gate: orchestrator-dispatched phases > is free of the retired Workflow-tool template and its names
+ ✓ test/skill-conventions.test.ts > mission-completion-gate: orchestrator-dispatched phases > describes the real transcript roots, not only .claude/projects/
+ ✓ test/skill-conventions.test.ts > mission-completion-gate: orchestrator-dispatched phases > keeps the campaign rows in the runs.json description and the shared pack version
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > is a v57 pack skill whose description says when to use it
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > runs doctor.js --json and validate.js and acts on their findings
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > acts only on the folders pending.json names; carried-over questions come from RECONCILE.md; other ESCALATED entries are history
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > classifies every change four ways
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > making an upstream generic rule concrete for this project is not a conflict, and keeps both
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > states the full policy-conflict list and 'when unsure, escalate'
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > a local restatement of a base value is local's position
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > escalates a policy conflict with the WHOLE live file untouched, and encodes no side in merged.md
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > never merges by lines
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > defines merged.md, DECISIONS.md's three sections, both entry forms and the no-upstream-change line
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > UPSTREAM-CANDIDATES.md lists `- <rule>: <why it generalises>`, Kept local rules only
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > installs with `version: <N>+local` and `reconciled-from:`, only when nothing is escalated, then runs done
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > writes nothing outside the skill, its staging folder and doctor-acks.json
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > always escalates a retired skill
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > moves a kept retired skill to a name that is not, and never was, a pack skill (gate Q2)
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > says done refuses a live file that still holds an ESCALATED placeholder line
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > an answer is recorded as `- RESOLVED (user, <YYYY-MM-DD>)`; an unanswered escalation is asked again without re-merging
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > the reply names the reconciled skills, each DECISIONS.md path and every ESCALATED question verbatim
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > deletes a workflows/ folder only on a per-folder yes
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > gives the config-dir advice: ~/.claude/projects is the default, never CLAUDE_CONFIG_DIR=<repo>/.claude
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > records declined findings in .octobots/doctor-acks.json exactly as T7.5's primer reads them
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the rules of M7-AC7 > names no retired skill outside its legacy-folder paragraph
+ ✓ test/skill-conventions.test.ts > mission-planner: the legacy-folder paragraph (decision 13(d)) > says the installer and tooling never change a legacy workflows/ folder
+ ✓ test/skill-conventions.test.ts > mission-planner: the legacy-folder paragraph (decision 13(d)) > says only octobots-doctor may delete one, with the user's explicit OK per folder
+ ✓ test/skill-conventions.test.ts > mission-planner: tests are authored with the mission (M4-AC4) > says tests are authored with the mission, before build, by running add-tests.js
+ ✓ test/skill-conventions.test.ts > mission-planner: tests are authored with the mission (M4-AC4) > documents the README and its sections, and one or more TC files per AC
+ ✓ test/skill-conventions.test.ts > mission-planner: tests are authored with the mission (M4-AC4) > documents the TC frontmatter fields and their allowed values
+ ✓ test/skill-conventions.test.ts > mission-planner: tests are authored with the mission (M4-AC4) > requires the Steps and Expected Final State sections
+ ✓ test/skill-conventions.test.ts > mission-planner: tests are authored with the mission (M4-AC4) > maps PASS/FAIL/BLOCKED/UNREACHABLE to a status, UNREACHABLE being blocked with the reason in the RUN file
+ ✓ test/skill-conventions.test.ts > mission-planner: tests are authored with the mission (M4-AC4) > forbids a hard-coded host or port: {{base_url}}, a variable named in the README
+ ✓ test/skill-conventions.test.ts > mission-planner: tests are authored with the mission (M4-AC4) > names the execution modes: API/CLI calls, and Playwright MCP for UI
+ ✓ test/skill-conventions.test.ts > mission-planner: tests are authored with the mission (M4-AC4) > requires a pre-existing record per case and says UNREACHABLE rather than fabricate
+ ✓ test/skill-conventions.test.ts > mission-planner: tests are authored with the mission (M4-AC4) > lists add-tests.js among the scripts and says validate.js warns on pairing gaps (warning only)
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the tests-pairing paragraph (M4-AC4) > acts on validate.js output and says a tests-pairing warning is not a primer finding
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the tests-pairing paragraph (M4-AC4) > resolves it by running add-tests.js and authoring the missing TCs with the mission's owner
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the tests-pairing paragraph (M4-AC4) > never resolves it by deleting an AC, a TC or a README row
+ ✓ test/skill-conventions.test.ts > octobots-doctor: the tests-pairing paragraph (M4-AC4) > is reachable: §1 routes tests-pairing warnings to it, and it comes before the closing reply
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate: runs every TC in tests/m<n>/
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-execution: runs every TC in tests/m<n>/
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate: writes runs/RUN-YYYY-MM-DD-NNN.md
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-execution: writes runs/RUN-YYYY-MM-DD-NNN.md
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate: records PASS, FAIL, BLOCKED or UNREACHABLE
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-execution: records PASS, FAIL, BLOCKED or UNREACHABLE
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate: UNREACHABLE is status blocked, reason in the RUN file
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-execution: UNREACHABLE is status blocked, reason in the RUN file
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate: names the pre-existing record per criterion
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-execution: names the pre-existing record per criterion
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate: a criterion proved only on QA-created data is not passed
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-execution: a criterion proved only on QA-created data is not passed
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate: writes ## QA verification into task and mission notes via entity-io.mjs
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-execution: writes ## QA verification into task and mission notes via entity-io.mjs
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate: ticks exactly the criteria with evidence
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-execution: ticks exactly the criteria with evidence
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate: could not drive the browser / log in is BLOCKED
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-execution: could not drive the browser / log in is BLOCKED
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate: notes a manual (F5/human) execution as manual in the RUN file
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-execution: notes a manual (F5/human) execution as manual in the RUN file
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate: edits the TC frontmatter status by hand for now
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-execution: edits the TC frontmatter status by hand for now
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > gate phase 2 points at the block, and mission-execution names the last-task convention and the gate
+ ✓ test/skill-conventions.test.ts > QA runs the test cases on real data (M4-AC5): the gate and the last task carry the same terms > mission-planner names the same last task
+ ✓ test/skill-conventions.test.ts > T4.3 reviewer nits > mission-planner: the TC id equals the filename prefix before the first `_`
+ ✓ test/skill-conventions.test.ts > T4.3 reviewer nits > mission-planner: `mission` allows a letter suffix (^M\d+[a-z]*$, m3b -> M3b)
+ ✓ test/skill-conventions.test.ts > T4.3 reviewer nits > octobots-doctor: the frontmatter description lists tests-pairing
+ ✓ test/skill-conventions.test.ts > T4.4 review: the last-task live run does not contradict the rest of the pack > mission-execution: live E2E is never per BUILD task, and the last task is named as the other live run
+ ✓ test/skill-conventions.test.ts > T4.4 review: the last-task live run does not contradict the rest of the pack > gate: ticking happens at phase 5, Sage's verdict only marks the evidenced criteria
+ ✓ test/skill-conventions.test.ts > T4.4 review: the last-task live run does not contradict the rest of the pack > mission-planner: the hazard-named examples use the Mission QA title
+ ✓ test/skill-conventions.test.ts > T4.4 review: the last-task live run does not contradict the rest of the pack > both QA blocks carry last_run with the by-hand status edit
+ ✓ test/skill-conventions.test.ts > T4.4 review: who writes which notes > gate: the last task writes task and mission notes; the gate writes the mission's
+ ✓ test/skill-conventions.test.ts > M4 B2: mission-execution and the gate tell one story about the last-task live run > 1. the summary lines name both live runs
+ ✓ test/skill-conventions.test.ts > M4 B2: mission-execution and the gate tell one story about the last-task live run > 2. the never-write-another-entity rule names the last task's mission-notes exception
+ ✓ test/skill-conventions.test.ts > M4 B2: mission-execution and the gate tell one story about the last-task live run > 3. mission criteria are ticked only by gate phase 5; the last task ticks its own and records evidence
+ ✓ test/skill-conventions.test.ts > M4 B2: mission-execution and the gate tell one story about the last-task live run > 4. the last task writes ## QA verification; the gate writes its own dated section that references it
+ ✓ test/skill-conventions.test.ts > T5.3: mission-planner § Plan review (M5-AC3) > has a single § Plan review section
+ ✓ test/skill-conventions.test.ts > T5.3: mission-planner § Plan review (M5-AC3) > dispatches ba and tech-lead in parallel, read-only, with an explicit model:
+ ✓ test/skill-conventions.test.ts > T5.3: mission-planner § Plan review (M5-AC3) > makes each reviewer run the queries, read real rows, grep call sites per AC, and split blocking from nits
+ ✓ test/skill-conventions.test.ts > T5.3: mission-planner § Plan review (M5-AC3) > resolves findings on the board and returns user decisions to the user
+ ✓ test/skill-conventions.test.ts > T5.3: mission-planner § Plan review (M5-AC3) > records the strict shape and never the legacy heading-only form
+ ✓ test/skill-conventions.test.ts > T5.3: mission-planner § Plan review (M5-AC3) > says set-status.js and the status dropdown refuse to start a mission without it; --force=<reason> overrides
+ ✓ test/skill-conventions.test.ts > T5.3: mission-planner § Plan review (M5-AC3) > its literal example record passes the set-status.js gate as a strict record (no legacy warning)
+ ✓ test/skill-conventions.test.ts > T5.3: octobots-doctor legacy plan-review records (M5-AC3) > acts on set-status.js's legacy warning, adds Reviewers: (ba, tech-lead) and Verdict:, writes only with the user's OK
+ ✓ test/skill-conventions.test.ts > T5.3: octobots-doctor legacy plan-review records (M5-AC3) > is reachable: §1 routes it, and it comes before the closing reply
+ ✓ test/skill-conventions.test.ts > T5.3: mission-execution § Dispatch rules: servers, timeouts, background (M5-AC5) > starts servers with nohup and full redirection, polling readiness with a bounded curl -m 2 loop
+ ✓ test/skill-conventions.test.ts > T5.3: mission-execution § Dispatch rules: servers, timeouts, background (M5-AC5) > says macOS has no timeout: Bash tool timeout or perl alarm
+ ✓ test/skill-conventions.test.ts > T5.3: mission-execution § Dispatch rules: servers, timeouts, background (M5-AC5) > never backgrounds a test command; the only exceptions are non-terminating servers and watchers
+ ✓ test/skill-conventions.test.ts > T5.3: mission-execution § Dispatch rules: servers, timeouts, background (M5-AC5) > runs QA server, migration and seed commands through qa-env.mjs
+ ✓ test/skill-conventions.test.ts > T5.3: mission-execution § Dispatch rules: servers, timeouts, background (M5-AC5) > keeps the numbering unique and gapless
+ ✓ test/skill-conventions.test.ts > T5.3: mission-execution § Dispatch rules: servers, timeouts, background (M5-AC5) > carries no solo-specific service names, DSNs or ports
+ ✓ test/skill-conventions.test.ts > T5.3 review: the plan-review record is written through entity-io and survives the gate > tells the planner to write the record through entity-io.mjs, never by editing the YAML text
+ ✓ test/skill-conventions.test.ts > T5.3 review: the plan-review record is written through entity-io and survives the gate > its entity-io command, run as written, records a strict review that set-status.js accepts
+ ✓ test/skill-conventions.test.ts > T5.3 review: octobots-doctor never half-fills a legacy record and never invents its verdict > asks the user for the verdict when the record states none, and writes nothing until they answer
+ ✓ test/skill-conventions.test.ts > T5.3 review: octobots-doctor never half-fills a legacy record and never invents its verdict > adds both lines or neither, because a Reviewers: line alone is refused
+ ✓ test/skill-conventions.test.ts > T5.3 review: octobots-doctor never half-fills a legacy record and never invents its verdict > writes through entity-io.mjs and runs validate.js
+ ✓ test/skill-conventions.test.ts > T5.3 review: octobots-doctor never half-fills a legacy record and never invents its verdict > its description triggers on set-status.js's legacy plan-review warning
+ ✓ test/skill-conventions.test.ts > T5.3 review: rule 11 gives a runnable bounded readiness loop and the qa-env.mjs path > shows a bounded curl -m 2 loop that fails the step after the last try
+ ✓ test/skill-conventions.test.ts > T5.3 review: rule 11 gives a runnable bounded readiness loop and the qa-env.mjs path > names the installed qa-env.mjs path and the no-database case
+ ✓ test/skill-conventions.test.ts > T5.5: octobots-doctor test-lanes paragraph (M5 AC7) > acts on doctor.js's `lanes` finding by proposing `## Test lanes` from the project's documented commands
+ ✓ test/skill-conventions.test.ts > T5.5: octobots-doctor test-lanes paragraph (M5 AC7) > writes AGENTS.md only with the user's OK, never invents a command, and touches nothing else
+ ✓ test/skill-conventions.test.ts > T5.5: octobots-doctor test-lanes paragraph (M5 AC7) > records a declined lanes finding in doctor-acks.json, and says it is a primer finding
+ ✓ test/skill-conventions.test.ts > T5.5: octobots-doctor test-lanes paragraph (M5 AC7) > its literal example section is one doctor.js reads as a declaration
+ ✓ test/skill-conventions.test.ts > T5.5: octobots-doctor test-lanes paragraph (M5 AC7) > is reachable: §1 routes the lanes finding to it, and it comes before the closing reply
+ ✓ test/skill-conventions.test.ts > T5.5: octobots-doctor test-lanes paragraph (M5 AC7) > the description triggers on a lanes finding
+ ✓ test/skill-conventions.test.ts > T5.5: octobots-doctor test-lanes paragraph (M5 AC7) > the write boundary names the one AGENTS.md exception, pointing at the Test lanes section
+ ✓ test/skill-conventions.test.ts > T5.5: mission-completion-gate phase 1 calls scan-parked.js (M5 AC6, AC7) > runs scan-parked.js --json in the repo root and treats exit 1 (an unsigned hit) as not green
+ ✓ test/skill-conventions.test.ts > T5.5: mission-completion-gate phase 1 calls scan-parked.js (M5 AC6, AC7) > names the signoff file and its line format, and says only the user signs off
+ ✓ test/skill-conventions.test.ts > T5.5: mission-completion-gate phase 1 calls scan-parked.js (M5 AC6, AC7) > the script it names ships in the pack, and the verdict carries the scan result
+
+ Test Files  1 passed (1)
+      Tests  141 passed (141)
+   Start at  10:56:19
+   Duration  347ms (transform 31ms, setup 43ms, collect 32ms, tests 73ms, environment 0ms, prepare 30ms)
+

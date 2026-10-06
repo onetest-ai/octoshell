@@ -4,7 +4,8 @@ title: "Pack plan-review.mjs and @octoshell/board planReviewStatus agree on the 
 mission: M5
 covers: [M5-AC1, M5-AC2]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m5/runs/RUN-2026-10-06-001.md}
 priority: high
 size: M
 ---
