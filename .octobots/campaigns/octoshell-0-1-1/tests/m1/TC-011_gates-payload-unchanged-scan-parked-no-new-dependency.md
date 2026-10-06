@@ -4,7 +4,8 @@ title: "Gates green, graph payload byte-identical, no parked tests, no new runti
 mission: M1
 covers: [M1-AC11]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/octoshell-0-1-1/tests/m1/runs/RUN-2026-10-06-001.md}
 priority: high
 size: S
 ---

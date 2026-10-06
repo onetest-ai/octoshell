@@ -1,0 +1,99 @@
+The CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/open-test-file-webview.test.ts > openTestFile from a webview: crafted paths never leave the board > opens the TC a real TestCase.path names
+ ✓ test/open-test-file-webview.test.ts > openTestFile from a webview: crafted paths never leave the board > rejects climbs, absolute paths, TC-named files outside the board, non-TC files and symlinks out
+ ✓ test/open-test-file-webview.test.ts > openTestFile from a webview: crafted paths never leave the board > the ui-messages schema only accepts a string path, and the panel handler goes through the guarded command
+ ✓ test/test-evidence-guard.test.ts > evidenceFileToOpen > returns the absolute path for the real RUN file on a board copy 873ms
+ ✓ test/test-evidence-guard.test.ts > evidenceFileToOpen > is null for a missing file, a directory, `..`, an absolute path, an empty or non-string value and a NUL byte
+ ✓ test/test-evidence-guard.test.ts > evidenceFileToOpen > is null for a symlink resolving outside the workspace, and fine for one resolving inside
+ ✓ test/test-evidence-guard.test.ts > BoardHost.testEvidencePath reads the evidence from the TC on disk > answers the RUN file, and follows the file when it changes 737ms
+ ✓ test/test-evidence-guard.test.ts > BoardHost.testEvidencePath reads the evidence from the TC on disk > is null for a TC with no evidence, a TC the guard rejects and a TC that is gone 738ms
+ ✓ test/test-evidence-guard.test.ts > BoardHost.testEvidencePath reads the evidence from the TC on disk > an evidence path escaping the workspace through a symlink is not opened 752ms
+ ✓ test/test-evidence-guard.test.ts > the guard module > imports nothing from vscode, and neither does board-host.ts
+ ✓ test/test-evidence-guard.test.ts > the guard module > campaigns-tree.ts still exports testFileToOpen and testFileArgFromWebview, the very same functions
+ ✓ test/test-evidence-guard.test.ts > spelledAsOnDisk (the test-case panel key, 0.1.1 T1.3 review) > accepts the exact on-disk spelling and rejects any other letter case, a missing segment and an unreadable parent 730ms
+stderr | test/test-case-panel.test.ts > openTestCase > creates one panel of view type octoshell.testCase titled `TC-004: <title>`; a second call reveals it
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > one panel per TC however its path is spelled
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > another letter case of the same TC never keys a second panel (a case-insensitive file system opens the same file)
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > binds {kind: testCase, id: <path>} when the webview is ready
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > posts a spine event to the panel on entities:changed, and stops after it is disposed
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > refreshes the panel title when the TC's title changes on disk
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestCase > the openTestCase UI message (the sidebar-independent path: a mission panel's TC row) opens the panel
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > restored panel > adopt binds a restored testCase panel to its path; a TC that is gone does not dispose it
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > restored panel > a restored panel answers tests:get with null for a gone TC (the webview shows the no-longer-exists state)
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestEvidence and openTestFile > opens the evidence file the host reads from the TC on disk, never one the webview names
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestEvidence and openTestFile > opens nothing for a TC with no evidence, a missing evidence file, or a path the guard rejects
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+stderr | test/test-case-panel.test.ts > openTestEvidence and openTestFile > the Open source file button (openTestFile) still goes through the guarded raw-file command
+[octoshell] webview index.html not found — falling back to empty shell (run `pnpm --filter @octoshell/vscode-extension build`): /nonexistent-ext/media/index.html
+
+ ✓ test/test-case-panel.test.ts > TEST_CASE_VIEW_TYPE > is octoshell.testCase and is declared as an activation event and restored by a serializer
+ ✓ test/test-case-panel.test.ts > openTestCase > creates one panel of view type octoshell.testCase titled `TC-004: <title>`; a second call reveals it 890ms
+ ✓ test/test-case-panel.test.ts > openTestCase > one panel per TC however its path is spelled 738ms
+ ✓ test/test-case-panel.test.ts > openTestCase > another letter case of the same TC never keys a second panel (a case-insensitive file system opens the same file) 730ms
+ ✓ test/test-case-panel.test.ts > openTestCase > binds {kind: testCase, id: <path>} when the webview is ready 724ms
+ ✓ test/test-case-panel.test.ts > openTestCase > posts a spine event to the panel on entities:changed, and stops after it is disposed 766ms
+ ✓ test/test-case-panel.test.ts > openTestCase > refreshes the panel title when the TC's title changes on disk 626ms
+ ✓ test/test-case-panel.test.ts > openTestCase > rejects `..` paths, absolute paths, a TC symlink resolving outside the board and non-TC files: no panel 608ms
+ ✓ test/test-case-panel.test.ts > openTestCase > the openTestCase UI message (the sidebar-independent path: a mission panel's TC row) opens the panel 651ms
+ ✓ test/test-case-panel.test.ts > restored panel > adopt binds a restored testCase panel to its path; a TC that is gone does not dispose it 622ms
+ ✓ test/test-case-panel.test.ts > restored panel > a restored panel answers tests:get with null for a gone TC (the webview shows the no-longer-exists state) 633ms
+ ✓ test/test-case-panel.test.ts > openTestEvidence and openTestFile > opens the evidence file the host reads from the TC on disk, never one the webview names 638ms
+ ✓ test/test-case-panel.test.ts > openTestEvidence and openTestFile > opens nothing for a TC with no evidence, a missing evidence file, or a path the guard rejects 636ms
+ ✓ test/test-case-panel.test.ts > openTestEvidence and openTestFile > the Open source file button (openTestFile) still goes through the guarded raw-file command 588ms
+ ✓ test/test-case-panel.test.ts > the octoshell.openTestCase command > is registered in extension.ts through the panel manager's guard, and left out of the palette like openTestFile
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > returns the header, criterion text, mission, evidence flag, writable and a frontmatter-free markdown body 899ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > flags an evidence file that does not exist (path kept, exists false) 733ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > has evidence null when the TC never ran 732ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > a covers id beyond the mission's criteria has text null; the others keep their text 735ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a legacy TC (uwb m1 TC-003): unknown status, kind null, both ACs with the mission's texts, legacy, writable 742ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a TC with kind but no mission is still legacy; a complete one is not 628ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > unparseable frontmatter (uwb TC-003 with a broken title): id from the filename, title from the H1, covers [], the text after the block as markdown, not writable 628ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > no frontmatter block (uwb TC-003 with its block cut, and a `---` rule in the body): the whole file as a plain body, title from the H1, writable no-frontmatter 637ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > uwb TC-003 padded over 4 MiB: body too-large (no text), writable too-large 635ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > uwb TC-003 copied into a tests folder no mission names (m9): mission null, missionId null, criteria texts null 637ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a TC of a cancelled mission (uwb m5 TC-001, under a cancelled M5): mission.status cancelled, criteria texts still present, writable 622ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a TC symlink resolving inside the board reads, but is not writable (symlink) 637ms
+ ✓ test/tests-detail-rpc.test.ts > every real TC of every real board copy answers tests:get like the listing says > returns a detail whose tc equals tests:list's, with a body and no frontmatter line in a markdown body 867ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > pass with a matching base equals `set-test-status.js <tc> pass --date <clock day>` and emits entities:changed once 618ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > the date is the injected clock's UTC day, not the local day 596ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > ready on a file holding draft equals `set-test-status.js <tc> ready` (no --date) and leaves last_run alone 606ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > base.status ready while the file holds fail: stale with current fail, bytes unchanged, no event 575ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > a base whose last_run moved is stale even when the status matches 587ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > re-sending the file's current status is a host no-op: changed false, bytes and mtime unchanged, no event 570ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > on the legacy uwb TC-003 shape a pass writes status and last_run, equals the script, and leaves kind and mission absent 609ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > refuses an unwritable file with its own reason, writing nothing and emitting nothing 503ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get and tests:setStatus accept only a real TC path > a `..` path, an absolute path, an outside symlink, a mission.yaml, a tests README and a TC-*.md outside campaigns/<c>/tests/ read null, refuse, and change nothing 624ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get and tests:setStatus accept only a real TC path > a TC that is gone reads null and refuses a write 523ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get and tests:setStatus accept only a real TC path > refuses a path the lstat finds to be a directory named TC-*.md 496ms
+
+ Test Files  4 passed (4)
+      Tests  51 passed (51)
+   Start at  16:06:00
+   Duration  15.77s (transform 177ms, setup 195ms, collect 461ms, tests 28.14s, environment 0ms, prepare 106ms)
+

@@ -1,0 +1,289 @@
+
+> octoshell@0.0.0 coverage /Users/arozumenko/Development/octoshell
+> pnpm coverage:board && pnpm coverage:pack
+
+
+> octoshell@0.0.0 coverage:board /Users/arozumenko/Development/octoshell
+> pnpm --filter @octoshell/board coverage
+
+
+> @octoshell/board@0.0.0 coverage /Users/arozumenko/Development/octoshell/packages/board
+> vitest run --coverage
+
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/board
+      Coverage enabled with v8
+
+ ✓ test/entity-io-unit.test.ts  (23 tests) 14ms
+ ✓ test/entity-roundtrip-passthrough.test.ts  (30 tests) 16ms
+ ✓ test/migrate-entities.test.ts  (7 tests) 52ms
+ ✓ test/test-cases-malformed.test.ts  (5 tests) 101ms
+ ✓ test/tc-status-write.test.ts  (25 tests) 137ms
+usage: add-task.js <mission-dir|mission.yaml> "<title>" [--role <name>] [--description <text>]
+add-bug: invalid severity "urgent" (expected one of: blocker, critical, major, minor, trivial)
+add-doc: documents attach to campaigns and missions only (not task/bug entities)
+usage: add-campaign.js "<name>" [--description <text>] [--target <text>] [--root <dir>]
+add-bug: not a campaign/mission folder: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-VJk8MC/.octobots/campaigns/q3-rollout/missions/m1-auth/tasks/t1-1-jwt
+usage: add-bug.js <campaign-dir|mission-dir|entity.yaml> "<title>" [--severity blocker|critical|major|minor|trivial]
+ ✓ test/validate-stranded.test.ts  (9 tests) 36ms
+ ✓ test/tc-io.test.ts  (99 tests) 440ms
+usage: add-mission.js <campaign-dir|campaign.yaml> "<title>" [--description <text>]
+ ✓ test/write-delete.test.ts  (21 tests) 87ms
+delete-bug: no bug titled "B9 - Never existed" found (no bug.yaml/.md folder)
+usage: delete-bug.js <campaign-dir|mission-dir|entity.yaml> "<bug title>"
+ ✓ test/validate.test.ts  (15 tests) 3ms
+set-status: no entity named "Nonexistent Task" found under /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-smoke-VF3lwB/.octobots/campaigns/camp/missions/m1-mission (self, missions/, tasks/, or bugs/)
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-preserve-aKFfm7/.octobots/campaigns/camp/missions/m1-auth/tasks/t1-1-jwt/task.yaml:
+  - no acceptance criteria — add at least one `acceptance_criteria` item (use set-criterion.js); a task/mission without a verifiable criterion is not well-formed
+  - 2 acceptance criterion-shaped line(s) stranded in `notes` (first: "expired tokens are rejected with 401") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+ ✓ test/tc-detail.test.ts  (8 tests) 30ms
+delete-task: no task named "No Such Task" found (no task.yaml/.md folder)
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-preserve-m9Sc5M/.octobots/campaigns/camp/missions/m1-auth/tasks/t1-1-jwt/task.yaml:
+  - 2 acceptance criterion-shaped line(s) stranded in `notes` (first: "expired tokens are rejected with 401") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-preserve-5bpth8/.octobots/campaigns/camp/missions/m1-auth/tasks/t1-1-jwt/task.yaml:
+  - 2 acceptance criterion-shaped line(s) stranded in `notes` (first: "expired tokens are rejected with 401") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-smoke-lL1qUa/.octobots/campaigns/q3/missions/m1-mission/tasks/t1-1-no-ac-task/task.yaml:
+  - no acceptance criteria — add at least one `acceptance_criteria` item (use set-criterion.js); a task/mission without a verifiable criterion is not well-formed
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-preserve-gy89dm/.octobots/campaigns/camp/campaign.yaml:
+  - 1 acceptance criterion-shaped line(s) stranded in `notes` (first: "every mission is merged") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+validate: file not found: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-smoke-d4spQP/.octobots/nonexistent.yaml
+show: file not found: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-9dRRq3/.octobots/nope.yaml
+ ✓ test/campaign-tokenomics-roundtrip.test.ts  (5 tests) 231ms
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-preserve-gy89dm/.octobots/campaigns/camp/missions/m1-auth/mission.yaml:
+  - 1 acceptance criterion-shaped line(s) stranded in `notes` (first: "auth reviewed") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+show: not an entity file or folder: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-9dRRq3/.octobots/README.md
+ ✓ test/scripts-data-preservation.test.ts  (23 tests) 1074ms
+ ✓ test/scripts-smoke.test.ts  (17 tests) 1089ms
+ ✓ test/pack-reconcile-unit.test.ts  (7 tests) 782ms
+set-criterion: index out of range (1..1)
+set-criterion: unknown op 'toggle'
+set-criterion add: missing text
+ ✓ test/validate-tc-parity.test.ts  (2 tests) 801ms
+set-criterion: not a campaign/mission/task entity file (bugs have no acceptance criteria)
+ ✓ test/plan-review.test.ts  (99 tests) 11ms
+usage: set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>
+ ✓ test/write-legacy-md-notes.test.ts  (3 tests) 15ms
+ ✓ test/pending-io-unit.test.ts  (5 tests) 255ms
+usage: set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>
+ ✓ test/write-create.test.ts  (5 tests) 110ms
+ ✓ test/write-notes.test.ts  (4 tests) 88ms
+ ✓ test/entity-schema.test.ts  (6 tests) 6ms
+ ✓ test/mission-status.test.ts  (4 tests) 24ms
+ ✓ test/write-edit.test.ts  (4 tests) 18ms
+ ✓ test/write-status.test.ts  (7 tests) 104ms
+ ✓ test/skill-marker-unit.test.ts  (2 tests) 149ms
+ ✓ test/legacy-workflows-unit.test.ts  (1 test) 51ms
+set-status: invalid state "nearly-done" (expected one of: draft, active, executing, awaiting approval, done, failed, cancelled)
+set-status: path not found: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-4RoIB9/.octobots/nope
+usage: set-status.js <parent-dir|entity.yaml> "<entity title>" <state> [--force=<reason>]
+  state: draft | active | executing | awaiting approval | done | failed | cancelled
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-E88BC2/.octobots/campaigns/camp/missions/m1-auth/tasks/t1/task.yaml:
+  - name "T1" is just an id/placeholder — use the form `<id> - descriptive name` (e.g. "M3 - Skills workspace", "T3.1 - Add JWT validation to /login"); the bare id alone is not a name
+ ✓ test/plan-review-parity.test.ts  (2 tests) 375ms
+ ✓ test/managed-block.test.ts  (3 tests) 2ms
+ ✓ test/slug.test.ts  (4 tests) 2ms
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-xjobyC/.octobots/campaigns/camp/campaign.yaml:
+  - missing a `name`
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-RQCLGC/.octobots/campaigns/camp/missions/m1-auth/tasks/t1/task.yaml:
+  - name "T1" is just an id/placeholder — use the form `<id> - descriptive name` (e.g. "M3 - Skills workspace", "T3.1 - Add JWT validation to /login"); the bare id alone is not a name
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-FIiYwE/.octobots/campaigns/octograph/campaign.yaml:
+  - missing a `name`
+ ✓ test/tests-folder-ignored.test.ts  (3 tests) 1403ms
+ ✓ test/board-model.test.ts  (6 tests) 1968ms
+ ✓ test/test-cases-own-campaign.test.ts  (7 tests) 2849ms
+ ✓ test/tc-status-toplevel.test.ts  (4 tests) 21ms
+validate: not an entity file (<kind>.yaml): /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-FRBB5C/.octobots/campaigns/octograph/missions/m3-part-m3/workflows/run/workflow.js
+validate: no entity (<kind>.yaml) in /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-0wHMAn/.octobots/campaigns/empty
+validate: not an entity file (<kind>.yaml): /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-1KFdzI/.octobots/notes.txt
+ ✓ test/validate-tests-parity.test.ts  (17 tests) 3564ms
+ ✓ test/validate-workflows-warning.test.ts  (7 tests) 3923ms
+ ✓ test/scan-parked.test.ts  (32 tests) 4089ms
+stdout | test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > tracked board (git archive HEAD .octobots)
+tc-status parity [tracked]: 98 TCs, 392 (TC, status) pairs compared, 0 script refusals
+
+ ✓ test/tc-status-parity.test.ts  (3 tests) 5036ms
+add-tests: path not found: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-NqSRjn/.octobots/nope
+usage: add-tests.js <mission-dir|mission.yaml>
+add-tests: not a mission directory or mission.yaml: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-NqSRjn/.octobots/campaigns/camp
+add-tests: mission name must start with its id token M<n> (e.g. "M3 - ..."): Gate without an id
+add-tests: refusing to write: tests/m1/README.md is a symlink (/var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-Iqcs7k/.octobots/campaigns/camp-alpha/tests/m1/README.md)
+add-tests: refusing to write: tests is a symlink (/var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-nbRaC9/.octobots/campaigns/camp-alpha/tests)
+add-tests: refusing to write: tests/m1 is a symlink (/var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-nbRaC9/.octobots/campaigns/camp-alpha/tests/m1)
+add-tests: refusing to write: tests/m1/README.md is not a regular file (/var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-DVBLut/.octobots/campaigns/camp-alpha/tests/m1/README.md)
+add-tests: refusing to write: tests/m1 is not a directory (/var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-DVBLut/.octobots/campaigns/camp-alpha/tests/m1)
+ ✓ test/qa-env.test.ts  (50 tests) 6333ms
+ ✓ test/scripts-cli-scenarios.test.ts  (266 tests) 12311ms
+
+ Test Files  39 passed (39)
+      Tests  840 passed (840)
+   Start at  16:07:26
+   Duration  12.71s (transform 1.72s, setup 0ms, collect 4.27s, tests 47.60s, environment 4ms, prepare 2.31s)
+
+ % Coverage report from v8
+------------------|---------|----------|---------|---------|--------------------
+File              | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s  
+------------------|---------|----------|---------|---------|--------------------
+All files         |   93.98 |    84.97 |   95.85 |   93.98 |                    
+ board-model.ts   |    96.5 |       75 |   83.33 |    96.5 | ...453-454,572-574 
+ entity-schema.ts |   98.59 |    91.13 |     100 |   98.59 | 104-105            
+ managed-block.ts |   98.48 |    82.81 |    87.5 |   98.48 | 47-48              
+ plan-review.ts   |     100 |    97.67 |     100 |     100 | 51                 
+ slug.ts          |   91.66 |    88.88 |     100 |   91.66 | 16                 
+ tc-detail.ts     |   95.65 |    93.75 |     100 |   95.65 | 67-68              
+ tc-io.ts         |    99.5 |    98.76 |     100 |    99.5 | 241                
+ tc-status.ts     |    93.4 |    91.33 |     100 |    93.4 | ...287,312-314,325 
+ test-cases.ts    |   92.66 |    82.85 |     100 |   92.66 | ...140-141,159-160 
+ types.ts         |     100 |      100 |     100 |     100 |                    
+ validate.ts      |   96.31 |     87.5 |     100 |   96.31 | ...142-146,236-237 
+ write.ts         |   86.85 |     74.2 |    97.5 |   86.85 | ...811-812,850-851 
+------------------|---------|----------|---------|---------|--------------------
+
+> octoshell@0.0.0 coverage:pack /Users/arozumenko/Development/octoshell
+> c8 --all --check-coverage --statements 90 --lines 90 --functions 90 --branches 70 --reporter text --report-dir coverage-pack --include 'apps/vscode-extension/resources/octobots-pack/skill/*/scripts/**' --exclude '**/vendor/**' pnpm --filter @octoshell/board test
+
+
+> @octoshell/board@0.0.0 test /Users/arozumenko/Development/octoshell/packages/board
+> vitest run
+
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/board
+
+ ✓ test/entity-io-unit.test.ts  (23 tests) 15ms
+ ✓ test/entity-roundtrip-passthrough.test.ts  (30 tests) 17ms
+ ✓ test/migrate-entities.test.ts  (7 tests) 43ms
+ ✓ test/test-cases-malformed.test.ts  (5 tests) 69ms
+ ✓ test/tc-status-write.test.ts  (25 tests) 148ms
+usage: add-task.js <mission-dir|mission.yaml> "<title>" [--role <name>] [--description <text>]
+ ✓ test/validate-stranded.test.ts  (9 tests) 54ms
+ ✓ test/write-delete.test.ts  (21 tests) 57ms
+ ✓ test/tc-io.test.ts  (99 tests) 309ms
+add-doc: documents attach to campaigns and missions only (not task/bug entities)
+usage: add-campaign.js "<name>" [--description <text>] [--target <text>] [--root <dir>]
+add-bug: invalid severity "urgent" (expected one of: blocker, critical, major, minor, trivial)
+add-bug: not a campaign/mission folder: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-coIm4k/.octobots/campaigns/q3-rollout/missions/m1-auth/tasks/t1-1-jwt
+usage: add-bug.js <campaign-dir|mission-dir|entity.yaml> "<title>" [--severity blocker|critical|major|minor|trivial]
+usage: add-mission.js <campaign-dir|campaign.yaml> "<title>" [--description <text>]
+ ✓ test/validate.test.ts  (15 tests) 39ms
+ ✓ test/tc-detail.test.ts  (8 tests) 44ms
+delete-bug: no bug titled "B9 - Never existed" found (no bug.yaml/.md folder)
+usage: delete-bug.js <campaign-dir|mission-dir|entity.yaml> "<bug title>"
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-preserve-zHWWNy/.octobots/campaigns/camp/missions/m1-auth/tasks/t1-1-jwt/task.yaml:
+  - no acceptance criteria — add at least one `acceptance_criteria` item (use set-criterion.js); a task/mission without a verifiable criterion is not well-formed
+  - 2 acceptance criterion-shaped line(s) stranded in `notes` (first: "expired tokens are rejected with 401") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+ ✓ test/campaign-tokenomics-roundtrip.test.ts  (5 tests) 308ms
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-preserve-s1kFWZ/.octobots/campaigns/camp/missions/m1-auth/tasks/t1-1-jwt/task.yaml:
+  - 2 acceptance criterion-shaped line(s) stranded in `notes` (first: "expired tokens are rejected with 401") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+set-status: no entity named "Nonexistent Task" found under /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-smoke-p5e5dU/.octobots/campaigns/camp/missions/m1-mission (self, missions/, tasks/, or bugs/)
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-preserve-9oV0wE/.octobots/campaigns/camp/missions/m1-auth/tasks/t1-1-jwt/task.yaml:
+  - 2 acceptance criterion-shaped line(s) stranded in `notes` (first: "expired tokens are rejected with 401") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+delete-task: no task named "No Such Task" found (no task.yaml/.md folder)
+ ✓ test/pack-reconcile-unit.test.ts  (7 tests) 932ms
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-preserve-s0O0n5/.octobots/campaigns/camp/campaign.yaml:
+  - 1 acceptance criterion-shaped line(s) stranded in `notes` (first: "every mission is merged") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-preserve-s0O0n5/.octobots/campaigns/camp/missions/m1-auth/mission.yaml:
+  - 1 acceptance criterion-shaped line(s) stranded in `notes` (first: "auth reviewed") — notes are free-form prose the board never reads as criteria; move them into `acceptance_criteria` with set-criterion.js and never append them by hand
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-smoke-98910j/.octobots/campaigns/q3/missions/m1-mission/tasks/t1-1-no-ac-task/task.yaml:
+  - no acceptance criteria — add at least one `acceptance_criteria` item (use set-criterion.js); a task/mission without a verifiable criterion is not well-formed
+ ✓ test/validate-tc-parity.test.ts  (2 tests) 939ms
+ ✓ test/write-create.test.ts  (5 tests) 38ms
+ ✓ test/pending-io-unit.test.ts  (5 tests) 312ms
+ ✓ test/scripts-data-preservation.test.ts  (23 tests) 1471ms
+validate: file not found: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-smoke-MZz4N7/.octobots/nonexistent.yaml
+ ✓ test/plan-review.test.ts  (99 tests) 8ms
+show: file not found: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-ijw8MD/.octobots/nope.yaml
+ ✓ test/scripts-smoke.test.ts  (17 tests) 1636ms
+show: not an entity file or folder: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-ijw8MD/.octobots/README.md
+ ✓ test/entity-schema.test.ts  (6 tests) 8ms
+ ✓ test/write-notes.test.ts  (4 tests) 65ms
+ ✓ test/write-legacy-md-notes.test.ts  (3 tests) 24ms
+set-criterion: index out of range (1..1)
+ ✓ test/write-status.test.ts  (7 tests) 50ms
+set-criterion: unknown op 'toggle'
+ ✓ test/mission-status.test.ts  (4 tests) 25ms
+set-criterion add: missing text
+set-criterion: not a campaign/mission/task entity file (bugs have no acceptance criteria)
+ ✓ test/skill-marker-unit.test.ts  (2 tests) 109ms
+usage: set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>
+ ✓ test/write-edit.test.ts  (4 tests) 23ms
+ ✓ test/legacy-workflows-unit.test.ts  (1 test) 54ms
+usage: set-criterion.js <entity-dir|entity.yaml> add "<text>" | check <n> | uncheck <n>
+ ✓ test/plan-review-parity.test.ts  (2 tests) 401ms
+ ✓ test/managed-block.test.ts  (3 tests) 3ms
+ ✓ test/board-model.test.ts  (6 tests) 2212ms
+ ✓ test/tests-folder-ignored.test.ts  (3 tests) 1526ms
+set-status: invalid state "nearly-done" (expected one of: draft, active, executing, awaiting approval, done, failed, cancelled)
+set-status: path not found: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-b2CAg9/.octobots/nope
+usage: set-status.js <parent-dir|entity.yaml> "<entity title>" <state> [--force=<reason>]
+  state: draft | active | executing | awaiting approval | done | failed | cancelled
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-sfFBkk/.octobots/campaigns/camp/missions/m1-auth/tasks/t1/task.yaml:
+  - name "T1" is just an id/placeholder — use the form `<id> - descriptive name` (e.g. "M3 - Skills workspace", "T3.1 - Add JWT validation to /login"); the bare id alone is not a name
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-PAubKH/.octobots/campaigns/camp/campaign.yaml:
+  - missing a `name`
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-kJL9sI/.octobots/campaigns/camp/missions/m1-auth/tasks/t1/task.yaml:
+  - name "T1" is just an id/placeholder — use the form `<id> - descriptive name` (e.g. "M3 - Skills workspace", "T3.1 - Add JWT validation to /login"); the bare id alone is not a name
+INVALID /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-gh3QZA/.octobots/campaigns/octograph/campaign.yaml:
+  - missing a `name`
+validate: not an entity file (<kind>.yaml): /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-uHXnP5/.octobots/campaigns/octograph/missions/m3-part-m3/workflows/run/workflow.js
+validate: no entity (<kind>.yaml) in /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-FTtN6S/.octobots/campaigns/empty
+validate: not an entity file (<kind>.yaml): /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-1ddXJt/.octobots/notes.txt
+ ✓ test/test-cases-own-campaign.test.ts  (7 tests) 2866ms
+ ✓ test/slug.test.ts  (4 tests) 2ms
+ ✓ test/validate-tests-parity.test.ts  (17 tests) 4342ms
+ ✓ test/tc-status-toplevel.test.ts  (4 tests) 25ms
+ ✓ test/validate-workflows-warning.test.ts  (7 tests) 4618ms
+ ✓ test/scan-parked.test.ts  (32 tests) 4786ms
+stdout | test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > tracked board (git archive HEAD .octobots)
+tc-status parity [tracked]: 98 TCs, 392 (TC, status) pairs compared, 0 script refusals
+
+ ✓ test/tc-status-parity.test.ts  (3 tests) 6100ms
+ ✓ test/qa-env.test.ts  (50 tests) 6826ms
+add-tests: path not found: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-Ln12Sr/.octobots/nope
+usage: add-tests.js <mission-dir|mission.yaml>
+add-tests: not a mission directory or mission.yaml: /var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-Ln12Sr/.octobots/campaigns/camp
+add-tests: mission name must start with its id token M<n> (e.g. "M3 - ..."): Gate without an id
+add-tests: refusing to write: tests/m1/README.md is a symlink (/var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-QBliKk/.octobots/campaigns/camp-alpha/tests/m1/README.md)
+add-tests: refusing to write: tests is a symlink (/var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-tAKiGo/.octobots/campaigns/camp-alpha/tests)
+add-tests: refusing to write: tests/m1 is a symlink (/var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-tAKiGo/.octobots/campaigns/camp-alpha/tests/m1)
+add-tests: refusing to write: tests/m1/README.md is not a regular file (/var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-2zBGXE/.octobots/campaigns/camp-alpha/tests/m1/README.md)
+add-tests: refusing to write: tests/m1 is not a directory (/var/folders/27/kb_xvzxj7g5_0tqf9zyjlpd00000gn/T/scripts-cli-2zBGXE/.octobots/campaigns/camp-alpha/tests/m1)
+ ✓ test/scripts-cli-scenarios.test.ts  (266 tests) 15487ms
+
+ Test Files  39 passed (39)
+      Tests  840 passed (840)
+   Start at  16:07:40
+   Duration  15.97s (transform 3.89s, setup 0ms, collect 8.41s, tests 55.99s, environment 4ms, prepare 2.33s)
+
+---------------------------|---------|----------|---------|---------|-------------------------------
+File                       | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s             
+---------------------------|---------|----------|---------|---------|-------------------------------
+All files                  |   97.98 |    88.36 |   98.05 |   97.98 |                               
+ mission-execution/scripts |   98.34 |    92.01 |     100 |   98.34 |                               
+  qa-env.mjs               |   98.83 |    90.51 |     100 |   98.83 | 179,219-220                   
+  scan-parked.js           |   97.78 |    93.44 |     100 |   97.78 | 83-84,135-136,165             
+ mission-planner/scripts   |   97.82 |    87.42 |   97.58 |   97.82 |                               
+  add-bug.js               |     100 |       90 |     100 |     100 | 11                            
+  add-campaign.js          |     100 |       75 |     100 |     100 | 16-18                         
+  add-doc.js               |   84.21 |    70.58 |     100 |   84.21 | 13-15,27-29                   
+  add-mission.js           |   92.85 |    71.42 |     100 |   92.85 | 28-30                         
+  add-task.js              |   93.02 |    68.42 |     100 |   93.02 | 26-28                         
+  add-tests.js             |   97.41 |    91.89 |     100 |   97.41 | 40-42                         
+  delete-bug.js            |   98.21 |    77.77 |     100 |   98.21 | 55                            
+  delete-task.js           |   92.72 |    46.15 |     100 |   92.72 | 13-15,54                      
+  doctor.js                |   98.03 |     89.7 |     100 |   98.03 | 142-143,166-168               
+  entity-io.mjs            |   99.07 |    80.72 |   95.83 |   99.07 | 89,197-198                    
+  lanes.mjs                |     100 |      100 |     100 |     100 |                               
+  legacy-workflows.mjs     |     100 |      100 |     100 |     100 |                               
+  list.js                  |     100 |      100 |     100 |     100 |                               
+  migrate.js               |   91.34 |    73.72 |     100 |   91.34 | ...55,194-195,211-212,220-221 
+  pending-io.mjs           |     100 |    92.85 |     100 |     100 | 41-42,60-61,88,94             
+  plan-review.mjs          |     100 |    97.67 |     100 |     100 | 74                            
+  set-criterion.js         |     100 |    94.11 |     100 |     100 | 23                            
+  set-status.js            |     100 |      100 |     100 |     100 |                               
+  set-test-status.js       |     100 |    92.63 |     100 |     100 | ...77,180,205,236,243,245-246 
+  show.js                  |     100 |    86.66 |     100 |     100 | 9,20                          
+  skill-marker.mjs         |     100 |    95.23 |     100 |     100 | 28                            
+  tc-io.mjs                |   97.18 |    89.04 |   88.88 |   97.18 | 86-87,95-100                  
+  validate.js              |      99 |    88.63 |     100 |      99 | 55-56                         
+ octobots-doctor/scripts   |     100 |    92.68 |     100 |     100 |                               
+  pack-reconcile.mjs       |     100 |    92.68 |     100 |     100 | 61,93,104,119,123             
+---------------------------|---------|----------|---------|---------|-------------------------------

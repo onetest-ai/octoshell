@@ -1,0 +1,8 @@
+f5d05f29c2cec9d4a930cf3aae963d69024dcfdc30ab7745e4ae2b143facdbc2  apps/vscode-extension/octobots-0.1.1.vsix
+4c31d9abe6be475682e06e260313726b404b9c453cc51f6b1477e6aead5dcd59  <scratch>/octobots-0.1.0.rebuilt.vsix
+b2cf34a6e85a4fded907db63c9c35e86903ae08233571663bdc3f895d8f01a3a  <scratch>/octobots-0.1.1.t14-prebuilt.vsix
+768794 apps/vscode-extension/octobots-0.1.1.vsix
+760855 <scratch>/octobots-0.1.0.rebuilt.vsix
+768794 <scratch>/octobots-0.1.1.t14-prebuilt.vsix
+T1.4 prebuilt tree == my build tree: unzip diff -r empty (PREBUILT-TREE-EQUALS-MY-BUILD); zip bytes differ only by timestamps
+0.1.0 VSIX REBUILT from ea432393 (original file absent; planner measured 761083 bytes, rebuild is 760855)

@@ -1,0 +1,34 @@
+The CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > returns the header, criterion text, mission, evidence flag, writable and a frontmatter-free markdown body 326ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > flags an evidence file that does not exist (path kept, exists false)
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > has evidence null when the TC never ran
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > a covers id beyond the mission's criteria has text null; the others keep their text
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a legacy TC (uwb m1 TC-003): unknown status, kind null, both ACs with the mission's texts, legacy, writable
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a TC with kind but no mission is still legacy; a complete one is not
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > unparseable frontmatter (uwb TC-003 with a broken title): id from the filename, title from the H1, covers [], the text after the block as markdown, not writable
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > no frontmatter block (uwb TC-003 with its block cut, and a `---` rule in the body): the whole file as a plain body, title from the H1, writable no-frontmatter
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > uwb TC-003 padded over 4 MiB: body too-large (no text), writable too-large
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > uwb TC-003 copied into a tests folder no mission names (m9): mission null, missionId null, criteria texts null
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a TC of a cancelled mission (uwb m5 TC-001, under a cancelled M5): mission.status cancelled, criteria texts still present, writable
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a TC symlink resolving inside the board reads, but is not writable (symlink)
+ ✓ test/tests-detail-rpc.test.ts > every real TC of every real board copy answers tests:get like the listing says > returns a detail whose tc equals tests:list's, with a body and no frontmatter line in a markdown body 358ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > pass with a matching base equals `set-test-status.js <tc> pass --date <clock day>` and emits entities:changed once 345ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > the date is the injected clock's UTC day, not the local day 307ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > ready on a file holding draft equals `set-test-status.js <tc> ready` (no --date) and leaves last_run alone 343ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > base.status ready while the file holds fail: stale with current fail, bytes unchanged, no event 305ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > a base whose last_run moved is stale even when the status matches 303ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > re-sending the file's current status is a host no-op: changed false, bytes and mtime unchanged, no event 324ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > on the legacy uwb TC-003 shape a pass writes status and last_run, equals the script, and leaves kind and mission absent 352ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > refuses an unwritable file with its own reason, writing nothing and emitting nothing
+ ✓ test/tests-detail-rpc.test.ts > tests:get and tests:setStatus accept only a real TC path > a `..` path, an absolute path, an outside symlink, a mission.yaml, a tests README and a TC-*.md outside campaigns/<c>/tests/ read null, refuse, and change nothing 349ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get and tests:setStatus accept only a real TC path > a TC that is gone reads null and refuses a write
+ ✓ test/tests-detail-rpc.test.ts > tests:get and tests:setStatus accept only a real TC path > refuses a path the lstat finds to be a directory named TC-*.md
+
+ Test Files  1 passed (1)
+      Tests  24 passed (24)
+   Start at  16:04:44
+   Duration  7.01s (transform 85ms, setup 48ms, collect 121ms, tests 6.62s, environment 0ms, prepare 27ms)
+

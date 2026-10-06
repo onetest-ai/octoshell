@@ -4,7 +4,8 @@ title: "0.1.1 VSIX: version and activation event, fixed CHANGELOG and 0.1.1 entr
 mission: M1
 covers: [M1-AC10]
 kind: cli
-status: draft
+status: blocked
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/octoshell-0-1-1/tests/m1/runs/RUN-2026-10-06-001.md}
 priority: critical
 size: M
 ---

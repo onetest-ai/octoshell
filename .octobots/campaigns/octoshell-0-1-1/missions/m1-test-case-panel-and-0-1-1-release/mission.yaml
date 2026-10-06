@@ -75,3 +75,22 @@ notes: |-
 
   ### Out of scope
   Editing the body or any field other than status in the panel; --migrate from the panel; any pack change.
+
+  ## QA verification (qa-engineer, T1.5, 2026-10-06, branch qa/octoshell-0-1-1-m1-t5 from feat/octoshell-0-1-1-m1 0aae9786)
+
+  Verdict: PARTIAL, no product failure. tests/m1: 6 PASS (TC-001, 002, 003, 009, 010, 011), 0 FAIL, 6 BLOCKED (TC-004..TC-008 and TC-012: live Extension Development Host / installed-VSIX halves are manual and pending the user; automated halves of all of them passed). No bug filed. Run file `.octobots/campaigns/octoshell-0-1-1/tests/m1/runs/RUN-2026-10-06-001.md`, evidence `tests/m1/evidence/`, hand-off `tests/m1/manual/F5-checklist.md`. Records: copies of this repo's board (98 real TCs) and solo's uwb board (116 legacy TCs), octobots-0.1.1.vsix built from the branch head (tree equals release commit 9eae7ad8, sha256 f5d05f29c2cec9d4a930cf3aae963d69024dcfdc30ab7745e4ae2b143facdbc2), octobots-0.1.0.vsix rebuilt from ea432393. Solo read only: git status, HEAD and the sha256 manifest of its .octobots identical before and after.
+
+  Mission criteria, in board order (this block records evidence; the completion gate ticks the criteria):
+  1. Panel contents (TC-004): automated half evidence (17 panel tests over the real TC-004); live half PENDING (F5 Part A).
+  2. Legacy and degenerate TCs, --migrate note, sanitizer (TC-005): automated half evidence (17 tests incl. legacy pick, M1-AC99, not-found evidence, malformed, oversize, m9, cancelled mission, hostile body); live half PENDING (F5 Part B).
+  3. Byte parity with set-test-status.js (TC-001, TC-002, TC-003): EVIDENCE COMPLETE. 98 + 116 real TCs, 392 + 580 (TC, status) pairs, 0 script refusals; 51-shape fixture; host RPC 24 tests; same-status host no-op; refusals; atomic write; symlink and FIFO cases.
+  4. A stale pick never overwrites an agent's status (TC-003, TC-007): host and panel evidence from vitest (stale refusal leaves bytes unchanged, no event; role=status notice survives a spine event); the live race on a real Dev Host PENDING (F5 Part D).
+  5. External refresh, no extension write (TC-006): automated evidence (35 tests incl. watcher); live half PENDING (F5 Part C).
+  6. Single click opens the panel, one panel per TC, restore (TC-008): automated evidence (58 tests); live half PENDING (F5 Part E).
+  7. Path guards (TC-009): EVIDENCE COMPLETE. 51 tests over four files, every crafted path reads null / refuses / opens nothing and changes nothing; evidence guard; M6 guard unchanged.
+  8. Theme tokens only (TC-010): EVIDENCE COMPLETE. grep over test-case-view.tsx and markdown.tsx: `no colour literal`; token vitest 4 passed. (Theme screenshots are supplementary, F5 Part F.)
+  9. Status not by colour alone (TC-004, TC-005, TC-010): automated evidence (word plus codicon per status, aria-describedby reasons, role=status notices asserted in 17 panel tests); live visual half PENDING.
+  10. 0.1.1 VSIX (TC-012, T1.4): steps 1-7 EVIDENCE COMPLETE: version 0.1.1, `onWebviewPanel:octoshell.testCase`, muddled sentence count 0, 0.1.1 entry and conditional 0.1.0 note, pack `diff -r` empty vs 0.1.0, store cmp identical, assets referenced only, workflow grep 12 hits all allow-listed; release commit 9eae7ad8 touches only package.json. PENDING: step 8 live install and T1.4 AC4 (the user installs 0.1.1; packStatus must stay upToDate; a headless packStatus on a cp -R copy with the 0.1.1 pack read upToDate true before and after).
+  11. Gates (TC-001, TC-011): EVIDENCE COMPLETE. lint, build, typecheck, test, coverage exit 0 (tokenomics 102, board 840, extension 1274, graph 655; coverage board 93.98/84.97/95.85/93.98, pack 97.98/88.36/98.05/97.98); payload unchanged and --verify exit 0; tc-io.ts, test-cases.ts, board-model.ts unchanged vs 9c7d17af; conventions.test.ts 10 passed; pack and store identical to main; scan-parked 0 unsigned (11 allowed); no new runtime dependency.
+
+  Not done and why: the live UI halves need a person in VS Code (Electron; no Playwright MCP, no @vscode/test-electron harness). Until `manual/F5-checklist.md` is run and TC-004..TC-008 and TC-012 are re-recorded, criteria 1, 2, 4, 5, 6, 9 and the live part of 10 have automated evidence only.
