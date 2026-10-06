@@ -239,7 +239,11 @@ cases*; this task and gate phase 2 apply the same ones, and they must stay in st
 - Name the pre-existing record per criterion; a criterion proved only on QA-created data is not passed.
 - Write `## QA verification` into the task and mission `notes` through `entity-io.mjs`. The gate writes its own `## Completion gate (<date>)` section, never a second `## QA verification`.
 - Tick exactly the criteria that have evidence: the task's own. Do not tick the mission's; record which mission criteria have evidence in the `## QA verification` block, and the gate ticks them in phase 5.
-- Until a status script exists, edit each TC's frontmatter `status` (and `last_run`) by hand.
+- Call `set-test-status.js` for every TC run, installed at `.claude/skills/mission-planner/scripts/set-test-status.js`:
+  PASS -> `pass`, FAIL -> `fail`, BLOCKED and UNREACHABLE -> `blocked` (the reason in the RUN file). It writes the
+  frontmatter `status` and `last_run: {date, evidence}` only, and is safe to repeat. Example:
+  `node .claude/skills/mission-planner/scripts/set-test-status.js .octobots/campaigns/<c>/tests/m<n>/TC-003_<slug>.md pass --evidence .octobots/campaigns/<c>/tests/m<n>/runs/RUN-2026-10-06-001.md`.
+  Never edit the status by hand. A legacy TC (no `status`, `kind` or `mission`) is first run through `set-test-status.js <tc-file> --migrate`.
 
 ## Three loops: when the tests run again
 

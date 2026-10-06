@@ -169,9 +169,15 @@ it on a fresh tree and is not satisfied by an earlier RUN file alone.
   unticked. The last task does not tick mission criteria: it ticks its own task's and records which
   mission criteria have evidence. In the gate, Sage's verdict marks which criteria have evidence and
   the ticking itself is phase 5's, once phases 1-3 are green.
-- **Statuses are written by hand for now.** Edit each TC's frontmatter `status` (and `last_run`:
-  `{date, evidence: <RUN file>}`) by hand, per the TC format contract in `mission-planner`. This is the
-  single seam a status-writing script will replace; nothing else in this block changes.
+- **Call `set-test-status.js` for every TC run.** It is installed at
+  `.claude/skills/mission-planner/scripts/set-test-status.js` and writes the TC's frontmatter `status` and
+  `last_run: {date, evidence: <RUN file>}` and nothing else (the body is untouched; a second identical call
+  changes nothing). Map the result: PASS -> `pass`, FAIL -> `fail`, BLOCKED and UNREACHABLE -> `blocked` (the
+  reason is in the RUN file). Example, after the run wrote `RUN-2026-10-06-001.md`:
+  `node .claude/skills/mission-planner/scripts/set-test-status.js .octobots/campaigns/<c>/tests/m<n>/TC-003_<slug>.md pass --evidence .octobots/campaigns/<c>/tests/m<n>/runs/RUN-2026-10-06-001.md`
+  (`--date YYYY-MM-DD` overrides today in UTC). Never edit the status or `last_run` by hand. A legacy TC
+  (frontmatter with no `status`, `kind` or `mission`; `validate.js` says so) is first brought onto the format
+  with `set-test-status.js <tc-file> --migrate`, which lists it as `unknown` and never touches the body.
 
 ## Tokenomics capture (phase 4)
 
