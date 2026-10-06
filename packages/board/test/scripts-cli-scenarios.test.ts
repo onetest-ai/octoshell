@@ -1819,6 +1819,27 @@ describe("set-test-status.js — writing a test case's status and last_run", () 
     expect(readFileSync(p, "utf8")).toContain("status: fail\nlast_run: {date: 2026-10-06}\npriority: high\n---\n");
   });
 
+  // T6.2 review: the line editor only ever matches a top-level key, and the re-parse guard refuses any edit it cannot prove.
+  it("edits only the top-level status: a nested `status:` and one inside a block scalar are left alone, a comment after it survives", () => {
+    const fm = "id: TC-001\nmeta:\n  status: draft\nnotes: |\n  status: draft\nstatus: ready\n# about kind\nkind: api\n";
+    const p = put("TC-001_logout.md", `---\n${fm}---\n${BODY}`);
+    expect(sts([p, "pass", "--date", "2026-10-06"]).status).toBe(0);
+    expect(readFileSync(p, "utf8")).toBe(`---\n${fm.replace("status: ready\n", "status: pass\nlast_run: {date: 2026-10-06}\n")}---\n${BODY}`);
+  });
+
+  it("refuses (exit 2, file untouched) when the re-parsed result is not exactly the old data plus the new status", () => {
+    // A quoted key, an anchored status another key aliases, and a flow-mapping frontmatter: the line edit cannot be proved.
+    for (const fm of ["id: TC-001\n\"status\": draft\n", "id: TC-001\nstatus: &s draft\nprev: *s\n", "{id: TC-001, status: draft}\n"]) {
+      const text = `---\n${fm}---\n${BODY}`;
+      const p = put("TC-001_logout.md", text);
+      const r = sts([p, "pass", "--date", "2026-10-06"]);
+      expect(r.status, fm).toBe(2);
+      expect(r.stderr, fm).toMatch(/could not edit the frontmatter of .* safely/);
+      expect(readFileSync(p, "utf8"), fm).toBe(text);
+      expect(readdirSync(tcDir), fm).toEqual(["TC-001_logout.md"]);
+    }
+  });
+
   describe("exit 2, and the file is left untouched", () => {
     const cases: Array<[string, (p: string) => string[], RegExp]> = [
       ["no arguments", () => [], /usage/],
