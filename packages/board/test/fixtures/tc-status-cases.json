@@ -1,0 +1,332 @@
+{
+  "_readme": [
+    "Shared case table for the TC status edit (mission M1 / T1.1). tc-status-parity.test.ts feeds every case, with each of the five settable statuses, to BOTH the shipped set-test-status.js (non-migrate path) and editTestCaseStatus in packages/board/src/tc-status.ts, and compares the resulting bytes.",
+    "`text` is the whole TC file. Inputs are derived from this repo's direct-dispatch-process m6 TC-004 and solo's uwb m1 TC-003 (legacy), plus the T6.2 review shapes of scripts-cli-scenarios.test.ts:1800-1843; each case says in `note` what it is.",
+    "Dates: pass, fail and blocked run with --date 2026-10-06 and the pure edit gets the same date; draft and ready run with no flags (the script refuses --date there).",
+    "`refusals` records which (case, status) pairs the SHIPPED SCRIPT refuses and why: unsafe = could not edit the frontmatter safely; unparseable; no-frontmatter. The test fails when the script's refusals differ from this record in either direction, and the pure edit must refuse the same pairs for the same reason, so two implementations that both refuse everything cannot pass. A status the file already holds is not refused for a case whose line editor cannot match it (there is nothing to change), which is why the quoted-key, anchor and flow-mapping cases list four statuses and not five.",
+    "Do not regenerate this record to make a red test green: a change in the list means the script (or the YAML library under it) changed behaviour, which needs a deliberate review."
+  ],
+  "refusals": {
+    "t62-quoted-status-key": {
+      "ready": "unsafe",
+      "pass": "unsafe",
+      "fail": "unsafe",
+      "blocked": "unsafe"
+    },
+    "t62-anchored-status-aliased": {
+      "ready": "unsafe",
+      "pass": "unsafe",
+      "fail": "unsafe",
+      "blocked": "unsafe"
+    },
+    "t62-flow-mapping-frontmatter": {
+      "ready": "unsafe",
+      "pass": "unsafe",
+      "fail": "unsafe",
+      "blocked": "unsafe"
+    },
+    "duplicate-status-key": {
+      "draft": "unparseable",
+      "ready": "unparseable",
+      "pass": "unparseable",
+      "fail": "unparseable",
+      "blocked": "unparseable"
+    },
+    "duplicate-last-run-key": {
+      "draft": "unparseable",
+      "ready": "unparseable",
+      "pass": "unparseable",
+      "fail": "unparseable",
+      "blocked": "unparseable"
+    },
+    "no-frontmatter": {
+      "draft": "no-frontmatter",
+      "ready": "no-frontmatter",
+      "pass": "no-frontmatter",
+      "fail": "no-frontmatter",
+      "blocked": "no-frontmatter"
+    },
+    "no-frontmatter-bom": {
+      "draft": "no-frontmatter",
+      "ready": "no-frontmatter",
+      "pass": "no-frontmatter",
+      "fail": "no-frontmatter",
+      "blocked": "no-frontmatter"
+    },
+    "unclosed-frontmatter": {
+      "draft": "no-frontmatter",
+      "ready": "no-frontmatter",
+      "pass": "no-frontmatter",
+      "fail": "no-frontmatter",
+      "blocked": "no-frontmatter"
+    },
+    "unparseable-frontmatter": {
+      "draft": "unparseable",
+      "ready": "unparseable",
+      "pass": "unparseable",
+      "fail": "unparseable",
+      "blocked": "unparseable"
+    },
+    "frontmatter-is-a-list": {
+      "draft": "unparseable",
+      "ready": "unparseable",
+      "pass": "unparseable",
+      "fail": "unparseable",
+      "blocked": "unparseable"
+    },
+    "frontmatter-is-a-scalar": {
+      "draft": "unparseable",
+      "ready": "unparseable",
+      "pass": "unparseable",
+      "fail": "unparseable",
+      "blocked": "unparseable"
+    }
+  },
+  "cases": [
+    {
+      "id": "real-tc004-new-frontmatter",
+      "note": "this repo's m6 TC-004 verbatim (status blocked, last_run with evidence)",
+      "text": "---\nid: TC-004\ntitle: \"Sidebar Tests node: grouped by mission with status counts; click opens the TC\"\nmission: M6\ncovers: [M6-AC3]\nkind: ui\nstatus: blocked\nlast_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-001.md}\npriority: critical\nsize: L\n---\n\n# TC-004: Sidebar Tests node: grouped by mission with status counts; click opens the TC\n\n**Mission:** M6 | **Priority:** critical | **Kind:** ui | **Covers:** M6-AC3\n\n## Objective\n\nSidebar Tests node: grouped by mission with status counts; click opens the TC. Verifies M6-AC3 of M6 - Test cases are first-class on the board.\n\n## Preconditions\n\n- Suite prerequisites in `README.md` are met (variables SOLO, OCTO, PACK, WORK; copies made in $WORK; mission branch built).\n- Originals under $SOLO and $OCTO are untouched; this case works on copies.\n\n## Real data (pre-existing record)\n\nthis campaign (direct-dispatch-process, new frontmatter) and solo's uwb campaign (legacy, 100+ TCs, m1 with AC11 gap) in the Dev Host; octoshell octograph (no tests) as the negative\n\n## Commands\n\n```bash\n# automated half:\ncd $OCTO && OCTOBOTS_BOARD_COPIES=\"$WORK/octo-octobots:$WORK/solo-octobots\" pnpm --filter @octoshell/vscode-extension exec vitest run test/campaigns-tree-tests.test.ts --reporter=verbose\n# manual half: F5; screenshots to tests/m6/evidence/.\n```\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 0 | Run campaigns-tree-tests.test.ts | At least 1 test passed |\n| 1 | Expand the direct-dispatch-process campaign | A `Tests` node exists, with child groups m1..m6 labelled with counts equal to the TC files on disk (e.g. `m2 · 12 · 12 draft` on 2026-10-05) |\n| 2 | After QA flips some TCs, reopen | Counts reflect pass/fail/blocked (`30✓ 1✗ 1 blocked` style) |\n| 3 | Expand the solo uwb campaign | Tests node with m1..m6; legacy TCs counted under unknown; m6 shows 0 or is omitted |\n| 4 | Expand octoshell's octograph campaign | No Tests node (no TCs) |\n| 5 | Click a TC leaf | The TC markdown opens in the editor |\n\n## Expected Final State\n\nCounts match the files; click opens. Recorded as MANUAL for the live tree; the unit half runs over real copies.\n"
+    },
+    {
+      "id": "real-uwb-tc003-legacy",
+      "note": "solo's uwb m1 TC-003 as kept in test/fixtures/legacy-uwb-TC-003.md (no status, kind, mission, last_run)",
+      "text": "---\nid: TC-003\ntitle: Set ranging mode with layout id and 0 mm tag height and read it back after reload and restart\npriority: critical\ntype: functional\nmodule: venue-ingest-mode\nsize: M\nrequirements: [M1-AC2, M1-AC5]\ntags: [uwb-ranging-m1, api, persistence, api-tbd]\n---\n\n# TC-003: Set ranging Mode and Persist\n\n**Module:** Venue ingest mode | **Priority:** Critical | **Type:** Functional\n\n## Preconditions\n- App is accessible at `{{base_url}}`; QA database `edgeserver_qa_m5` is in use\n- Shell prelude from `README.md` is sourced in the shell (defines `$ADMIN_KEY`, `req`, `setvid`, `m1_restore`) and `export BASE={{base_url}}` has been run\n- Pre-existing records: venue anchors `A1`, `A2`, `A3`, `A4` (deck, z=1.5 m); venue is in `tdoa` mode with no vendor ids set (verified in step 1)\n- No match session is LIVE or SUSPENDED (`GET {{base_url}}/api/ops/session` state is not LIVE/SUSPENDED)\n- Mode endpoint is assumed to be `PUT /api/ops/venue/mode` with fields `ingest_mode`, `layout_id`, `tag_reference_height_mm` (confirm names against the built OpenAPI at `{{base_url}}/docs`)\n\n## Test Data\n\n| Field | Value |\n|-------|-------|\n| ingest_mode | ranging |\n| layout_id | pool-layout-20260930-r3 |\n| tag_reference_height_mm | 0 |\n| vendor_anchor_id for A1..A4 | 0, 1, 2, 3 |\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | Run `setvid A1 0; setvid A2 1; setvid A3 2; setvid A4 3` | each call prints `HTTP 200` |\n| 2 | Run `req -X PUT {{base_url}}/api/ops/venue/mode -d '{\"ingest_mode\":\"ranging\",\"layout_id\":\"pool-layout-20260930-r3\",\"tag_reference_height_mm\":0}'` | `HTTP 200`; body has `\"ingest_mode\":\"ranging\"`, `\"layout_id\":\"pool-layout-20260930-r3\"`, `\"tag_reference_height_mm\":0` (0 is returned as 0, not null/omitted) |\n| 3 | Run `req {{base_url}}/api/ops/venue` (fresh request, new connection) | `HTTP 200`; same three values as step 2 |\n| 4 | Restart the edge process (operator action) and wait for `{{base_url}}/health` to return 200, then rerun step 3 | `HTTP 200`; same three values; `vendor_anchor_id` still 0..3 on A1..A4 |\n\n## Expected Final State\nVenue is in ranging mode with layout_id `pool-layout-20260930-r3` and tag reference height 0 mm, identical before and after the restart.\n\n## Teardown\n- Run `m1_restore`\n"
+    },
+    {
+      "id": "t62-nested-status-and-block-scalar",
+      "note": "T6.2 review shape (scripts-cli-scenarios.test.ts:1823): a nested `status:` and one inside a block scalar are left alone, a comment line after status survives",
+      "text": "---\nid: TC-001\nmeta:\n  status: draft\nnotes: |\n  status: draft\nstatus: ready\n# about kind\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "t62-comment-after-status",
+      "note": "T6.2 review shape: a trailing comment on the status line",
+      "text": "---\nid: TC-001\nstatus: draft  # tbd\npriority: high\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "t62-quoted-status-key",
+      "note": "T6.2 review shape: a quoted \"status\" key (the line editor cannot match it)",
+      "text": "---\nid: TC-001\n\"status\": draft\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "t62-anchored-status-aliased",
+      "note": "T6.2 review shape: an anchored status another key aliases",
+      "text": "---\nid: TC-001\nstatus: &s draft\nprev: *s\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "t62-flow-mapping-frontmatter",
+      "note": "T6.2 review shape: the whole frontmatter is a flow mapping",
+      "text": "---\n{id: TC-001, status: draft}\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "duplicate-status-key",
+      "note": "two status keys (a duplicate mapping key is a YAML error)",
+      "text": "---\nid: TC-001\nstatus: draft\nstatus: ready\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "duplicate-last-run-key",
+      "note": "two last_run keys",
+      "text": "---\nid: TC-001\nstatus: pass\nlast_run: {date: 2026-10-01}\nlast_run: {date: 2026-10-02}\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "empty-frontmatter",
+      "note": "a block with nothing in it (an empty mapping)",
+      "text": "---\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "comment-only-frontmatter",
+      "note": "a block holding only a comment",
+      "text": "---\n# nothing recorded yet\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "blank-and-comment-frontmatter",
+      "note": "a block of blank lines and comments",
+      "text": "---\n\n# a\n\n# b\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "no-trailing-newline-at-eof",
+      "note": "the closing fence is the last byte of the file (no newline, no body)",
+      "text": "---\nid: TC-001\nstatus: draft\n---"
+    },
+    {
+      "id": "no-trailing-newline-no-status",
+      "note": "no status key and the closing fence ends the file with no newline: status is appended",
+      "text": "---\nid: TC-001\n---"
+    },
+    {
+      "id": "fence-only-no-trailing-newline",
+      "note": "an empty block whose closing fence ends the file",
+      "text": "---\n---"
+    },
+    {
+      "id": "list-form-last-run-flow",
+      "note": "last_run is a flow list",
+      "text": "---\nid: TC-001\nstatus: pass\nlast_run: [2026-10-01]\npriority: high\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "list-form-last-run-block",
+      "note": "last_run is a block list",
+      "text": "---\nid: TC-001\nstatus: pass\nlast_run:\n- 2026-10-01\n- runs/R.md\npriority: high\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "trailing-blank-and-comment-after-last-run-block",
+      "note": "blank and comment lines follow a block last_run, then another key",
+      "text": "---\nid: TC-001\nstatus: pass\nlast_run:\n  date: 2026-10-01\n  evidence: runs/R.md\n\n# keep me\n\npriority: high\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "trailing-blank-and-comment-after-last-run-end",
+      "note": "last_run is the last key and blank and comment lines follow it",
+      "text": "---\nid: TC-001\nstatus: pass\nlast_run: {date: 2026-10-01}\n\n# trailing comment\n\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "status-no-value",
+      "note": "`status:` with no value",
+      "text": "---\nid: TC-001\nstatus:\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "status-null-literal",
+      "note": "`status: null` and a `last_run:` with no value",
+      "text": "---\nid: TC-001\nstatus: null\nlast_run:\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "status-numeric",
+      "note": "a status that is not a word",
+      "text": "---\nid: TC-001\nstatus: 1\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "crlf-line-endings",
+      "note": "every line ends CRLF",
+      "text": "---\r\nid: TC-001\r\nstatus: draft\r\nkind: api\r\nlast_run: {date: 2026-10-01, evidence: runs/R.md}\r\n---\r\n\r\n# TC-001: Example\r\n\r\n## Objective\r\n\r\nFlip the status.\r\n\r\n## Steps\r\n\r\n| # | Action | Expected Result |\r\n|---|--------|----------------|\r\n| 1 | do it | it is done |\r\n\r\n## Expected Final State\r\n\r\nDone.\r\n"
+    },
+    {
+      "id": "crlf-no-status",
+      "note": "CRLF and no status key (the appended lines take the file's ending)",
+      "text": "---\r\nid: TC-001\r\nkind: api\r\n---\r\n\r\n# TC-001: Example\r\n\r\n## Objective\r\n\r\nFlip the status.\r\n\r\n## Steps\r\n\r\n| # | Action | Expected Result |\r\n|---|--------|----------------|\r\n| 1 | do it | it is done |\r\n\r\n## Expected Final State\r\n\r\nDone.\r\n"
+    },
+    {
+      "id": "crlf-only-after-frontmatter",
+      "note": "LF inside the frontmatter, CRLF only in the body",
+      "text": "---\nid: TC-001\nstatus: draft\n---\n\r\n# TC-001: Example\r\n\r\n## Objective\r\n\r\nFlip the status.\r\n\r\n## Steps\r\n\r\n| # | Action | Expected Result |\r\n|---|--------|----------------|\r\n| 1 | do it | it is done |\r\n\r\n## Expected Final State\r\n\r\nDone.\r\n"
+    },
+    {
+      "id": "leading-bom",
+      "note": "a BOM before the opening fence",
+      "text": "﻿---\nid: TC-001\nstatus: draft\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "leading-bom-crlf",
+      "note": "a BOM and CRLF (the T6.2 shape of scripts-cli-scenarios.test.ts:1800)",
+      "text": "﻿---\r\n# hand note\r\nid: TC-001\r\ntitle: \"a: b\"\r\ncreated: 2026-01-02\r\nmission: M1\r\ncovers:\r\n  - M1-AC1\r\n  - M1-AC2\r\nkind: api\r\nstatus: draft  # tbd\r\npriority: high\r\n---\r\n\r\n# TC-001: Example\r\n\r\n## Objective\r\n\r\nFlip the status.\r\n\r\n## Steps\r\n\r\n| # | Action | Expected Result |\r\n|---|--------|----------------|\r\n| 1 | do it | it is done |\r\n\r\n## Expected Final State\r\n\r\nDone.\r\n"
+    },
+    {
+      "id": "last-run-with-extra-note-key",
+      "note": "last_run with a `note:` key (m7 TC-007 of this repo has one), dropped by a run pick",
+      "text": "---\nid: TC-001\nstatus: blocked\nlast_run: {date: 2026-10-01, evidence: runs/R.md, note: flaky}\nkind: unit\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "last-run-block-form",
+      "note": "a block-form last_run with evidence",
+      "text": "---\nid: TC-001\nstatus: fail\nlast_run:\n  date: 2026-10-01\n  evidence: runs/R.md\nkind: unit\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "last-run-before-status",
+      "note": "last_run precedes status",
+      "text": "---\nid: TC-001\nlast_run: {date: 2026-10-01}\nstatus: draft\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "last-run-without-status",
+      "note": "last_run but no status key: status is appended, last_run is replaced in place",
+      "text": "---\nid: TC-001\nlast_run: {date: 2026-10-01}\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "no-status-key",
+      "note": "no status and no last_run: both are appended after the last key",
+      "text": "---\nid: TC-001\ntitle: x\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "quoted-status-value-double",
+      "note": "status: \"draft\"",
+      "text": "---\nid: TC-001\nstatus: \"draft\"\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "quoted-status-value-single",
+      "note": "status: 'pass'",
+      "text": "---\nid: TC-001\nstatus: 'pass'\nlast_run: {date: 2026-10-06}\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "space-before-colon",
+      "note": "`status : draft`",
+      "text": "---\nid: TC-001\nstatus : draft\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "tab-after-colon",
+      "note": "`status:<TAB>draft`",
+      "text": "---\nid: TC-001\nstatus:\tdraft\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "fence-trailing-space",
+      "note": "the fences carry trailing blanks",
+      "text": "---  \nid: TC-001\nstatus: draft\n---\t\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "same-date-run-already-recorded",
+      "note": "pass with last_run already {date: 2026-10-06}: the script writes nothing for pass on this date",
+      "text": "---\nid: TC-001\nstatus: pass\nlast_run: {date: 2026-10-06}\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "same-status-other-date",
+      "note": "pass with an older date: the script re-dates it (the pure edit must too)",
+      "text": "---\nid: TC-001\nstatus: pass\nlast_run: {date: 2026-09-01, evidence: runs/R.md}\nkind: api\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "last-run-date-as-string",
+      "note": "last_run date quoted",
+      "text": "---\nid: TC-001\nstatus: pass\nlast_run: {date: \"2026-10-06\"}\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "unicode-values",
+      "note": "non-ASCII title and a status with a comment",
+      "text": "---\nid: TC-001\ntitle: \"Zażółć gęślą — jaźń\"\nstatus: ready # ok\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "body-looks-like-frontmatter",
+      "note": "the body holds a `---` block with its own status line, which must not be touched",
+      "text": "---\nid: TC-001\nstatus: draft\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n\n---\nstatus: draft\nlast_run: {date: 2026-01-01}\n---\n"
+    },
+    {
+      "id": "indented-status-only",
+      "note": "status exists only as an indented line under another key",
+      "text": "---\nid: TC-001\nmeta:\n  status: draft\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "no-frontmatter",
+      "note": "no frontmatter at all (the script refuses without --migrate)",
+      "text": "# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "no-frontmatter-bom",
+      "note": "a BOM and no frontmatter",
+      "text": "﻿# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "unclosed-frontmatter",
+      "note": "an opening fence and no closing one",
+      "text": "---\nid: TC-001\nstatus: draft\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "unparseable-frontmatter",
+      "note": "YAML that does not parse",
+      "text": "---\nid: [x\nstatus: draft\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "frontmatter-is-a-list",
+      "note": "frontmatter that parses to a list, not a mapping",
+      "text": "---\n- a\n- b\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "frontmatter-is-a-scalar",
+      "note": "frontmatter that parses to a scalar",
+      "text": "---\njust text\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    }
+  ]
+}

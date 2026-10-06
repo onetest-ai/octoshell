@@ -25,3 +25,15 @@ export {
   type AcCoverage,
   type MissionCoverage,
 } from "./test-cases.js";
+export { MAX_TC_BYTES } from "./tc-io.js";
+export {
+  editTestCaseStatus,
+  writeTestCaseStatus,
+  type SettableTcStatus,
+  type TcEditRefusal,
+  type TcEditResult,
+  type TcView,
+  type TcWriteRefusal,
+  type WriteTestCaseStatusOptions,
+  type WriteTestCaseStatusResult,
+} from "./tc-status.js";
