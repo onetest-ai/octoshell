@@ -23,7 +23,7 @@
     "typecheck": "turbo run typecheck",
     "coverage": "pnpm coverage:board && pnpm coverage:pack",
     "coverage:board": "pnpm --filter @octoshell/board coverage",
-    "coverage:pack": "c8 --all --check-coverage --statements 90 --lines 90 --functions 90 --branches 70 --reporter text --report-dir coverage-pack --include 'apps/vscode-extension/resources/octobots-pack/skill/mission-planner/scripts/**' --include 'apps/vscode-extension/resources/octobots-pack/skill/octobots-doctor/scripts/**' --exclude '**/vendor/**' pnpm --filter @octoshell/board test"
+    "coverage:pack": "c8 --all --check-coverage --statements 90 --lines 90 --functions 90 --branches 70 --reporter text --report-dir coverage-pack --include 'apps/vscode-extension/resources/octobots-pack/skill/*/scripts/**' --exclude '**/vendor/**' pnpm --filter @octoshell/board test"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",
