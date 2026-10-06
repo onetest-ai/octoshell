@@ -1,0 +1,11 @@
+52:  ## Plan review (Alex + Rio, 2026-10-05)
+53-
+54-  Reviewers: ba (Alex), tech-lead (Rio)
+55-  Verdict: approved with nits
+2:status: draft
+set status of "M6 - Test cases are first-class on the board" to executing
+octobots: status mission "M6 - Test cases are first-class on the board" draft -> executing
+exit=0
+stderr empty
+2:status: executing
+0

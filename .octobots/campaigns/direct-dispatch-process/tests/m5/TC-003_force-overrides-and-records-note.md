@@ -4,7 +4,8 @@ title: "--force=<reason> flips solo M10 into executing from any argv position an
 mission: M5
 covers: [M5-AC1]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m5/runs/RUN-2026-10-06-001.md}
 priority: high
 size: S
 ---

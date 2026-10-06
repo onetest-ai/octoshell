@@ -4,7 +4,8 @@ title: "scan-parked.js on solo edgeserver/tests lists the real xfail/skip with p
 mission: M5
 covers: [M5-AC6]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m5/runs/RUN-2026-10-06-001.md}
 priority: high
 size: M
 ---
@@ -24,7 +25,7 @@ scan-parked.js on solo edgeserver/tests lists the real xfail/skip with path:line
 
 ## Real data (pre-existing record)
 
-Solo's real pytest suite as of commit f2e7812d^ (extracted read-only with `git archive`), which contains `edgeserver/tests/test_m6_solve_over_the_wire_e2e.py:474 pytest.xfail(` (an imperative xfail with a reason string), plus today's solo `edgeserver/tests` (0 parked markers on 2026-10-05).
+Solo's real pytest suite as of commit f2e7812d^ (extracted read-only with `git archive`), which contains `edgeserver/tests/test_m6_solve_over_the_wire_e2e.py:474 pytest.xfail(` (scan-parked prints it as `test_m6_solve_over_the_wire_e2e.py:474` because `--root edgeserver/tests` makes paths relative to the root) (an imperative xfail with a reason string), plus today's solo `edgeserver/tests` (0 parked markers on 2026-10-05).
 
 ## Commands
 
@@ -41,7 +42,7 @@ cd $SOLO && node $PACK/skill/mission-execution/scripts/scan-parked.js --root edg
 
 | # | Action | Expected Result |
 |---|--------|----------------|
-| 1 | Scan the f2e7812d^ extraction | `.unsigned` includes edgeserver/tests/test_m6_solve_over_the_wire_e2e.py line 474 (`pytest.xfail(`); exit 1 |
+| 1 | Scan the f2e7812d^ extraction | `.unsigned` includes test_m6_solve_over_the_wire_e2e.py line 474 (`pytest.xfail(`), printed relative to the `--root` (`file` is `test_m6_solve_over_the_wire_e2e.py`, not `edgeserver/tests/...`); exit 1 |
 | 2 | Cross-check with the independent grep | Same set of hits (QA explains any difference) |
 | 3 | Scan today's solo tree (read-only) | 0 unsigned (recorded 2026-10-05); exit 0 |
 | 4 | Optional pytest -rxs cross-check | Counts consistent, or recorded 'not run' |
@@ -49,3 +50,7 @@ cd $SOLO && node $PACK/skill/mission-execution/scripts/scan-parked.js --root edg
 ## Expected Final State
 
 The scan finds the real historical xfail and agrees with today's clean suite.
+
+## Case text correction (T5.6 QA, 2026-10-06)
+
+Step 1 said `.unsigned` lists the path from the repo root (`edgeserver/tests/test_m6_...py`). With `--root`, scan-parked.js prints paths relative to the root, so the real output is `{"file":"test_m6_solve_over_the_wire_e2e.py","line":474,...}`. The case text was wrong, the tool is consistent (the same hit, the same line, exit 1); the result is unchanged.

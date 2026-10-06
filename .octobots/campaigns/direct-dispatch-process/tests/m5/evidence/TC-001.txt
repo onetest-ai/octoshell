@@ -1,0 +1,44 @@
+<scratchpad>/m5qa/work/solo-octobots/campaigns/epic-013-ruleset-and-interval-retention/missions/m10-setup-flow-preset-and-exception-authorization/mission.yaml:0
+<scratchpad>/m5qa/work/solo-octobots/campaigns/epic-013-ruleset-and-interval-retention/campaign.yaml:0
+executing exit=3
+set-status: refusing to move "M10 - One setup flow, preset warnings, and edge-side exception authorization" into executing: no plan review is recorded.
+  no `## Plan review (...)` heading in the mission notes or the campaign notes
+To record a review, write the record below into the mission notes or the campaign notes with entity-io.mjs
+  unchanged
+active exit=3
+set-status: refusing to move "M10 - One setup flow, preset warnings, and edge-side exception authorization" into executing: no plan review is recorded.
+  no `## Plan review (...)` heading in the mission notes or the campaign notes
+To record a review, write the record below into the mission notes or the campaign notes with entity-io.mjs
+  unchanged
+in progress exit=3
+set-status: refusing to move "M10 - One setup flow, preset warnings, and edge-side exception authorization" into executing: no plan review is recorded.
+  no `## Plan review (...)` heading in the mission notes or the campaign notes
+To record a review, write the record below into the mission notes or the campaign notes with entity-io.mjs
+  unchanged
+running exit=3
+set-status: refusing to move "M10 - One setup flow, preset warnings, and edge-side exception authorization" into executing: no plan review is recorded.
+  no `## Plan review (...)` heading in the mission notes or the campaign notes
+To record a review, write the record below into the mission notes or the campaign notes with entity-io.mjs
+  unchanged
+awaiting approval exit=0
+draft exit=0
+cancelled exit=0
+draft exit=0
+set status of "M10 - One setup flow, preset warnings, and edge-side exception authorization" to done
+octobots: status mission "M10 - One setup flow, preset warnings, and edge-side exception authorization" draft -> done
+draft->done exit=0
+2:status: done
+set status of "M10 - One setup flow, preset warnings, and edge-side exception authorization" to failed
+octobots: status mission "M10 - One setup flow, preset warnings, and edge-side exception authorization" draft -> failed
+draft->failed exit=0
+set-status: refusing to move "M10 - One setup flow, preset warnings, and edge-side exception authorization" into executing: no plan review is recorded.
+  no `## Plan review (...)` heading in the mission notes or the campaign notes
+To record a review, write the record below into the mission notes or the campaign notes with entity-io.mjs
+(loadEntity/dumpEntity; see mission-planner SKILL.md, Plan review), never by editing the YAML text.
+Fill the placeholders and keep one verdict. The lines between the markers start in column 0:
+--- record template (paste into the mission or campaign notes) ---
+## Plan review (<names or roles>, <date>)
+Reviewers: ba (<name>), tech-lead (<name>)
+Verdict: approved | approved with nits
+--- end of record template ---
+To start without one, re-run with --force=<reason>; the reason is recorded in the mission notes.
