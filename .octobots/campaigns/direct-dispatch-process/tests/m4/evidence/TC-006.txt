@@ -1,0 +1,17 @@
+--- step1 real TC-003
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4qa/work/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_set-ranging-mode-persists.md
+exit=0
+--- step2 TC-097 id mismatch
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4qa/work/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-097_id-mismatch.md
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-097_id-mismatch.md: id TC-003 does not match the filename prefix TC-097
+exit=0
+--- step3 AS WRITTEN: TC-098_nosection.md (awk copy keeps id: TC-003)
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4qa/work/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-098_nosection.md
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-098_nosection.md: id TC-003 does not match the filename prefix TC-098
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-098_nosection.md: missing the "## Expected Final State" section
+exit=0
+--- step3 CORRECTED: TC-003_nosection.md (filename prefix equals id)
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4qa/work/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_nosection.md
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_nosection.md: missing the "## Expected Final State" section
+exit=0
+leftover: 0

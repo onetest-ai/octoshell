@@ -4,7 +4,8 @@ title: "BoardModel ignores tests/; the watcher skips runs/ and evidence/ but reb
 mission: M4
 covers: [M4-AC6]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m4/runs/RUN-2026-10-06-001.md}
 priority: high
 size: S
 ---

@@ -1,0 +1,25 @@
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/board
+
+ ✓ test/validate-tests-parity.test.ts > tests pairing: validate.js and validateBoard agree > over every real board copy, as sets, and the rule never touches validate.js's exit code 3295ms
+ ✓ test/validate-tests-parity.test.ts > tests pairing: validate.js and validateBoard agree > adds no error to validateBoard 446ms
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > reports exactly the planted gaps, as warnings, with the same text from both runtimes
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > reports an unlinked README, a disagreeing map row and every kind of TC problem
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > is silent for a fully paired mission and for a cancelled one
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > applies in every status except cancelled
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > ignores a legacy mission.md, which has no structured criteria or documents
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > works on a board not named .octobots (paths stay relative to the board)
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > validate.js on a mission folder reports that mission's pairing warnings only
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > never changes the exit code: 0 for a well-formed entity, 1 only for its own errors
+ ✓ test/validate-tests-parity.test.ts > tests pairing on a synthetic board > lists a mission's own tests README findings under the board root even when run from another cwd
+ ✓ test/validate-tests-parity.test.ts > validate.js <TC file> > checks that one file, prints its warnings and exits 0
+ ✓ test/validate-tests-parity.test.ts > validate.js <TC file> > accepts a relative path and a TC whose mission is not on the board
+ ✓ test/validate-tests-parity.test.ts > validate.js <TC file> > matches a lettered folder (m3b) to its mission
+ ✓ test/validate-tests-parity.test.ts > validate.js <TC file> > exits 2 'not an entity file' for a path that is neither an entity nor a tests/m<n>/TC-*.md file
+
+ Test Files  1 passed (1)
+      Tests  15 passed (15)
+   Start at  01:45:43
+   Duration  4.82s (transform 46ms, setup 0ms, collect 58ms, tests 4.61s, environment 0ms, prepare 28ms)
+
+exit=

@@ -4,7 +4,8 @@ title: "Gate/mission-execution skill text carries the record, notes, tick-exactl
 mission: M4
 covers: [M4-AC5]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m4/runs/RUN-2026-10-06-001.md}
 priority: high
 size: S
 ---

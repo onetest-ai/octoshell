@@ -1,0 +1,19 @@
+TC-009 ws2 re-score with the installed validate.js (ws2/.claude/skills/mission-planner/scripts/validate.js) and score.sh
+===== /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4qa/tc009/ws2
+mission: /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4qa/tc009/ws2/.octobots/campaigns/direct-dispatch-process/missions/m8-octograph-prints-its-version-banner/mission.yaml
+status: draft
+ACs: 5
+README.md
+TC-001_version-flag.md
+TC-002_short-flag.md
+TC-003_no-banner-elsewhere.md
+TC-004_misuse-and-empty-dir.md
+TC-005_bundle-parity.md
+README=yes
+doclink=yes
+README AC rows: 5 (of 5)
+rows with empty TC column: none
+TC files:        5
+-- /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4qa/tc009/ws2/.octobots/campaigns/direct-dispatch-process/tests/m8/TC-001_version-flag.md
+...
+installed validate.js on M8 mission dir: OK, exit 0, no warnings; on the 5 TC files via score.sh: no output (clean)

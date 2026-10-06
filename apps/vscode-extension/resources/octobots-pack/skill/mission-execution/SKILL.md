@@ -11,7 +11,7 @@ version: 57
 How to take a **planned octobots mission** (tasks each with acceptance criteria — see the
 `mission-planner` skill for planning) and drive it to a **verified, merged mission**. It is the loop
 that reliably lands dozens of tasks green: each task planned, built test-first, independently QA'd and
-review-gated before it lands, then the whole mission gated once — with a live E2E at that gate, which
+review-gated before it lands, then the whole mission gated: the mission's last Mission QA task runs the test cases live, and the gate runs them again, with a live E2E that
 catches defects the green unit suites miss.
 
 **Use this when:** executing a mission's tasks (plan exists, criteria set). **Don't** use it for a
@@ -211,6 +211,24 @@ they are gone the mission's cost is unrecoverable.
 **Resuming a stalled mission** needs no run id. Read the board (which tasks are `done`) and the
 mission branch (`git log`, open PRs). Then dispatch the phase that did not finish for the first
 unfinished task, telling the agent what already exists.
+
+### Mission QA: run the test cases live
+
+**The last-task convention.** A mission's final task is `Mission QA: run tests/m<n> live…`, owned by
+QA (`role: qa-engineer`), and it runs the whole suite in `tests/m<n>/`, not a slice. Its own acceptance
+criteria restate the mission's. It is the only live run outside the gate: build tasks still gate
+statically. The canonical rules are in `mission-completion-gate` § *QA on the test
+cases*; this task and gate phase 2 apply the same ones, and they must stay in step:
+
+- Run every TC in `tests/m<n>/` against the real system, by the mode each TC names.
+- Write `runs/RUN-YYYY-MM-DD-NNN.md`, one section per TC with the steps run and the observed values.
+- Record each TC as PASS, FAIL, BLOCKED or UNREACHABLE. UNREACHABLE is written as status `blocked`, with the reason in the RUN file.
+- Could not drive the browser or log in is BLOCKED, not a pass.
+- A manual execution (F5 or a human) is noted as manual in the RUN file.
+- Name the pre-existing record per criterion; a criterion proved only on QA-created data is not passed.
+- Write `## QA verification` into the task and mission `notes` through `entity-io.mjs`. The gate writes its own `## Completion gate (<date>)` section, never a second `## QA verification`.
+- Tick exactly the criteria that have evidence: the task's own. Do not tick the mission's; record which mission criteria have evidence in the `## QA verification` block, and the gate ticks them in phase 5.
+- Until a status script exists, edit each TC's frontmatter `status` (and `last_run`) by hand.
 
 ## Three loops: when the tests run again
 
@@ -431,7 +449,7 @@ coverage, its own acceptance criteria, a review of that task's diff. Nothing in 
 the **mission's** acceptance criteria, and nothing has exercised the tasks *together*. That is a
 separate, blocking, once-per-mission step:
 
-> **Static gates between tasks, ONE dynamic gate per mission.**
+> **Static gates between tasks, ONE dynamic gate per mission** (the last Mission QA task runs the suite live once before it; the gate re-runs it).
 
 When the last task's PR has merged, flip the mission `done` with `set-status.js`. That fires
 `.octobots/hooks/mission-gate.mjs` (PostToolUse; it triggers on `M<n>` ids and deliberately ignores
@@ -490,8 +508,7 @@ merged** — that is the middle of the job, not the end of it.
   looks parallel (two tasks on unrelated files) is still ordered: the tree, the branch and the board
   are shared, and the ordering costs a few minutes where a corrupted tree costs the mission.
 - **Flip the MISSION status, not just task statuses.** Mark the mission `active` before starting its
-  first task, and `done` once the last task is green and the mission's acceptance criteria are checked
-  off: `set-status.js <campaign>/missions/<mission> "<M<n> - name>" active|done`. This is
+  first task, and `done` once the last task is green (the gate then ticks the mission's criteria in phase 5): `set-status.js <campaign>/missions/<mission> "<M<n> - name>" active|done`. This is
   not bookkeeping. A mission that is never flipped is never gated — and `.octobots/hooks/work-log.mjs`
   records the session → mission link that cost and effort attribution rely on. Flipping only task
   statuses silently skips both.
@@ -499,7 +516,7 @@ merged** — that is the middle of the job, not the end of it.
   task's acceptance criteria and flips its `status`, committing the `.octobots/` change on the
   task branch alongside the work it describes. Mission-level flips (mission `active` at the start, `done` at the end) are the
   orchestrator's, made on the mission branch **before the first task** and **after the last task lands**.
-  Never let a task write board state for a *different* task.
+  Never let a task write board state for a *different* task, with one exception: the last Mission QA task writes `## QA verification` into the mission `notes`.
 - **Acceptance-criteria-driven.** Every task carries ≥1 checkable criterion (set at plan time); the
   QA + land phase checks them off; the live E2E re-verifies the mission-level criteria.
 - **Extensive testing.** TDD; full suites + the project's linters + type-checks green before a task
@@ -519,7 +536,9 @@ merged** — that is the middle of the job, not the end of it.
   often a mission's first task) settles storage/migration/contract decisions before the build.
 - **Scope review before building.** Have the `ba` + `tech-lead` review the mission's scope + criteria;
   surface gaps as a prioritized list and fix the plan before coding.
-- **Live E2E at the mission gate** (e.g. Playwright), never per task — see § *The mission gate*. It
+- **Live E2E at the mission gate** (e.g. Playwright), never per build task — see § *The mission gate*. The
+  one other live run is the mission's last task (§ *Mission QA: run the test cases live*), after every
+  build task has landed; the gate still runs the suite again. It
   catches prod-breaking bugs (case-sensitivity, install failures, UX defects) that green unit suites do
   not. When it finds defects, **file them as octobots bugs and fix them**; the mission isn't done until
   it's green.
