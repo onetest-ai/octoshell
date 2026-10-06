@@ -56,15 +56,15 @@ export function readTestCaseDetail(boardRoot: string, relPath: string): TestCase
   if (!lstatOrNull(file)) return null;
   const linked = [file, folderDir, dirname(folderDir)].some((p) => lstatOrNull(p)?.isSymbolicLink());
 
-  let real = file;
-  if (linked) {
-    try {
-      real = realpathSync(file);
-      const rel = relative(realpathSync(boardRoot), real);
-      if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel) || !tcSegments(rel.split(sep).join("/"))) return null;
-    } catch {
-      return null;
-    }
+  // Resolved ALWAYS, not only when one of the three links above is seen: a symlinked campaign folder (or any other
+  // ancestor) must not carry the read out of the board either.
+  let real: string;
+  try {
+    real = realpathSync(file);
+    const rel = relative(realpathSync(boardRoot), real);
+    if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel) || !tcSegments(rel.split(sep).join("/"))) return null;
+  } catch {
+    return null;
   }
 
   const fileName = basename(relPath);

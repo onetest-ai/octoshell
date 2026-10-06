@@ -78,6 +78,29 @@ tags: [uwb-ranging-m1, api, persistence, api-tbd]
 | 1 | Set mode | persisted |
 `;
 
+/** Solo's uwb m5 TC-001 (M5 is cancelled in solo): its real frontmatter, body abbreviated. */
+const UWB_M5_TC001 = `---
+id: TC-001
+title: Verify emulator v01 gateway sends 5 Hz range sets per tag and waits for acks
+priority: high
+type: integration
+module: ea-emulator v01 gateway
+size: M
+requirements: [M5-AC1]
+tags: [emulator, v01, tcp, ack, pacing, tbd-flags, no-browser]
+---
+
+# TC-001: Emulator v01 gateway pacing and acks
+`;
+
+/** A fixture derived from a solo uwb TC's text (`source`): `edit` rewrites it, then it lands as `name` in `folder`. */
+function fromUwb(octo: string, source: string, name: string, folder: string, edit: (t: string) => string = (t) => t): string {
+  const rel = `${DDP}/tests/${folder}/${name}`;
+  mkdirSync(dirname(join(octo, rel)), { recursive: true });
+  writeFileSync(join(octo, rel), edit(source));
+  return rel;
+}
+
 const get = async (r: ReturnType<typeof realRpc>, path: string) => (await r.rpc.call("tests:get", { path })) as TestCaseDetail | null;
 const setStatus = async (r: ReturnType<typeof realRpc>, path: string, status: string, base: unknown) =>
   (await r.rpc.call("tests:setStatus", { path, status, base })) as SetTestStatusResult;
@@ -173,62 +196,64 @@ describe("tests:get over TCs derived from solo's uwb shapes", () => {
     expect((await get(r, TC4))!.legacy).toBe(false);
   });
 
-  it("unparseable frontmatter: id from the filename, title from the H1, covers [], the text after the block as markdown, not writable", async () => {
+  it("unparseable frontmatter (uwb TC-003 with a broken title): id from the filename, title from the H1, covers [], the text after the block as markdown, not writable", async () => {
     const octo = trackedBoardCopies()[0]!;
-    const rel = derive(octo, "TC-094_broken-yaml.md", (t) => t.replace(/^title:.*$/m, 'title: "unterminated').replace(/^# TC-004.*$/m, "# The H1 title"), "m6");
+    const rel = fromUwb(octo, LEGACY_UWB_TC003, "TC-094_broken-yaml.md", "m1", (t) => t.replace(/^title:.*$/m, 'title: "unterminated'));
     const d = (await get(realRpc(octo, CLOCK), rel))!;
     expect(d.tc.id).toBe("TC-094");
-    expect(d.tc.title).toBe("The H1 title");
+    expect(d.tc.title).toBe("TC-003: Set ranging Mode and Persist");
     expect(d.tc.status).toBe("unknown");
     expect(d.tc.kind).toBeNull();
     expect(d.tc.covers).toEqual([]);
     expect(d.writable).toEqual({ ok: false, reason: "unparseable" });
     expect(d.body.kind).toBe("markdown");
-    expect((d.body as { text: string }).text).not.toMatch(/^status:/m);
-    expect((d.body as { text: string }).text).toMatch(/^# The H1 title/m);
+    expect((d.body as { text: string }).text).not.toMatch(/^(requirements|title|tags):/m);
+    expect((d.body as { text: string }).text).toBe(LEGACY_UWB_TC003.slice(LEGACY_UWB_TC003.indexOf("\n---\n", 3) + 5));
     expect(d.legacy).toBe(false);
   });
 
-  it("no frontmatter block: the whole file as a plain body, title from the H1, writable no-frontmatter", async () => {
+  it("no frontmatter block (uwb TC-003 with its block cut, and a `---` rule in the body): the whole file as a plain body, title from the H1, writable no-frontmatter", async () => {
     const octo = trackedBoardCopies()[0]!;
-    const text = "# TC-095: bare file\n\nJust prose, no frontmatter.\n\n---\n\nrule above is not a block\n";
-    const rel = derive(octo, "TC-095_bare.md", () => text);
+    const text = `${LEGACY_UWB_TC003.slice(LEGACY_UWB_TC003.indexOf("\n---\n", 3) + 5)}\n---\n\nrule above is not a block\n`;
+    const rel = fromUwb(octo, text, "TC-095_bare.md", "m1");
     const d = (await get(realRpc(octo, CLOCK), rel))!;
     expect(d.body).toEqual({ kind: "plain", text });
     expect(d.tc.id).toBe("TC-095");
-    expect(d.tc.title).toBe("TC-095: bare file");
+    expect(d.tc.title).toBe("TC-003: Set ranging Mode and Persist");
     expect(d.writable).toEqual({ ok: false, reason: "no-frontmatter" });
   });
 
-  it("padded over 4 MiB: body too-large (no text), writable too-large", async () => {
+  it("uwb TC-003 padded over 4 MiB: body too-large (no text), writable too-large", async () => {
     const octo = trackedBoardCopies()[0]!;
-    const rel = derive(octo, "TC-096_huge.md", (t) => `${t}\n${"x".repeat(4 * 1024 * 1024 + 10)}\n`);
+    const rel = fromUwb(octo, LEGACY_UWB_TC003, "TC-096_huge.md", "m1", (t) => `${t}\n${"x".repeat(4 * 1024 * 1024 + 10)}\n`);
     const d = (await get(realRpc(octo, CLOCK), rel))!;
     expect(d.body).toEqual({ kind: "too-large" });
     expect(d.writable).toEqual({ ok: false, reason: "too-large" });
     expect(JSON.stringify(d).length).toBeLessThan(100_000);
   });
 
-  it("a tests folder no mission names (m9): mission null, missionId null, criteria texts null", async () => {
+  it("uwb TC-003 copied into a tests folder no mission names (m9): mission null, missionId null, criteria texts null", async () => {
     const octo = trackedBoardCopies()[0]!;
-    const rel = derive(octo, "TC-001_orphan.md", (t) => t.replace(/^mission:.*$/m, "mission: M9").replace(/^covers:.*$/m, "covers: [M9-AC1]"), "m9");
+    const rel = fromUwb(octo, LEGACY_UWB_TC003, "TC-003_set-ranging-mode-persists.md", "m9");
     const d = (await get(realRpc(octo, CLOCK), rel))!;
     expect(d.tc.mission).toBe("M9");
     expect(d.mission).toBeNull();
     expect(d.missionId).toBeNull();
     expect(d.campaignId).toEqual(expect.any(String));
-    expect(d.criteria).toEqual([{ ac: "M9-AC1", text: null }]);
+    expect(d.criteria).toEqual([{ ac: "M1-AC2", text: null }, { ac: "M1-AC5", text: null }]);
   });
 
-  it("a TC of a cancelled mission (uwb m5 shape): mission.status cancelled, criteria texts still present, writable", async () => {
+  it("a TC of a cancelled mission (uwb m5 TC-001, under a cancelled M5): mission.status cancelled, criteria texts still present, writable", async () => {
     const octo = trackedBoardCopies()[0]!;
-    const rel = derive(octo, "TC-097_cancelled.md", (t) => t.replace(/^mission:.*$/m, "mission: M7").replace(/^covers:.*$/m, "covers: [M7-AC1]"), "m7");
-    const m7dir = readdirSync(join(octo, DDP, "missions")).find((n) => /^m7-/.test(n))!;
-    const mf = join(octo, DDP, "missions", m7dir, "mission.yaml");
+    const rel = fromUwb(octo, UWB_M5_TC001, "TC-001_emulator-v01-5hz-pacing-and-acks.md", "m5");
+    const m5dir = readdirSync(join(octo, DDP, "missions")).find((n) => /^m5-/.test(n))!;
+    const mf = join(octo, DDP, "missions", m5dir, "mission.yaml");
     writeFileSync(mf, readFileSync(mf, "utf8").replace(/^status: .*$/m, "status: cancelled"));
+    const ac1 = loadEntity(readFileSync(mf, "utf8")).acceptanceCriteria[0]!.text;
     const d = (await get(realRpc(octo, CLOCK), rel))!;
     expect(d.mission?.status).toBe("cancelled");
-    expect(d.criteria[0]!.text).toEqual(expect.any(String));
+    expect(d.criteria).toEqual([{ ac: "M5-AC1", text: ac1 }]);
+    expect(d.legacy).toBe(true);
     expect(d.writable).toEqual({ ok: true });
   });
 

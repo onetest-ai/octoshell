@@ -94,6 +94,25 @@ describe("writeTestCaseStatus: what it refuses", () => {
     expect(readFileSync(join(c1b, "tests-real/m1/TC-001_example.md"), "utf8")).toBe(READY);
   });
 
+  it("refuses a TC reached through a symlinked campaign folder that leaves the board; the outside file is untouched", () => {
+    const b = board(READY);
+    const outside = join(b.root, "..", "outside-campaign");
+    mkdirSync(join(outside, "tests", "m1"), { recursive: true });
+    writeFileSync(join(outside, "tests", "m1", "TC-001_example.md"), READY);
+    symlinkSync(outside, join(b.root, "campaigns", "evil"));
+    const r = writeTestCaseStatus(b.root, "campaigns/evil/tests/m1/TC-001_example.md", { status: "pass", date: "2026-10-06" });
+    expect(r).toMatchObject({ ok: false, reason: "symlink" });
+    expect(readFileSync(join(outside, "tests", "m1", "TC-001_example.md"), "utf8")).toBe(READY);
+    expect(readdirSync(join(outside, "tests", "m1"))).toEqual(["TC-001_example.md"]);
+  });
+
+  it("still writes through a symlinked campaign folder that resolves to a TC inside the board (the script's rule)", () => {
+    const b = board(READY);
+    symlinkSync(join(b.root, "campaigns", "c1"), join(b.root, "campaigns", "alias"));
+    expect(writeTestCaseStatus(b.root, "campaigns/alias/tests/m1/TC-001_example.md", { status: "draft", date: null })).toMatchObject({ ok: true, changed: true });
+    expect(readFileSync(b.file, "utf8")).toBe(READY.replace("status: ready", "status: draft"));
+  });
+
   it("refuses a path that is not campaigns/<c>/tests/m<n>/TC-*.md", () => {
     const b = board(READY);
     writeFileSync(join(b.dir, "README.md"), "# readme\n");

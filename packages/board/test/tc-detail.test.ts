@@ -71,4 +71,13 @@ describe("readTestCaseDetail", () => {
     symlinkSync(join(root, "campaigns/c1/tests/m1"), join(root, "campaigns/c1/tests/m2"));
     expect(readTestCaseDetail(root, "campaigns/c1/tests/m2/TC-001_example.md")).toMatchObject({ writable: { ok: false, reason: "symlink" } });
   });
+
+  it("null for a TC reached through a symlinked campaign folder that leaves the board (no out-of-board read)", () => {
+    const root = board(FULL);
+    const outside = join(dirname(root), "outside-campaign");
+    mkdirSync(join(outside, "tests/m1"), { recursive: true });
+    writeFileSync(join(outside, "tests/m1/TC-001_secret.md"), FULL.replace("# TC-001: Example", "# SECRET"));
+    symlinkSync(outside, join(root, "campaigns/evil"));
+    expect(readTestCaseDetail(root, "campaigns/evil/tests/m1/TC-001_secret.md")).toBeNull();
+  });
 });
