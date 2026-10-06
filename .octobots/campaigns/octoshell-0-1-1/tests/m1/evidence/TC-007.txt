@@ -1,0 +1,51 @@
+The CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/apps/vscode-extension
+
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > shows the header, Status row, criteria, rendered body, hint and Open source file 646ms
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > a pick sends {path, status, base} equal to what the panel rendered; after it: the new status, today's date, `no evidence`, no link, no notice; the dropdown is disabled in flight 635ms
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > an agent's newer status makes the pick stale: nothing written, the panel shows the agent's status and a role=status notice that survives a spine event until the next pick 746ms
+ ✓ test/test-case-view.test.tsx > test-case panel over the real TC-004 (values read from its frontmatter) > a non-stale refusal shows the writer's message inline as role=status, writes nothing and notifies nothing 664ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a legacy TC (uwb m1 TC-003 shape): unknown is the current, unselectable option; the dropdown is enabled; kind none; never run; the --migrate note stays after a pick 657ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > an evidence file that does not exist shows the date and the path as plain text marked `not found` 655ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > covers [] says `none listed`; a TC that never ran says `never run` 649ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > unparseable frontmatter: id from the filename, title from the H1, unknown, none, `none listed`, the text after the block, and a disabled dropdown whose aria-describedby names the reason 638ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > no frontmatter: the whole file as plain text, a disabled dropdown and the --migrate hint 635ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > over 4 MiB: `too large to show; Open source file`, a disabled dropdown, and the button still works 643ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a symlinked TC inside the board reads but is never writable: disabled with its reason 659ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a tests folder with no matching mission (m9): `mission M9 not found` once and no criterion links 640ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a TC of a cancelled mission renders normally: dropdown enabled, criterion links open the mission 591ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > the file deleted, then a spine event: `This test case no longer exists` and no dropdown 681ms
+ ✓ test/test-case-view.test.tsx > test-case panel: degenerate and legacy records > a path the guard rejects shows the no-longer-exists state, not an error 616ms
+ ✓ test/test-case-view.test.tsx > test-case panel: sanitized rendering > renders `<id of first SCHEDULED match …>` literally and creates no script or img element for hostile bodies 636ms
+ ✓ test/test-case-view.test.tsx > test-case panel over solo's real uwb TCs (when OCTOBOTS_BOARD_COPIES names solo) > TC-003 (legacy), TC-006 (the sanitizer record) and the cancelled-mission TC (m5) read from the real files 732ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > returns the header, criterion text, mission, evidence flag, writable and a frontmatter-free markdown body 712ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > flags an evidence file that does not exist (path kept, exists false) 613ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > has evidence null when the TC never ran 582ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over the real TC-004 (values read from its frontmatter) > a covers id beyond the mission's criteria has text null; the others keep their text 644ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a legacy TC (uwb m1 TC-003): unknown status, kind null, both ACs with the mission's texts, legacy, writable 633ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a TC with kind but no mission is still legacy; a complete one is not 639ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > unparseable frontmatter (uwb TC-003 with a broken title): id from the filename, title from the H1, covers [], the text after the block as markdown, not writable 636ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > no frontmatter block (uwb TC-003 with its block cut, and a `---` rule in the body): the whole file as a plain body, title from the H1, writable no-frontmatter 633ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > uwb TC-003 padded over 4 MiB: body too-large (no text), writable too-large 631ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > uwb TC-003 copied into a tests folder no mission names (m9): mission null, missionId null, criteria texts null 642ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a TC of a cancelled mission (uwb m5 TC-001, under a cancelled M5): mission.status cancelled, criteria texts still present, writable 652ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get over TCs derived from solo's uwb shapes > a TC symlink resolving inside the board reads, but is not writable (symlink) 629ms
+ ✓ test/tests-detail-rpc.test.ts > every real TC of every real board copy answers tests:get like the listing says > returns a detail whose tc equals tests:list's, with a body and no frontmatter line in a markdown body 910ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > pass with a matching base equals `set-test-status.js <tc> pass --date <clock day>` and emits entities:changed once 741ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > the date is the injected clock's UTC day, not the local day 710ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > ready on a file holding draft equals `set-test-status.js <tc> ready` (no --date) and leaves last_run alone 754ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > base.status ready while the file holds fail: stale with current fail, bytes unchanged, no event 690ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > a base whose last_run moved is stale even when the status matches 627ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > re-sending the file's current status is a host no-op: changed false, bytes and mtime unchanged, no event 561ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > on the legacy uwb TC-003 shape a pass writes status and last_run, equals the script, and leaves kind and mission absent 595ms
+ ✓ test/tests-detail-rpc.test.ts > tests:setStatus writes what set-test-status.js writes, or refuses without writing > refuses an unwritable file with its own reason, writing nothing and emitting nothing 500ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get and tests:setStatus accept only a real TC path > a `..` path, an absolute path, an outside symlink, a mission.yaml, a tests README and a TC-*.md outside campaigns/<c>/tests/ read null, refuse, and change nothing 589ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get and tests:setStatus accept only a real TC path > a TC that is gone reads null and refuses a write 498ms
+ ✓ test/tests-detail-rpc.test.ts > tests:get and tests:setStatus accept only a real TC path > refuses a path the lstat finds to be a directory named TC-*.md 490ms
+
+ Test Files  2 passed (2)
+      Tests  41 passed (41)
+   Start at  16:05:34
+   Duration  15.66s (transform 170ms, setup 86ms, collect 308ms, tests 26.44s, environment 77ms, prepare 55ms)
+

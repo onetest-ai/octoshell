@@ -1,0 +1,25 @@
+@octoshell/vscode-extension:build:   dist/extension.js.map    1.8mb
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build: ⚡ Done in 23ms
+@octoshell/vscode-extension:build: Bundled dist/extension.js
+@octoshell/vscode-extension:build: The CJS build of Vite's Node API is deprecated. See https://vitejs.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+@octoshell/vscode-extension:build: vite v5.3.5 building for production...
+@octoshell/vscode-extension:build: transforming...
+@octoshell/vscode-extension:build: ✓ 392 modules transformed.
+@octoshell/vscode-extension:build: rendering chunks...
+@octoshell/vscode-extension:build: computing gzip size...
+@octoshell/vscode-extension:build: ../../media/index.html                     0.40 kB │ gzip:   0.26 kB
+@octoshell/vscode-extension:build: ../../media/assets/codicon-B16ygVZF.ttf   80.19 kB
+@octoshell/vscode-extension:build: ../../media/assets/index-B2jrGbbR.css     39.91 kB │ gzip:   9.25 kB
+@octoshell/vscode-extension:build: ../../media/assets/index-CzihnElV.js     619.73 kB │ gzip: 167.51 kB
+@octoshell/vscode-extension:build: 
+@octoshell/vscode-extension:build: (!) Some chunks are larger than 500 kB after minification. Consider:
+@octoshell/vscode-extension:build: - Using dynamic import() to code-split the application
+@octoshell/vscode-extension:build: - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+@octoshell/vscode-extension:build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+@octoshell/vscode-extension:build: ✓ built in 840ms
+
+ Tasks:    4 successful, 4 total
+Cached:    3 cached, 4 total
+  Time:    1.309s 
+

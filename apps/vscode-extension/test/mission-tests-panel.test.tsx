@@ -2,7 +2,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { cleanup, render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import { mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { MissionView } from "../src/webview/mission-view.js";
 import { realRpc, type RealRpc } from "./fixtures/real-rpc.js";
 import { trackedBoardCopies } from "./fixtures/real-board.js";
@@ -19,10 +20,10 @@ function missionFor(r: RealRpc, token: string) {
   return { camp, mission, dir: join(r.octo, camp.folderPath, "tests", token.toLowerCase()) };
 }
 
-function show(r: RealRpc, missionId: string, onOpenTestFile: (p: string) => void = noop) {
+function show(r: RealRpc, missionId: string, onOpenTestCase: (p: string) => void = noop) {
   return render(
     <MissionView id={missionId} rpc={r.rpc} onOpenTask={noop} onOpenBug={noop} onNewTask={noop} onDeleteTask={noop}
-      onOpenDoc={noop} onAddLink={noop} onAttachFile={noop} onOpenFile={noop} onOpenTestFile={onOpenTestFile} />,
+      onOpenDoc={noop} onAddLink={noop} onAttachFile={noop} onOpenFile={noop} onOpenTestCase={onOpenTestCase} />,
   );
 }
 
@@ -72,7 +73,7 @@ describe("mission panel: Tests section", () => {
     expect(rows.map((x) => x.getAttribute("data-status"))).toEqual(["pass", "fail", "blocked", "ready", "draft", "unknown"]);
   });
 
-  it("clicking a TC reports its board-relative path through onOpenTestFile", async () => {
+  it("clicking a TC row opens its panel: reports its board-relative path through onOpenTestCase (decision 4), never openTestFile", async () => {
     const r = realRpc();
     const { camp, mission } = missionFor(r, "M6");
     const first = r.board.listTests(camp.id, "M6")[0]!;
@@ -81,6 +82,13 @@ describe("mission panel: Tests section", () => {
     fireEvent.click(await screen.findByRole("button", { name: new RegExp(`Open ${first.id}\\b`) }));
     expect(onOpen).toHaveBeenCalledWith(first.path);
     expect(first.path.startsWith("campaigns/")).toBe(true);
+  });
+
+  it("the mission panel's wiring in chat-entry posts openTestCase for a TC row and never openTestFile", () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "webview", "chat-entry.tsx"), "utf8");
+    const mission = /<MissionView[\s\S]*?\/>/.exec(src)?.[0] ?? "";
+    expect(mission).toContain('onOpenTestCase={(path) => vscodeApi.postMessage({ type: "openTestCase", path })}');
+    expect(mission).not.toContain("openTestFile");
   });
 
   it("a legacy `unknown` TC shows as unknown with no warning class (decision 12)", async () => {

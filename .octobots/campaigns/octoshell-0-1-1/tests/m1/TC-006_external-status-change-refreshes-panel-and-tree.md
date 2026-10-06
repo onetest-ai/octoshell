@@ -4,7 +4,8 @@ title: "An agent's set-test-status.js write updates the open panel and the tree;
 mission: M1
 covers: [M1-AC5]
 kind: ui
-status: draft
+status: blocked
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/octoshell-0-1-1/tests/m1/runs/RUN-2026-10-06-001.md}
 priority: critical
 size: M
 ---

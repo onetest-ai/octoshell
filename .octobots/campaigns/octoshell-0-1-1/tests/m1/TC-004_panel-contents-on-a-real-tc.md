@@ -4,7 +4,8 @@ title: "The panel of a real TC shows header, dropdown, kind, last run link, cove
 mission: M1
 covers: [M1-AC1, M1-AC9]
 kind: ui
-status: draft
+status: blocked
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/octoshell-0-1-1/tests/m1/runs/RUN-2026-10-06-001.md}
 priority: critical
 size: M
 ---

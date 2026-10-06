@@ -1,0 +1,32 @@
+
+> octoshell@0.0.0 lint /Users/arozumenko/Development/octoshell
+> turbo run lint
+
+• Packages in scope: @octoshell/board, @octoshell/graph, @octoshell/tokenomics, @octoshell/vscode-extension
+• Running lint in 4 packages
+• Remote caching disabled
+@octoshell/vscode-extension:lint: cache miss, executing 5fad72cff3551842
+@octoshell/board:lint: cache hit, replaying logs f39b73c0e257df09
+@octoshell/board:lint: 
+@octoshell/board:lint: > @octoshell/board@0.0.0 lint /Users/arozumenko/Development/octoshell/packages/board
+@octoshell/board:lint: > eslint src
+@octoshell/board:lint: 
+@octoshell/graph:lint: cache hit, replaying logs 995f1b1a82e19e3b
+@octoshell/graph:lint: 
+@octoshell/graph:lint: > @octoshell/graph@0.0.0 lint /Users/arozumenko/Development/octoshell/packages/graph
+@octoshell/graph:lint: > eslint src test
+@octoshell/graph:lint: 
+@octoshell/tokenomics:lint: cache hit, replaying logs d08985d8bef51edb
+@octoshell/tokenomics:lint: 
+@octoshell/tokenomics:lint: > @octoshell/tokenomics@0.0.0 lint /Users/arozumenko/Development/octoshell/packages/tokenomics
+@octoshell/tokenomics:lint: > eslint src
+@octoshell/tokenomics:lint: 
+@octoshell/vscode-extension:lint: 
+@octoshell/vscode-extension:lint: > @octoshell/vscode-extension@0.1.1 lint /Users/arozumenko/Development/octoshell/apps/vscode-extension
+@octoshell/vscode-extension:lint: > eslint src
+@octoshell/vscode-extension:lint: 
+
+ Tasks:    4 successful, 4 total
+Cached:    3 cached, 4 total
+  Time:    780ms 
+

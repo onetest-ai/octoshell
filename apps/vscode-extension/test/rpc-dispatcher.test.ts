@@ -481,3 +481,52 @@ describe("tests:* routes", () => {
     expect(snap()).toBe(before);
   });
 });
+
+
+// ── tests:get / tests:setStatus (T1.2) ──────────────────────────────────────────────────────────
+
+describe("tests:get and tests:setStatus routes", () => {
+  function fixture() {
+    const { board, repoRoot } = makeBoardWithRoot();
+    const camp = board.createCampaign({ name: "C" });
+    board.createMission({ title: "M1 - Thing", campaignId: camp.id });
+    const dir = join(repoRoot, ".octobots", camp.folderPath, "tests", "m1");
+    mkdirSync(dir, { recursive: true });
+    const text = "---\nid: TC-001\ntitle: t\nmission: M1\ncovers: [M1-AC1]\nkind: unit\nstatus: draft\n---\n\n# TC-001\n";
+    writeFileSync(join(dir, "TC-001_x.md"), text);
+    board.reconcile();
+    return { board, file: join(dir, "TC-001_x.md"), path: `${camp.folderPath}/tests/m1/TC-001_x.md`, text };
+  }
+
+  it("routes tests:get to board.getTestCaseDetail", async () => {
+    const { board, path } = fixture();
+    const spy = vi.spyOn(board, "getTestCaseDetail");
+    const d = (await dispatch("tests:get", { path }, ctx(board) as never)) as { tc: { id: string; status: string } };
+    expect(spy).toHaveBeenCalledWith(path);
+    expect(d.tc).toMatchObject({ id: "TC-001", status: "draft" });
+    expect(await dispatch("tests:get", { path: "campaigns/x/tests/m1/TC-404_none.md" }, ctx(board) as never)).toBeNull();
+  });
+
+  it("routes tests:setStatus to board.setTestStatus with the path, the status and the base", async () => {
+    const { board, path, file } = fixture();
+    const spy = vi.spyOn(board, "setTestStatus");
+    const base = { status: "draft", lastRun: null };
+    expect(await dispatch("tests:setStatus", { path, status: "ready", base }, ctx(board) as never)).toMatchObject({ ok: true, changed: true });
+    expect(spy).toHaveBeenCalledWith(path, "ready", base);
+    expect(readFileSync(file, "utf8")).toMatch(/^status: ready$/m);
+  });
+
+  it("rejects status unknown and a malformed base before any handler runs", async () => {
+    const { board, path, file, text } = fixture();
+    const spy = vi.spyOn(board, "setTestStatus");
+    for (const args of [
+      { path, status: "unknown", base: { status: "draft", lastRun: null } },
+      { path, status: "pass", base: { status: "bogus", lastRun: null } },
+      { path, status: "pass" },
+      { status: "pass", base: { status: "draft", lastRun: null } },
+    ]) await expect(dispatch("tests:setStatus", args, ctx(board) as never)).rejects.toThrow();
+    await expect(dispatch("tests:get", { path: "" }, ctx(board) as never)).rejects.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+    expect(readFileSync(file, "utf8")).toBe(text);
+  });
+});

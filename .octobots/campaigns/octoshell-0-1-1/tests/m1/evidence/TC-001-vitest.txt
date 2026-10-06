@@ -1,0 +1,23 @@
+
+ RUN  v2.0.5 /Users/arozumenko/Development/octoshell/packages/board
+
+ ✓ test/tc-status-parity.test.ts > tc-status parity: shared case table (shipped script vs editTestCaseStatus) > holds every shape the plan lists, each with a note
+ ✓ test/tc-status-parity.test.ts > tc-status parity: shared case table (shipped script vs editTestCaseStatus) > writes the same bytes as the script for every case and status, and refuses exactly the recorded pairs for the recorded reason 1112ms
+stdout | test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > tracked board (git archive HEAD .octobots)
+tc-status parity [tracked]: 98 TCs, 392 (TC, status) pairs compared, 0 script refusals
+
+ ✓ test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > tracked board (git archive HEAD .octobots) 2104ms
+stdout | test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > OCTOBOTS_BOARD_COPIES[0] <scratch>/work/octo-ws/.octobots
+tc-status parity [copies[0] <scratch>/work/octo-ws/.octobots]: 98 TCs, 392 (TC, status) pairs compared, 0 script refusals
+
+ ✓ test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > OCTOBOTS_BOARD_COPIES[0] <scratch>/work/octo-ws/.octobots 1977ms
+stdout | test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > OCTOBOTS_BOARD_COPIES[1] <scratch>/work/solo-ws/.octobots
+tc-status parity [copies[1] <scratch>/work/solo-ws/.octobots]: 116 TCs, 580 (TC, status) pairs compared, 0 script refusals
+
+ ✓ test/tc-status-parity.test.ts > tc-status parity: every real TC and every status different from the file's > OCTOBOTS_BOARD_COPIES[1] <scratch>/work/solo-ws/.octobots 2929ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  16:04:12
+   Duration  8.33s (transform 59ms, setup 0ms, collect 75ms, tests 8.12s, environment 0ms, prepare 32ms)
+

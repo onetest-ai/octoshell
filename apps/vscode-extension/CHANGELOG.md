@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.1.1
+
+Octobots pack unchanged at v57, so a workspace already on v57 is not prompted to reinstall.
+
+### Test-case panel
+
+- **Test cases open in their own panel.** It shows the header, the acceptance criteria the case
+  covers, the rendered body and an "Open source file" link to the raw markdown.
+- **Status dropdown.** Choosing a status writes it the way `set-test-status.js` does and records
+  `last_run` as the date only, with no evidence. It never overwrites a status that was changed
+  outside the panel since it was loaded; reload and choose again.
+- **Legacy test cases.** An older-format case can still have its status set, and the panel points
+  you at `--migrate` to bring it to the current format.
+- **Single click opens the panel.** A single click on a test case in the sidebar or in the mission
+  panel now opens this panel; the raw file is one click away through "Open source file".
+
+### Sidebar
+
+- **Status-coloured Tests icons.** The Tests node and each mission's Tests group take the colour of
+  their worst result, and a blocked test is now orange, matching its leaf.
+
+### Internal
+
+- The `qa-env` test no longer flakes, and turbo's strict environment mode passes the board-copy and
+  test variables through, so a cached test run reflects the real environment.
+
 ## 0.1.0
 
 Octobots pack v57. This release removes the Workflow feature end to end and replaces it with
@@ -7,11 +33,11 @@ direct sub-agent dispatch.
 
 ### Read this first: legacy `workflows/` folders
 
-**0.0.51 and every earlier release (since commit a192780c) DELETED any legacy
+**Every release from commit a192780c through 0.0.51 DELETED any legacy
 `workflows/<slug>/workflow.md` on every activation.** The migration (`migrateLegacyWorkflows`)
 derived a `runs.jsonl` from the file's `## Runs` section and then permanently removed
-`workflow.md`. If you still have such files, they were already migrated away by an earlier
-version, and a copy in git history is the only way back.
+`workflow.md`. If any of those releases ran in your workspace, it deleted each `workflow.md` it
+found, and git history holds the only copy.
 
 **0.1.0 no longer touches `workflows/` at all.** A leftover `workflows/` folder is ignored by the
 board, and `validate.js` and `doctor.js` warn that it is no longer read.

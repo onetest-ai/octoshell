@@ -5,7 +5,7 @@ import { TEST_STATUS_ORDER, TestStatusBadge, UncoveredMark } from "./tests-ui.js
 const rank = (tc: TestCase): number => TEST_STATUS_ORDER.indexOf(tc.status);
 
 export function MissionTests(
-  { cases, coverage, onOpenTestFile }: { cases: TestCase[]; coverage: MissionCoverage | null; onOpenTestFile?: (path: string) => void },
+  { cases, coverage, onOpenTestCase }: { cases: TestCase[]; coverage: MissionCoverage | null; onOpenTestCase?: (path: string) => void },
 ): JSX.Element {
   const ordered = [...cases].sort((a, b) => rank(a) - rank(b)); // stable: ids keep their order within a status
   return (
@@ -25,7 +25,7 @@ export function MissionTests(
               className="flex items-center gap-3 px-2 py-1.5 border-t border-border first:border-t-0 hover:bg-list-hover"
             >
               <button
-                onClick={() => onOpenTestFile?.(tc.path)}
+                onClick={() => onOpenTestCase?.(tc.path)}
                 aria-label={`Open ${tc.id} ${tc.title}`}
                 className="flex-1 min-w-0 text-left truncate"
               >

@@ -21,6 +21,10 @@ export const uiMessage = z.discriminatedUnion("type", [
   z.object({ type: z.literal("openFile"), path: z.string() }),
   /** A TC file, as its board-relative path (TestCase.path): the host resolves it and runs the guarded open command. */
   z.object({ type: z.literal("openTestFile"), path: z.string() }),
+  /** A TC's panel, by the same board-relative path (sidebar leaf, mission-panel row): joined under the board and guarded by the host. */
+  z.object({ type: z.literal("openTestCase"), path: z.string() }),
+  /** The evidence file of the TC at `path`: the host reads the evidence path from the TC on disk, the webview never supplies it. */
+  z.object({ type: z.literal("openTestEvidence"), path: z.string() }),
 ]);
 export type UiMessage = z.infer<typeof uiMessage>;
 export type UiMessageType = UiMessage["type"];

@@ -35,6 +35,7 @@ describe("RPC contract drift guard", () => {
       "../src/webview/mission-view.tsx",
       "../src/webview/task-view.tsx",
       "../src/webview/bug-view.tsx",
+      "../src/webview/test-case-view.tsx",
     ];
     const called = files.flatMap((f) =>
       [...read(f).matchAll(/rpc\.call\("([a-zA-Z:]+)"/g)].map((m) => m[1]),
@@ -66,5 +67,51 @@ describe("tests:* RPC contract schemas (M6 T6.3)", () => {
     expect(rpcArgs["tests:coverage"].safeParse({}).success).toBe(false);
     expect(rpcArgs["tests:summary"].safeParse({ campaignId: "c1" }).success).toBe(true);
     expect(rpcArgs["tests:summary"].safeParse({ campaignId: 3 }).success).toBe(false);
+  });
+});
+
+describe("tests:get and tests:setStatus schemas (T1.2)", () => {
+  const base = { status: "ready", lastRun: null };
+  const set = rpcArgs["tests:setStatus"];
+  const path = "campaigns/c/tests/m1/TC-001_x.md";
+
+  it("declares both, each with a handler", () => {
+    for (const m of ["tests:get", "tests:setStatus"]) {
+      expect(m in rpcArgs, m).toBe(true);
+      expect(handlerMethods, m).toContain(m);
+    }
+  });
+
+  it("tests:get requires a non-empty string path", () => {
+    const a = rpcArgs["tests:get"];
+    expect(a.safeParse({ path }).success).toBe(true);
+    for (const p of ["", undefined, 7, null, "x".repeat(2001)]) expect(a.safeParse({ path: p }).success, String(p)).toBe(false);
+    expect(a.safeParse({}).success).toBe(false);
+  });
+
+  it("tests:setStatus accepts every settable status and base.status unknown", () => {
+    for (const status of ["draft", "ready", "pass", "fail", "blocked"]) expect(set.safeParse({ path, status, base }).success, status).toBe(true);
+    for (const bs of ["draft", "ready", "pass", "fail", "blocked", "unknown"]) expect(set.safeParse({ path, status: "pass", base: { status: bs, lastRun: null } }).success, bs).toBe(true);
+  });
+
+  it("tests:setStatus rejects status unknown and any non-settable word", () => {
+    for (const status of ["unknown", "passed", "PASS", "", "skipped", "done", 3, null, undefined]) expect(set.safeParse({ path, status, base }).success, String(status)).toBe(false);
+    for (const bs of ["", "passed", "skipped", 3, undefined]) expect(set.safeParse({ path, status: "pass", base: { status: bs, lastRun: null } }).success, String(bs)).toBe(false);
+  });
+
+  it("tests:setStatus requires a path and a base, whose lastRun is null or {date, evidence?}", () => {
+    expect(set.safeParse({ status: "pass", base }).success).toBe(false);
+    expect(set.safeParse({ path: "", status: "pass", base }).success).toBe(false);
+    expect(set.safeParse({ path, status: "pass" }).success).toBe(false);
+    expect(set.safeParse({ path, status: "pass", base: { status: "ready" } }).success).toBe(false);
+    expect(set.safeParse({ path, status: "pass", base: { status: "fail", lastRun: { date: "2026-10-06" } } }).success).toBe(true);
+    expect(set.safeParse({ path, status: "pass", base: { status: "fail", lastRun: { date: "2026-10-06", evidence: ".octobots/r.md" } } }).success).toBe(true);
+    expect(set.safeParse({ path, status: "pass", base: { status: "fail", lastRun: { evidence: "x" } } }).success).toBe(false);
+    expect(set.safeParse({ path, status: "pass", base: { status: "fail", lastRun: "2026-10-06" } }).success).toBe(false);
+  });
+
+  it("never takes file text: an injected `text` or `content` key is stripped", () => {
+    const parsed = set.parse({ path, status: "pass", base, text: "---\n---", content: "x" });
+    expect(Object.keys(parsed).sort()).toEqual(["base", "path", "status"]);
   });
 });

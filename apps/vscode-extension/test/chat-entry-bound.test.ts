@@ -14,6 +14,11 @@ describe("resolveBound", () => {
   it("maps a bug bind", () => {
     expect(resolveBound({ type: "bind", kind: "bug", id: "bug1" })).toEqual({ kind: "bug", id: "bug1" });
   });
+  it("maps a testCase bind, whose id is the TC's board-relative path", () => {
+    const path = "campaigns/direct-dispatch-process/tests/m6/TC-004_sidebar-tests-node-counts.md";
+    expect(resolveBound({ type: "bind", kind: "testCase", id: path })).toEqual({ kind: "testCase", id: path });
+    expect(resolveBound({ type: "bind", kind: "testCase" })).toEqual({ kind: "none" });
+  });
   it("resolves a retired workflow bind to none, so no view renders for it", () => {
     expect(resolveBound({ type: "bind", kind: "workflow", id: "folder:campaigns/a/workflows/w" })).toEqual({ kind: "none" });
   });

@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": ["OCTOBOTS_BOARD_COPIES", "OCTOBOTS_TOKENOMICS_COPY", "OCTOBOTS_REAL_CCUSAGE"],
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**", "out/**"] },
     "test": { "dependsOn": ["^build"], "cache": false },

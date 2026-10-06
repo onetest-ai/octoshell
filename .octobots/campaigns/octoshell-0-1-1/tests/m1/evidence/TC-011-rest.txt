@@ -1,0 +1,39 @@
+> node scripts/graph-payload.mjs --write
+
+octograph payload written: /Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack/graph/octograph.mjs (223282 bytes)
+PAYLOAD-UNCHANGED
+octograph payload is current.
+verify exit 0
+--- tc-io/test-cases/board-model vs 9c7d17af
+(end, empty above = ok)
+ ✓ test/conventions.test.ts > test/ conventions > has test files to check
+ ✓ test/conventions.test.ts > test/ conventions > strips comments and strings without losing real code, and without misreading a // inside a string
+ ✓ test/conventions.test.ts > test/ conventions > creates a scratch directory only through fixtures/tmpdir.ts's mkdtempClean
+ ✓ test/conventions.test.ts > webview/host boundary > no src/webview file imports from src/host
+ ✓ test/conventions.test.ts > webview/host boundary > the shared protocol modules import nothing Node-only
+ ✓ test/conventions.test.ts > protocol and webview take only types from @octoshell/board > the scan itself: flags value, bare, inline-type, dynamic and re-export forms; passes type-only forms
+ ✓ test/conventions.test.ts > protocol and webview take only types from @octoshell/board > no src/protocol or src/webview file value-imports @octoshell/board
+ ✓ test/conventions.test.ts > turbo.json env passthrough > passes OCTOBOTS_BOARD_COPIES through to the test task
+ ✓ test/conventions.test.ts > turbo.json env passthrough > passes OCTOBOTS_TOKENOMICS_COPY through to the test task
+ ✓ test/conventions.test.ts > turbo.json env passthrough > passes OCTOBOTS_REAL_CCUSAGE through to the test task
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
+--- pack/store vs main
+(end)
+scan-parked: /Users/arozumenko/Development/octoshell
+allowed (11):
+  apps/vscode-extension/test/octobots-primer.test.ts:464: it.skipIf(process.platform === "win32")("a FIFO at pending.json or doctor-acks.json is skipped, not read", () => {
+  apps/vscode-extension/test/octobots-primer.test.ts:485: it.skipIf(process.platform === "win32")("a symlinked pending.json is not followed", () => {
+  apps/vscode-extension/test/octobots-primer.test.ts:654: it.skipIf(process.platform === "win32")("a FIFO, a directory, or an AGENTS.md over 1 MiB is never read (no hang) and is named, as doctor.js warns on it", () => {
+  apps/vscode-extension/test/pack-updates-hardening.test.ts:37: describe.runIf(posix)("installPack never writes or deletes through a symlink under .octobots/pack-updates", () => {
+  apps/vscode-extension/test/pack-updates-hardening.test.ts:104: describe.runIf(posix)("no reader blocks on a FIFO or reads through a symlinked pending.json", () => {
+  apps/vscode-extension/test/pack-updates-hardening.test.ts:234: it.runIf(posix)("refuses (exit 3) instead of hanging when DECISIONS.md is a FIFO", () => {
+  apps/vscode-extension/test/pack-updates-hardening.test.ts:248: it.runIf(posix && process.getuid?.() !== 0)("writePending rethrows a failed write and leaves no temp file behind", () => {
+  apps/vscode-extension/test/tokenomics-verify-roots.test.ts:325: describe.skipIf(!REAL)("against the real ccusage binary", () => {
+  packages/board/test/tc-io.test.ts:355: it.skipIf(process.platform === "win32")("never blocks on a README or TC that is a FIFO, a symlink to a FIFO or /dev/zero", () => {
+  packages/board/test/tc-status-write.test.ts:200: it.runIf(process.getuid?.() !== 0)("leaves the TC unchanged and no temp file when the folder cannot be written (the temp file is the first write)", () => {
+  packages/graph/test/vault-calibration.test.ts:10: describe.skipIf(!HAS_VAULT)("vault matching, calibrated against this repo's real vault", () => {
+0 unsigned, 11 allowed
+scan exit 0
+[]
+gitstatus-done

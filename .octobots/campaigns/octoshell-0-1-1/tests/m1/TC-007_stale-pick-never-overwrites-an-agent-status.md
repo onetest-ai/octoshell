@@ -4,7 +4,8 @@ title: "A pick made on a panel that has not yet seen an agent's write is refused
 mission: M1
 covers: [M1-AC4]
 kind: ui
-status: draft
+status: blocked
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/octoshell-0-1-1/tests/m1/runs/RUN-2026-10-06-001.md}
 priority: critical
 size: M
 ---

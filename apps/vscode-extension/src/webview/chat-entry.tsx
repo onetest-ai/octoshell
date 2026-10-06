@@ -9,6 +9,7 @@ import { CampaignView } from "./campaign-view.js";
 import { MissionView } from "./mission-view.js";
 import { TaskView } from "./task-view.js";
 import { BugView } from "./bug-view.js";
+import { TestCaseView } from "./test-case-view.js";
 import { TokenomicsView } from "./tokenomics-view.js";
 
 declare global {
@@ -28,6 +29,7 @@ type Bound =
   | { kind: "mission"; id: string }
   | { kind: "task"; id: string }
   | { kind: "bug"; id: string }
+  | { kind: "testCase"; id: string } // id = the TC's board-relative path
   | { kind: "tokenomics" }
   | { kind: "none" };
 
@@ -38,6 +40,7 @@ export function resolveBound(
   if (m?.kind === "mission" && m.id) return { kind: "mission", id: m.id };
   if (m?.kind === "task" && m.id) return { kind: "task", id: m.id };
   if (m?.kind === "bug" && m.id) return { kind: "bug", id: m.id };
+  if (m?.kind === "testCase" && m.id) return { kind: "testCase", id: m.id };
   // Workspace-wide, so it carries no entity id.
   if (m?.kind === "tokenomics") return { kind: "tokenomics" };
   return { kind: "none" };
@@ -92,7 +95,7 @@ function Root(): JSX.Element {
         onAddLink={() => vscodeApi.postMessage({ type: "addMissionLink", missionId: bound.id })}
         onAttachFile={() => vscodeApi.postMessage({ type: "attachMissionFile", missionId: bound.id })}
         onOpenFile={(path) => vscodeApi.postMessage({ type: "openFile", path })}
-        onOpenTestFile={(path) => vscodeApi.postMessage({ type: "openTestFile", path })}
+        onOpenTestCase={(path) => vscodeApi.postMessage({ type: "openTestCase", path })}
       />
     );
   }
@@ -101,6 +104,17 @@ function Root(): JSX.Element {
   }
   if (bound.kind === "bug") {
     return <BugView id={bound.id} rpc={rpc} />;
+  }
+  if (bound.kind === "testCase") {
+    return (
+      <TestCaseView
+        path={bound.id}
+        rpc={rpc}
+        onOpenMission={(mid) => vscodeApi.postMessage({ type: "openMission", id: mid })}
+        onOpenTestFile={(path) => vscodeApi.postMessage({ type: "openTestFile", path })}
+        onOpenTestEvidence={(path) => vscodeApi.postMessage({ type: "openTestEvidence", path })}
+      />
+    );
   }
   return <div className="p-4 text-fg-muted">No board entity bound.</div>;
 }

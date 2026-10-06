@@ -8,9 +8,9 @@ acceptance_criteria:
   - text: 'Given any real TC of this repo''s or solo''s board (on copies), when its status is changed in the panel to a status different from the file''s, then the file is byte-identical to what the shipped set-test-status.js writes (`set-test-status.js <tc> <status> --date <today UTC>` for pass/fail/blocked, `set-test-status.js <tc> <status>` for draft/ready: frontmatter status and last_run {date} only, no evidence, body untouched), the parity run shows the script refused zero real (TC, status) pairs, re-picking the current status writes nothing, and a pick made while an agent''s newer status had not yet reached the panel writes nothing (verified by M1-AC3, AC4, AC5 / T1.5)'
     done: false
   - text: The 0.1.1 VSIX ships M6 B1's status-coloured Tests node and mission-group icons, a CHANGELOG whose 0.1.0 section no longer says "If you still have such files, they were already migrated away" (it says conditionally that any release from a192780c through 0.0.51 that ran deleted each workflow.md) and whose 0.1.1 entry describes this release, and an octobots pack byte-identical to 0.1.0's (v57, no reinstall prompt in any workspace); it is cut from a standalone release commit touching only apps/vscode-extension/package.json (verified by M1-AC10 / T1.4, T1.5)
-    done: false
+    done: true
   - text: Every mission of this campaign has tests/m<n>/README.md mapping every mission AC and at least one TC-NNN_*.md, linked as a mission document, and validate.js reports no tests-pairing warning on any of them
-    done: false
+    done: true
 documents: []
 notes: |-
   ## User decisions (2026-10-06, verbatim from the planning request; final)
