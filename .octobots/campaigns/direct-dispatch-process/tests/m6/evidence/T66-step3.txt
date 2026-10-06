@@ -1,0 +1,22 @@
+qa-env.mjs present
+scan-parked.js present
+add-tests.js present
+set-test-status.js present
+tc-io.mjs present
+pack-reconcile.mjs present
+no workflow-designer
+octobots-doctor present
+store present
+--- version/marker lines
+   1 # octobots-pack-version: 57
+   4 // octobots-pack-version: 57
+   1 const markerOf = (text) => { const m = String(text).match(/^(?:\/\/|#)\s*octobots-pack-version:\s*(\d+)\s*$/m); return m ? Number(m[1]) : null; };
+   5 version: 57
+--- ls media/assets and index.html refs
+codicon-B16ygVZF.ttf
+index-CkgWM0sJ.css
+index-D4Ct9_oO.js
+assets/index-CkgWM0sJ.css
+assets/index-D4Ct9_oO.js
+--- store verify
+shipped-skills: unknown mode "--help"; expected --verify or --write

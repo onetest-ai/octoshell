@@ -1,0 +1,13 @@
+# step 2 raw hits (/usr/bin/grep -E, BSD), paths relative to extension/
+changelog.md:24:- `octoshell.newWorkflow`
+dist/extension.js:21887:var RETIRED_SKILLS = ["octobots", "workflow-designer"];
+dist/extension.js:21904:  "workflow-designer": ["SKILL.md"]
+dist/extension.js:22466:  "skills/mission-planner/scripts/add-workflow.js",
+dist/extension.js:22467:  "skills/mission-planner/scripts/sync-meta.js",
+dist/extension.js:22468:  "skills/mission-planner/scripts/add-run.js",
+dist/extension.js:22469:  "skills/mission-planner/scripts/mission-input.js",
+resources/octobots-pack/skill/mission-execution/SKILL.md:61:## No `Workflow` tool, no `workflow.js`: the orchestrator dispatche
+resources/octobots-pack/skill/mission-execution/SKILL.md:64:tool.** Do not run a board `workflow.js` and do not compose a dynam
+resources/octobots-pack/skill/mission-execution/SKILL.md:65:If a mission or campaign folder still holds a `workflows/*/workflow
+resources/octobots-pack/skill/mission-planner/SKILL.md:526:s may hold `.octobots/campaigns/<campaign>/workflows/<slug>/workflow
+resources/octobots-pack/skill/mission-planner/SKILL.md:528:workflows: treat a leftover `workflow.js` as **historical reference 

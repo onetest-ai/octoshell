@@ -1,24 +1,43 @@
 name: T6.6 - Release 0.1.0 and verify the VSIX
-status: draft
+status: executing
 description: 'Runs after T6.5 (the release is cut from the QA-passed tree). Scope: a standalone commit `chore(ext): release 0.1.0 with workflow pack v57` that changes only apps/vscode-extension/package.json (version 0.1.0); its body lists the changes since 0.0.51, per-package verification counts (tests passed per package, coverage numbers) and the removed commands octoshell.newWorkflow, octoshell.deleteWorkflow and octoshell.openWorkflowById, whose keybindings now report ''command not found''. Build the VSIX with apps/vscode-extension/scripts/package-vsix.mjs and verify it per mission AC8 via tests/m6/TC-011_release-vsix-verification.md, executed black-box by a qa-engineer dispatch and recorded with set-test-status.js. After publishing, re-run ''Octobots: Install Octobots Pack'' in octoshell''s own checkout and in every dev workspace that accepted an install prompt from an M1-M5 build (packStatus compares integers only, so 0.1.0 will not re-prompt a workspace already labelled 57). Out of scope: publishing to the marketplace beyond the existing package-vsix flow; any code change (a failure goes back to the owning task as a board bug). Downstream: the campaign -> main PR; campaign AC1, AC2, AC4, AC7.'
 acceptance_criteria:
   - text: 'a standalone commit `chore(ext): release 0.1.0 with workflow pack v57` changes only apps/vscode-extension/package.json (version 0.1.0), and its body lists the changes since 0.0.51, per-package verification counts and the three removed commands with the ''command not found'' keybinding note'
-    done: false
+    done: true
   - text: tests/m6/TC-011_release-vsix-verification.md is executed against the VSIX built from that commit and records status pass with last_run pointing at its RUN file (mission AC8)
-    done: false
+    done: true
   - text: 'after publishing, ''Octobots: Install Octobots Pack'' has been re-run in octoshell''s own checkout and in each dev workspace that held an intermediate v57 install; each is listed in this task''s notes with packStatus upToDate: true'
     done: false
   - text: The campaign-AC2 VSIX grep allowlist explicitly names mission-execution/SKILL.md's heading '## No `Workflow` tool, no `workflow.js`' (or the heading is reworded and skill-conventions.test.ts updated in the same PR) (input from the M2 T2.3 review)
-    done: false
+    done: true
   - text: The VSIX is built so that scripts/package-vsix.mjs:38-44 (which runs both update-prices.mjs scripts) leaves tracked files unchanged, or the refreshed prices are committed deliberately in their own commit before the release commit; and the package path runs shipped-skills.mjs --verify (package-vsix.mjs bypasses the build script today) (input from the T7.1 review)
-    done: false
+    done: true
   - text: The release verification asserts the VSIX contains extension/resources/shipped-skills.json.br and that it decompresses and passes shipped-skills.mjs --verify against the packaged pack (input from the T7.2 review)
-    done: false
+    done: true
   - text: 'The VSIX is packaged from a clean webview build: media/assets holds only the files media/index.html references plus committed assets (vite emptyOutDir:false otherwise leaves stale hashed bundles, e.g. an older one still containing workflow-diagram code, which a working-copy package would ship and which the campaign-AC2 grep would hit); proven by listing the VSIX''s extension/media/assets (input from the T3.1 review)'
-    done: false
+    done: true
   - text: 'The 0.1.0 release notes state that 0.0.51 (and earlier, since a192780c) deleted any legacy workflows/<slug>/workflow.md on every activation (migrateLegacyWorkflows: runs.jsonl derived from its ## Runs section, then the file permanently removed), and that 0.1.0 no longer touches workflows/ at all (input from the T3.2 review)'
-    done: false
+    done: true
 tokenomics:
   effort_days: 0.5
   size_tshirt: XS
   complexity_score: 9
+notes: |-
+  ## QA verification
+
+  2026-10-06, qa-engineer, black-box. Run file: `.octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-002.md`; evidence `tests/m6/evidence/T66-*`.
+
+  TC-011 PASS (set-test-status.js, last_run -> RUN-2026-10-06-002). The VSIX was rebuilt from release commit ea432393 (`pnpm install && pnpm build && pnpm --filter @octoshell/vscode-extension package`): octobots-0.1.0.vsix, 760855 bytes, no tracked file changed by packaging. Solo was read only (git status, HEAD and the 3242-file sha256 manifest of .claude + .octobots identical before and after).
+
+  - AC1 PASS: the release commit changes only apps/vscode-extension/package.json (0.1.0); the body lists the changes since 0.0.51, 102/800/1176/655 tests passed (re-run green) and the three removed commands with the 'command not found' note.
+  - AC2 PASS: TC-011 executed against that VSIX, status pass, last_run -> RUN-2026-10-06-002.
+  - AC3 NOT RUN, pending the user: re-installing the pack in octoshell's own checkout and the dev workspaces is not part of QA.
+  - AC4 PASS: the allow-list names the `## No Workflow tool, no workflow.js` section; its heading and the lines naming workflow.js (3 hits) classify against it, with the changelog's `octoshell.newWorkflow` line.
+  - AC5 PASS: package-steps.mjs runs graph-payload --verify and shipped-skills --verify (log: 'shipped-skills store is current.'); git status after packaging shows only .octobots board files.
+  - AC6 PASS: extension/resources/shipped-skills.json.br is in the VSIX; `shipped-skills.mjs --verify` against the PACKAGED pack exits 0 (a tampered copy exits 1); the 5 packaged SKILL.md bodies match the store's v57 entries.
+  - AC7 PASS: extension/media/assets holds index-CkgWM0sJ.css and index-D4Ct9_oO.js (referenced by index.html) and codicon-B16ygVZF.ttf (referenced by the CSS); no stale bundle.
+  - AC8 PASS: CHANGELOG states 0.0.51 and earlier deleted legacy workflows/<slug>/workflow.md on every activation and 0.1.0 no longer touches workflows/.
+
+  Step 5 note for the user: the micro-test agent escalated two real two-sided policy conflicts (mission-execution's land-step full-suite rule; the completion gate's green rule and parked scan). Both live forks stay 57-local until you answer. That is correct behaviour (M7 ruling 2026-10-05), not a defect; it also means the TC's `57+local` was not reached in the micro-test.
+
+  Status stays `executing` because AC3 is the user's.

@@ -1,0 +1,14 @@
+## store verify against PACKAGED pack
+shipped-skills store is current.
+exit=0
+## negative control: tamper a copy of the packaged pack
+/private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/t66qa/neg/mission-execution/SKILL.md: not indexed under pack version 57 in the shipped-skills store. Run: node scripts/shipped-skills.mjs --write, then commit the store.
+exit=1
+## independent: decompress and compare v57 bodies to unpacked SKILL.md
+versions: 31 bodies: 162 v57 skills: knowledge-explorer,mission-completion-gate,mission-execution,mission-planner,workflow-designer,octobots-doctor
+knowledge-explorer 41554e5644a7 INDEXED+BODY MATCH
+mission-completion-gate 3b6fbb32c6dc INDEXED+BODY MATCH
+mission-execution c30bf5821e3e INDEXED+BODY MATCH
+mission-planner 473fab78d131 INDEXED+BODY MATCH
+octobots-doctor 1a870b23a3a6 INDEXED+BODY MATCH
+ALL MATCH
