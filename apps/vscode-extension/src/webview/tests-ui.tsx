@@ -1,7 +1,7 @@
 // Shared bits of the Tests views (M6 T6.4): one status vocabulary, order and look for the mission panel and the
-// campaign panel, the same one the sidebar uses (host/test-summary.ts owns the order).
+// campaign panel, the same one the sidebar uses (protocol/test-status.ts owns the order).
 import type { TestCaseStatus } from "@octoshell/board";
-import { TEST_STATUS_ORDER } from "../host/test-summary.js";
+import { TEST_STATUS_ORDER } from "../protocol/index.js";
 
 export { TEST_STATUS_ORDER };
 

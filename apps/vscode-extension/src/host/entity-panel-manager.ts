@@ -1,7 +1,7 @@
 import { basename, join } from "node:path";
 import * as vscode from "vscode";
 import { dispatch, type DispatchCtx } from "./rpc-dispatcher.js";
-import { OPEN_TEST_FILE_COMMAND } from "./campaigns-tree.js";
+import { OPEN_TEST_FILE_COMMAND, testFileArgFromWebview } from "./campaigns-tree.js";
 import { buildWebviewHtml } from "./webview-html.js";
 import { routeUiMessage, type UiActions, type BindMessage } from "../protocol/index.js";
 
@@ -315,7 +315,7 @@ export class EntityPanelManager {
       deleteBug: (m) => void this.confirmDeleteBug(m.bugId),
       openFile: (m) => void vscode.window.showTextDocument(vscode.Uri.file(m.path)),
       // The command re-checks that the file is a TC inside this board, so the webview's string is never trusted.
-      openTestFile: (m) => void vscode.commands.executeCommand(OPEN_TEST_FILE_COMMAND, join(this.ctx.board.artifactsRoot, m.path)),
+      openTestFile: (m) => void vscode.commands.executeCommand(OPEN_TEST_FILE_COMMAND, testFileArgFromWebview(this.ctx.board.artifactsRoot, m.path)),
     };
 
     const sub = panel.webview.onDidReceiveMessage(

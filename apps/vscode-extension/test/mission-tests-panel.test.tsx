@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { MissionView } from "../src/webview/mission-view.js";
 import { realRpc, type RealRpc } from "./fixtures/real-rpc.js";
 import { trackedBoardCopies } from "./fixtures/real-board.js";
+import { TEST_STATUS_ORDER } from "../src/protocol/index.js";
 
 afterEach(cleanup);
 
@@ -31,9 +32,20 @@ const tcText = (id: string, status: string | null, covers: string): string =>
 describe("mission panel: Tests section", () => {
   it("lists the real mission's TCs, each with its status as text and an Open button", async () => {
     const r = realRpc();
-    const { camp, mission } = missionFor(r, "M6");
-    const expected = r.board.listTests(camp.id, "M6");
+    const { camp, mission, dir } = missionFor(r, "M6");
+    // Mixed statuses, as the board has once QA writes results back (T6.5): the rows follow the status order, ids
+    // in file order within a status. Comparing against raw listTests order only held while every TC was draft.
+    const files = readdirSync(dir).filter((f) => /^TC-.*\.md$/.test(f)).sort();
+    const mix = ["ready", "pass", "fail", "draft", "blocked", "pass"];
+    files.forEach((f, i) => {
+      const text = readFileSync(join(dir, f), "utf8");
+      if (/^status:/m.test(text)) writeFileSync(join(dir, f), text.replace(/^status:.*$/m, `status: ${mix[i % mix.length]}`));
+    });
+    r.board.reconcile();
+    const listed = r.board.listTests(camp.id, "M6");
+    const expected = TEST_STATUS_ORDER.flatMap((s) => listed.filter((t) => t.status === s));
     expect(expected.length).toBeGreaterThan(5);
+    expect(new Set(expected.map((t) => t.status)).size).toBeGreaterThan(2);
     show(r, mission.id);
     const section = await screen.findByRole("region", { name: "Tests" });
     const rows = await within(section).findAllByTestId("tc-row");
@@ -41,6 +53,7 @@ describe("mission panel: Tests section", () => {
     for (const [i, tc] of expected.entries()) {
       const row = rows[i]!;
       expect(row.getAttribute("data-status")).toBe(tc.status);
+      expect(row.textContent).toContain(tc.id);
       expect(within(row).getByText(tc.status)).toBeTruthy(); // status as text, not colour alone
       expect(within(row).getByRole("button", { name: new RegExp(`Open ${tc.id}\\b`) })).toBeTruthy();
     }
@@ -130,19 +143,29 @@ describe("mission panel: AC coverage", () => {
     expect(rows.every((x) => /text-status-warning/.test(x.innerHTML + x.className))).toBe(true);
   });
 
-  it("a solo uwb mission (legacy TCs) lists them as unknown when OCTOBOTS_BOARD_COPIES is set", async () => {
+  it("solo's uwb campaign (legacy TCs): unknown status with no warning, m1 AC11 uncovered, m6 empty state", async () => {
     const named = (process.env.OCTOBOTS_BOARD_COPIES ?? "").split(":").filter(Boolean);
-    if (named.length === 0) return; // the repo's own tracked board is covered above
+    if (named.length === 0) return; // the repo's own tracked board is covered above; set OCTOBOTS_BOARD_COPIES to run
     const r = realRpc(trackedBoardCopies().at(-1)!);
-    const camp = r.board.listCampaigns().find((c) => r.board.listTests(c.id).some((t) => t.status === "unknown"));
-    if (!camp) return;
-    const legacy = r.board.listTests(camp.id).find((t) => t.status === "unknown")!;
-    const mission = r.board.listMissions(camp.id).find((m) => new RegExp(`^${legacy.mission}\\b`, "i").test(m.title));
-    if (!mission) return;
-    show(r, mission.id);
+    const camp = r.board.listCampaigns().find((c) => c.folderPath.endsWith("uwb-ranging-ingest-vendor-v01"));
+    if (!camp) return; // a named board that is not solo's
+    const byToken = (t: string) => r.board.listMissions(camp.id).find((m) => new RegExp(`^${t}\\b`, "i").test(m.title))!;
+
+    const m1 = byToken("M1");
+    const view = show(r, m1.id);
     const rows = await screen.findAllByTestId("tc-row");
-    expect(rows.some((x) => x.getAttribute("data-status") === "unknown")).toBe(true);
-    expect(rows.filter((x) => x.getAttribute("data-status") === "unknown").every((x) => !/status-warning/.test(x.innerHTML))).toBe(true);
+    expect(rows.length).toBe(r.board.listTests(camp.id, "M1").length);
+    expect(rows.every((x) => x.getAttribute("data-status") === "unknown")).toBe(true);
+    expect(rows.every((x) => !/status-warning|status-error/.test(x.innerHTML))).toBe(true);
+    const ac11 = (await screen.findAllByTestId("ac-row")).find((x) => x.querySelector("th")?.textContent === "M1-AC11")!;
+    expect(ac11.getAttribute("data-covered")).toBe("false");
+    expect(ac11.innerHTML).toMatch(/text-status-warning/);
+    view.unmount();
+
+    show(r, byToken("M6").id);
+    const section = await screen.findByRole("region", { name: "Tests" });
+    expect(await within(section).findByText(/run add-tests\.js <mission-dir>/)).toBeTruthy();
+    expect(screen.queryAllByTestId("tc-row")).toHaveLength(0);
   });
 });
 
@@ -167,5 +190,53 @@ describe("mission panel: refresh", () => {
     await waitFor(() => expect(rowOf(before.id).getAttribute("data-status")).toBe(next));
     expect(r.calls.filter((c) => c === "tests:list").length - listBefore).toBe(1);
     expect(r.calls.filter((c) => c === "tests:coverage").length - covBefore).toBe(1);
+  });
+
+  it("a TC's covers edited on disk moves an AC from uncovered to covered after one spine event, one fetch each", async () => {
+    const r = realRpc();
+    const { mission, dir } = missionFor(r, "M6");
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "TC-001_a.md"), tcText("TC-001", "pass", "M6-AC1"));
+    r.board.reconcile();
+    show(r, mission.id);
+    const acRow = async (ac: string) => (await screen.findAllByTestId("ac-row")).find((x) => x.querySelector("th")?.textContent === ac)!;
+    expect((await acRow("M6-AC2")).getAttribute("data-covered")).toBe("false");
+    expect((await acRow("M6-AC1")).textContent).toContain("TC-001");
+
+    writeFileSync(join(dir, "TC-001_a.md"), tcText("TC-001", "pass", "M6-AC2"));
+    r.board.reconcile();
+    const list0 = r.calls.filter((c) => c === "tests:list").length;
+    const cov0 = r.calls.filter((c) => c === "tests:coverage").length;
+    r.emit({ projectId: "workspace", missionId: mission.id });
+    await waitFor(async () => expect((await acRow("M6-AC2")).getAttribute("data-covered")).toBe("true"));
+    expect((await acRow("M6-AC2")).textContent).toContain("TC-001");
+    const ac1 = await acRow("M6-AC1");
+    expect(ac1.getAttribute("data-covered")).toBe("false");
+    expect(ac1.innerHTML).toMatch(/text-status-warning/);
+    expect(r.calls.filter((c) => c === "tests:list").length - list0).toBe(1);
+    expect(r.calls.filter((c) => c === "tests:coverage").length - cov0).toBe(1);
+    // no fetch loop: nothing further is fetched once the view has settled
+    const settled = r.calls.length;
+    await new Promise((res) => setTimeout(res, 50));
+    expect(r.calls.length).toBe(settled);
+  });
+
+  it("an AC added to the mission appears in the coverage view, uncovered, after one spine event", async () => {
+    const r = realRpc();
+    const { mission } = missionFor(r, "M6");
+    show(r, mission.id);
+    const before = await screen.findAllByTestId("ac-row");
+    const got = (await r.rpc.call("mission:get", { missionId: mission.id }))!;
+    r.board.updateBrief("mission", mission.id, { acceptanceCriteria: `${got.acceptanceCriteria.trimEnd()}\n- [ ] a criterion added on disk` });
+    r.board.reconcile();
+    const cov0 = r.calls.filter((c) => c === "tests:coverage").length;
+    r.emit({ projectId: "workspace", missionId: mission.id });
+    await waitFor(() => expect(screen.getAllByTestId("ac-row")).toHaveLength(before.length + 1));
+    const added = screen.getAllByTestId("ac-row").at(-1)!;
+    expect(added.textContent).toContain("a criterion added on disk");
+    expect(added.getAttribute("data-covered")).toBe("false");
+    expect(added.innerHTML).toMatch(/text-status-warning/);
+    expect(r.calls.filter((c) => c === "tests:coverage").length - cov0).toBe(1);
   });
 });

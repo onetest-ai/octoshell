@@ -1,6 +1,5 @@
 // The campaign panel's test summary (M6 T6.4): totals by status, uncovered ACs, one row per mission.
-import type { TestSummary } from "../protocol/index.js";
-import { formatCounts } from "../host/test-summary.js";
+import { formatCounts, type TestSummary } from "../protocol/index.js";
 import { TEST_STATUS_ORDER, TestStatusBadge, UncoveredMark } from "./tests-ui.js";
 
 export function CampaignTestsSummary(
