@@ -1,0 +1,27 @@
+== TC-003 (fix branch f715251c, PACK=/Users/arozumenko/Development/octoshell/apps/vscode-extension/resources/octobots-pack)
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4gate/rerun/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/missions/m1-venue-ingest-mode-and-vendor-integer-ids/mission.yaml
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1: M1-AC11 is not covered by any test case
+exit=0
+set status of "M1 - Venue ingest mode and vendor integer ids" to draft
+octobots: status mission "M1 - Venue ingest mode and vendor integer ids" done -> draft
+set-status draft exit=0
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1: M1-AC11 is not covered by any test case
+set status of "M1 - Venue ingest mode and vendor integer ids" to executing
+octobots: status mission "M1 - Venue ingest mode and vendor integer ids" draft -> executing
+set-status active exit=0
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1: M1-AC11 is not covered by any test case
+set status of "M1 - Venue ingest mode and vendor integer ids" to done
+octobots: status mission "M1 - Venue ingest mode and vendor integer ids" executing -> done
+set-status done exit=0
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1: M1-AC11 is not covered by any test case
+status: done
+
+== TC-006
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4gate/rerun/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_set-ranging-mode-persists.md
+exit=0
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4gate/rerun/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-097_id-mismatch.md
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-097_id-mismatch.md: id TC-003 does not match the filename prefix TC-097
+exit=0
+OK /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4gate/rerun/solo-octobots/campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_nosection.md
+warning: campaigns/uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_nosection.md: missing the "## Expected Final State" section
+exit=0

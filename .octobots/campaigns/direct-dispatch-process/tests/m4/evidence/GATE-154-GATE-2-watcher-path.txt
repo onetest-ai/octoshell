@@ -1,0 +1,31 @@
+### FIX branch board-watcher.ts
+path: /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4gate/campaigns/x/tests/y/runs/repo/.octobots/campaigns/direct-dispatch-process/campaign.yaml
+isTestsRunOrEvidencePath(entity): false  (run report path): true
+reconcile calls after entity write: 1
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+### BASE (m4 head) board-watcher.ts
+path: /private/tmp/claude-501/-Users-arozumenko-Development-octoshell/7d2b7fbe-6dff-4bda-a2af-67e26f0c5157/scratchpad/m4gate/campaigns/x/tests/y/runs/repo/.octobots/campaigns/direct-dispatch-process/campaign.yaml
+isTestsRunOrEvidencePath(entity): true  (run report path): true
+reconcile calls after entity write: 0
+ ❯ test/zz-gate2-demo.test.ts  (1 test | 1 failed) 9ms
+     → expected "spy" to be called 1 times, but got 0 times
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+AssertionError: expected "spy" to be called 1 times, but got 0 times
+     24|     console.log("reconcile calls after entity write:", reconcile.mock.…
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+### watcher test file (fix)
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > coalesces a burst of triggers into ONE settle after the debounce window
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > defers the settle while git is non-quiescent, then runs exactly once after it settles
+ ✓ test/board-watcher.test.ts > createQuiescentDebouncer > dispose cancels a pending settle
+ ✓ test/board-watcher.test.ts > isTestsRunOrEvidencePath > is true for anything under tests/**/runs/ or tests/**/evidence/
+ ✓ test/board-watcher.test.ts > isTestsRunOrEvidencePath > is false for a TC file, a README, an entity file and a runs/ or evidence/ folder outside tests/
+ ✓ test/board-watcher.test.ts > isTestsRunOrEvidencePath > judges only the part below .octobots/campaigns/, never the workspace's own ancestors (M4 gate)
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > watches the whole campaigns tree, so TC and README writes reach the handler
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > triggers no rebuild for a write under tests/**/runs/** or tests/**/evidence/**, on any event
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a write to a TC file triggers exactly one debounced rebuild, however many events it raises
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a README write triggers exactly one rebuild, and so does a TC delete
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > a run report written in the same window as a TC write still costs exactly one rebuild
+ ✓ test/board-watcher.test.ts > registerBoardWatcher: tests/ writes > entity files outside tests/ rebuild as before
+      Tests  12 passed (12)

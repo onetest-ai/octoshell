@@ -1,0 +1,9 @@
+@octoshell/board:test:  Test Files  28 passed (28)
+@octoshell/board:test:       Tests  426 passed (426)
+@octoshell/tokenomics:test:  Test Files  7 passed (7)
+@octoshell/tokenomics:test:       Tests  102 passed (102)
+@octoshell/vscode-extension:test:  Test Files  58 passed (58)
+@octoshell/vscode-extension:test:       Tests  1005 passed (1005)
+@octoshell/graph:test:  Test Files  47 passed (47)
+@octoshell/graph:test:       Tests  655 passed (655)
+pnpm build && pnpm typecheck && pnpm lint && pnpm test: exit 0 (fix head f715251c); gh pr checks 154: both build jobs pass; merged as cc36d7e6
