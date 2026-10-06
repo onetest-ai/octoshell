@@ -32,6 +32,23 @@ const touch = () => ["node", "-e", `require("fs").writeFileSync(${JSON.stringify
 function qa(args: string[], env: Record<string, string> = {}): SpawnSyncReturns<string> {
   return spawnSync("node", [SCRIPT, ...args], { cwd: dir, encoding: "utf8", env: { ...process.env, ...env }, timeout: 20000 });
 }
+/**
+ * Polls until no process remains in group `pid` (kill(-pid, 0) throws ESRCH), up to `timeoutMs`.
+ * A fixed sleep races the reaping of the orphaned probe shell, which stays a zombie in the group
+ * on a loaded runner until its new parent reaps it.
+ */
+async function waitForGroupGone(pid: number, timeoutMs: number, intervalMs = 50): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      process.kill(-pid, 0);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ESRCH") return true;
+    }
+    if (Date.now() >= deadline) return false;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
 const ranEnv = () => JSON.parse(readFileSync(marker, "utf8")) as Record<string, string>;
 
 describe("qa-env.mjs usage", () => {
@@ -247,11 +264,10 @@ describe("qa-env.mjs probe (exit 4, command not run)", () => {
       const pid = Number(readFileSync(pidFile, "utf8").trim());
       child.kill(sig);
       expect(await exited).toBe(code);
-      await new Promise((r) => setTimeout(r, 200));
-      expect(() => process.kill(-pid, 0)).toThrow(); // the probe's whole group is gone
+      expect(await waitForGroupGone(pid, 5000)).toBe(true); // the probe's whole group is gone
       expect(existsSync(marker)).toBe(false);
     }
-  });
+  }, 30_000); // each signal iteration may poll up to 5 s for the group to be reaped
 
   it("exits 128+n, not by the default signal disposition, when interrupted right after the probe spawns", async () => {
     const pidFile = join(dir, "probe.pid");
@@ -270,11 +286,10 @@ describe("qa-env.mjs probe (exit 4, command not run)", () => {
       const pid = Number(readFileSync(pidFile, "utf8").trim());
       child.kill(sig);
       expect(await exited).toBe(code);
-      await new Promise((r) => setTimeout(r, 200));
-      expect(() => process.kill(-pid, 0)).toThrow();
+      expect(await waitForGroupGone(pid, 5000)).toBe(true);
       expect(existsSync(marker)).toBe(false);
     }
-  });
+  }, 30_000); // each signal iteration may poll up to 5 s for the group to be reaped
 
   it("defaults the probe timeout to 30 s (documented in the usage text)", () => {
     expect(readFileSync(SCRIPT, "utf8")).toMatch(/30_000|30000/);
