@@ -18,7 +18,28 @@ const fake = vi.hoisted(() => {
   type Handler = (uri: { fsPath: string }) => void;
   const handlers: { change: Handler[]; create: Handler[]; delete: Handler[] } = { change: [], create: [], delete: [] };
   const patterns: string[] = [];
-  return { handlers, patterns };
+  // Webview panels EntityPanelManager opens: what each was posted, and its message handler (the webview's side).
+  type FakePanel = { posted: Array<{ type: string; payload?: unknown; id?: number; ok?: boolean; value?: unknown }>; send: (m: unknown) => Promise<unknown>; panel: unknown };
+  const panels: FakePanel[] = [];
+  const newPanel = (): unknown => {
+    let recv: ((m: unknown) => Promise<unknown>) | null = null;
+    let onDispose: (() => void) | null = null;
+    const p: FakePanel = { posted: [], send: (m) => recv!(m), panel: null };
+    p.panel = {
+      webview: {
+        html: "", options: {}, cspSource: "",
+        postMessage: (m: FakePanel["posted"][number]) => { p.posted.push(m); return Promise.resolve(true); },
+        onDidReceiveMessage: (h: (m: unknown) => Promise<unknown>) => { recv = h; return { dispose: () => undefined }; },
+        asWebviewUri: (u: unknown) => u,
+      },
+      onDidDispose: (cb: () => void) => { onDispose = cb; return { dispose: () => undefined }; },
+      reveal: () => undefined,
+      dispose: () => onDispose?.(),
+    };
+    panels.push(p);
+    return p.panel;
+  };
+  return { handlers, patterns, panels, newPanel };
 });
 vi.mock("vscode", () => ({
   TreeItem: class { constructor(public label: string, public collapsibleState?: number) {} },
@@ -26,6 +47,9 @@ vi.mock("vscode", () => ({
   ThemeIcon: class { constructor(public id: string, public color?: unknown) {} },
   ThemeColor: class { constructor(public id: string) {} },
   EventEmitter: class { event = (): void => {}; fire(): void {} },
+  ViewColumn: { Active: -1 },
+  Uri: { file: (p: string) => ({ fsPath: p }) },
+  window: { createWebviewPanel: () => fake.newPanel() },
   RelativePattern: class {
     constructor(public base: unknown, public pattern: string) {}
   },
@@ -42,6 +66,7 @@ vi.mock("vscode", () => ({
   },
 }));
 vi.mock("../src/host/git-quiescence.js", () => ({ isGitQuiescent: () => true }));
+vi.mock("../src/host/webview-html.js", () => ({ buildWebviewHtml: () => "<html></html>" }));
 
 describe("createQuiescentDebouncer", () => {
   beforeEach(() => vi.useFakeTimers());
@@ -270,6 +295,49 @@ describe("a set-test-status.js write reaches the Tests node and open panels with
     vi.advanceTimersByTime(BOARD_DEBOUNCE_MS * 10);
     expect(reconcile).toHaveBeenCalledTimes(1); // no reload loop
     expect(panelRefreshes).toBe(1);
+    dispose.dispose();
+  });
+
+  it("an OPEN mission panel is refreshed once within one debounce and its reload over tests:* sees the new status", async () => {
+    const { board, m, c, tcs } = fixture();
+    const { EntityPanelManager } = await import("../src/host/entity-panel-manager.js");
+    const reconcile = vi.spyOn(board, "reconcile");
+    const manager = new EntityPanelManager({ extensionPath: "/ext" } as never, { board } as never);
+    fake.panels.length = 0;
+    manager.openMission(m.id);
+    manager.openCampaign(c.id);
+    const [missionPanel, campaignPanel] = fake.panels;
+    const spine = (p: typeof missionPanel): unknown[] => p!.posted.filter((x) => x.type === "spine:event").map((x) => x.payload);
+    const rpc = async (p: typeof missionPanel, id: number, method: string, args: unknown): Promise<unknown> => {
+      await p!.send({ type: "rpc", id, method, args });
+      const r = p!.posted.find((x) => x.type === "rpc:result" && x.id === id)!;
+      expect(r.ok, method).toBe(true);
+      return r.value;
+    };
+    const dispose = registerBoardWatcher({ folder: {} as never, board, repoRoot: "/ws" });
+
+    setStatus(tcs[0]!, "pass");
+    deliver("create", tmpOf(tcs[0]!));
+    deliver("change", tcs[0]!);
+    vi.advanceTimersByTime(BOARD_DEBOUNCE_MS - 1);
+    expect(spine(missionPanel)).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    // the event MissionView reloads on (mission-view.tsx: `e.missionId === id`), exactly once
+    expect(spine(missionPanel)).toEqual([{ projectId: "workspace", missionId: m.id }]);
+    expect(spine(campaignPanel)).toEqual([{ projectId: "workspace", campaignId: c.id }]);
+
+    // the panel's reload: its tests:* calls already see the TC that set-test-status.js flipped
+    const list = (await rpc(missionPanel, 1, "tests:list", { campaignId: c.id, mission: "m4" })) as Array<{ id: string; status: string }>;
+    expect(list.map((t) => `${t.id}:${t.status}`)).toEqual(["TC-001:pass", "TC-002:ready", "TC-003:ready"]);
+    const cov = (await rpc(missionPanel, 2, "tests:coverage", { missionId: m.id })) as { acs: Array<{ ac: string; tcs: string[] }> };
+    expect(cov.acs[0]).toMatchObject({ ac: "M4-AC1", tcs: ["TC-001", "TC-002", "TC-003"] });
+    const sum = (await rpc(campaignPanel, 3, "tests:summary", { campaignId: c.id })) as { counts: Record<string, number> };
+    expect(sum.counts).toMatchObject({ pass: 1, ready: 2 });
+
+    vi.advanceTimersByTime(BOARD_DEBOUNCE_MS * 10);
+    expect(reconcile).toHaveBeenCalledTimes(1); // the panel's reads trigger no rebuild: no reload loop
+    expect(spine(missionPanel)).toHaveLength(1);
     dispose.dispose();
   });
 

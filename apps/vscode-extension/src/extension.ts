@@ -6,7 +6,7 @@ import { LEGACY_WORKFLOW_VIEW_TYPE, legacyWorkflowPanelSerializer } from "./host
 import { EntityPanelManager, CAMPAIGN_VIEW_TYPE, MISSION_VIEW_TYPE, TASK_VIEW_TYPE, BUG_VIEW_TYPE } from "./host/entity-panel-manager.js";
 import { TokenomicsPanel } from "./host/tokenomics-panel.js";
 import { isCampaignRun, renderReportHtml, type Report as TokenomicsReport } from "@octoshell/tokenomics";
-import { CampaignsTree, OPEN_TEST_FILE_COMMAND } from "./host/campaigns-tree.js";
+import { CampaignsTree, OPEN_TEST_FILE_COMMAND, testFileToOpen } from "./host/campaigns-tree.js";
 import { dispatch, type DispatchCtx } from "./host/rpc-dispatcher.js";
 import { registerBoardWatcher } from "./host/board-watcher.js";
 import { packStatus, installPack, OCTOBOTS_PACK_VERSION } from "./host/octobots-skill.js";
@@ -281,8 +281,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("octoshell.openCampaignById", (id: string) => entityPanels.openCampaign(id)),
     vscode.commands.registerCommand("octoshell.openMissionById", (id: string) => entityPanels.openMission(id)),
     vscode.commands.registerCommand("octoshell.openTaskById", (id: string) => entityPanels.openTask(id)),
-    // A Tests-node leaf opens its markdown file through the same openFile the dispatcher's editor uses.
-    vscode.commands.registerCommand(OPEN_TEST_FILE_COMMAND, (absPath: string) => dispatchCtx.editor.openFile(absPath)),
+    // A Tests-node leaf opens its markdown file through the same openFile the dispatcher's editor uses. Any caller
+    // can run a command, so the path must be a TC file inside this board; anything else is ignored silently.
+    vscode.commands.registerCommand(OPEN_TEST_FILE_COMMAND, async (arg: unknown) => {
+      const abs = testFileToOpen(board.artifactsRoot, arg);
+      if (abs) await dispatchCtx.editor.openFile(abs);
+    }),
     vscode.commands.registerCommand("octoshell.openBugById", (id: string) => entityPanels.openBug(id)),
     vscode.commands.registerCommand("octoshell.newCampaign", async () => {
       const name = await vscode.window.showInputBox({ prompt: "Campaign name", placeHolder: "e.g. Q3 Rollout" });

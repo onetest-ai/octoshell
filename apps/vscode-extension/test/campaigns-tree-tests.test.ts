@@ -1,6 +1,6 @@
 // M6 T6.3: the `Tests` node of the sidebar tree and the BoardHost test API behind it (mission AC3).
 import { describe, it, expect, vi } from "vitest";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { BoardHost } from "../src/host/board-host.js";
@@ -15,7 +15,7 @@ vi.mock("vscode", () => ({
   EventEmitter: class { event = (): void => {}; fire(): void {} },
 }));
 
-const { CampaignsTree } = await import("../src/host/campaigns-tree.js");
+const { CampaignsTree, testFileToOpen, OPEN_TEST_FILE_COMMAND } = await import("../src/host/campaigns-tree.js");
 type Tree = InstanceType<typeof CampaignsTree>;
 type Node = ReturnType<Tree["getChildren"]>[number];
 interface Item { label: string; id?: string; description?: string; tooltip?: string; collapsibleState?: number; iconPath?: { id: string; color?: { id: string } }; command?: { command: string; arguments?: unknown[] } }
@@ -155,6 +155,64 @@ describe("Tests node: structure and labels", () => {
     const group2 = kids(tree, kids(tree, kids(tree).find((n) => n.type === "campaign")!).find((n) => (n.type as string) === "tests")!)[0]!;
     expect(item(tree, group2).label).not.toBe("m1 · 1 · 1✓");
     expect(item(tree, group2).id).toBe(before);
+  });
+});
+
+describe("Tests node: missions without test cases (review fix)", () => {
+  it("a mission with no TCs gets no empty group, though its ACs still count as uncovered", () => {
+    const { board, campaignDir, campaignId } = seed([{ title: "M1 - a", acs: 1 }, { title: "M2 - b", acs: 2 }, { title: "M3 - c" }]);
+    many(campaignDir, "m1", "M1", { pass: 1 });
+    mkdirSync(join(campaignDir, "tests", "m3", "runs"), { recursive: true }); // a folder holding no TC is not a group either
+    board.reconcile();
+    const tree = new CampaignsTree(board);
+    const testsNode = kids(tree, kids(tree).find((n) => n.type === "campaign")!).find((n) => (n.type as string) === "tests")!;
+    expect(kids(tree, testsNode).map((g) => item(tree, g).label)).toEqual(["m1 · 1 · 1✓"]);
+    expect(board.testSummary(campaignId)!.missions.map((m) => [m.folder, m.total])).toEqual([["m1", 1], ["m2", 0], ["m3", 0]]);
+  });
+});
+
+describe("octoshell.openTestFile only opens a TC file inside the board (review fix)", () => {
+  function board1() {
+    const s = seed([{ title: "M1 - a" }]);
+    put(s.campaignDir, "m1", "TC-001_x.md", tc("TC-001", { mission: "M1", status: "pass" }));
+    put(s.campaignDir, "m1", "README.md", "# map\n");
+    s.board.reconcile();
+    return s;
+  }
+
+  it("accepts the path every TC leaf passes", () => {
+    const { board } = board1();
+    const tree = new CampaignsTree(board);
+    const testsNode = kids(tree, kids(tree).find((n) => n.type === "campaign")!).find((n) => (n.type as string) === "tests")!;
+    const leaf = item(tree, kids(tree, kids(tree, testsNode)[0])[0]!);
+    expect(leaf.command!.command).toBe(OPEN_TEST_FILE_COMMAND);
+    const arg = leaf.command!.arguments![0];
+    expect(testFileToOpen(board.artifactsRoot, arg)).toBe(arg);
+  });
+
+  it("rejects a missing or non-string argument, a path that climbs out, a non-TC file and a symlink leaving the board", () => {
+    const { board, octo, campaignDir } = board1();
+    const outside = join(octo, "..", "secret.md");
+    writeFileSync(outside, "secret");
+    const climb = join(campaignDir, "tests", "m1", "..", "..", "..", "..", "..", "secret.md");
+    expect(existsSync(climb)).toBe(true);
+    symlinkSync(outside, join(campaignDir, "tests", "m1", "TC-099_link.md"));
+    const notTests = join(campaignDir, "missions", "x", "TC-007_not-a-test.md"); // a TC name outside tests/
+    mkdirSync(join(campaignDir, "missions", "x"), { recursive: true });
+    writeFileSync(notTests, "# TC-007\n");
+    for (const arg of [undefined, null, 7, "", {}, outside, climb, "/etc/hosts",
+      join(campaignDir, "tests", "m1", "README.md"),
+      join(campaignDir, "campaign.yaml"),
+      join(campaignDir, "tests", "m1", "TC-404_missing.md"),
+      join(campaignDir, "tests", "m1", "TC-099_link.md"), notTests])
+      expect(testFileToOpen(board.artifactsRoot, arg), String(arg)).toBeNull();
+  });
+
+  it("extension.ts routes the command through the guard, never straight to openFile", () => {
+    const src = readFileSync(new URL("../src/extension.ts", import.meta.url), "utf8");
+    const reg = /registerCommand\(OPEN_TEST_FILE_COMMAND,[\s\S]*?\n    \}\),/.exec(src)?.[0] ?? "";
+    expect(reg).toContain("testFileToOpen(board.artifactsRoot, arg)");
+    expect(reg).toMatch(/if \(abs\) await dispatchCtx\.editor\.openFile\(abs\)/);
   });
 });
 

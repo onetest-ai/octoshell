@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { BoardHost, CampaignRollup } from "./board-host.js";
-import { join } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Campaign, Mission, Task, Bug, TestCase, TestCaseStatus } from "@octoshell/board";
 import { formatCounts, groupLabel, TEST_STATUS_ORDER } from "./test-summary.js";
 
@@ -26,6 +27,28 @@ const TEST_ICON: Record<TestCaseStatus, { icon: string; color: string }> = {
 
 /** The command a TC leaf runs: extension.ts routes it to the dispatcher's `editor.openFile`. */
 export const OPEN_TEST_FILE_COMMAND = "octoshell.openTestFile";
+
+const inside = (root: string, p: string): string | null => {
+  const rel = relative(root, p);
+  return rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel) ? null : rel;
+};
+
+/**
+ * The file {@link OPEN_TEST_FILE_COMMAND} may open: an existing `TC-*.md` under `<board>/campaigns/<c>/tests/`,
+ * after resolving `..` and symlinks, or null (no argument, a non-string, another file, a path that leaves the
+ * board). The command is callable by anything that can run a command, so its argument is never trusted.
+ */
+export function testFileToOpen(boardRoot: string, arg: unknown): string | null {
+  if (typeof arg !== "string" || arg.length === 0) return null;
+  const abs = resolve(arg);
+  if (!existsSync(abs) || !existsSync(boardRoot)) return null;
+  const rel = inside(realpathSync(boardRoot), realpathSync(abs));
+  if (!rel || inside(resolve(boardRoot), abs) === null) return null;
+  const parts = rel.split(sep);
+  return parts.length >= 4 && parts[0] === "campaigns" && parts[2] === "tests" && /^TC-[^\\/]*\.md$/.test(parts[parts.length - 1]!)
+    ? abs
+    : null;
+}
 
 /** Map a mission/task status to its contributed status color (see package.json contributes.colors). */
 function statusColor(status: string): vscode.ThemeColor {
