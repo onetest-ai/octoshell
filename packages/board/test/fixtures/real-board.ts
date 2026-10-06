@@ -45,15 +45,20 @@ export function campaignDirs(board: string): string[] {
  * scratch copy named `.octobots`, so a test may add to it freely. Never empty.
  */
 export function trackedBoardCopies(): string[] {
-  const repoRoot = join(REPO_OCTOBOTS, "..");
-  const extract = scratchDir("tracked-board-");
-  const archive = execFileSync("git", ["archive", "HEAD", ".octobots"], { cwd: repoRoot, maxBuffer: 256 * 1024 * 1024 });
-  execFileSync("tar", ["-x", "-C", extract], { input: archive });
   const named = (process.env.OCTOBOTS_BOARD_COPIES ?? "").split(":").filter(Boolean);
   const extra = named.map((src, i) => {
     const dest = join(scratchDir(`named-board-${i}-`), ".octobots");
     cpSync(src, dest, { recursive: true });
     return dest;
   });
-  return [join(extract, ".octobots"), ...extra];
+  return [gitArchiveBoard(), ...extra];
+}
+
+/** Just the tracked board: `git archive HEAD .octobots` into a scratch directory, as a CI checkout has it. */
+export function gitArchiveBoard(): string {
+  const repoRoot = join(REPO_OCTOBOTS, "..");
+  const extract = scratchDir("tracked-board-");
+  const archive = execFileSync("git", ["archive", "HEAD", ".octobots"], { cwd: repoRoot, maxBuffer: 256 * 1024 * 1024 });
+  execFileSync("tar", ["-x", "-C", extract], { input: archive });
+  return join(extract, ".octobots");
 }
