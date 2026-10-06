@@ -2,7 +2,7 @@
 import { chmodSync, lstatSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { dump as yamlDump, load as yamlLoad } from "./vendor/js-yaml.mjs";
-import { MAX_TC_BYTES, TC_ID_RE, coversOf, missionIdOfFolder, parseFrontmatter, splitFrontmatter } from "./tc-io.mjs";
+import { MAX_TC_BYTES, TC_ID_RE, missionIdOfFolder, parseFrontmatter, splitFrontmatter } from "./tc-io.mjs";
 import { readRegularFile } from "./pending-io.mjs";
 
 // Record a test case's result on the board: write `status` (and `last_run`) into a TC file's frontmatter.
@@ -167,7 +167,9 @@ const afterKey = (key) => { const i = indexOfKey(key); return i < 0 ? 0 : endOf(
 
 const folder = basename(folderDir);
 const stem = basename(file).replace(/\.md$/, "");
-const body = parts ? parts.body : text;
+// A BOM on a file with no frontmatter stays at the very start, in front of the new block; the body is what follows it.
+const bom = !parts && text.charCodeAt(0) === 0xfeff ? "\uFEFF" : "";
+const body = parts ? parts.body : text.slice(bom.length);
 const missing = (key) => oldData[key] === undefined || oldData[key] === null;
 
 if (migrate) {
@@ -196,7 +198,7 @@ if (status !== null) {
 const yamlText = lines.join("");
 const head = parts ? parts.head : "---" + eol;
 const tail = parts ? parts.tail : "---" + eol;
-const next = parts ? head + yamlText + tail + parts.body : head + yamlText + tail + text;
+const next = parts ? head + yamlText + tail + parts.body : bom + head + yamlText + tail + body;
 
 /** A comparable form: dates as ISO strings, mapping keys sorted. */
 function canon(v) {
@@ -221,7 +223,7 @@ if (noChange) {
   process.exit(0);
 }
 if (!reparsed.ok || !newParts || newParts.body !== body || !same(reparsed.data, expected)) {
-  fail(`could not edit the frontmatter of ${tcArg} safely (unusual YAML); nothing was written. Edit it by hand, keeping the TC format contract in mission-planner`);
+  fail(`could not edit the frontmatter of ${tcArg} safely (unusual YAML); nothing was written. Fix the frontmatter so it parses as plain top-level YAML keys (or run --migrate on a file that has none), then call this script again`);
 }
 
 const tmp = join(folderDir, `.${basename(file)}.${process.pid}.tmp`);

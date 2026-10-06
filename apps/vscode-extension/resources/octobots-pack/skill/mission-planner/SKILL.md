@@ -249,7 +249,7 @@ are `T<missionNumber>.<taskNumber>` within their mission (`T3.1`, `T3.2`, …). 
      blocked | unknown), optional `last_run` (`{date: YYYY-MM-DD, evidence: <repo-relative RUN file>}`).
      Other keys are allowed and ignored. Required sections: `## Steps` and `## Expected Final State`.
    - **Results -> status.** PASS -> pass, FAIL -> fail, BLOCKED -> blocked, UNREACHABLE -> blocked
-     with the reason in the RUN file (`runs/RUN-YYYY-MM-DD-NNN.md`). Note a manual execution as manual. QA records each result with `set-test-status.js`.
+     with the reason in the RUN file (`runs/RUN-YYYY-MM-DD-NNN.md`). Note a manual execution as manual. QA records each result with `set-test-status.js`; its `--migrate` renames a legacy `requirements` to `covers` when `covers` is absent.
    - **`{{base_url}}`.** Never hard-code a host or port in a TC; write `{{base_url}}` (or another
      `{{variable}}`) and define each variable named in the README under `Shared preconditions`.
    - **Execution modes.** API/CLI calls (curl, the project's CLI, a test command), and Playwright MCP

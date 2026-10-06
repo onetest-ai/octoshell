@@ -1835,6 +1835,8 @@ describe("set-test-status.js — writing a test case's status and last_run", () 
       const r = sts([p, "pass", "--date", "2026-10-06"]);
       expect(r.status, fm).toBe(2);
       expect(r.stderr, fm).toMatch(/could not edit the frontmatter of .* safely/);
+      expect(r.stderr, fm).toMatch(/Fix the frontmatter so it parses/);
+      expect(r.stderr, fm).not.toMatch(/by hand/);
       expect(readFileSync(p, "utf8"), fm).toBe(text);
       expect(readdirSync(tcDir), fm).toEqual(["TC-001_logout.md"]);
     }
@@ -1985,6 +1987,15 @@ describe("set-test-status.js — writing a test case's status and last_run", () 
       writeFileSync(p, `---\ntitle: t\nrequirements:\n  - M3b-AC1\n---\n${BODY}`);
       expect(sts([p, "--migrate"]).status).toBe(0);
       expect(readFileSync(p, "utf8")).toBe(`---\nid: TC-012\ntitle: t\nmission: M3b\ncovers:\n  - M3b-AC1\nstatus: unknown\n---\n${BODY}`);
+    });
+
+    it("a BOM on a file with no frontmatter stays first, before the new block, and the H1 after it still gives the title", () => {
+      const rest = BODY.replace(/^\n/, "");
+      const p = put("TC-002_none.md", `\uFEFF${rest}`);
+      expect(sts([p, "--migrate"]).status).toBe(0);
+      expect(readFileSync(p, "utf8")).toBe(`\uFEFF---\nid: TC-002\ntitle: 'TC-001: logout'\nmission: M1\nstatus: unknown\n---\n${rest}`);
+      const again = sts([p, "--migrate"]);
+      expect(again.stdout).toContain("(already)");
     });
 
     it("a TC with no frontmatter gets a new block (id, title from the H1, mission, status unknown); the old text is the body", () => {

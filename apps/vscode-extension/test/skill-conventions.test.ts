@@ -503,6 +503,9 @@ describe("QA runs the test cases on real data (M4-AC5): the gate and the last ta
 
 describe("T4.3 reviewer nits", () => {
   const planner = skill("mission-planner").replace(/\s+/g, " ");
+  it("mission-planner: --migrate renames requirements to covers when covers is absent", () => {
+    expect(planner).toMatch(/`--migrate` renames a legacy `requirements` to `covers` when `covers` is absent/);
+  });
   it("mission-planner: the TC id equals the filename prefix before the first `_`", () => {
     expect(planner).toMatch(/filename prefix before the first `_`/);
   });
