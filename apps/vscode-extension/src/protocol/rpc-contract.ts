@@ -173,7 +173,8 @@ export interface RpcResults {
   "mission:list": Mission[];
   "mission:get": Mission | null;
   "mission:update": { ok: true };
-  "mission:setStatus": { ok: true };
+  /** `status` is set when the move was cancelled: the stored status the view should show. */
+  "mission:setStatus": { ok: true; status?: string };
   "mission:syncTasks": { created: number };
   "mission:docs": DocsResult;
   "mission:docs:addLink": DocLink;

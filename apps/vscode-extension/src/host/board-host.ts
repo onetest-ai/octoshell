@@ -16,7 +16,7 @@ import {
   createTask,
   createBug,
   updateBrief,
-  setStatus,
+  setStatusChecked,
   addDocument,
   removeDocument,
   deleteCampaign,
@@ -44,12 +44,16 @@ export interface CampaignRollup extends Rollup {
   isDefault: boolean;
 }
 
+/** What {@link BoardHost.setStatus} returns: done, or refused because a mission start has no plan review. */
+export type SetStatusOutcome = { ok: true } | { ok: false; reason: "plan-review-missing"; message: string };
+
 export class BoardHost {
   private readonly octobotsDir: string;
   private model!: BoardModel; // assigned via rebuildModel() in the constructor
   private readonly emitter = new EventEmitter();
 
-  constructor(octobotsDir: string) {
+  /** @param now The clock for dated notes (the plan-review override); injectable for tests. */
+  constructor(octobotsDir: string, private readonly now: () => Date = () => new Date()) {
     this.octobotsDir = octobotsDir;
     this.rebuildModel(); // BoardModel does NOT parse on construction — must rebuild()
   }
@@ -346,10 +350,21 @@ export class BoardHost {
     this.reconcile();
   }
 
-  setStatus(kind: EntityKind, id: string, status: string): boolean {
-    const ok = setStatus(this.octobotsDir, kind, id, status);
-    if (ok) this.reconcile();
-    return ok;
+  /**
+   * Set an entity's status. A mission moving INTO `executing` from another status needs a recorded
+   * plan review (`planReviewStatus`); without one the file is left untouched and
+   * `{ok: false, reason: "plan-review-missing", message}` comes back. `opts.force` (a reason)
+   * overrides and appends `## Plan review overridden (<date>)` to the mission notes. Every other
+   * kind and move is unchecked. Throws when the entity or the status is unknown.
+   */
+  setStatus(kind: EntityKind, id: string, status: string, opts: { force?: string } = {}): SetStatusOutcome {
+    const res = setStatusChecked(this.octobotsDir, kind, id, status, { force: opts.force, now: this.now });
+    if (res.ok) {
+      this.reconcile();
+      return { ok: true };
+    }
+    if (res.reason === "plan-review-missing") return res;
+    throw new Error(`Could not set status "${status}" (entity not found or unknown status).`);
   }
 
   addDocument(kind: EntityKind, id: string, label: string, target: string): void {
