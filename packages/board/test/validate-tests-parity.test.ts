@@ -310,3 +310,30 @@ describe("validate.js <TC file>", () => {
     expect(validateJs(join(c.campaignDir, "nope.md")).status).toBe(2);
   });
 });
+
+describe("a malformed sibling mission.yaml (M4 gate)", () => {
+  // The pairing rule reads the OTHER missions of a campaign; one of them failing to parse must not crash
+  // validate.js on the campaign or on a TC file: the exit code stays what the target entity alone produces.
+  const broken = (): ReturnType<typeof synthBoard> => {
+    const c = synthBoard(scratch("broken-sibling-"), [{ title: "M1 - Auth", acs: 1 }, { title: "M2 - Pay", acs: 2 }]);
+    writeTests(c, "m2", { "README.md": readmeText([]), "TC-001_a.md": tcText(["id: TC-001", "mission: M2", "covers: [M2-AC1, M2-AC9]"]) });
+    writeFileSync(join(c.missionDirs.m1!, "mission.yaml"), "name: [unclosed\n", "utf8");
+    return c;
+  };
+
+  it("validate.js <campaign-dir> still exits 0 and reports the healthy missions' warnings", () => {
+    const c = broken();
+    const r = validateJs(c.campaignDir);
+    expect(r.stderr).not.toMatch(/YAMLException|at .*js-yaml/);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain(`campaigns/${c.campaign}/tests/m2: M2-AC2 is not covered by any test case`);
+  });
+
+  it("validate.js <TC file> still exits 0 and bounds covers by its own mission", () => {
+    const c = broken();
+    const r = validateJs(join(c.testsDir("m2"), "TC-001_a.md"));
+    expect(r.stderr).toBe("");
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("covers names M2-AC9, which is not an acceptance criterion of M2");
+  });
+});
