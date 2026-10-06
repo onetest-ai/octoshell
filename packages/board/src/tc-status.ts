@@ -181,14 +181,14 @@ export function editTestCaseStatus(text: string, status: SettableTcStatus, date:
 
 // ── reading ──────────────────────────────────────────────────────────────────────
 
-type ReadResult = { ok: true; text: string } | { ok: false; reason: TcWriteRefusal; message: string };
+export type ReadResult = { ok: true; text: string } | { ok: false; reason: TcWriteRefusal; message: string };
 
 /**
  * The text of a TC: opened non-blocking and without following a symlink, checked with fstat on that same
  * descriptor (a FIFO or a link to /dev/zero named TC-*.md must not block the extension host), at most MAX_TC_BYTES.
  * Own copy of the no-follow reader (pending-io.mjs `readRegularFile`): tc-io.ts is not edited for it.
  */
-function readTcFile(file: string): ReadResult {
+export function readTcFile(file: string): ReadResult {
   let fd: number;
   try {
     fd = openSync(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) | (constants.O_NOFOLLOW ?? 0));
@@ -241,7 +241,7 @@ function hasControlOrBackslash(s: string): boolean {
 }
 
 /** The path segments of `relPath` when it is `campaigns/<c>/tests/m<n>/TC-*.md`, else null. */
-function tcSegments(relPath: string): string[] | null {
+export function tcSegments(relPath: string): string[] | null {
   if (typeof relPath !== "string") return null;
   const segs = relPath.split("/");
   if (segs.length !== 5 || segs[0] !== "campaigns" || segs[2] !== "tests") return null;

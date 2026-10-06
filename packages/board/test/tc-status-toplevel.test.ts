@@ -13,9 +13,9 @@ import ts from "typescript";
 const SRC = resolve(__dirname, "../src");
 const source = (name: string): ts.SourceFile => ts.createSourceFile(name, readFileSync(resolve(SRC, name), "utf8"), ts.ScriptTarget.ES2022, true);
 
-describe("tc-status.ts stays tree-shakeable", () => {
+describe.each(["tc-status.ts", "tc-detail.ts"])("%s stays tree-shakeable", (module) => {
   it("has only imports, types and function declarations at its top level", () => {
-    const offenders = source("tc-status.ts").statements
+    const offenders = source(module).statements
       .filter((s) => !(ts.isImportDeclaration(s) || ts.isFunctionDeclaration(s) || ts.isTypeAliasDeclaration(s) || ts.isInterfaceDeclaration(s)))
       .map((s) => `${ts.SyntaxKind[s.kind]}: ${s.getText().slice(0, 60)}`);
     expect(offenders).toEqual([]);
@@ -23,7 +23,7 @@ describe("tc-status.ts stays tree-shakeable", () => {
 
   it("is not imported by anything BoardModel reaches", () => {
     for (const name of ["board-model.ts", "tc-io.ts", "test-cases.ts", "write.ts", "validate.ts", "types.ts", "managed-block.ts", "entity-schema.ts", "slug.ts", "plan-review.ts"]) {
-      expect(readFileSync(resolve(SRC, name), "utf8"), name).not.toMatch(/tc-status/);
+      expect(readFileSync(resolve(SRC, name), "utf8"), name).not.toMatch(module.replace(".ts", ""));
     }
   });
 });

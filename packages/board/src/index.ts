@@ -37,3 +37,4 @@ export {
   type WriteTestCaseStatusOptions,
   type WriteTestCaseStatusResult,
 } from "./tc-status.js";
+export { readTestCaseDetail, type TcBody, type TcWritable, type TestCaseFileDetail } from "./tc-detail.js";

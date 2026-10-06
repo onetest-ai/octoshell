@@ -116,6 +116,8 @@ const handlers: { [M in RpcMethod]: RpcHandler<M> } = {
   "tests:list": (a, c) => c.board.listTests(a.campaignId, a.mission),
   "tests:coverage": (a, c) => c.board.testCoverage(a.missionId),
   "tests:summary": (a, c) => c.board.testSummary(a.campaignId),
+  "tests:get": (a, c) => c.board.getTestCaseDetail(a.path),
+  "tests:setStatus": (a, c) => c.board.setTestStatus(a.path, a.status, a.base),
 };
 
 /** Exported for the exhaustiveness test (Task 11). */
