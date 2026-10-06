@@ -147,6 +147,30 @@ Vitest across the board. Renderer tests use happy‑dom + `@testing-library/reac
 and `tokenomics` packages test their pure functions directly against fixture trees; host‑side
 tests write to temp directories rather than the repo's own `.octobots/`.
 
+## Agent-ops rules
+
+How agents run commands here. The pack's `mission-execution` skill carries the same rules for every
+project; they are restated because they are what an agent gets wrong without them.
+
+- **Servers:** start one with `nohup ... > log 2>&1 < /dev/null &`, then poll readiness with a bounded
+  `curl -m 2` loop (a fixed number of tries, each capped at 2 seconds). Never wait on a server
+  unbounded.
+- **No `timeout` on macOS.** Use the Bash tool's `timeout` parameter, or
+  `perl -e 'alarm shift; exec @ARGV' N cmd`.
+- **Never background a test command** (`pnpm test`, `vitest`, a coverage run). Run it in the foreground
+  under a Bash timeout. Only non-terminating servers and watchers are backgrounded.
+- **QA databases:** QA server, migration and seed commands run through `qa-env.mjs <db> -- <cmd...>`
+  (config `.octobots/qa-env.json`), so they cannot touch a real database. Octoshell has no database,
+  so nothing here needs it.
+- **Plan review before build:** a mission moves to `executing` only after a `## Plan review (...)`
+  record (`Reviewers: ba (...), tech-lead (...)` and `Verdict: approved` or `Verdict: approved with nits`) sits in its notes or its
+  campaign's. `set-status.js` and the status dropdown refuse otherwise; the override is
+  `--force=<reason>` or the dropdown's confirm.
+- **Test lanes and parked tests:** the fast and coverage commands are declared in `AGENTS.md`
+  § Test lanes. `node apps/vscode-extension/resources/octobots-pack/skill/mission-execution/scripts/scan-parked.js`
+  must exit 0: a skipped, todo or xfailed test is a parked defect unless the user signs it off in
+  `.octobots/parked-signoff.txt`.
+
 <!-- BUNDLE:feature-development START -->
 ## Team roles on this project
 

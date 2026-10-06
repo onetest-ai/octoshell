@@ -1683,3 +1683,29 @@ describe("set-status.js plan-review gate (M5 AC1)", () => {
     });
   });
 });
+
+// HELD BACK (M5 T5.5): reads octoshell's REAL AGENTS.md, so it fails until the proposed AGENTS.md
+// `## Test lanes` section is applied (it needs the user's OK). Commit it together with that change.
+describe("doctor.js lanes on octoshell's own AGENTS.md (mission AC7)", () => {
+  const REPO_ROOT = resolve(__dirname, "../../..");
+
+  it("reports no lanes warning: AGENTS.md declares fast: and coverage:", () => {
+    const home = mkdtempSync(join(tmpdir(), "doctor-home-"));
+    try {
+      const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
+      delete env.CLAUDE_CONFIG_DIR;
+      let out: string;
+      try {
+        out = execFileSync("node", [join(SCRIPTS, "doctor.js"), "--root", REPO_ROOT, "--json"], { encoding: "utf8", env });
+      } catch (err: unknown) {
+        out = (err as { stdout?: string }).stdout ?? ""; // other checks may fail on a source checkout; only lanes matters here
+      }
+      const lanes = (JSON.parse(out) as { findings: { level: string; area: string; msg: string }[] }).findings.filter((f) => f.area === "lanes");
+      expect(lanes.filter((f) => f.level === "warn"), "no lanes warning").toEqual([]);
+      expect(lanes).toHaveLength(1);
+      expect(lanes[0]!.msg).toMatch(/fast: pnpm --filter <pkg> test; coverage: pnpm coverage/);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
