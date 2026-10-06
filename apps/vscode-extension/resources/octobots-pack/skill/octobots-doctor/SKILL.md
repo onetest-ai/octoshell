@@ -1,6 +1,6 @@
 ---
 name: octobots-doctor
-description: Use when the session context says "Octobots health: run the octobots-doctor skill", when .octobots/pack-updates/pending.json lists a pending pack reconcile (a pack skill this workspace changed locally, staged by a pack update), or when doctor.js or validate.js report a pack or board health finding (pack reconcile pending, leftover workflows/ folders, CLAUDE_CONFIG_DIR, tests-pairing warnings) in a repo with an .octobots/ directory. Not for planning or recording board work (that is mission-planner) and not for building a planned task (that is mission-execution).
+description: Use when the session context says "Octobots health: run the octobots-doctor skill", when .octobots/pack-updates/pending.json lists a pending pack reconcile (a pack skill this workspace changed locally, staged by a pack update), or when doctor.js or validate.js report a pack or board health finding (pack reconcile pending, leftover workflows/ folders, CLAUDE_CONFIG_DIR, tests-pairing warnings), or when set-status.js warns about a legacy plan-review record, in a repo with an .octobots/ directory. Not for planning or recording board work (that is mission-planner) and not for building a planned task (that is mission-execution).
 version: 57
 ---
 
@@ -21,7 +21,7 @@ node .claude/skills/octobots-doctor/scripts/pack-reconcile.mjs list
 ```
 
 Act on their findings: `pack reconcile pending` (§2-§3), leftover `workflows/` folders (§4), the
-`config-dir` finding (§5) and validate.js's tests-pairing warnings (§7). Skip a finding that
+`config-dir` finding (§5), validate.js's tests-pairing warnings (§7) and set-status.js's legacy plan-review warnings (§8). Skip a finding that
 `.octobots/doctor-acks.json` already acknowledges (§6).
 
 ## 2. Pending pack reconciles
@@ -79,7 +79,7 @@ For each named folder `.octobots/pack-updates/v<N>/<skill>/`:
    UPSTREAM-CANDIDATES.md.
 10. If any `- ESCALATED:` entry is open, stop work on this skill: the whole live SKILL.md stays
     untouched (no line, no non-conflicting change, no marker) until every escalation of this skill
-    is answered. Do not run done. Ask in your reply (§8).
+    is answered. Do not run done. Ask in your reply (§9).
 11. Otherwise install. In merged.md's frontmatter replace the `version:` line with
     `version: <N>+local` and add the line `reconciled-from: <sha256>` below it, both values exactly
     as `pack-reconcile.mjs list` prints them for this skill under `marker:`. Then copy merged.md byte for byte to `.claude/skills/<skill>/SKILL.md` and run:
@@ -199,7 +199,26 @@ warning is not a primer finding, and the SessionStart notice never names it. Res
 mission-planner skill). Never resolve it by deleting an AC, a TC or a README row; that hides the gap
 instead of closing it.
 
-## 8. Your reply
+## 8. Legacy plan-review records
+
+`set-status.js` accepts a legacy plan-review record when a move into `executing` finds a
+`## Plan review (...)` heading that names both reviewers but has no `Reviewers:` or `Verdict:` line,
+and prints `warning: legacy plan review "<heading>" ... has no Reviewers:/Verdict: lines; accepted`.
+You act on that `set-status.js` output; a legacy record is not a primer finding, and the
+SessionStart notice never names it. When you see the warning, say the record lacks its
+Reviewers:/Verdict: lines and offer to add them: `Reviewers: ba (<name>), tech-lead (<name>)` with
+the role tokens `ba` and `tech-lead`, plus a `Verdict:` line carrying the verdict the record states
+(`approved` or `approved with nits`). Write them directly under that heading, and only with the
+user's OK. Never invent a verdict the record does not state, and never edit the heading itself.
+
+A heading-only record usually states no verdict. Then ask the user which verdict the review reached,
+and write nothing until they answer. Add both lines or neither: a `Reviewers:` line without an
+approving `Verdict:` line turns the accepted legacy record into a strict one that set-status.js
+refuses. Write through `entity-io.mjs`: `loadEntity` the YAML, insert the two lines after the
+heading line in `notes`, and `dumpEntity` it back, as mission-planner § Plan review shows. Never
+edit the YAML text by hand. Then run `validate.js` on the entity.
+
+## 9. Your reply
 
 End your reply with this block, filled in:
 
