@@ -329,6 +329,8 @@ describe("mission:setStatus with a plan-review confirm", () => {
     expect(message).toContain("## Plan review (Alex, 2026-10-05)");
     expect(message).toContain("heading does not name the tech-lead");
     expect(message).toContain("Reviewers: ba (<name>), tech-lead (<name>)");
+    expect(message.split("\n")[0]).toContain("a plan review is recorded but does not approve the start");
+    expect(message).toContain("\n--- record template (paste into the mission or campaign notes) ---\n## Plan review (<names or roles>, <date>)\nReviewers:");
     expect(label).toBeTruthy();
   });
 

@@ -104,7 +104,10 @@ console.log(`octobots: status ${match.kind} ${JSON.stringify(title)} ${from} -> 
 
 /** Print why the move into executing is refused, and how to fix or override it, then exit 3. */
 function refuse(candidates, campaignError) {
-  const lines = [`set-status: refusing to move "${title}" into executing: no plan review is recorded.`];
+  // (a) no `## Plan review (...)` section at all; (b) sections exist but none satisfies the rule.
+  // Keep this wording and the record template identical to packages/board/src/write.ts (planReviewRefusal).
+  const reason = candidates.length === 0 ? "no plan review is recorded" : "a plan review is recorded but does not approve the start";
+  const lines = [`set-status: refusing to move "${title}" into executing: ${reason}.`];
   if (campaignError) lines.push(`  the campaign notes could not be read (${campaignError})`);
   if (candidates.length === 0) {
     lines.push("  no `## Plan review (...)` heading in the mission notes or the campaign notes");
@@ -112,10 +115,14 @@ function refuse(candidates, campaignError) {
     for (const c of candidates) lines.push(`  ${c.where} notes: "${c.heading}": ${c.missing.join("; ")}`);
   }
   lines.push(
-    "To record a review (mission-planner SKILL.md, Plan review), add this to the mission notes or the campaign notes:",
-    "  ## Plan review (<names or roles>, <date>)",
-    "  Reviewers: ba (<name>), tech-lead (<name>)",
-    "  Verdict: approved | approved with nits",
+    "To record a review, write the record below into the mission notes or the campaign notes with entity-io.mjs",
+    "(loadEntity/dumpEntity; see mission-planner SKILL.md, Plan review), never by editing the YAML text.",
+    "Fill the placeholders and keep one verdict. The lines between the markers start in column 0:",
+    "--- record template (paste into the mission or campaign notes) ---",
+    "## Plan review (<names or roles>, <date>)",
+    "Reviewers: ba (<name>), tech-lead (<name>)",
+    "Verdict: approved | approved with nits",
+    "--- end of record template ---",
     "To start without one, re-run with --force=<reason>; the reason is recorded in the mission notes.",
   );
   console.error(lines.join("\n"));
