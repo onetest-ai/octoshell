@@ -4,7 +4,8 @@ title: "Dogfood: QA records this mission's own results with set-test-status.js a
 mission: M6
 covers: [M6-AC6, M6-AC3, M6-AC4]
 kind: ui
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-001.md}
 priority: critical
 size: M
 ---

@@ -4,7 +4,8 @@ title: "Board library parses this campaign's own tests/m1..m6 into TestCase enti
 mission: M6
 covers: [M6-AC1]
 kind: unit
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-001.md}
 priority: critical
 size: M
 ---

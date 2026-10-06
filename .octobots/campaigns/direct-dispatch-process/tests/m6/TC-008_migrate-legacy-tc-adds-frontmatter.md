@@ -4,7 +4,8 @@ title: "set-test-status.js --migrate adds the missing frontmatter to a real lega
 mission: M6
 covers: [M6-AC6, M6-AC2]
 kind: cli
-status: draft
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-001.md}
 priority: high
 size: M
 ---

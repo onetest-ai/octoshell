@@ -1,0 +1,45 @@
+## frontmatter before
+id: TC-001
+title: "Collect from a solo worktree reads ~/.claude/projects/<slug>, and only solo's slug"
+mission: M1
+covers: [M1-AC1]
+kind: cli
+status: pass
+last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m1/runs/RUN-2026-10-05-001.md}
+priority: critical
+size: M
+## step1 set pass (changed evidence/date to force a diff)
+set-test-status: TC-001_collect-reads-home-slug-dir.md status pass, last_run 2026-10-06 (.octobots/campaigns/direct-dispatch-process/tests/m1/runs/RUN-2026-10-06-777.md)
+exit=0
+BODY_IDENTICAL
+## frontmatter after
+id: TC-001
+title: "Collect from a solo worktree reads ~/.claude/projects/<slug>, and only solo's slug"
+mission: M1
+covers: [M1-AC1]
+kind: cli
+status: pass
+last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m1/runs/RUN-2026-10-06-777.md}
+priority: critical
+size: M
+## diff of frontmatter
+7c7
+< last_run: {date: 2026-10-05, evidence: .octobots/campaigns/direct-dispatch-process/tests/m1/runs/RUN-2026-10-05-001.md}
+---
+> last_run: {date: 2026-10-06, evidence: .octobots/campaigns/direct-dispatch-process/tests/m1/runs/RUN-2026-10-06-777.md}
+set-test-status: TC-001_collect-reads-home-slug-dir.md status pass, last_run 2026-10-06 (.octobots/campaigns/direct-dispatch-process/tests/m1/runs/RUN-2026-10-06-777.md) (already)
+exit=0
+IDEMPOTENT
+set-test-status: invalid status "passing" (expected one of: pass, fail, blocked, draft, ready)
+usage: set-test-status.js <tc-file> <pass|fail|blocked|draft|ready> [--evidence <path>] [--date YYYY-MM-DD]
+       set-test-status.js <tc-file> --migrate [<pass|fail|blocked|draft|ready>]
+exit=2  (expect 2)
+UNCHANGED
+set-test-status: only --migrate writes unknown (a file with no recorded status lists as unknown); pass one of pass, fail, blocked, draft, ready
+exit=2  (expect 2)
+UNCHANGED2
+set-test-status: not a test case file (expected <campaign>/tests/m<n>/TC-*.md): /Users/arozumenko/Development/octoshell/README.md
+exit=2  (expect 2)
+README_UNCHANGED
+## original untouched
+ORIG_UNCHANGED

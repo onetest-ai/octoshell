@@ -38,3 +38,18 @@ notes: |-
   ## Release (plan-review fix, 2026-10-05)
 
   Decision 5 (0.1.0) is owned here: AC8 and T6.6. T6.6 runs AFTER the QA task T6.5 on purpose: the release is cut from the QA-passed tree, and its own TC-011 (VSIX verification) is executed black-box by a qa-engineer dispatch and recorded with set-test-status.js. The pack inside the VSIX is installed through apps/vscode-extension/scripts/qa/install-pack.mjs --pack-root <unzipped>/extension/resources/octobots-pack. After publishing, re-run "Octobots: Install Octobots Pack" in octoshell's own checkout and in every dev workspace that took an intermediate v57 install from an M1-M5 build (packStatus compares integers only, so 0.1.0 will not re-prompt them).
+
+  ## QA verification (T6.5, qa-engineer, 2026-10-06; full record in the T6.5 task notes)
+
+  Verdict: TC-001..010 run on the real boards (octoshell's own, solo's copies); 7 PASS, 3 BLOCKED (TC-004/005/006: automatable halves PASS, live F5 halves manual and pending the user's run of `tests/m7/manual/T7.4-F5-script.md` Parts D and E), 0 FAIL, no bug filed. TC-011 (AC8) is T6.6's and was not run. Run file: `.octobots/campaigns/direct-dispatch-process/tests/m6/runs/RUN-2026-10-06-001.md`. Every result was written with the pack's `set-test-status.js` (dogfood): the board shows M6 pass 7, blocked 3, draft 1. Solo was read only (status, HEAD and the 1209-file `.octobots` digest unchanged).
+
+  Mission criteria with evidence (not ticked here; the gate ticks them):
+  - M6-AC1 board library parses TC files: TC-001 (86 TCs, 0 mismatches), TC-002 (22 of 22 uwb m1). PASS.
+  - M6-AC2 malformed/legacy warning, unknown, migrate suggestion: TC-002, TC-003, TC-008. PASS.
+  - M6-AC3 sidebar Tests node: TC-004 automatable half PASS (18 tests); the live tree is manual and pending F5 Part D. Partly evidenced.
+  - M6-AC4 mission panel Tests + AC coverage: TC-005 automatable half PASS (10 tests; real gap M1-AC11 surfaced in the data); live panel pending F5 Part E. Partly evidenced.
+  - M6-AC5 campaign test summary: TC-006 automatable half PASS (5 tests; real gaps M1-AC11, M2-AC10, M6 x5); live panel pending F5 Part E. Partly evidenced.
+  - M6-AC6 set-test-status.js writes back, gate/QA call it: TC-007, TC-008, TC-009 (this run's own write-back and the skill text). PASS.
+  - M6-AC7 gates, parity, payload: TC-003, TC-010 (all gates exit 0; coverage:pack 97.95/88.09/98.05/97.95; one payload line; no new dependency). PASS.
+  - M6-AC8 0.1.0 VSIX: TC-011, not run (T6.6, needs the VSIX cut from this QA-passed tree). No evidence yet.
+  Not pass: TC-004, TC-005, TC-006 are `blocked` (manual live halves pending, no live UI claim made).
