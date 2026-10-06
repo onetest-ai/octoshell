@@ -92,6 +92,7 @@ function Root(): JSX.Element {
         onAddLink={() => vscodeApi.postMessage({ type: "addMissionLink", missionId: bound.id })}
         onAttachFile={() => vscodeApi.postMessage({ type: "attachMissionFile", missionId: bound.id })}
         onOpenFile={(path) => vscodeApi.postMessage({ type: "openFile", path })}
+        onOpenTestFile={(path) => vscodeApi.postMessage({ type: "openTestFile", path })}
       />
     );
   }

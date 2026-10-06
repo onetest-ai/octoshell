@@ -4,6 +4,7 @@ import { Field } from "./field.js";
 import { ChecklistField } from "./checklist-field.js";
 import { NotesBlock } from "./notes-block.js";
 import { ENTITY_STATUS_OPTIONS } from "./entity-status.js";
+import { CampaignTestsSummary } from "./campaign-tests-summary.js";
 import type { RpcClient } from "./rpc-client.js";
 import type { RpcResultOf } from "../protocol/index.js";
 
@@ -24,6 +25,7 @@ type CampaignData = RpcResultOf<"campaign:get">;
 type Missions = RpcResultOf<"mission:list">;
 type Bugs = RpcResultOf<"bug:list">;
 type CampaignDocs = RpcResultOf<"campaign:docs">;
+type TestsSummary = RpcResultOf<"tests:summary">;
 type SyncResult = RpcResultOf<"campaign:missions:sync">;
 
 export function CampaignView({ id, rpc, onOpenMission, onOpenBug, onDeleteMission, onNewMission, onOpenDoc, onAddLink, onAttachFile, onOpenFile }: Props): JSX.Element {
@@ -31,6 +33,7 @@ export function CampaignView({ id, rpc, onOpenMission, onOpenBug, onDeleteMissio
   const [missions, setMissions] = useState<Missions>([]);
   const [bugs, setBugs] = useState<Bugs>([]);
   const [docs, setDocs] = useState<CampaignDocs>({ files: [], attachedFiles: [], links: [] });
+  const [tests, setTests] = useState<TestsSummary>(null);
   const [error, setError] = useState<string | null>(null);
   const [proposals, setProposals] = useState<SyncResult["proposals"] | null>(null);
   const [picked, setPicked] = useState<Record<string, boolean>>({});
@@ -43,6 +46,7 @@ export function CampaignView({ id, rpc, onOpenMission, onOpenBug, onDeleteMissio
     await rpc.call("bug:sync", { campaignId: id });
     setBugs((await rpc.call("bug:list", { campaignId: id })) ?? []);
     setDocs(await rpc.call("campaign:docs", { campaignId: id }));
+    setTests((await rpc.call("tests:summary", { campaignId: id })) ?? null);
     // Auto-surface the board's missions: parse campaign.md's ## Missions and show any not-yet-created
     // ones as proposals, so the agent's board work is visible on load (and on file-watch refresh).
     const boardSync = await rpc.call("campaign:missions:sync", { campaignId: id });
@@ -254,6 +258,8 @@ export function CampaignView({ id, rpc, onOpenMission, onOpenBug, onDeleteMissio
           )
         )}
       </section>
+
+      <CampaignTestsSummary summary={tests} onOpenMission={onOpenMission} />
 
       <section>
         <h2 className="text-sm uppercase text-fg-muted mb-2">Bugs</h2>
