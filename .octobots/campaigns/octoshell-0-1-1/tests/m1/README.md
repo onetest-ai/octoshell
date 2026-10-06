@@ -59,7 +59,7 @@ Setup, once per run:
 - solo `uwb-ranging-ingest-vendor-v01/tests/m1/TC-003_set-ranging-mode-persists.md`: legacy frontmatter (`requirements: [M1-AC2, M1-AC5]`, `type: functional`; no status, kind, mission, last_run). The legacy record.
 - solo `uwb-ranging-ingest-vendor-v01/tests/m1/TC-006_mode-change-refused-409-while-live.md`: a Steps cell holding `<id of first SCHEDULED match from GET {{base_url}}/api/ops/matches>`. The sanitizer record.
 - solo `uwb-ranging-ingest-vendor-v01/tests/m5/TC-001_emulator-v01-5hz-pacing-and-acks.md`: a TC of uwb M5, which is cancelled. The cancelled-mission record.
-- solo uwb `tests/m1..m6`: 119 TC files, all with frontmatter and all in a folder with a matching mission, none over 4 MiB. The no-frontmatter, unparseable (malformed), unmatched-folder (m9) and oversize cases are therefore derived from TC-003 or TC-006 and say so.
+- solo uwb `tests/m1..m6`: 116 TC files (119 counted at planning; the T1.1 parity run listed 116 TC-*.md under tests/m<n>/), all with frontmatter and all in a folder with a matching mission, none over 4 MiB. The no-frontmatter, unparseable (malformed), unmatched-folder (m9) and oversize cases are therefore derived from TC-003 or TC-006 and say so.
 - `packages/board/test/fixtures/tc-status-cases.json` (T1.1): the shared parity case fixture, inputs derived from TC-004 (m6) and uwb TC-003, run over both the shipped script and the TS edit.
 - `apps/vscode-extension/octobots-0.1.0.vsix` (built from release commit ea432393) and `apps/vscode-extension/CHANGELOG.md` line 13 (the muddled sentence). The release records.
 - octoshell's `octograph-code-architecture-graph` campaign: no tests folder (no Tests node).
