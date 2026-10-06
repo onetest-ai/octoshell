@@ -69,7 +69,11 @@ export interface WriteTestCaseStatusOptions {
    * (`changed: false`, bytes and mtime untouched). The script, given pass on a pass file, re-dates last_run.
    */
   skipIfCurrent?: boolean;
-  /** Test seam: called after the temp file is written and before the final re-read, so a test can move the file at that moment. */
+  /**
+   * Test seam: called after the temp file is written and before the final re-read, so a test can move the file at that moment.
+   * It cannot skip the re-read or the compare that follow it. Production callers (the host) never pass it.
+   * @internal
+   */
   beforeFinalRead?: (paths: { file: string; tmp: string }) => void;
 }
 

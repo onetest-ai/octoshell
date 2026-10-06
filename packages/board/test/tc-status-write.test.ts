@@ -142,13 +142,16 @@ describe("writeTestCaseStatus: what it refuses", () => {
   });
 
   it("refuses no frontmatter, unparseable frontmatter and an unprovable edit, leaving the file and the folder as they were", () => {
-    for (const [text, reason] of [
-      [BODY, "no-frontmatter"],
-      [tc("id: [x\n"), "unparseable"],
-      [tc("id: TC-001\nstatus: &s draft\nprev: *s\n"), "unsafe"],
+    for (const [text, reason, status] of [
+      [BODY, "no-frontmatter", "pass"],
+      [tc("id: [x\n"), "unparseable", "pass"],
+      [tc("id: TC-001\nstatus: &s draft\nprev: *s\n"), "unsafe", "pass"],
+      // ready re-parses cleanly but would drop `kind`: only the re-parse DATA comparison refuses it
+      [tc("{id: TC-001,\nstatus: draft, kind: unit\n}\n"), "unsafe", "ready"],
     ] as const) {
       const b = board(text);
-      expect(writeTestCaseStatus(b.root, REL, { status: "pass", date: "2026-10-06" }), reason).toMatchObject({ ok: false, reason });
+      const date = status === "pass" ? "2026-10-06" : null;
+      expect(writeTestCaseStatus(b.root, REL, { status, date }), reason).toMatchObject({ ok: false, reason });
       expect(readFileSync(b.file, "utf8")).toBe(text);
       expect(readdirSync(b.dir)).toEqual(["TC-001_example.md"]);
     }
@@ -173,7 +176,9 @@ describe("writeTestCaseStatus: the atomic write", () => {
     expect(readdirSync(b.dir)).toEqual(["TC-001_example.md"]);
   });
 
-  it("leaves the TC unchanged and no temp file when the folder cannot be written (the temp file is the first write)", () => {
+  // Root ignores directory write permission, so a 0o555 folder cannot make the write fail there (same guard as
+  // pack-updates-hardening.test.ts); CI and dev machines run as a normal user, where this always runs.
+  it.runIf(process.getuid?.() !== 0)("leaves the TC unchanged and no temp file when the folder cannot be written (the temp file is the first write)", () => {
     const b = board(READY);
     chmodSync(b.dir, 0o555);
     try {

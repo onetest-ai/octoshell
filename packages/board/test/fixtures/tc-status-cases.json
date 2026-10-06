@@ -80,6 +80,19 @@
       "pass": "unparseable",
       "fail": "unparseable",
       "blocked": "unparseable"
+    },
+    "multiline-flow-mapping-drops-sibling-key": {
+      "ready": "unsafe",
+      "pass": "unsafe",
+      "fail": "unsafe",
+      "blocked": "unsafe"
+    },
+    "multiline-flow-mapping-drops-last-run": {
+      "draft": "unsafe",
+      "ready": "unsafe",
+      "pass": "unsafe",
+      "fail": "unsafe",
+      "blocked": "unsafe"
     }
   },
   "cases": [
@@ -327,6 +340,16 @@
       "id": "frontmatter-is-a-scalar",
       "note": "frontmatter that parses to a scalar",
       "text": "---\njust text\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "multiline-flow-mapping-drops-sibling-key",
+      "note": "review regression (re-parse DATA comparison): a flow-mapping frontmatter over several lines whose `status:` line also holds `kind`; replacing that line still parses but drops kind, so only the data comparison (not the parse) refuses it. Draft is the file's own status: (already), nothing written",
+      "text": "---\n{id: TC-001,\nstatus: draft, kind: unit\n}\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
+    },
+    {
+      "id": "multiline-flow-mapping-drops-last-run",
+      "note": "review regression (re-parse DATA comparison): as above with last_run on the status line; every status re-parses cleanly without last_run and kind, and only the data comparison refuses it",
+      "text": "---\n{id: TC-001,\nstatus: fail, last_run: {date: 2026-10-01}, kind: unit\n}\n---\n\n# TC-001: Example\n\n## Objective\n\nFlip the status.\n\n## Steps\n\n| # | Action | Expected Result |\n|---|--------|----------------|\n| 1 | do it | it is done |\n\n## Expected Final State\n\nDone.\n"
     }
   ]
 }
