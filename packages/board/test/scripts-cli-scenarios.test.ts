@@ -1684,8 +1684,7 @@ describe("set-status.js plan-review gate (M5 AC1)", () => {
   });
 });
 
-// HELD BACK (M5 T5.5): reads octoshell's REAL AGENTS.md, so it fails until the proposed AGENTS.md
-// `## Test lanes` section is applied (it needs the user's OK). Commit it together with that change.
+// Reads octoshell's REAL AGENTS.md, whose `## Test lanes` section the user approved (M5 T5.5).
 describe("doctor.js lanes on octoshell's own AGENTS.md (mission AC7)", () => {
   const REPO_ROOT = resolve(__dirname, "../../..");
 

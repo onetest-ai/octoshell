@@ -243,7 +243,8 @@ function readAcks(projectDir) {
 
 // AGENTS.md is the project's own file, read at EVERY session start: only a regular file (a symlink to one
 // is fine, AGENTS.md -> CLAUDE.md is common; a FIFO or /dev/zero is not, its read would block the
-// session start) of at most 1 MiB is read. Anything else is "not read", which names nothing.
+// session start) of at most 1 MiB is read. The finding holds exactly when doctor.js's `lanes` warning
+// does: no AGENTS.md, one that is not such a file (never read), or one that declares no lanes.
 const MAX_AGENTS_BYTES = 1024 * 1024;
 const LANES_HEADING = /^##[ \t]+Test lanes[ \t]*$/i;
 const LANES_FENCE = /^[ \t]{0,3}(`{3,}|~{3,})/;
@@ -271,15 +272,15 @@ function declaresTestLanes(text) {
   return found.fast && found.coverage;
 }
 
-/** True when AGENTS.md exists, was read, and declares no test lanes; false otherwise (including when it was not read). */
+/** True unless AGENTS.md is a regular file of at most 1 MiB that declares both test lanes. */
 function lanesMissing(projectDir) {
   try {
     const file = join(projectDir, "AGENTS.md");
-    const st = statSync(file); // throws when absent
-    if (!st.isFile() || st.size > MAX_AGENTS_BYTES) return false;
+    const st = statSync(file); // throws when absent: no AGENTS.md declares no lanes
+    if (!st.isFile() || st.size > MAX_AGENTS_BYTES) return true; // never read; doctor.js warns too
     return !declaresTestLanes(readFileSync(file, "utf8"));
   } catch {
-    return false;
+    return true;
   }
 }
 

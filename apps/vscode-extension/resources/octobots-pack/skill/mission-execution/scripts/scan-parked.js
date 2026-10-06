@@ -3,19 +3,24 @@
 //
 //   node scan-parked.js [--root <dir>] [--json]
 //
-// The file set is what `git ls-files` lists under --root (default: the current directory) that
-// matches a test glob: *.test.*, *.spec.*, test_*.py, *_test.py, or a source file (.ts .tsx .js
-// .jsx .mjs .cjs .mts .cts .py) under a tests/ or test/ directory. A test directory also holds prose
+// The file set is what `git ls-files` lists under --root (default: the root of the git repository
+// holding the current directory) that matches a test glob: *.test.*, *.spec.*, test_*.py,
+// *_test.py, or a source file (.ts .tsx .js .jsx .mjs .cjs .mts .cts .py) under a tests/, test/ or
+// __tests__/ directory. The globs are matched against the path from the repository root, so a
+// --root inside a test directory still scans that directory's helpers (a conftest.py, say). A test directory also holds prose
 // and data (a test-case README, a JSON fixture) that may MENTION `.skip(` without parking anything,
 // so only source files count there. node_modules/ and dist/ (at any depth) and this script's own test fixtures
 // (a fixtures/scan-parked/ directory) are never scanned. Untracked files are not scanned.
 //
 // Unsigned hits (one entry per line, however many tokens it holds):
 //   - pytest `@pytest.mark.xfail` / `@pytest.mark.skip` without `reason=` (the decorator's
-//     arguments may span lines; the hit is on the decorator's own line);
+//     arguments may span lines; the hit is on the decorator's own line), and the same marker used
+//     without `@` (`pytestmark = pytest.mark.skip`, `marks=pytest.mark.xfail`);
 //   - an imperative `pytest.xfail(` or `pytest.skip(` call, reason or not;
-//   - vitest/jest `.skip(`, `.todo(`, `.fails(`, `xit(` and `xdescribe(` as call tokens. A token
-//     is a call, so `process.exit(` and any identifier that merely ends in `xit` is no hit.
+//   - vitest/jest `.skip(`, `.todo(`, `.fails(`, `xit(`, `xtest(` and `xdescribe(` as call tokens,
+//     also through a chain of test modifiers (`it.skip.each([...])(`, `xit.each`, a tagged
+//     `.each\``). A token is a call, so `process.exit(` and any identifier that merely ends in `xit`
+//     is no hit.
 // Allowed (listed, never failing): `.skipIf(` / `.runIf(`, pytest `skipif` with a `reason=`, and a
 // pytest `xfail` / `skip` marker that states `reason=`. A `skipif` with no reason is unsigned: the
 // only skip allowed is one with a stated reason.
@@ -63,25 +68,37 @@ let json = false;
     } else fail(2, `unexpected argument ${JSON.stringify(a)}\n${USAGE}`);
   }
 }
-const root = resolve(rootArg ?? process.cwd());
-try {
-  if (!statSync(root).isDirectory()) throw new Error("not a directory");
-} catch {
-  fail(2, `--root ${root} is not a directory`);
+const git = (dir, args) =>
+  execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+const gitFailed = (err, dir) => {
+  if (err && err.code === "ENOENT") fail(2, "git was not found on PATH; it is needed to list the tracked files");
+  return fail(2, `${dir} is not a git repository (git failed); nothing to scan`);
+};
+
+let root;
+if (rootArg === undefined) {
+  try {
+    root = resolve(git(process.cwd(), ["rev-parse", "--show-toplevel"]).trim());
+  } catch (err) {
+    gitFailed(err, process.cwd());
+  }
+} else {
+  root = resolve(rootArg);
+  try {
+    if (!statSync(root).isDirectory()) throw new Error("not a directory");
+  } catch {
+    fail(2, `--root ${root} is not a directory`);
+  }
 }
 
 // ── the file set ──────────────────────────────────────────────────────────────────────────────
+/** The tracked files under root as {file: root-relative, full: repository-relative}. */
 function trackedFiles() {
   try {
-    const out = execFileSync("git", ["-C", root, "ls-files", "-z"], {
-      encoding: "utf8",
-      maxBuffer: 256 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    return out.split("\0").filter(Boolean);
+    const prefix = git(root, ["rev-parse", "--show-prefix"]).trim();
+    return git(root, ["ls-files", "-z"]).split("\0").filter(Boolean).map((file) => ({ file, full: prefix + file }));
   } catch (err) {
-    if (err && err.code === "ENOENT") fail(2, "git was not found on PATH; it is needed to list the tracked files");
-    return fail(2, `${root} is not a git repository (git ls-files failed); nothing to scan`);
+    return gitFailed(err, root);
   }
 }
 
@@ -90,7 +107,7 @@ const isTestFile = (path) => {
   const parts = path.split("/");
   const base = parts[parts.length - 1];
   if (/^.+\.(test|spec)\..+$/.test(base) || /^test_.*\.py$/.test(base) || /^.+_test\.py$/.test(base)) return true;
-  return SOURCE_FILE.test(base) && parts.slice(0, -1).some((d) => d === "test" || d === "tests");
+  return SOURCE_FILE.test(base) && parts.slice(0, -1).some((d) => d === "test" || d === "tests" || d === "__tests__");
 };
 const isExcluded = (path) =>
   path.split("/").slice(0, -1).some((d) => d === "node_modules" || d === "dist") || `/${path}`.includes("/fixtures/scan-parked/");
@@ -123,9 +140,11 @@ function readText(abs, label, max) {
 }
 
 // ── the hit rules ─────────────────────────────────────────────────────────────────────────────
-const PYTEST_MARKER = /@pytest\.mark\.(xfail|skipif|skip)\b/;
+const PYTEST_MARKER = /\bpytest\.mark\.(xfail|skipif|skip)\b/;
 const PYTEST_CALL = /\bpytest\.(?:xfail|skip)\s*\(/;
-const JS_CALL = /\.(?:skip|todo|fails)\s*\(|(?<![\w$.])(?:xit|xdescribe)\s*\(/;
+// A parking token, then any chain of test modifiers, then the call: `(`, or a tagged `.each\``.
+const MODIFIERS = String.raw`(?:\s*\.\s*(?:each|concurrent|sequential|only|shuffle|skip|todo|fails))*(?:\s*\(|(?<=\.\s*each)\s*\x60)`;
+const JS_CALL = new RegExp(String.raw`\.(?:skip|todo|fails)${MODIFIERS}|(?<![\w$.])(?:xit|xtest|xdescribe)${MODIFIERS}`);
 const ALLOWED_CALL = /\.(?:skipIf|runIf)\s*\(/;
 
 /** The text of a decorator's `( ... )` argument list, which may span lines; "" when it has none. */
@@ -179,7 +198,8 @@ function readSignoffs() {
 const signed = readSignoffs();
 const unsigned = [];
 const allowed = [];
-for (const file of trackedFiles().filter((f) => isTestFile(f) && !isExcluded(f)).sort()) {
+const files = trackedFiles().filter(({ full }) => isTestFile(full) && !isExcluded(full)).map(({ file }) => file);
+for (const file of files.sort()) {
   const text = readText(join(root, file), file, MAX_FILE_BYTES);
   if (text === null) continue;
   const lines = text.split(/\r?\n/);

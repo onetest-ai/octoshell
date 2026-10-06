@@ -1,0 +1,14 @@
+import { describe, it, test } from "vitest";
+it.skip.each([1, 2])("a %s", () => {});
+describe.skip.each([[1]])("b %s", () => {});
+xit.each([1])("c", () => {});
+xdescribe.each([1])("d", () => {});
+xtest("e", () => {});
+it.skip.each`
+  a
+`("f", () => {});
+it.concurrent.skip("g", () => {});
+test.skip.concurrent("h", () => {});
+const label = `${name}.skip` + suffix;
+obj.xtest(1); latest(2); myxtest(3);
+it.skipIf(a).each([1])("allowed", () => {});

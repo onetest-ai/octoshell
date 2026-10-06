@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { PRE_MISSION_PRIMER, PRE_MISSION_PRIMER_LINES } from "./fixtures/pre-mission-primer.js";
@@ -34,9 +34,11 @@ function context(backend: string, cwd: string, event = "SessionStart"): string {
     : parsed.hookSpecificOutput.additionalContext;
 }
 
+/** A board repo. Its AGENTS.md declares test lanes, so only a test about the lanes finding sees it. */
 function repoWithOctobots(): string {
   const dir = mkdtempClean("octo-repo-");
   mkdirSync(join(dir, ".octobots"), { recursive: true });
+  writeFileSync(join(dir, "AGENTS.md"), "## Test lanes\n\n- fast: `npm test`\n- coverage: `npm run coverage`\n");
   return dir;
 }
 
@@ -612,8 +614,12 @@ describe("primer.mjs health line: the test-lanes sentence (M5 AC7)", () => {
     expect(healthLine(healthContext(ws))).toBe(`${HEAD} ${LANES}`);
   });
 
-  it("no AGENTS.md at all: the primer stays silent (doctor.js reports the missing file)", () => {
-    expect(healthLine(healthContext(repoWithOctobots()))).toBeNull();
+  // Review of PR #161: no AGENTS.md is a missing lanes declaration (mission AC7; doctor.js warns on it,
+  // and octobots-doctor § Test lanes creates the file), so the primer names it like doctor.js does.
+  it("no AGENTS.md at all: the line names it, as doctor.js's lanes warning does", () => {
+    const ws = repoWithOctobots();
+    rmSync(join(ws, "AGENTS.md"));
+    expect(healthLine(healthContext(ws))).toBe(`${HEAD} ${LANES}`);
   });
 
   it("the lanes sentence comes after the reconcile, workflows and config-dir sentences", () => {
@@ -638,22 +644,25 @@ describe("primer.mjs health line: the test-lanes sentence (M5 AC7)", () => {
   it("follows a symlinked AGENTS.md to a regular file (AGENTS.md -> CLAUDE.md is common)", () => {
     const ws = repoWithOctobots();
     write(ws, "CLAUDE.md", "# Project\n");
+    rmSync(join(ws, "AGENTS.md"));
     symlinkSync("CLAUDE.md", join(ws, "AGENTS.md"));
     expect(healthLine(healthContext(ws))).toBe(`${HEAD} ${LANES}`);
     write(ws, "CLAUDE.md", DECLARED);
     expect(healthLine(healthContext(ws))).toBeNull();
   });
 
-  it.skipIf(process.platform === "win32")("a FIFO, a directory, or an AGENTS.md over 1 MiB is not read and adds no line (and never hangs)", () => {
+  it.skipIf(process.platform === "win32")("a FIFO, a directory, or an AGENTS.md over 1 MiB is never read (no hang) and is named, as doctor.js warns on it", () => {
     const fifo = repoWithOctobots();
+    rmSync(join(fifo, "AGENTS.md"));
     execFileSync("mkfifo", [join(fifo, "AGENTS.md")]);
-    expect(healthLine(healthContext(fifo))).toBeNull();
+    expect(healthLine(healthContext(fifo))).toBe(`${HEAD} ${LANES}`);
     const dir = repoWithOctobots();
+    rmSync(join(dir, "AGENTS.md"));
     mkdirSync(join(dir, "AGENTS.md"));
-    expect(healthLine(healthContext(dir))).toBeNull();
+    expect(healthLine(healthContext(dir))).toBe(`${HEAD} ${LANES}`);
     const big = repoWithOctobots();
-    write(big, "AGENTS.md", `${"x".repeat(1024 * 1024 + 1)}\n`);
-    expect(healthLine(healthContext(big))).toBeNull();
+    write(big, "AGENTS.md", `${"x".repeat(1024 * 1024)}\n${DECLARED}`);
+    expect(healthLine(healthContext(big))).toBe(`${HEAD} ${LANES}`);
   });
 
   it("is a file read only: the primer still imports no child_process or network module", () => {

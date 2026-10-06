@@ -94,6 +94,24 @@ describe("scan-parked.js hit rules", () => {
     expect(status).toBe(1);
     expect(lines(json.unsigned, "test_b.py")).toEqual([1]);
   });
+
+  // Review of PR #161: a parking token reached through a modifier chain was missed.
+  it("reports a parking token through a chain of test modifiers (.each, a tagged .each, .concurrent) and the x-prefixed test call", () => {
+    const root = makeRepo({ "c.test.ts": fixture("vitest-chains.txt") });
+    const { status, json } = report(root);
+    expect(status).toBe(1);
+    expect(lines(json.unsigned, "c.test.ts")).toEqual([2, 3, 4, 5, 6, 7, 10, 11]);
+    expect(lines(json.allowed, "c.test.ts")).toEqual([14]);
+  });
+
+  // Review of PR #161: a module-level pytestmark parks a whole module and was missed.
+  it("reports a pytest xfail/skip marker used without @ (pytestmark, marks=) unless it states reason=", () => {
+    const root = makeRepo({ "test_m.py": fixture("pytest-module.txt") });
+    const { status, json } = report(root);
+    expect(status).toBe(1);
+    expect(lines(json.unsigned, "test_m.py")).toEqual([3, 7]);
+    expect(lines(json.allowed, "test_m.py")).toEqual([5]);
+  });
 });
 
 describe("scan-parked.js file set", () => {
@@ -138,7 +156,33 @@ describe("scan-parked.js file set", () => {
     expect(json.unsigned.map((h) => h.file)).toEqual(["inner.test.ts"]);
   });
 
-  it("defaults --root to the current directory", () => {
+  // Review of PR #161: the globs are matched against the repository path, so a --root inside a
+  // test directory still scans its helpers.
+  it("--root inside a tests/ directory still scans its source helpers (conftest.py), with paths relative to --root", () => {
+    const helper = `import pytest\n\ndef gpu():\n    ${["pytest", "skip"].join(".")}("no gpu")\n`;
+    const root = makeRepo({ "tests/conftest.py": helper, "tests/sub/helpers.ts": HIT, "tests/notes.md": HIT });
+    const { status, json } = report(join(root, "tests"));
+    expect(status).toBe(1);
+    expect(json.unsigned.map((h) => [h.file, h.line])).toEqual([["conftest.py", 4], ["sub/helpers.ts", 1]]);
+  });
+
+  it("scans source files under a __tests__/ directory (jest's default)", () => {
+    const root = makeRepo({ "src/__tests__/a.js": HIT, "src/__tests__/data.json": HIT });
+    expect(report(root).json.unsigned.map((h) => h.file)).toEqual(["src/__tests__/a.js"]);
+  });
+
+  // Review of PR #161: mission AC6 says the default is the repo root, not the current directory.
+  it("without --root, scans from the root of the repository holding the current directory, and reads its signoff", () => {
+    const root = makeRepo({ "top.test.ts": HIT, "pkg/inner.test.ts": HIT, "pkg/keep.txt": "x\n" });
+    const r = scan(null, ["--json"], join(root, "pkg"));
+    expect(r.status).toBe(1);
+    expect((JSON.parse(r.stdout) as Report).unsigned.map((h) => h.file)).toEqual(["pkg/inner.test.ts", "top.test.ts"]);
+    mkdirSync(join(root, ".octobots"));
+    writeFileSync(join(root, ".octobots", "parked-signoff.txt"), "top.test.ts:1 user 2026-10-06\npkg/inner.test.ts:1 user 2026-10-06\n");
+    expect(scan(null, [], join(root, "pkg")).status).toBe(0);
+  });
+
+  it("defaults --root to the current directory when that is the repository root", () => {
     const root = makeRepo({ "top.test.ts": HIT });
     const r = scan(null, ["--json"], root);
     expect(r.status).toBe(1);

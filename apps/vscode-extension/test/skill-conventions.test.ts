@@ -789,9 +789,10 @@ describe("T5.5: octobots-doctor test-lanes paragraph (M5 AC7)", () => {
     expect(description).toMatch(/AGENTS\.md declares no test lanes/);
   });
 
-  it("the write boundary names the one AGENTS.md exception", () => {
+  it("the write boundary names the one AGENTS.md exception, pointing at the Test lanes section", () => {
     const flat = doctor.replace(/\s+/g, " ");
-    expect(flat).toMatch(/Never CLAUDE\.md, AGENTS\.md \(except the `## Test lanes` section, §\d+, with the user's OK\)/);
+    const n = heading.exec(doctor)?.[1];
+    expect(flat).toContain(`Never CLAUDE.md, AGENTS.md (except the \`## Test lanes\` section, §${n}, with the user's OK)`);
   });
 });
 
