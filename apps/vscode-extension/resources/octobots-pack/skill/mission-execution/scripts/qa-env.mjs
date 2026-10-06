@@ -22,9 +22,9 @@
 //   6. when `probe` is set, run it as a shell command with those vars in its environment; exit 4
 //      unless its trimmed stdout equals <db> (also on a non-zero exit, a launch failure, or a
 //      timeout: a hung probe is killed after 30 s, process group included; the override
-//      QA_ENV_PROBE_TIMEOUT_MS exists for tests). A probe that prints the right name but exits
-//      non-zero, or prints any extra line, is refused. SIGINT/SIGTERM during the probe kill its
-//      process group and exit 128+n. The probe text is NOT templated: it reads the db through the
+//      QA_ENV_PROBE_TIMEOUT_MS exists for tests, as does QA_ENV_TEST_PAUSE_AFTER_SPAWN_MS). A probe that prints the right name but exits
+//      non-zero, or prints any extra line, is refused. SIGINT/SIGTERM at any point before the command
+//      starts (config checks, the probe) kill the probe's process group, if any, and exit 128+n. The probe text is NOT templated: it reads the db through the
 //      exported vars, e.g. `psql "$DATABASE_URL" -tAc 'select current_database()'`. Quote every var
 //      in the probe text: the shell expands an unquoted `$VAR`, and <db> is inside it;
 //   7. print `qa-env: target database = <db>` to stderr, run <cmd> with the inherited stdio, and
@@ -66,6 +66,17 @@ const MAX_CONFIG_BYTES = 1024 * 1024;
 const DEFAULT_PROBE_TIMEOUT_MS = 30_000;
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const USAGE = "usage: qa-env.mjs [--config <path>] <db> -- <cmd> [args...]";
+
+// Signal behaviour is defined for the whole life of the process. These handlers are installed at
+// startup, before anything is spawned: a signal before or during the probe kills the probe's process
+// group (if one exists) and exits 128+n. runCommand installs its forwarding handlers first and only
+// then removes these, so the handoff has no gap.
+let killProbe = null;
+const onEarlySignal = (sig) => {
+  if (killProbe) killProbe();
+  process.exit(128 + (osc.signals[sig] ?? 0));
+};
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, onEarlySignal);
 
 const fail = (code, msg) => {
   process.stderr.write(`qa-env: ${msg}\n`);
@@ -148,6 +159,12 @@ function loadConfig(path) {
   return { vars, re, pattern, probe, file };
 }
 
+/** Test-only (QA_ENV_TEST_PAUSE_AFTER_SPAWN_MS): block synchronously right after the probe spawns, to widen that window. */
+function pauseAfterSpawnForTests() {
+  const ms = Number(process.env.QA_ENV_TEST_PAUSE_AFTER_SPAWN_MS);
+  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 /** Runs the probe through a shell; resolves {ok, stdout, why}. A hung probe is killed with its group. */
 function runProbe(probe, env) {
   const timeoutMs = Number(process.env.QA_ENV_PROBE_TIMEOUT_MS) > 0 ? Number(process.env.QA_ENV_PROBE_TIMEOUT_MS) : DEFAULT_PROBE_TIMEOUT_MS;
@@ -156,17 +173,6 @@ function runProbe(probe, env) {
     const child = spawn(probe, { shell: true, env, detached: posix, stdio: ["ignore", "pipe", "inherit"] });
     let out = "";
     let finished = false;
-    const onSignal = (sig) => {
-      kill();
-      process.exit(128 + (osc.signals[sig] ?? 0));
-    };
-    const finish = (r) => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timer);
-      for (const sig of ["SIGINT", "SIGTERM"]) process.off(sig, onSignal);
-      done(r);
-    };
     const kill = () => {
       try {
         if (posix) process.kill(-child.pid, "SIGKILL");
@@ -175,7 +181,16 @@ function runProbe(probe, env) {
         /* already gone */
       }
     };
-    for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, onSignal);
+    // The process-wide signal handlers (installed before any spawn) call this on SIGINT/SIGTERM.
+    killProbe = kill;
+    pauseAfterSpawnForTests();
+    const finish = (r) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      killProbe = null;
+      done(r);
+    };
     const timer = setTimeout(() => {
       kill();
       finish({ ok: false, why: `probe timed out after ${timeoutMs} ms and was killed` });
@@ -205,6 +220,8 @@ function runCommand(cmd, env, db) {
       }
     });
   }
+  // Forwarding is in place; only now drop the early handlers (no window with neither).
+  for (const sig of ["SIGINT", "SIGTERM"]) process.off(sig, onEarlySignal);
   child.on("error", (e) => {
     const code = e.code === "EACCES" ? 126 : 127;
     fail(code, `cannot run ${JSON.stringify(cmd[0])}: ${e.message}`);

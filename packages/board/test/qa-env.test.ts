@@ -253,6 +253,29 @@ describe("qa-env.mjs probe (exit 4, command not run)", () => {
     }
   });
 
+  it("exits 128+n, not by the default signal disposition, when interrupted right after the probe spawns", async () => {
+    const pidFile = join(dir, "probe.pid");
+    writeConfig({ ...CFG, probe: `echo $$ > ${JSON.stringify(pidFile)}; sleep 60; echo qa_x` });
+    for (const [sig, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
+      rmSync(pidFile, { force: true });
+      // QA_ENV_TEST_PAUSE_AFTER_SPAWN_MS (test-only) blocks the script for 1.5 s right after the probe spawns;
+      // the signal lands inside that window, where a handler installed after the spawn would not exist yet.
+      const child = spawn("node", [SCRIPT, "qa_x", "--", ...touch()], {
+        cwd: dir,
+        stdio: "ignore",
+        env: { ...process.env, QA_ENV_TEST_PAUSE_AFTER_SPAWN_MS: "1500" },
+      });
+      const exited = new Promise<number | null>((res) => child.on("exit", (c) => res(c)));
+      for (let i = 0; i < 100 && !existsSync(pidFile); i++) await new Promise((r) => setTimeout(r, 20));
+      const pid = Number(readFileSync(pidFile, "utf8").trim());
+      child.kill(sig);
+      expect(await exited).toBe(code);
+      await new Promise((r) => setTimeout(r, 200));
+      expect(() => process.kill(-pid, 0)).toThrow();
+      expect(existsSync(marker)).toBe(false);
+    }
+  });
+
   it("defaults the probe timeout to 30 s (documented in the usage text)", () => {
     expect(readFileSync(SCRIPT, "utf8")).toMatch(/30_000|30000/);
   });
