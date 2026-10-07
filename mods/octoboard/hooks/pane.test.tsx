@@ -3,9 +3,11 @@ import type { TestBody } from 'claude-code/testing'
 
 const FILES: Record<string, string> = {
   '.octobots/campaigns/alpha/campaign.yaml': 'name: Alpha\nstatus: done\n',
-  '.octobots/campaigns/beta/campaign.yaml': 'name: Beta\nstatus: executing\n',
+  '.octobots/campaigns/beta/campaign.yaml':
+    'name: Beta\nstatus: executing\nacceptance_criteria:\n  - text: ships\n    done: false\n  - text: is reviewed\n    done: true\n',
   '.octobots/campaigns/beta/missions/m1-one/mission.yaml': 'name: M1 - One\nstatus: executing\n',
   '.octobots/campaigns/beta/missions/m1-one/tasks/t1-1-a/task.yaml': 'name: T1.1 - A\nstatus: done\n',
+  '.octobots/campaigns/beta/missions/m2-empty/mission.yaml': 'name: M2 - Empty\nstatus: draft\n',
 }
 
 // The engine may hand hooks an absolute path; the fixture is keyed from .octobots/.
@@ -70,6 +72,26 @@ test('every row is a Button, ⏎ on a campaign drills in and u goes back up', as
   await ui.unmount()
 })
 
+test('› marks the rows that open; ⏎ on an empty mission stays put and says why', async ($, on) => {
+  fakeBoard(on)
+  const ui = await $.ui.mount(PANE as never)
+  await ui.press({ key: 'refresh' })
+  await ui.press({ key: 'row:.octobots/campaigns/beta' })
+
+  const one = await ui.find({ type: 'Button', key: 'row:.octobots/campaigns/beta/missions/m1-one' })
+  const empty = await ui.find({ type: 'Button', key: 'row:.octobots/campaigns/beta/missions/m2-empty' })
+  expect(one?.text).toMatch(/1\/1 ›$/)
+  expect(empty?.text).not.toMatch(/›/)
+
+  await ui.press({ key: 'row:.octobots/campaigns/beta/missions/m2-empty' })
+  expect(await ui.find({ text: /board › Beta *read/ })).toBeDefined()
+  expect(await ui.find({ text: /No tasks or bugs in this mission yet/ })).toBeDefined()
+
+  await ui.press({ key: 'row:.octobots/campaigns/beta/missions/m1-one' })
+  expect(await ui.find({ text: /board › Beta › M1 - One/ })).toBeDefined()
+  await ui.unmount()
+})
+
 test('c asks to cancel the row under the cursor, and n backs out', async ($, on) => {
   fakeBoard(on)
   const ui = await $.ui.mount(PANE as never)
@@ -105,4 +127,41 @@ test('/octoshell opens the board pane asking for the keyboard, and writes nothin
   const ran = await $.command.run({ command: 'octoshell' } as never)
   expect(opened).toEqual([{ id: 'octoboard', focus: true }])
   expect(ran.text).toBeUndefined()
+})
+
+test('a right-panel item is a Button that opens its parent with the cursor on it', async ($, on) => {
+  fakeBoard(on)
+  const ui = await $.ui.mount(PANE as never)
+  await ui.press({ key: 'refresh' })
+
+  const child = await ui.find({ type: 'Button', key: 'child:.octobots/campaigns/beta/missions/m1-one' })
+  expect(child?.text).toMatch(/M1 - One/)
+  await ui.press({ key: 'child:.octobots/campaigns/beta/missions/m1-one' })
+  expect(await ui.find({ text: /board › Beta/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'panel' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a criterion is a Button: ⏎ ticks an open one and unticks a done one through set-criterion.js', async ($, on) => {
+  fakeBoard(on)
+  const runs: string[][] = []
+  on('process.run', ($, e) => {
+    runs.push([...e.argv])
+    return {
+      value: { exitCode: 0, stdout: 'acceptance criteria updated\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+    } as never
+  })
+  const ui = await $.ui.mount(PANE as never)
+  await ui.press({ key: 'refresh' })
+
+  expect((await ui.find({ type: 'Button', key: 'crit:1' }))?.text).toMatch(/\[ \] ships/)
+  expect((await ui.find({ type: 'Button', key: 'crit:2' }))?.text).toMatch(/\[x\] is reviewed/)
+  await ui.press({ key: 'crit:1' })
+  await ui.press({ key: 'crit:2' })
+  expect(runs).toEqual([
+    ['node', '.claude/skills/mission-planner/scripts/set-criterion.js', '.octobots/campaigns/beta', 'check', '1'],
+    ['node', '.claude/skills/mission-planner/scripts/set-criterion.js', '.octobots/campaigns/beta', 'uncheck', '2'],
+  ])
+  expect(await ui.find({ text: /Criterion 2 unticked/ })).toBeDefined()
+  await ui.unmount()
 })

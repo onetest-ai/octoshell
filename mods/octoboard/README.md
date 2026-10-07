@@ -9,7 +9,7 @@ release and nothing in the pnpm workspace builds, lints or tests it.
  Octoshell  board › Bookmark polish - four ruled defects                   read 21:39:57
 ┌──────────────────────────────────┐┌──────────────────────────────────────────────────┐
 │↰ ..                              ││M1 - Four ruled bookmark defects, fixed and …     │
-│✓ M1 - Four ruled bookmark de… 6/6││✓ done  ·  mission                                │
+│✓ M1 - Four ruled bookmark d… 6/6 ›││✓ done  ·  mission                                │
 │                                  ││folder bookmark-polish…/missions/m1-…             │
 │                                  ││── acceptance criteria 5/5                        │
 │                                  ││[x] Tapping a bookmark keeps that bookmark's tag… │
@@ -28,10 +28,16 @@ release and nothing in the pnpm workspace builds, lints or tests it.
   work first). The right previews the row under the cursor: status, role/severity/target,
   description, acceptance criteria, children and notes.
 - **Keyboard first.** Every row is a Button, so the pane's own focus ring is the cursor and the
-  board takes the keyboard the moment `/octoshell` opens it: ↑ ↓ move, ⏎ opens, `u` goes up.
+  board takes the keyboard the moment `/octoshell` opens it: ↑ ↓ move, PgUp/PgDn and Home/End
+  jump (the wheel moves the cursor too), ⏎ opens, `u` goes up.
+- **`p` switches panels**, as MC's Tab does: the cursor moves onto the right panel's children
+  (⏎ opens one in its parent) or, with none, its acceptance criteria.
+- **› marks what opens.** A row with missions, tasks or bugs inside ends `done/all ›`; ⏎ on any
+  other row (a task, a bug, an empty mission) stays put and says why. On the `..` row the right
+  panel previews the folder you are in.
 - **Writes go through the board's own scripts.** `s` then 1–6 sets a status and `c` cancels, each
-  after a y/n, by running `set-status.js`; `v` runs `validate.js`. The mod never writes YAML
-  itself.
+  after a y/n, by running `set-status.js`; ⏎ on a criterion ticks or unticks it through
+  `set-criterion.js`; `v` runs `validate.js`. The mod never writes YAML itself.
 - **Live.** It re-reads the board after any tool call that touches `.octobots/` or the planner
   scripts, and every 15 s while the pane is open.
 
@@ -66,7 +72,7 @@ bundle `packages/board` behind a pre-read, in-memory fs adapter rather than dupl
 
 ```bash
 claude plugin validate mods/octoboard   # manifest + hooks module, as the engine reads them
-claude plugin test mods/octoboard       # 8 tests: loader, view model, pane, /octoshell
+claude plugin test mods/octoboard       # 13 tests: loader, view model, pane, /octoshell
 ```
 
 Built and checked against Claude Code 2.1.290–2.1.291. The function-hooks API is early access
@@ -74,10 +80,10 @@ and changes between releases, so expect to re-validate after an update.
 
 ## Known gaps against the VS Code extension
 
-- Long text is clipped (description 900 characters, notes 1,400, criteria 14) and the right panel
-  does not scroll.
+- Long text is clipped (description 900 characters, notes 1,400), the right panel shows only the
+  children and criteria that fit, and it does not scroll.
 - Bug fields (steps, expected, actual, environment, RCA), attached documents and estimates are not
   shown.
-- No criterion ticking, create/delete, or field editing; no tokenomics view; no test-case nodes.
+- No create/delete or field editing; no tokenomics view; no test-case nodes.
 - Opening from the `[ Board ]` button may leave the keyboard on the button row: one click inside
   the board hands it over. `/octoshell` does not have this problem.

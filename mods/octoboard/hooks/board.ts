@@ -185,18 +185,14 @@ function clip(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max - 1)}…`
 }
 
+/** Children done (or cancelled) out of all; a row with no children shows no count. */
 function progressOf(board: Board, entity: Entity): string {
-  if (entity.children.length > 0) {
-    const done = entity.children.filter(dir => {
-      const status = board.byDir.get(dir)?.status
-      return status === 'done' || status === 'cancelled'
-    }).length
-    return `${done}/${entity.children.length}`
-  }
-  if (entity.criteria.length > 0) {
-    return `${entity.criteria.filter(one => one.done).length}/${entity.criteria.length}✓`
-  }
-  return ''
+  if (entity.children.length === 0) return ''
+  const done = entity.children.filter(dir => {
+    const status = board.byDir.get(dir)?.status
+    return status === 'done' || status === 'cancelled'
+  }).length
+  return `${done}/${entity.children.length}`
 }
 
 function previewOf(board: Board, entity: Entity, budget: number): Preview {
@@ -212,13 +208,13 @@ function previewOf(board: Board, entity: Entity, budget: number): Preview {
     meta,
     description: clip(entity.description, Math.min(900, budget)),
     criteria: entity.criteria
-      .slice(0, 14)
+      .slice(0, 40)
       .map(one => ({ text: clip(one.text, Math.min(260, budget)), done: one.done })),
     children: sortDirs(board, entity.children, false)
       .slice(0, 40)
       .flatMap(dir => {
         const child = board.byDir.get(dir)
-        return child ? [{ name: clip(child.name, 90), kind: child.kind, status: child.status }] : []
+        return child ? [{ id: dir, name: clip(child.name, 90), kind: child.kind, status: child.status }] : []
       }),
     notes: clip(entity.notes, Math.min(1400, budget)),
   }
@@ -256,13 +252,22 @@ export function buildView(board: Board, nav: Nav, message: Message | null, loade
               name: entity.name,
               status: entity.status,
               progress: progressOf(board, entity),
+              opens: entity.children.length > 0,
               preview: previewOf(board, entity, budget),
             },
           ]
         : []
     })
     if (here) {
-      rows.unshift({ id: '..', kind: 'up', name: '..', status: 'unknown', progress: '' })
+      rows.unshift({
+        id: '..',
+        kind: 'up',
+        name: '..',
+        status: 'unknown',
+        progress: '',
+        opens: false,
+        preview: previewOf(board, here, budget),
+      })
     }
     return rows
   }

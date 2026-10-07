@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { BoardView, Entry, Message, Mode, Nav, Pending, Status, Summary } from '../types'
+import type { BoardView, Entry, Kind, Message, Mode, Nav, Pending, Status, Summary } from '../types'
 import { buildView, loadBoard, setStatusArgv, summarize, totalsLine } from './board'
 import type { Board } from './board'
-import { HELP, LABEL, STATUS_KEYS, fit, previewLines, rowLabel } from './layout'
+import { HELP, LABEL, STATUS_KEYS, childLabel, criterionLabel, cursorDelta, fit, previewParts, rowLabel } from './layout'
 
 // Octoshell: a Midnight-Commander-style board browser in a pane. Every row is a
 // Button, so the pane's own focus ring is the cursor: it takes the keyboard the
@@ -13,12 +13,22 @@ import { HELP, LABEL, STATUS_KEYS, fit, previewLines, rowLabel } from './layout'
 const PANE = 'octoboard'
 const SCRIPTS = '.claude/skills/mission-planner/scripts'
 const ROW = 'row:'
+const CHILD = 'child:'
+
+const EMPTY: Record<Kind, string> = {
+  campaign: 'No missions in this campaign yet',
+  mission: 'No tasks or bugs in this mission yet',
+  task: 'A task has nothing to open',
+  bug: 'A bug has nothing to open',
+}
+const CRIT = 'crit:'
 
 const nav = atom({ plugin: 'octoboard', key: 'nav' } as const, { path: [] } as Nav)
 const summary = atom({ plugin: 'octoboard', key: 'summary' } as const, null as Summary | null)
 const message = atom({ plugin: 'octoboard', key: 'message' } as const, null as Message | null)
 const revision = atom({ plugin: 'octoboard', key: 'revision' } as const, 0)
 const mode = atom({ plugin: 'octoboard', key: 'mode' } as const, 'browse' as Mode)
+const side = atom({ plugin: 'octoboard', key: 'side' } as const, 'left' as 'left' | 'right')
 const pending = atom({ plugin: 'octoboard', key: 'pending' } as const, null as Pending | null)
 
 // The parsed board lives in the module: a reload re-reads it at session.start.
@@ -80,12 +90,70 @@ async function openEntry($: EngineInterface, id: string) {
   if (id === '..') return goUp($)
   const entity = board?.byDir.get(id)
   if (!entity) return
-  if (entity.kind === 'task' || entity.kind === 'bug') {
+  // Only a row marked › goes in; any other stays put and says why.
+  if (entity.children.length === 0) {
     await update($, nav, () => ({ path: where.path, cursorId: id }))
-    return say($, `${entity.kind === 'bug' ? 'A bug' : 'A task'} has no children; its details are on the right.`)
+    return say($, `${EMPTY[entity.kind]}; its details are on the right.`)
   }
   await say($, '')
   await moveTo($, { path: [...where.path, id] })
+}
+
+/** ⏎ on a right-panel item: step into its parent with the cursor on it. */
+async function openChild($: EngineInterface, parentId: string, childId: string) {
+  const where = await read($, nav)
+  await say($, '')
+  await update($, side, () => 'left')
+  await moveTo($, { path: [...where.path, parentId], cursorId: childId })
+}
+
+/** p: the focus ring jumps between the left rows and the right panel's items. */
+async function switchPanel($: EngineInterface) {
+  const view = viewFor(await read($, nav), null)
+  const cursor = cursorOf(view)
+  if (!cursor) return
+  // The .. row's preview is read-only: nothing on the right to walk.
+  const shown = cursor.kind === 'up' ? undefined : cursor.preview
+  const children = shown?.children ?? []
+  const criteria = shown?.criteria ?? []
+  const isRight = (await read($, side)) === 'right'
+  if (isRight || (children.length === 0 && criteria.length === 0)) {
+    if (!isRight) await say($, 'Nothing to select on the right for this row.')
+    await update($, side, () => 'left')
+    await $.ui.focus({ requestId: PANE, key: `${ROW}${cursor.id}` }).catch(() => undefined)
+    return
+  }
+  const first = children[0]
+  await update($, side, () => 'right')
+  await $.ui.focus({ requestId: PANE, key: first ? `${CHILD}${first.id}` : `${CRIT}1` }).catch(() => undefined)
+}
+
+/** ⏎ on a criterion: tick or untick it through the planner's own script, then re-read. */
+async function toggleCriterion($: EngineInterface, dir: string, n: number, isDone: boolean) {
+  const op = isDone ? 'uncheck' : 'check'
+  const ran = await $.process.run(['node', `${SCRIPTS}/set-criterion.js`, dir, op, String(n)], { timeoutMs: 20_000 })
+  const output = (ran.exitCode === 0 ? ran.stdout : ran.stderr || ran.stdout).trim().split('\n').pop() ?? ''
+  await say(
+    $,
+    ran.exitCode === 0 ? `Criterion ${n} ${isDone ? 'unticked' : 'ticked'}.` : `set-criterion failed: ${output}`,
+    ran.exitCode !== 0,
+  )
+  await reload($)
+  await update($, side, () => 'right')
+  await $.ui.focus({ requestId: PANE, key: `${CRIT}${n}` }).catch(() => undefined)
+}
+
+/** PgUp/PgDn, Home/End and the wheel move the cursor, MC-style, instead of scrolling the pane. */
+async function moveCursor($: EngineInterface, by: number) {
+  const view = viewFor(await read($, nav), null)
+  const rows = view.entries
+  if (rows.length === 0) return
+  const at = Math.max(0, rows.findIndex(entry => entry.id === cursorOf(view)?.id))
+  const target = rows[Math.max(0, Math.min(rows.length - 1, at + by))]
+  if (!target) return
+  await update($, side, () => 'left')
+  await update($, nav, current => ({ path: current.path, cursorId: target.id }))
+  await $.ui.focus({ requestId: PANE, key: `${ROW}${target.id}` }).catch(() => undefined)
 }
 
 async function goUp($: EngineInterface) {
@@ -176,9 +244,22 @@ export const register: Register = on => {
     if (key?.startsWith(ROW)) {
       const id = key.slice(ROW.length)
       await update($, nav, current => (current.cursorId === id ? current : { path: current.path, cursorId: id }))
+      await update($, side, current => (current === 'left' ? current : 'left'))
+    } else if (key?.startsWith(CHILD) || key?.startsWith(CRIT)) {
+      // The preview stays on the left row while the person walks its children.
+      await update($, side, current => (current === 'right' ? current : 'right'))
     }
     return next(e)
   }).catch(($, e, next) => next(e))
+
+  // The board never scrolls as a page: a page key asks for bodyRows, Home/End for
+  // contentRows, the wheel for a tick or two; each moves the cursor instead.
+  on('ui.scroll', { requestId: PANE }, async ($, e) => {
+    if (e.origin.kind !== 'person') return {}
+    const by = cursorDelta(e.by, e.bodyRows, e.contentRows, e.pointer !== undefined, Math.max(1, e.bodyRows - 5))
+    if (by !== 0) await moveCursor($, by)
+    return {}
+  }).catch(() => ({}))
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const counts = await read($, summary)
@@ -200,6 +281,7 @@ export const register: Register = on => {
     const said = await read($, message)
     const asking = await read($, mode)
     const asked = await read($, pending)
+    const panelSide = await read($, side)
 
     const view = viewFor(where, said)
     const entries = view.entries
@@ -218,7 +300,18 @@ export const register: Register = on => {
     // for the arrows to walk onto.
     const top = Math.max(0, Math.min(index - Math.floor(listRows / 2), entries.length - listRows))
     const shown = entries.slice(top, top + listRows)
-    const preview = previewLines(cursor, innerRight).slice(0, listRows)
+    const parts = previewParts(cursor, innerRight)
+    const childRoom = parts.childTitle ? Math.max(3, listRows - parts.head.length - 2) : 0
+    const childrenShown = parts.children.slice(0, childRoom)
+    const childrenHidden = parts.children.length - childrenShown.length
+    const childLines = parts.childTitle ? 1 + childrenShown.length + (childrenHidden > 0 ? 1 : 0) : 0
+    // Criteria come before the description: they are what the person acts on.
+    const critRoom = parts.criteriaTitle ? Math.max(0, listRows - parts.head.length - childLines - 2) : 0
+    const criteriaShown = parts.criteria.slice(0, critRoom)
+    const criteriaHidden = parts.criteria.length - criteriaShown.length
+    const critLines = parts.criteriaTitle ? 2 + criteriaShown.length + (criteriaHidden > 0 ? 1 : 0) : 0
+    const tailRoom = Math.max(0, listRows - parts.head.length - childLines - critLines)
+    const tail = parts.tail.slice(0, tailRoom)
 
     const stamp = `read ${view.loadedAt} `
     const header = fit(` Octoshell  ${view.crumbs.join(' › ')}`, width - stamp.length) + stamp
@@ -257,6 +350,7 @@ export const register: Register = on => {
             : [
                 { key: 'help', hotkey: 'h', label: 'Help', run: () => setMode($, 'help') },
                 { key: 'up', hotkey: 'u', label: 'Up', run: () => goUp($) },
+                { key: 'panel', hotkey: 'p', label: 'Panel', run: () => switchPanel($) },
                 { key: 'status', hotkey: 's', label: 'Status', run: () => setMode($, 'status') },
                 { key: 'cancel', hotkey: 'c', label: 'Cancel', run: () => askStatus($, 'cancelled') },
                 { key: 'validate', hotkey: 'v', label: 'Validate', run: () => validate($) },
@@ -275,7 +369,13 @@ export const register: Register = on => {
         </Box>
       ) : (
         <Box flexDirection="row" height={panelRows}>
-          <Box flexDirection="column" width={leftWidth} height={panelRows} borderStyle="single" borderColor="suggestion">
+          <Box
+            flexDirection="column"
+            width={leftWidth}
+            height={panelRows}
+            borderStyle="single"
+            borderColor={panelSide === 'left' ? 'suggestion' : 'subtle'}
+          >
             {shown.length === 0 && <Text dimColor>{fit(' (empty)', leftWidth - 2)}</Text>}
             {shown.map(entry => (
               <Button
@@ -288,9 +388,62 @@ export const register: Register = on => {
               />
             ))}
           </Box>
-          <Box flexDirection="column" width={rightWidth} height={panelRows} paddingX={1} borderStyle="single" borderColor="subtle">
-            {preview.map((one, i) => (
-              <Text key={`p-${i}`} wrap="truncate-end" color={one.color} bold={one.bold} dimColor={one.dim}>
+          <Box
+            flexDirection="column"
+            width={rightWidth}
+            height={panelRows}
+            paddingX={1}
+            borderStyle="single"
+            borderColor={panelSide === 'right' ? 'suggestion' : 'subtle'}
+          >
+            {parts.head.map((one, i) => (
+              <Text key={`ph-${i}`} wrap="truncate-end" color={one.color} bold={one.bold} dimColor={one.dim}>
+                {one.text || ' '}
+              </Text>
+            ))}
+            {parts.childTitle && (
+              <Text key="pc-title" bold wrap="truncate-end">
+                {parts.childTitle}
+              </Text>
+            )}
+            {cursor &&
+              childrenShown.map(child => (
+                <Button
+                  key={`${CHILD}${child.id}`}
+                  plain
+                  label={childLabel(child, innerRight)}
+                  dimColor={child.status === 'done' || child.status === 'cancelled' ? true : undefined}
+                  onPress={() => openChild($, cursor.id, child.id)}
+                />
+              ))}
+            {childrenHidden > 0 && (
+              <Text key="pc-more" dimColor wrap="truncate-end">
+                {`… ${childrenHidden} more: open the row to see all`}
+              </Text>
+            )}
+            {parts.criteriaTitle && <Text key="pk-gap"> </Text>}
+            {parts.criteriaTitle && (
+              <Text key="pk-title" bold wrap="truncate-end">
+                {parts.criteriaTitle}
+              </Text>
+            )}
+            {cursor &&
+              criteriaShown.map(one => (
+                <Button
+                  key={`${CRIT}${one.n}`}
+                  plain
+                  label={criterionLabel(one, innerRight)}
+                  dimColor={one.done ? true : undefined}
+                  onPress={() => toggleCriterion($, cursor.id, one.n, one.done)}
+                />
+              ))}
+            {criteriaHidden > 0 && (
+              <Text key="pk-more" dimColor wrap="truncate-end">
+                {`… ${criteriaHidden} more criteria`}
+              </Text>
+            )}
+            {tail.map((one, i) => (
+              <Text key={`pt-${i}`} wrap="truncate-end" color={one.color} bold={one.bold} dimColor={one.dim}>
                 {one.text || ' '}
               </Text>
             ))}

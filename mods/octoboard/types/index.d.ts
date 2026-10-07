@@ -26,7 +26,7 @@ export type Entity = {
   children: string[]
 }
 
-export type ChildLine = { name: string; kind: Kind; status: Status }
+export type ChildLine = { id: string; name: string; kind: Kind; status: Status }
 
 /** The right panel's content for the entry under the cursor. */
 export type Preview = {
@@ -40,13 +40,17 @@ export type Preview = {
   notes: string
 }
 
-/** One row of the left panel. `id` is the entity's folder; `..` goes up. */
+/**
+ * One row of the left panel. `id` is the entity's folder; `..` goes up and previews
+ * the folder it stands in. `opens` is true when the row has children to go into.
+ */
 export type Entry = {
   id: string
   kind: Kind | 'up'
   name: string
   status: Status
   progress: string
+  opens: boolean
   preview?: Preview
 }
 
@@ -85,6 +89,7 @@ declare module 'claude-code' {
       message: Message | null
       revision: number
       mode: Mode
+      side: 'left' | 'right'
       pending: Pending | null
     }
   }
