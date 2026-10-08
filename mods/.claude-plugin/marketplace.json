@@ -1,7 +1,0 @@
-{
-  "name": "octoshell-mods",
-  "owner": { "name": "Daniel Sallai" },
-  "plugins": [
-    { "name": "octoboard", "source": "./octoboard", "description": "Midnight-Commander-style browser for the Octobots .octobots/ board" }
-  ]
-}

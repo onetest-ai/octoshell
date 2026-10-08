@@ -41,18 +41,43 @@ release and nothing in the pnpm workspace builds, lints or tests it.
 - **Live.** It re-reads the board after any tool call that touches `.octobots/` or the planner
   scripts, and every 15 s while the pane is open.
 
-## Trying it
+## Installing it
 
 It needs the Octobots pack installed in the repository (it calls
-`.claude/skills/mission-planner/scripts/`) and Node on the PATH. From the repository holding the
-board:
+`.claude/skills/mission-planner/scripts/`) and Node on the PATH. In a Claude Code terminal session,
+type:
+
+```
+/plugin install octoboard --marketplace onetest-ai/octoshell
+```
+
+Answer `y` to add the `onetest-ai/octoshell` marketplace, then pick a scope: **user** loads it in
+every repository, **project** records it in the repository's shared `.claude/settings.json`,
+**local** only for you in this repository. It is active straight away, with no restart.
+
+Then type `/octoshell` in any repository that has a board. A fullscreen terminal that reports
+clicks (iTerm2, Ghostty, kitty, WezTerm; not tmux) also gets the mouse.
+
+`claude plugin update octoboard@octoshell` picks up a new version.
+
+## Developing it
+
+Run it from a checkout for one session, from the repository holding the board:
 
 ```bash
 claude --plugin-dir /path/to/octoshell/mods/octoboard
 ```
 
-then type `/octoshell`. A fullscreen terminal that reports clicks (iTerm2, Ghostty, kitty,
-WezTerm; not tmux) also gets the mouse.
+or install it from the checkout itself, so an edit reaches a session on `/reload-plugins`:
+
+```bash
+claude plugin marketplace add /path/to/octoshell --scope local
+claude plugin install octoboard@octoshell --scope local
+```
+
+The marketplace file is the repository's `.claude-plugin/marketplace.json`. Bump `version` in
+`.claude-plugin/plugin.json` with every change people should get: an install from GitHub runs the
+copy made when it was installed.
 
 ## How it is built
 
@@ -71,6 +96,7 @@ bundle `packages/board` behind a pre-read, in-memory fs adapter rather than dupl
 ## Checks
 
 ```bash
+claude plugin validate .                # the marketplace file at the repository root
 claude plugin validate mods/octoboard   # manifest + hooks module, as the engine reads them
 claude plugin test mods/octoboard       # 13 tests: loader, view model, pane, /octoshell
 ```
