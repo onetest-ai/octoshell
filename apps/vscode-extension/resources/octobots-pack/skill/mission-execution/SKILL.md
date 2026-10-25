@@ -149,6 +149,17 @@ all tasks merged → set-status.js … "M<n> - name" done → mission-completion
     environment variables, so a QA run can never touch a real database. The script is
     `.claude/skills/mission-execution/scripts/qa-env.mjs`. A project with no database has no
     `.octobots/qa-env.json`, and its QA servers start directly.
+12. **A fresh agent for every task and phase. Never hand the next task to an agent that is still
+    alive.** Messaging or resuming a running agent is for its own task and phase only: a relayed
+    question, a CI failure, the one fix round. Once its task is merged, cancelled or blocked, the
+    next task gets a new `Agent` call with a full brief. Don't send it as a message to the old agent,
+    even when "it already knows the code". Inside one task, apply a hard stop: once an agent has been
+    compacted twice, or its context is past ~400k tokens, ask it for a handoff note (state, open
+    threads, next step), stop dispatching to it, and continue with a fresh agent that carries the
+    note. Why: in production, a build agent reused for six tasks and a QA agent kept alive for 31
+    hours ran 65% of their turns above 500k tokens of context, against ~100k for a fresh dispatch.
+    Every turn pays for that context again. Delivery tracking also attributes an agent to the task
+    in its first brief, so later tasks sent to it are recorded against the wrong one.
 
 ### The phases
 
