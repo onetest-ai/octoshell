@@ -291,7 +291,11 @@ the gate independently re-verifies the criteria black-box and reviews the whole 
 
 ### Plan review
 
-Before a mission starts executing, have its plan reviewed, and record the review on the board.
+Before an **M, L or XL** mission starts executing, have its plan reviewed, and record the review
+on the board. An **XS or S** mission (its `size_tshirt`) skips the review: start it with
+`set-status.js ... --force="plan review skipped: size <XS|S>"`, so the skip is recorded on the
+board and a small mission doesn't pay for two extra reviewer dispatches. A mission with no
+`size_tshirt` is reviewed.
 
 1. Dispatch `ba` and `tech-lead` in parallel, read-only, each with an explicit `model:` (`opus` for
    a review). They write nothing; they return findings. Brief each one with the mission's
