@@ -1,0 +1,12 @@
+{
+  "name": "octoshell",
+  "owner": { "name": "Daniel Sallai" },
+  "description": "Claude Code mods for the Octobots board (.octobots/): the board inside the terminal",
+  "plugins": [
+    {
+      "name": "octoboard",
+      "source": "./mods/octoboard",
+      "description": "Midnight-Commander-style browser for the Octobots .octobots/ board"
+    }
+  ]
+}

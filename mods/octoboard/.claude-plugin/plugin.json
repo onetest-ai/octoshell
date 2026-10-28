@@ -1,0 +1,7 @@
+{
+  "name": "octoboard",
+  "version": "0.2.0",
+  "description": "Midnight-Commander-style browser for the Octobots .octobots/ board, opened from a Board button above the prompt",
+  "author": { "name": "Daniel Sallai" },
+  "types": "./types/index.d.ts"
+}
