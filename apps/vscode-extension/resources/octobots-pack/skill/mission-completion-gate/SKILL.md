@@ -138,6 +138,20 @@ dispatches the addressee with them, and then hands the answers back in a follow-
 When any phase is blocked, relay the findings, have the right dev fix them, and re-run from the
 blocked phase. Do not leave the mission `done` on a red gate.
 
+**Exit rule: at most two gate fix rounds.** Count them across phases. Stop patching early when a
+re-run finds a blocker in code a gate fix itself wrote, in the same class as an earlier blocker.
+In either case:
+
+1. Dispatch `tech-lead` (`model: opus`) for a restructure brief: one source of truth for the
+   disputed fact, plus the invariants the fix must keep.
+2. The restructured diff gets the full gate again, from the first blocked phase. It counts as round
+   1 again, once.
+3. If that still fails, stop. Leave the mission out of `done`, record the open blockers in the
+   mission `notes`, and hand them to the user. Do not run another fix round.
+
+Gate fix loops on one defect class have run for hours in production, and rounds after the second
+found no new bugs.
+
 
 ### QA on the test cases
 
