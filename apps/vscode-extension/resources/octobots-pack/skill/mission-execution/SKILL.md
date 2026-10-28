@@ -134,7 +134,10 @@ all tasks merged → set-status.js … "M<n> - name" done → mission-completion
    constraints and the evidence required.
 9. **One review round + one fix round per task.** Define "blocking" in the review brief (AC unmet,
    reproducible defect, or security exposure with a PoC). Anything else is filed as a board bug.
-   Keep separate counters for question rounds and fix rounds.
+   Keep separate counters for question rounds and fix rounds. If a blocker is still open after the
+   fix round, do not dispatch a second patch: ask `tech-lead` for a restructure brief, give the
+   restructured diff a full review (round 1 again, once), and if that fails, stop the mission as
+   BLOCKED and hand the open blockers to the user.
 10. **A dead agent is a dispatch to retry, not a task failure.** If an agent returns an API or transport
     error, inspect `git status` and the branch, keep committed work, and dispatch again with "resume:
     these commits already exist, do not redo them". Resume from the board and git, never from a cache.
