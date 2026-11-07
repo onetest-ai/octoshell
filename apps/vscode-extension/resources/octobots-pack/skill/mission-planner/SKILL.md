@@ -134,6 +134,10 @@ You turn an intent into a **campaign** and its **missions**. Think top-down: out
    genuinely ambiguous; otherwise propose and proceed.
 2. Decompose the outcome into a small set of missions, each independently shippable and each with
    explicit acceptance criteria.
+   When the campaign is really about infrastructure or platform (same trigger as Plan review) and
+   the host has a `release-engineer` agent, consult her (read-only, no production access; she
+   writes nothing) while drafting those missions, as an adviser to `tech-lead`. User decisions
+   still go back to the user.
 3. Create each mission with `add-mission.js <campaign-dir|campaign.yaml> "M<n> - <Mission name>"`
    (and `--description "<one-line description>"`) — a sequential id (`M1`, `M2`, …), a descriptive
    name (the ` - ` after the id stays in the title). The script writes the mission folder + its
@@ -300,17 +304,30 @@ board and a small mission doesn't pay for two extra reviewer dispatches. A missi
 1. Dispatch `ba` and `tech-lead` in parallel, read-only, each with an explicit `model:` (`opus` for
    a review). They write nothing; they return findings. Brief each one with the mission's
    description, its acceptance criteria and its tasks, verbatim.
+   When the mission is really about infrastructure or platform (how or where the product is
+   deployed or hosted, production configuration or infrastructure, the release/deploy pipeline,
+   backup/restore, or production monitoring), also dispatch `release-engineer` in the same parallel
+   batch, read-only and briefed the same way. Not for an ordinary feature mission, even one that
+   adds a data migration: `tech-lead` checks migration compatibility. Skip her when the host's
+   agent inventory has no `release-engineer` agent, so a pack without that role keeps working; the
+   record then names only the reviewers that ran. She advises `tech-lead` on the release and
+   operations side (deploy path, rollback, backups, monitoring, release evidence) and never owns the
+   architecture verdict: `tech-lead` stays the architect, his call stands, and a disagreement goes
+   back to the user as a decision.
 2. Each reviewer must run the queries, read real rows and grep call sites per acceptance criterion:
    a criterion about stored data is checked against the data, one about a function against its
-   callers. A review that only reads the plan is not a review. Each returns blocking findings from
-   nits.
+   callers. A review that only reads the plan is not a review. For `release-engineer` the same bar
+   applies to what she can reach without production access: the repo, public read-only endpoints
+   (e.g. `/api/version`) and her project briefing. Anything that needs the VM or VPN goes into the
+   plan as an open question, not a finding. Each returns blocking findings from nits.
 3. Findings are resolved on the board: a blocking finding changes a criterion, a task or the
    description before anything starts, and a nit is fixed or noted. User decisions go back to the
    user; the planner never decides them. Re-dispatch the reviewer that raised a blocking finding to
    confirm the fix.
 4. Record the result in the mission `notes` (or the campaign `notes`, for a review of the whole
    campaign) in exactly the strict shape below: `## Plan review (<names or roles>, <date>)`, then
-   `Reviewers: ba (<name>), tech-lead (<name>)`, then
+   `Reviewers: ba (<name>), tech-lead (<name>)` (append `, release-engineer (<name>)` when she
+   reviewed), then
    `Verdict: approved | approved with nits | changes requested` (keep one of the three). The
    heading and both lines start in column 0; keys are case-insensitive; write one `Verdict:` line,
    never two. Only `approved` and `approved with nits` let the mission start. Always write this
