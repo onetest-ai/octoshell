@@ -6,6 +6,18 @@
   ],
   "cases": [
     {
+      "id": "strict-three-reviewers-release-engineer",
+      "description": "a third reviewer (release-engineer, Dora) on the Reviewers: line is still a strict, approving record",
+      "missionNotes": "## Plan review (Alex + Rio + Dora, 2026-11-07)\nReviewers: ba (Alex), tech-lead (Rio), release-engineer (Dora)\nVerdict: approved",
+      "campaignNotes": "",
+      "expected": {
+        "ok": true,
+        "where": "mission",
+        "legacy": false,
+        "heading": "## Plan review (Alex + Rio + Dora, 2026-11-07)"
+      }
+    },
+    {
       "id": "strict-mission-notes",
       "description": "strict record in the mission notes",
       "missionNotes": "Intro.\n\n## Plan review (Alex + Rio, 2026-10-05)\nReviewers: ba (Alex), tech-lead (Rio)\nVerdict: approved with nits\n\nprose",
