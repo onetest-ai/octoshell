@@ -32,7 +32,7 @@ describe("octobots-hooks: primer copy", () => {
 });
 
 describe("octobots-hooks: Claude registration", () => {
-  it("creates settings.json with SessionStart + PreCompact entries tagged _octobots", () => {
+  it("creates settings.json with a SessionStart entry tagged _octobots and no PreCompact entry", () => {
     const repo = freshRepo();
     registerClaudeHook(repo, 9);
     const s = JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8"));
@@ -40,7 +40,49 @@ describe("octobots-hooks: Claude registration", () => {
     expect(ss).toBeTruthy();
     expect(ss.hooks[0].command).toContain("primer.mjs");
     expect(ss.hooks[0].command).toContain("--backend claude");
-    expect(s.hooks.PreCompact.some((e: any) => e._octobots === 9)).toBe(true);
+    // Claude Code rejects hookSpecificOutput on PreCompact; SessionStart's `compact` matcher covers it.
+    expect(ss.matcher).toContain("compact");
+    expect(s.hooks.PreCompact).toBeUndefined();
+    expect(claudeHookStatus(repo, 9)).toEqual({ present: true, current: true });
+  });
+
+  it("strips our leftover PreCompact entry on re-register, keeping other tools' PreCompact hooks", () => {
+    const repo = freshRepo();
+    mkdirSync(join(repo, ".claude"), { recursive: true });
+    writeFileSync(join(repo, ".claude", "settings.json"), JSON.stringify({
+      hooks: {
+        PreCompact: [
+          { _octobots: 9, hooks: [{ type: "command", command: ".octobots/hooks/primer.mjs --backend claude" }] },
+          { hooks: [{ type: "command", command: "./other-tool/precompact.sh" }] },
+        ],
+      },
+    }));
+    registerClaudeHook(repo, 9);
+    const s = JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8"));
+    expect(s.hooks.PreCompact).toEqual([{ hooks: [{ type: "command", command: "./other-tool/precompact.sh" }] }]);
+    expect(claudeHookStatus(repo, 9)).toEqual({ present: true, current: true });
+  });
+
+  it("deletes the PreCompact key when our entry was its only one", () => {
+    const repo = freshRepo();
+    mkdirSync(join(repo, ".claude"), { recursive: true });
+    writeFileSync(join(repo, ".claude", "settings.json"), JSON.stringify({
+      hooks: { PreCompact: [{ _octobots: 9, hooks: [{ type: "command", command: ".octobots/hooks/primer.mjs" }] }] },
+    }));
+    registerClaudeHook(repo, 9);
+    const s = JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8"));
+    expect("PreCompact" in s.hooks).toBe(false);
+  });
+
+  it("reports a current-version install that still carries our PreCompact entry as not current", () => {
+    const repo = freshRepo();
+    registerClaudeHook(repo, 9);
+    const path = join(repo, ".claude", "settings.json");
+    const s = JSON.parse(readFileSync(path, "utf8"));
+    s.hooks.PreCompact = [{ _octobots: 9, hooks: [{ type: "command", command: ".octobots/hooks/primer.mjs" }] }];
+    writeFileSync(path, JSON.stringify(s));
+    expect(claudeHookStatus(repo, 9)).toEqual({ present: true, current: false });
+    registerClaudeHook(repo, 9);
     expect(claudeHookStatus(repo, 9)).toEqual({ present: true, current: true });
   });
 
@@ -189,6 +231,11 @@ describe("octobots-hooks: Claude registration", () => {
     registerClaudeHook(repo, 9);
     expect(claudeHookStatus(repo, 9).present).toBe(true);
 
+    const path = join(repo, ".claude", "settings.json");
+    const withLeftover = JSON.parse(readFileSync(path, "utf8"));
+    withLeftover.hooks.PreCompact = [{ _octobots: 8, hooks: [{ type: "command", command: ".octobots/hooks/primer.mjs" }] }];
+    writeFileSync(path, JSON.stringify(withLeftover));
+
     const dropped = unregisterClaudeHook(repo);
     expect(dropped).toBeGreaterThan(0);
     expect(claudeHookStatus(repo, 9).present).toBe(false);
@@ -196,5 +243,6 @@ describe("octobots-hooks: Claude registration", () => {
     const s = JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8"));
     expect(s.hooks.SessionStart).toHaveLength(1);
     expect(s.hooks.SessionStart[0].hooks[0].command).toBe("./other-tool/run.sh");
+    expect(s.hooks.PreCompact).toBeUndefined(); // a retired event's leftover is ours to remove too
   });
 });

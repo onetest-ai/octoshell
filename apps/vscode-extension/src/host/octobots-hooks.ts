@@ -35,8 +35,19 @@ const WORK_LOG_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/work-log.mjs"
 const MISSION_GATE_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/mission-gate.mjs"`;
 
 /** The Claude hook events we own. Every entry we write carries `_octobots`. */
-const CLAUDE_EVENTS = ["SessionStart", "PreCompact", "PostToolUse"] as const;
+const CLAUDE_EVENTS = ["SessionStart", "PostToolUse"] as const;
 type ClaudeEvent = (typeof CLAUDE_EVENTS)[number];
+
+/**
+ * Events an earlier pack registered and this one no longer does. Our entries there are stripped on
+ * every register/unregister, and a leftover one makes the install report as not current, so the
+ * upgrade prompt repairs it.
+ *
+ * PreCompact: Claude Code rejects `hookSpecificOutput` on PreCompact ("Hook JSON output validation
+ * failed"), so the primer failed visibly on every compaction and its text was dropped. It was also
+ * redundant: SessionStart's `compact` matcher re-injects the primer after a compaction.
+ */
+const RETIRED_CLAUDE_EVENTS = ["PreCompact"] as const;
 
 function claudeEntries(event: ClaudeEvent, version: number): HookEntry[] {
   if (event === "PostToolUse") {
@@ -81,7 +92,7 @@ function isOurs(entry: HookEntry): boolean {
   return (entry.hooks ?? []).some((h) => OUR_SCRIPTS.some((s) => (h.command ?? "").includes(s)));
 }
 
-/** Idempotently merge our SessionStart + PreCompact + PostToolUse entries into <repo>/.claude/settings.json. */
+/** Idempotently merge our SessionStart + PostToolUse entries into <repo>/.claude/settings.json. */
 export function registerClaudeHook(repoRoot: string, version: number): void {
   const path = join(repoRoot, ".claude", "settings.json");
   const settings = readJson(path);
@@ -91,6 +102,7 @@ export function registerClaudeHook(repoRoot: string, version: number): void {
     arr.push(...claudeEntries(event, version));
     hooks[event] = arr;
   }
+  dropOursFrom(hooks, RETIRED_CLAUDE_EVENTS);
   writeJson(path, settings);
 }
 
@@ -103,15 +115,22 @@ export function unregisterClaudeHook(repoRoot: string): number {
   const path = join(repoRoot, ".claude", "settings.json");
   const settings = readJson(path);
   const hooks = (settings.hooks ?? {}) as Record<string, HookEntry[]>;
+  const dropped = dropOursFrom(hooks, [...CLAUDE_EVENTS, ...RETIRED_CLAUDE_EVENTS]);
+  if (dropped) writeJson(path, settings);
+  return dropped;
+}
+
+/** Remove our entries from `events`, deleting an event left empty. Returns how many were dropped. */
+function dropOursFrom(hooks: Record<string, HookEntry[]>, events: readonly string[]): number {
   let dropped = 0;
-  for (const event of CLAUDE_EVENTS) {
-    const before = hooks[event] ?? [];
+  for (const event of events) {
+    const before = hooks[event];
+    if (!before) continue;
     const after = before.filter((e) => !isOurs(e));
     dropped += before.length - after.length;
     if (after.length) hooks[event] = after;
     else delete hooks[event];
   }
-  if (dropped) writeJson(path, settings);
   return dropped;
 }
 
@@ -128,7 +147,8 @@ export function claudeHookStatus(repoRoot: string, version: number): { present: 
   // reports `present: false`, so re-running the installer repairs it rather
   // than reporting a partial install as healthy.
   const present = mine.every((entries) => entries.length > 0);
-  const current = present && mine.flat().every((e) => e._octobots === version);
+  const leftover = RETIRED_CLAUDE_EVENTS.some((event) => ours(event).length > 0);
+  const current = present && !leftover && mine.flat().every((e) => e._octobots === version);
   return { present, current };
 }
 

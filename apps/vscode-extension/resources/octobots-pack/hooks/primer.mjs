@@ -37,7 +37,7 @@ const PRIMER = [
  * tiktoken — so ~8000 bytes) is a RENDERING target, not a limit: `--budget` is user-configurable
  * and a repo can raise it arbitrarily, or hand-edit the file afterwards. This cap is a SEPARATE,
  * primer-side defence independent of whatever `--budget` produced, so a workspace that raised its
- * budget never balloons the context injected on every SessionStart/PreCompact. Set to 4x the
+ * budget never balloons the context injected on every SessionStart. Set to 4x the
  * default budget's byte estimate, rounded to a clean 32 KB: generous headroom for a moderately
  * raised `--budget`, still bounded.
  *
@@ -359,6 +359,13 @@ if (!existsSync(join(projectDir, ".octobots"))) {
 }
 
 const event = eventName();
+// Claude Code accepts `hookSpecificOutput.additionalContext` only on some events; on any other
+// (PreCompact, which older packs registered) it fails the hook with a validation error on every
+// run. Stay silent there rather than break the host.
+const CLAUDE_CONTEXT_EVENTS = new Set(["SessionStart", "UserPromptSubmit"]);
+if (backend === "claude" && !CLAUDE_CONTEXT_EVENTS.has(event)) {
+  process.exit(0);
+}
 // Additive: everything PRIMER carried before this mission is unchanged; the graph block is
 // appended after it, separated by a blank line, never edited in.
 const health = healthLine(projectDir);
