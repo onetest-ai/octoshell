@@ -103,6 +103,17 @@ describe("primer.mjs", () => {
     expect(JSON.parse(out).hookSpecificOutput.hookEventName).toBe("PreCompact");
   });
 
+  it("claude: echoes UserPromptSubmit as hookEventName", () => {
+    const out = run("claude", repoWithOctobots(), "UserPromptSubmit");
+    expect(JSON.parse(out).hookSpecificOutput.hookEventName).toBe("UserPromptSubmit");
+  });
+
+  // Claude Code fails a hook that returns hookSpecificOutput on PreCompact ("Hook JSON output
+  // validation failed"). A workspace still carrying an old PreCompact registration must get silence.
+  it.each(["PreCompact", "Stop", "PostToolUse"])("claude: emits nothing on %s", (event) => {
+    expect(run("claude", repoWithOctobots(), event)).toBe("");
+  });
+
   it("emits Copilot additionalContext shape", () => {
     const out = run("copilot", repoWithOctobots());
     const parsed = JSON.parse(out);
@@ -341,7 +352,7 @@ const acks = (ws: string, list: Array<{ finding: string; path: string }>): void 
   write(ws, ".octobots/doctor-acks.json", JSON.stringify({ acknowledged: list.map((a) => ({ ...a, date: "2026-10-05" })) }));
 
 describe("primer.mjs health line (octobots-doctor)", () => {
-  it.each(["SessionStart", "PreCompact"])("%s: two pending reconciles plus a workflows/ folder produce exactly the AC line", (event) => {
+  it.each(["SessionStart", "UserPromptSubmit"])("%s: two pending reconciles plus a workflows/ folder produce exactly the AC line", (event) => {
     const ws = repoWithOctobots();
     pendingJson(ws, caseText("valid"));
     workflowsDir(ws, "campaigns/c1/workflows");
