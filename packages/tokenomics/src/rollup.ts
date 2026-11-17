@@ -169,11 +169,12 @@ export type AttributionTarget =
 
 function byCampaignThenNumber(campaigns: CampaignEntry[]): (a: MissionEntry, b: MissionEntry) => number {
   const slug = new Map(campaigns.map((c) => [c.campaign.id, c.slug]));
-  const key = (e: MissionEntry): [string, number] => [slug.get(e.mission.campaignId) ?? "", missionNumber(e.mission) ?? 0];
+  const key = (e: MissionEntry): [string, number, string] =>
+    [slug.get(e.mission.campaignId) ?? "", missionNumber(e.mission) ?? 0, missionKey(e.mission) ?? ""];
   return (a, b) => {
-    const [sa, na] = key(a);
-    const [sb, nb] = key(b);
-    return sa < sb ? -1 : sa > sb ? 1 : na - nb;
+    const [sa, na, ka] = key(a);
+    const [sb, nb, kb] = key(b);
+    return sa < sb ? -1 : sa > sb ? 1 : na - nb || (ka < kb ? -1 : ka > kb ? 1 : 0);
   };
 }
 
@@ -203,9 +204,9 @@ export function resolveAttribution(branch: string, sessionId: string, ctx: Attri
     .sort((a, b) => b.slug.length - a.slug.length || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))[0];
   if (top) {
     const inCampaign = ctx.missions.filter((e) => e.mission.campaignId === top.campaign.id);
-    const num = /-m(\d+)\b/i.exec(branch)?.[1];
-    if (num) {
-      const hit = inCampaign.find((e) => (missionNumber(e.mission) ?? 0) === Number(num));
+    const key = /-m(\d+[a-z]?)\b/i.exec(branch)?.[1]?.toLowerCase();
+    if (key) {
+      const hit = inCampaign.find((e) => missionKey(e.mission) === key);
       if (hit) return { kind: "mission", mission: hit, step: 2 };
     } else if (inCampaign.length === 1 && inCampaign[0]) {
       return { kind: "mission", mission: inCampaign[0], step: 3 };
@@ -233,25 +234,35 @@ export function resolveAttribution(branch: string, sessionId: string, ctx: Attri
  * title ("Port the T2.1 follow-up") is prose, not the entity's id.
  */
 function boardId(title: string, folderPath: string, kind: "mission" | "task"): string | null {
-  const fromTitle = /^\s*([MT]\d+(?:\.\d+)?)\s*[-–—:]\s*(.+)$/.exec(title)?.[1];
+  const fromTitle = /^\s*([MT]\d+[a-z]?(?:\.\d+)?)\s*[-–—:]\s*(.+)$/.exec(title)?.[1];
   if (fromTitle) return fromTitle;
   const folder = folderPath.split("/").filter(Boolean).pop() ?? "";
   if (kind === "mission") {
-    const n = /^m(\d+)/i.exec(folder)?.[1];
-    return n ? `M${n}` : folder || null;
+    const n = /^m(\d+[a-z]?)(?![a-z\d])/i.exec(folder)?.[1];
+    return n ? `M${n.toLowerCase()}` : folder || null;
   }
-  const t = /^t(\d+)-(\d+)/i.exec(folder);
-  return t ? `T${t[1]}.${t[2]}` : null;
+  const t = /^t(\d+[a-z]?)-(\d+)/i.exec(folder);
+  return t ? `T${t[1]!.toLowerCase()}.${t[2]}` : null;
 }
 
-/** `rollup.mjs`'s `missionNum`: the digits of the mission's board id; null when it has none. */
+/**
+ * `rollup.mjs`'s `missionKey`: the mission's full id without the `M` ("6", "6b"); null when the board
+ * id is not an `M<n>[letter]` id. Missions are matched by this key, never by the bare number: M6 and
+ * M6b are different missions.
+ */
+function missionKey(m: Mission): string | null {
+  const key = /^M(\d+[a-z]?)$/i.exec(boardId(m.title, m.folderPath, "mission") ?? "")?.[1];
+  return key ? key.toLowerCase() : null;
+}
+
+/** `rollup.mjs`'s `missionNum`: the numeric part of the mission key, used only to sort (6 < 6b < 7). */
 function missionNumber(m: Mission): number | null {
-  const digits = (boardId(m.title, m.folderPath, "mission") ?? "").replace(/\D/g, "");
-  return digits ? Number(digits) : null;
+  const key = missionKey(m);
+  return key ? parseInt(key, 10) : null;
 }
 
 function taskNumber(t: Task): number | null {
-  const n = /^T\d+\.(\d+)$/.exec(taskLabel(t) ?? "")?.[1];
+  const n = /^T\d+[a-z]?\.(\d+)$/.exec(taskLabel(t) ?? "")?.[1];
   return n ? Number(n) : null;
 }
 
@@ -319,7 +330,7 @@ function buildTaskRuns(
   attributionOf: Map<string, Attribution>,
   artifactsRoot: string,
 ): TaskRun[] {
-  const missionNum = missionNumber(entry.mission);
+  const missionK = missionKey(entry.mission);
   const byTask = new Map<string, Segment[]>();
 
   for (const seg of segs) {
@@ -327,7 +338,7 @@ function buildTaskRuns(
     const logged = workLog.get(`${seg.sessionId}|${seg.branch}`) ?? workLog.get(seg.sessionId);
     const inferred = /-t(\d+)(?:[-_.].*)?$/i.exec(seg.branch)?.[1];
     const num = logged ? logged.split(".")[1] : inferred;
-    const key = num && missionNum !== null ? `T${missionNum}.${num}` : MISSION_LEVEL;
+    const key = num && missionK !== null ? `T${missionK}.${num}` : MISSION_LEVEL;
     attributionOf.set(seg.segmentId, logged ? "worklog" : inferred ? "branch-inference" : "mission-level");
     const list = byTask.get(key) ?? [];
     list.push(seg);

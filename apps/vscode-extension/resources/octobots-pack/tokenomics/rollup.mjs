@@ -186,17 +186,27 @@ function readYamlEntity(file) {
   }
 }
 
+// A mission id is `M<n>` or `M<n><letter>` (M6b); a task id is `T<n>.<k>` or `T<n><letter>.<k>`.
+// Missions are matched by their FULL key ("6", "6b"), never by the bare number: M6 and M6b are
+// different missions. `missionNumOf` is the numeric part, used only to sort (6 < 6b < 7).
+const missionKeyOf = (id) => String(id).replace(/^M/i, "").toLowerCase();
+const missionNumOf = (id) => parseInt(missionKeyOf(id), 10);
+const missionIdFromSlug = (dir) => {
+  const m = dir.match(/^m(\d+[a-z]?)(?![a-z\d])/i);
+  return m ? `M${m[1].toLowerCase()}` : dir;
+};
+
 // `M1 - Name` / `T2.3 - Name`. The `<id> - <name>` title is a board contract, and
 // on a YAML entity the id lives nowhere else — the folder slug is only a fallback.
 function splitTitle(title, fallbackId) {
-  const m = /^\s*([MT]\d+(?:\.\d+)?)\s*[-–—:]\s*(.+)$/.exec(String(title ?? ""));
+  const m = /^\s*([MT]\d+[a-z]?(?:\.\d+)?)\s*[-–—:]\s*(.+)$/.exec(String(title ?? ""));
   if (m) return { id: m[1], name: m[2].trim() };
   return { id: fallbackId, name: String(title ?? "").trim() || fallbackId };
 }
 
 function taskIdFromSlug(dir) {
-  const m = dir.match(/^t(\d+)-(\d+)/i);
-  return m ? `T${m[1]}.${m[2]}` : null;
+  const m = dir.match(/^t(\d+[a-z]?)-(\d+)/i);
+  return m ? `T${m[1].toLowerCase()}.${m[2]}` : null;
 }
 
 // Per-task estimates live in each `tasks/<slug>/task.yaml` (`tokenomics:`), or in
@@ -233,7 +243,7 @@ function loadTasks(missionPath, END) {
     const f = join(tasksDir, dir, "task.md");
     if (!existsSync(f)) continue;
     const text = readFileSync(f, "utf8");
-    const id = text.match(/^#\s+(T\d+\.\d+)\b/m)?.[1] ?? slugId;
+    const id = text.match(/^#\s+(T\d+[a-z]?\.\d+)\b/m)?.[1] ?? slugId;
     if (!id) continue;
     const a = normaliseAuthored(parseTokenomicsBlock(text, END));
     if (Object.keys(a).length) est.set(id, a);
@@ -242,7 +252,7 @@ function loadTasks(missionPath, END) {
 }
 
 function parseMissionYaml(campaignSlug, missionDir, missionPath, doc) {
-  const { id, name } = splitTitle(doc.name, missionDir.match(/^m(\d+)/i) ? `M${missionDir.match(/^m(\d+)/i)[1]}` : missionDir);
+  const { id, name } = splitTitle(doc.name, missionIdFromSlug(missionDir));
 
   const desc = String(doc.description ?? "");
   const brief = desc.trim().replace(/\s+/g, " ").slice(0, 400);
@@ -258,15 +268,16 @@ function parseMissionYaml(campaignSlug, missionDir, missionPath, doc) {
     criteria_done: criteria.filter((c) => c && c.done === true).length,
     authored,
     declaredBranches: (authored.branches ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    missionNum: Number(String(id).replace(/\D/g, "")),
+    missionNum: missionNumOf(id),
+    missionKey: missionKeyOf(id),
   };
 }
 
 function parseMission(campaignSlug, missionDir, missionPath) {
   const path = join(missionPath, "mission.md");
   const text = readFileSync(path, "utf8");
-  const titleMatch = text.match(/^#\s+(M\d+)\s*[-–]\s*(.+)$/m);
-  const id = titleMatch?.[1] ?? (missionDir.match(/^m(\d+)/i) ? `M${missionDir.match(/^m(\d+)/i)[1]}` : missionDir);
+  const titleMatch = text.match(/^#\s+(M\d+[a-z]?)\s*[-–]\s*(.+)$/m);
+  const id = titleMatch?.[1] ?? missionIdFromSlug(missionDir);
   const name = titleMatch?.[2]?.trim() ?? missionDir;
 
   // Description = the `## Description` body, collapsed to a brief.
@@ -302,7 +313,7 @@ function parseMission(campaignSlug, missionDir, missionPath) {
   const TASKS_END = "(?=\\n##\\s|$(?![\\s\\S]))";
   const tasksBlock = text.match(new RegExp(`^##\\s+Tasks\\s*\\n([\\s\\S]*?)${TASKS_END}`, "m"))?.[1] ?? "";
   for (const line of tasksBlock.split("\n")) {
-    const m = line.match(/^\s*-\s*(.*?)(T\d+\.\d+)\s*[-–]\s*(.+?)\s*$/);
+    const m = line.match(/^\s*-\s*(.*?)(T\d+[a-z]?\.\d+)\s*[-–]\s*(.+?)\s*$/);
     if (!m) continue;
     const [, tags, id, name] = m;
     tasks.push({
@@ -319,7 +330,8 @@ function parseMission(campaignSlug, missionDir, missionPath) {
     criteria_total: criteria.length,
     criteria_done: criteria.filter((c) => c.done).length,
     authored, declaredBranches,
-    missionNum: Number(id.replace(/\D/g, "")),
+    missionNum: missionNumOf(id),
+    missionKey: missionKeyOf(id),
   };
 }
 
@@ -407,7 +419,7 @@ const AMBIGUOUS = Symbol("ambiguous-task-label");
 
 function makeAttributionContext(board) {
   const missions = [...board.missions].sort((a, b) =>
-    a.campaign < b.campaign ? -1 : a.campaign > b.campaign ? 1 : a.missionNum - b.missionNum);
+    a.campaign < b.campaign ? -1 : a.campaign > b.campaign ? 1 : a.missionNum - b.missionNum || (a.missionKey < b.missionKey ? -1 : a.missionKey > b.missionKey ? 1 : 0));
   const missionByTaskLabel = new Map();
   for (const m of missions) {
     for (const t of m.tasks) {
@@ -429,9 +441,9 @@ function resolveAttribution(branch, sessionId, ctx) {
     .sort((a, b) => b.slug.length - a.slug.length || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))[0];
   if (top) {
     const inCampaign = ctx.missions.filter((m) => m.campaign === top.slug);
-    const num = branch.match(/-m(\d+)\b/i)?.[1];
-    if (num) {
-      const hit = inCampaign.find((m) => m.missionNum === Number(num));
+    const key = branch.match(/-m(\d+[a-z]?)\b/i)?.[1]?.toLowerCase();
+    if (key) {
+      const hit = inCampaign.find((m) => m.missionKey === key);
       if (hit) return { kind: "mission", mission: hit, step: 2 };
     } else if (inCampaign.length === 1) {
       return { kind: "mission", mission: inCampaign[0], step: 3 };
@@ -654,7 +666,7 @@ const round2 = (n) => Math.round(n * 100) / 100;
 // Task-level breakdown inside a mission.
 //
 // The same branch convention that maps work to a mission also maps it to a
-// task: a trailing `-t<n>` names task T<missionNum>.<n>
+// task: a trailing `-t<n>` names task T<missionKey>.<n>
 // (`feat/edgeserver-auth-t4` -> T11.4, `feat/edge-ops-ui-m9-t3` -> T9.3).
 // Branches with no `-t<n>` are mission-level work — planning, integration, the
 // completion gate — and are bucketed separately rather than being forced onto
@@ -695,7 +707,7 @@ function taskBreakdown(mission, segs, missionCost) {
     const num = logged
       ? logged.split(".")[1]
       : s.branch.match(/-t(\d+)(?:[-_.].*)?$/i)?.[1];
-    const key = num ? `${mission.id.replace(/\D/g, "")}.${num}` : "(mission-level)";
+    const key = num ? `${mission.missionKey}.${num}` : "(mission-level)";
     s._attribution = logged ? "worklog" : (num ? "branch-inference" : "mission-level");
     if (!byTask.has(key)) byTask.set(key, []);
     byTask.get(key).push(s);
