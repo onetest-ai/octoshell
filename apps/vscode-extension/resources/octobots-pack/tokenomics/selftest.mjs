@@ -382,6 +382,59 @@ function runRootsSuite() {
   rmSync(base, { recursive: true, force: true });
 }
 
+// --- mission ids with a letter suffix (M6 vs M6b) ---------------------------
+// A letter-suffixed mission is its own mission, never folded into the bare number.
+function runSuffixSuite() {
+  console.log("\ntokenomics selftest — letter-suffixed mission ids:");
+  const root = mkdtempSync(join(tmpdir(), "tokenomics-selftest-sfx-"));
+  const emptyHome = mkdtempSync(join(tmpdir(), "tokenomics-selftest-home-"));
+  const camp = join(root, ".octobots", "campaigns", "sfx");
+  const mk = (rel, body) => { const f = join(camp, rel); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, body); };
+  mk("campaign.yaml", "name: Sfx campaign\nstatus: active\ndescription: x\nacceptance_criteria: []\n");
+  mk("missions/m6b-overlap/mission.yaml", "name: M6b - Overlap\nstatus: done\ndescription: x\nacceptance_criteria:\n  - text: a\n    done: true\ntokenomics:\n  branches: feat/sfx-m6b, feat/sfx-m6b-t1\n");
+  mk("missions/m6-heavy/mission.yaml", "name: M6 - Heavy\nstatus: cancelled\ndescription: x\nacceptance_criteria: []\ntokenomics:\n  branches: spike/m6-odd\n");
+  mk("missions/m6b-overlap/tasks/t6b-1-one/task.yaml", "name: T6b.1 - One\nstatus: done\n");
+  mk("missions/m6b-overlap/tasks/t6b-2-two/task.yaml", "name: T6b.2 - Two\nstatus: done\n");
+
+  const projects = join(root, ".claude", "projects", slugOf(root));
+  mkdirSync(projects, { recursive: true });
+  const turns = [];
+  const add = (branch, n) => { for (let i = 0; i < n; i++) turns.push(turn({ branch, requestId: `${branch}-${i}` })); };
+  add("spike/m6-odd", 1);       // M6 declared
+  add("feat/sfx-m6", 2);        // M6 by convention
+  add("feat/sfx-m6b", 1);       // M6b declared
+  add("feat/sfx-m6b-t1", 1);    // M6b declared task branch
+  add("feat/sfx-m6b-t2", 3);    // M6b by convention, task T6b.2
+  writeFileSync(join(projects, `${SESSION}.jsonl`), turns.join("\n") + "\n");
+
+  const tokDir = join(root, ".octobots", "tokenomics");
+  mkdirSync(tokDir, { recursive: true });
+  writeFileSync(join(tokDir, "prices.json"), readFileSync(join(HERE, "prices.json")));
+  const vendorDir = join(root, ".claude", "skills", "mission-planner", "scripts", "vendor");
+  mkdirSync(vendorDir, { recursive: true });
+  if (existsSync(VENDOR_YAML)) copyFileSync(VENDOR_YAML, join(vendorDir, "js-yaml.mjs"));
+  for (const script of ["collect.mjs", "rollup.mjs"]) {
+    execFileSync(process.execPath, [join(HERE, script), "--project-dir", root, "--no-gh", "--quiet"], { stdio: ["ignore", "ignore", "inherit"], env: isolatedEnv(emptyHome) });
+  }
+  const out = JSON.parse(readFileSync(join(tokDir, "runs.json"), "utf8"));
+  const byId = (id) => out.runs.find((r) => r._octobots.mission_id === id);
+  const m6 = byId("M6"), m6b = byId("M6b");
+  check("[sfx] two separate rows, M6 and M6b", out.runs.length === 2 && Boolean(m6) && Boolean(m6b), JSON.stringify(out.runs.map((r) => r._octobots.mission_id)));
+  check("[sfx] M6 holds only its own turns", m6?.turns === 3, `turns=${m6?.turns}`);
+  check("[sfx] M6b holds only its own turns", m6b?.turns === 5, `turns=${m6b?.turns}`);
+  check("[sfx] M6b convention branch attributed", m6b?._octobots.branches.includes("feat/sfx-m6b-t2"), JSON.stringify(m6b?._octobots.branches));
+  check("[sfx] M6 convention branch not stolen by M6b", m6?._octobots.branches.includes("feat/sfx-m6") && !m6._octobots.branches.some((b) => b.includes("m6b")), JSON.stringify(m6?._octobots.branches));
+  check("[sfx] M6b declared task branch stays with M6b", m6b?._octobots.branches.includes("feat/sfx-m6b-t1"));
+  check("[sfx] M6b name from title", m6b?._octobots.mission_name === "Overlap", `got ${m6b?._octobots.mission_name}`);
+  check("[sfx] M6b criteria", m6b?._octobots.criteria === "1/1", `got ${m6b?._octobots.criteria}`);
+  const ids = m6b?._octobots.tasks.map((t) => t.id) ?? [];
+  check("[sfx] M6b tasks are T6b.k", ids.includes("T6b.1") && ids.includes("T6b.2"), JSON.stringify(ids));
+  const t2 = m6b?._octobots.tasks.find((t) => t.id === "T6b.2");
+  check("[sfx] task branch -t2 costs T6b.2", t2?.turns === 3, JSON.stringify(t2));
+
+  for (const d of [root, emptyHome]) rmSync(d, { recursive: true, force: true });
+}
+
 if (!existsSync(VENDOR_YAML)) {
   console.log(`  WARN vendored js-yaml not found at ${VENDOR_YAML} — the yaml suite cannot run`);
   failures++;
@@ -389,6 +442,7 @@ if (!existsSync(VENDOR_YAML)) {
 
 for (const format of ["yaml", "md"]) runSuite(format);
 runRootsSuite();
+runSuffixSuite();
 
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nall checks passed");
 process.exit(failures ? 1 : 0);

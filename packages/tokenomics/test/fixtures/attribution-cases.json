@@ -153,6 +153,32 @@
             "tasks": []
           }
         ]
+      },
+      {
+        "slug": "sigma",
+        "name": "Sigma suffix campaign",
+        "missions": [
+          {
+            "dir": "m6-heavy",
+            "name": "M6 - Heavy",
+            "tasks": [
+              "T6.1 - Heavy one"
+            ]
+          },
+          {
+            "dir": "m6b-overlap",
+            "name": "M6b - Overlap",
+            "tasks": [
+              "T6b.1 - One",
+              "T6b.2 - Two"
+            ]
+          },
+          {
+            "dir": "m6c-folder",
+            "name": "Folder-only suffix",
+            "tasks": []
+          }
+        ]
       }
     ]
   },
@@ -203,6 +229,13 @@
       "session_id": "s-eps",
       "task": "T3.1",
       "branch": "chore/eps-off",
+      "state": "done",
+      "at": "2026-10-01T00:00:00.000Z"
+    },
+    {
+      "session_id": "s-sfx",
+      "task": "T6b.2",
+      "branch": "chore/sfx-offconv",
       "state": "done",
       "at": "2026-10-01T00:00:00.000Z"
     }
@@ -375,6 +408,41 @@
       "branch": "feat/zeta-m1",
       "session": "s0",
       "expect": "unattributed"
+    },
+    {
+      "id": "sfx-bare-number-stays-m6",
+      "step": 2,
+      "branch": "feat/sigma-m6",
+      "session": "s0",
+      "expect": "mission:sigma/M6"
+    },
+    {
+      "id": "sfx-suffix-not-folded-into-m6",
+      "step": 2,
+      "branch": "feat/sigma-m6b-t2",
+      "session": "s0",
+      "expect": "mission:sigma/M6b"
+    },
+    {
+      "id": "sfx-branch-suffix-case-insensitive",
+      "step": 2,
+      "branch": "feat/sigma-M6B",
+      "session": "s0",
+      "expect": "mission:sigma/M6b"
+    },
+    {
+      "id": "sfx-folder-fallback-suffix",
+      "step": 2,
+      "branch": "feat/sigma-m6c",
+      "session": "s0",
+      "expect": "mission:sigma/M6c"
+    },
+    {
+      "id": "sfx-worklog-suffixed-task",
+      "step": 4,
+      "branch": "chore/sfx-offconv",
+      "session": "s-sfx",
+      "expect": "mission:sigma/M6b"
     }
   ]
 }

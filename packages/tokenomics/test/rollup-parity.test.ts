@@ -159,7 +159,7 @@ function materialise(): string {
 }
 
 function taskDirOf(title: string): string {
-  const id = /^T(\d+)\.(\d+)/.exec(title)!;
+  const id = /^T(\d+[a-z]?)\.(\d+)/.exec(title)!;
   return `t${id[1]}-${id[2]}-x`;
 }
 
@@ -245,8 +245,8 @@ function runTs(dir: string, prices: PriceTable): Normalised {
   // The mission's board id as rollup.mjs reports it: the title's `M<n> -` prefix, else the folder's `m<n>`.
   const folderOf = new Map(board.listCampaigns().flatMap((c) => board.listMissions(c.id)).map((m) => [m.id, m.folderPath]));
   const missionLabel = (r: MissionRun): string | undefined =>
-    /^\s*(M\d+)\s*[-–—:]/.exec(r.missionTitle)?.[1] ??
-    /^m(\d+)/i.exec(folderOf.get(r.missionId ?? "")?.split("/").pop() ?? "")?.[1]?.replace(/^/, "M");
+    /^\s*(M\d+[a-z]?)\s*[-–—:]/.exec(r.missionTitle)?.[1] ??
+    /^m(\d+[a-z]?)(?![a-z\d])/i.exec(folderOf.get(r.missionId ?? "")?.split("/").pop() ?? "")?.[1]?.toLowerCase().replace(/^/, "M");
   const rows = report.runs.map((r): NRow => ({
     target: isCampaignRun(r)
       ? `campaign:${slugOfCampaignId(r.campaignId)}`
