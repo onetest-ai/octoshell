@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync, rmSync, rmdirSync } from "node:fs";
 import { join } from "node:path";
-import { installPrimer, registerClaudeHook, unregisterClaudeHook, claudeHookStatus } from "./octobots-hooks.js";
+import { installPrimer, registerClaudeHook, unregisterClaudeHook, claudeHookStatus, claudeHooksRegistered } from "./octobots-hooks.js";
 import { installTokenomics, tokenomicsStatus } from "./octobots-tokenomics.js";
 import { installGraph, graphStatus } from "./octograph-install.js";
 import { installStatusline, registerStatusline, unregisterStatusline, statuslineStatus } from "./octobots-statusline.js";
@@ -13,7 +13,7 @@ import { carriedFrom, clearInputs, ensureGitignore, saveOverwritten, stageEntry,
 import { parseSkillMarker, skillSha256 } from "./skill-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
-export const OCTOBOTS_PACK_VERSION = 57;
+export const OCTOBOTS_PACK_VERSION = 58;
 
 export { OCTOBOTS_SKILLS };
 
@@ -133,7 +133,8 @@ export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERS
   // "fine" and report the pack up-to-date on a file we failed to parse.
   let claude: { present: boolean; current: boolean };
   let claudeReadable = true;
-  try { claude = claudeHookStatus(repoRoot, currentVersion); }
+  let claudeRegistered = false;
+  try { claude = claudeHookStatus(repoRoot, currentVersion); claudeRegistered = claudeHooksRegistered(repoRoot); }
   catch { claude = { present: false, current: false }; claudeReadable = false; }
   // The tokenomics CLI is pack payload too: the mission gate is told to run it, so a pack without
   // it is incomplete, not merely missing an extra.
@@ -149,7 +150,7 @@ export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERS
   // which is what lets an upgrade repair the duplicate entries older versions left behind.
   const graph = graphStatus(repoRoot, currentVersion);
   const otherPayloadsCurrent =
-    primerV === currentVersion && claudeReadable && (!claude.present || claude.current) &&
+    primerV === currentVersion && claudeReadable && (!claudeRegistered || claude.current) &&
     tokenomics.current && (!graph.present || graph.current);
   // A skill that is none of deviated, newer or reconciled is the pack's own file for SOME version:
   // current only when that version is this one (an older pristine file is stale, a pack matter).
@@ -407,7 +408,7 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
   // is an explicit yes; otherwise we only REFRESH hooks that are already registered, which is what
   // keeps upgrades (and the duplicate-entry repair in `registerClaudeHook`) working without ever
   // adding them behind the user's back. `opts.hooks === false` is a deliberate no — it clears ours.
-  const already = claudeHookStatus(repoRoot, OCTOBOTS_PACK_VERSION).present;
+  const already = claudeHooksRegistered(repoRoot);
   let hooksRegistered = false;
   if (opts.hooks === false) {
     unregisterClaudeHook(repoRoot);

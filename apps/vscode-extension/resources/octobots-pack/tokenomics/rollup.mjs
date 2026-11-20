@@ -16,9 +16,10 @@
 //
 // Usage: node .octobots/tokenomics/rollup.mjs [--project-dir DIR] [--no-gh] [--quiet]
 
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { loadBoard } from "./board.mjs";
+import { makeAttributionContext, resolveSegmentAttribution, loadLedgerWindows, segmentAttribution } from "./attribution.mjs";
 import { execFileSync } from "node:child_process";
 
 const args = process.argv.slice(2);
@@ -29,29 +30,6 @@ const log = (...a) => { if (!quiet) console.error(...a); };
 const pdIdx = args.indexOf("--project-dir");
 const PROJECT_DIR = pdIdx !== -1 ? args[pdIdx + 1] : (process.env.CLAUDE_PROJECT_DIR ?? process.cwd());
 const TOK_DIR = join(PROJECT_DIR, ".octobots", "tokenomics");
-const CAMPAIGNS_DIR = join(PROJECT_DIR, ".octobots", "campaigns");
-
-// Board entities are `<kind>.yaml` since the md->yaml migration; a board not yet
-// migrated still carries `<kind>.md`. BOTH are read, YAML first.
-//
-// Reading only Markdown against a migrated board does not fail — it finds zero
-// missions and reports every dollar as unattributed, which is what this file did
-// for the whole board after the migration. Hence the dual read AND the loud
-// guard in loadBoard(): a rollup that cannot see the board must say so.
-let yamlLoad = null;
-for (const spec of [
-  pathToFileURL(join(PROJECT_DIR, ".claude", "skills", "mission-planner", "scripts", "vendor", "js-yaml.mjs")).href,
-  "js-yaml",
-]) {
-  try {
-    const mod = await import(spec);
-    yamlLoad = mod.load ?? mod.default?.load ?? null;
-    if (yamlLoad) break;
-  } catch {
-    // Try the next candidate; absence is reported by loadBoard(), not here.
-  }
-}
-
 const TOKEN_KEYS = [
   "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens",
   "cache_creation_5m_tokens", "cache_creation_1h_tokens",
@@ -145,321 +123,6 @@ function git(...a) {
 // `feat/edge-ops-ui-m9-t3`), so mapping is derivable with no new instrumentation
 // — but a mission may also declare its branches explicitly, which always wins.
 // ---------------------------------------------------------------------------
-// A `## Tokenomics` block on any board file:
-//   effort_days: 3
-//   size_tshirt: M
-//   complexity_score: 18
-function parseTokenomicsBlock(text, END) {
-  const out = {};
-  const block = text.match(new RegExp(`^##\\s+Tokenomics\\s*\\n([\\s\\S]*?)${END}`, "m"))?.[1];
-  if (!block) return out;
-  for (const line of block.split("\n")) {
-    const m = line.match(/^\s*[-*]?\s*([a-z_]+)\s*:\s*(.+?)\s*$/i);
-    if (m) out[m[1].toLowerCase()] = m[2];
-  }
-  return out;
-}
-
-// An authored map — YAML `tokenomics:` or a legacy `## Tokenomics` block — folded
-// to flat lowercase strings. Every downstream consumer already coerces with
-// `Number(...)`, `?? null` or `=== "true"`, so normalising HERE lets both board
-// formats flow through the row builders unchanged. A YAML list (`branches: [a, b]`)
-// re-joins to the comma string `declaredBranches` splits.
-function normaliseAuthored(map) {
-  const out = {};
-  if (!map || typeof map !== "object") return out;
-  for (const [k, v] of Object.entries(map)) {
-    if (v === null || v === undefined) continue;
-    out[k.toLowerCase()] = Array.isArray(v) ? v.join(", ") : String(v);
-  }
-  return out;
-}
-
-function readYamlEntity(file) {
-  if (!existsSync(file) || !yamlLoad) return null;
-  try {
-    const doc = yamlLoad(readFileSync(file, "utf8"));
-    return doc && typeof doc === "object" ? doc : {};
-  } catch (e) {
-    log(`tokenomics: WARN could not parse ${file}: ${e.message}`);
-    return null;
-  }
-}
-
-// A mission id is `M<n>` or `M<n><letter>` (M6b); a task id is `T<n>.<k>` or `T<n><letter>.<k>`.
-// Missions are matched by their FULL key ("6", "6b"), never by the bare number: M6 and M6b are
-// different missions. `missionNumOf` is the numeric part, used only to sort (6 < 6b < 7).
-const missionKeyOf = (id) => String(id).replace(/^M/i, "").toLowerCase();
-const missionNumOf = (id) => parseInt(missionKeyOf(id), 10);
-const missionIdFromSlug = (dir) => {
-  const m = dir.match(/^m(\d+[a-z]?)(?![a-z\d])/i);
-  return m ? `M${m[1].toLowerCase()}` : dir;
-};
-
-// `M1 - Name` / `T2.3 - Name`. The `<id> - <name>` title is a board contract, and
-// on a YAML entity the id lives nowhere else — the folder slug is only a fallback.
-function splitTitle(title, fallbackId) {
-  const m = /^\s*([MT]\d+[a-z]?(?:\.\d+)?)\s*[-–—:]\s*(.+)$/.exec(String(title ?? ""));
-  if (m) return { id: m[1], name: m[2].trim() };
-  return { id: fallbackId, name: String(title ?? "").trim() || fallbackId };
-}
-
-function taskIdFromSlug(dir) {
-  const m = dir.match(/^t(\d+[a-z]?)-(\d+)/i);
-  return m ? `T${m[1].toLowerCase()}.${m[2]}` : null;
-}
-
-// Per-task estimates live in each `tasks/<slug>/task.yaml` (`tokenomics:`), or in
-// the planner-owned `## Tokenomics` block of a legacy `task.md`. Estimating at
-// PLANNING time is the point: effort is the rubric's sizing key and cannot be
-// recovered afterwards.
-//
-// On a YAML board the task LIST is folder-derived too — a parent never projects
-// its children — so this returns both the tasks and their estimates.
-function loadTasks(missionPath, END) {
-  const est = new Map();
-  const tasks = [];
-  const tasksDir = join(missionPath, "tasks");
-  if (!existsSync(tasksDir)) return { tasks, est };
-
-  for (const dir of readdirSync(tasksDir).sort()) {
-    const slugId = taskIdFromSlug(dir);
-    const y = readYamlEntity(join(tasksDir, dir, "task.yaml"));
-    if (y) {
-      const { id, name } = splitTitle(y.name, slugId);
-      if (!id) continue;
-      tasks.push({
-        id, name,
-        role: y.role ?? null,
-        status: y.status ?? null,
-        num: Number(id.split(".")[1]),
-      });
-      const a = normaliseAuthored(y.tokenomics);
-      if (Object.keys(a).length) est.set(id, a);
-      continue;
-    }
-    // Legacy: the task list comes from the mission's `## Tasks` section, so only
-    // the estimate is harvested here.
-    const f = join(tasksDir, dir, "task.md");
-    if (!existsSync(f)) continue;
-    const text = readFileSync(f, "utf8");
-    const id = text.match(/^#\s+(T\d+[a-z]?\.\d+)\b/m)?.[1] ?? slugId;
-    if (!id) continue;
-    const a = normaliseAuthored(parseTokenomicsBlock(text, END));
-    if (Object.keys(a).length) est.set(id, a);
-  }
-  return { tasks, est };
-}
-
-function parseMissionYaml(campaignSlug, missionDir, missionPath, doc) {
-  const { id, name } = splitTitle(doc.name, missionIdFromSlug(missionDir));
-
-  const desc = String(doc.description ?? "");
-  const brief = desc.trim().replace(/\s+/g, " ").slice(0, 400);
-  const tracker = `${desc}\n${doc.notes ?? ""}`.match(/Tracker:\s*(\S+#\d+)/)?.[1] ?? null;
-
-  const criteria = Array.isArray(doc.acceptance_criteria) ? doc.acceptance_criteria : [];
-  const authored = normaliseAuthored(doc.tokenomics);
-  const { tasks, est: taskEstimates } = loadTasks(missionPath, null);
-
-  return {
-    id, name, campaign: campaignSlug, dir: missionDir, brief, tracker, tasks, taskEstimates,
-    criteria_total: criteria.length,
-    criteria_done: criteria.filter((c) => c && c.done === true).length,
-    authored,
-    declaredBranches: (authored.branches ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    missionNum: missionNumOf(id),
-    missionKey: missionKeyOf(id),
-  };
-}
-
-function parseMission(campaignSlug, missionDir, missionPath) {
-  const path = join(missionPath, "mission.md");
-  const text = readFileSync(path, "utf8");
-  const titleMatch = text.match(/^#\s+(M\d+[a-z]?)\s*[-–]\s*(.+)$/m);
-  const id = titleMatch?.[1] ?? missionIdFromSlug(missionDir);
-  const name = titleMatch?.[2]?.trim() ?? missionDir;
-
-  // Description = the `## Description` body, collapsed to a brief.
-  // NOTE: the terminating `$` must be end-of-INPUT, not end-of-line — under the
-  // `/m` flag needed for `^##`, a bare `$` makes the lazy body match stop at the
-  // first newline and silently truncate the block to one line.
-  const END = "(?=\\n##\\s|\\n<!--|$(?![\\s\\S]))";
-  const desc = text.match(new RegExp(`^##\\s+Description\\s*\\n([\\s\\S]*?)${END}`, "m"))?.[1] ?? "";
-  const brief = desc.trim().replace(/\s+/g, " ").slice(0, 400);
-
-  const criteria = [...text.matchAll(/^-\s+\[( |x)\]\s+(.+)$/gm)].map((m) => ({ done: m[1] === "x", text: m[2] }));
-  const tracker = text.match(/Tracker:\s*(\S+#\d+)/)?.[1] ?? null;
-
-  // Authored (non-derivable) fields live in an optional `## Tokenomics` block:
-  //   effort_days: 3
-  //   complexity_score: 18
-  //   self_size: M
-  //   maturity: production
-  //   branches: feat/a, feat/b
-  const authored = normaliseAuthored(parseTokenomicsBlock(text, END));
-  const { est: taskEstimates } = loadTasks(missionPath, END);
-
-  const declaredBranches = (authored.branches ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-
-  // The agent-owned `## Tasks` section, e.g.
-  //   - [role:python-dev] [status:done] T11.3 - Port OIDC IdP (Authlib): …
-  // Role and status are optional and may appear in either order.
-  const tasks = [];
-  // NOTE: terminate only on the next `## ` heading — NOT on `<!--`. The Tasks
-  // section routinely carries inline HTML comments (e.g. "T11.2 moved to
-  // another campaign"), and stopping at the first one silently truncates the
-  // list to whatever preceded it.
-  const TASKS_END = "(?=\\n##\\s|$(?![\\s\\S]))";
-  const tasksBlock = text.match(new RegExp(`^##\\s+Tasks\\s*\\n([\\s\\S]*?)${TASKS_END}`, "m"))?.[1] ?? "";
-  for (const line of tasksBlock.split("\n")) {
-    const m = line.match(/^\s*-\s*(.*?)(T\d+[a-z]?\.\d+)\s*[-–]\s*(.+?)\s*$/);
-    if (!m) continue;
-    const [, tags, id, name] = m;
-    tasks.push({
-      id,
-      name,
-      role: tags.match(/\[role:([^\]]+)\]/)?.[1] ?? null,
-      status: tags.match(/\[status:([^\]]+)\]/)?.[1] ?? null,
-      num: Number(id.split(".")[1]),
-    });
-  }
-
-  return {
-    id, name, campaign: campaignSlug, dir: missionDir, brief, tracker, tasks, taskEstimates,
-    criteria_total: criteria.length,
-    criteria_done: criteria.filter((c) => c.done).length,
-    authored, declaredBranches,
-    missionNum: missionNumOf(id),
-    missionKey: missionKeyOf(id),
-  };
-}
-
-// A campaign's own `tokenomics.branches` (campaign.yaml, or a legacy campaign.md `## Tokenomics`
-// block) declares branches that are campaign-level work - its planning branch, a hand-off branch.
-function parseCampaign(slug, campaignPath) {
-  const doc = readYamlEntity(join(campaignPath, "campaign.yaml"));
-  let authored = {};
-  let name = slug;
-  let brief = "";
-  if (doc) {
-    authored = normaliseAuthored(doc.tokenomics);
-    name = String(doc.name ?? "").trim() || slug;
-    brief = String(doc.description ?? "").trim().replace(/\s+/g, " ").slice(0, 400);
-  } else if (existsSync(join(campaignPath, "campaign.md"))) {
-    const text = readFileSync(join(campaignPath, "campaign.md"), "utf8");
-    authored = normaliseAuthored(parseTokenomicsBlock(text, "(?=\\n##\\s|\\n<!--|$(?![\\s\\S]))"));
-    name = text.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? slug;
-  }
-  return {
-    slug, name, brief, authored,
-    declaredBranches: (authored.branches ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-  };
-}
-
-function loadBoard() {
-  const missions = [];
-  const campaigns = [];
-  if (!existsSync(CAMPAIGNS_DIR)) return { missions, campaigns };
-
-  let skippedYaml = 0;
-  for (const campaign of readdirSync(CAMPAIGNS_DIR).sort()) {
-    const campaignPath = join(CAMPAIGNS_DIR, campaign);
-    if (!statSync(campaignPath).isDirectory()) continue;
-    // A directory is a campaign only when it holds campaign.yaml or campaign.md - the rule BoardModel
-    // applies, so the extension's rollup.ts sees the same board. A bare directory (a leftover, an
-    // archive) owns no slug and its missions belong to no campaign. Every real campaign counts, even
-    // one with no missions: it still owns its slug.
-    if (!existsSync(join(campaignPath, "campaign.yaml")) && !existsSync(join(campaignPath, "campaign.md"))) continue;
-    campaigns.push(parseCampaign(campaign, campaignPath));
-    const mdir = join(campaignPath, "missions");
-    if (!existsSync(mdir)) continue;
-    for (const m of readdirSync(mdir).sort()) {
-      const missionPath = join(mdir, m);
-      const yamlPath = join(missionPath, "mission.yaml");
-      if (existsSync(yamlPath)) {
-        const doc = readYamlEntity(yamlPath);
-        if (doc) missions.push(parseMissionYaml(campaign, m, missionPath, doc));
-        else skippedYaml++;
-        continue;
-      }
-      if (existsSync(join(missionPath, "mission.md"))) missions.push(parseMission(campaign, m, missionPath));
-    }
-  }
-
-  // A board that exists but yields no missions means the join is broken, not that
-  // there is no work — and every dollar would silently land in `unattributed`.
-  // Say it out loud.
-  if (skippedYaml) {
-    log(
-      `tokenomics: ERROR ${skippedYaml} mission.yaml file(s) could not be read` +
-      (yamlLoad ? "" : " — no YAML parser found (install the Octobots pack, or `npm i js-yaml`)"),
-    );
-  }
-  if (!missions.length && readdirSync(CAMPAIGNS_DIR).length) {
-    log("tokenomics: ERROR the board has campaigns but no readable missions — every segment will report as unattributed");
-  }
-  return { missions, campaigns };
-}
-
-// Where does a (branch, session) pair belong? The first step that hits wins. This is the only place
-// attribution is decided; packages/tokenomics/src/rollup.ts carries the same table and
-// packages/tokenomics/test/rollup-parity.test.ts holds the two together.
-//   1. A mission declares the branch (`tokenomics.branches`).
-//   2. The longest campaign slug in the branch plus `-m<n>`: that campaign's mission n. A `-m<n>`
-//      naming no mission falls through - it must not jump ahead of a recorded worklog fact.
-//   3. That slug, no `-m<n>`, and the campaign has exactly one mission.
-//   4. The worklog recorded this exact session on this exact branch against a task id that belongs
-//      to one mission. The bare-session key never attributes a mission: it follows a session across
-//      branches, so it would drag every branch the session touched into one mission.
-//   5. A campaign declares the branch.
-//   6. The longest campaign slug in the branch: the campaign-level bucket.
-//   7. Unattributed.
-const AMBIGUOUS = Symbol("ambiguous-task-label");
-
-function makeAttributionContext(board) {
-  const missions = [...board.missions].sort((a, b) =>
-    a.campaign < b.campaign ? -1 : a.campaign > b.campaign ? 1 : a.missionNum - b.missionNum || (a.missionKey < b.missionKey ? -1 : a.missionKey > b.missionKey ? 1 : 0));
-  const missionByTaskLabel = new Map();
-  for (const m of missions) {
-    for (const t of m.tasks) {
-      const seen = missionByTaskLabel.get(t.id);
-      missionByTaskLabel.set(t.id, seen === undefined || seen === m ? m : AMBIGUOUS);
-    }
-  }
-  const campaigns = [...board.campaigns].sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
-  return { missions, campaigns, missionByTaskLabel };
-}
-
-function resolveAttribution(branch, sessionId, ctx) {
-  for (const m of ctx.missions) {
-    if (m.declaredBranches.includes(branch)) return { kind: "mission", mission: m, step: 1 };
-  }
-
-  const top = ctx.campaigns
-    .filter((c) => c.slug && branch.includes(c.slug))
-    .sort((a, b) => b.slug.length - a.slug.length || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))[0];
-  if (top) {
-    const inCampaign = ctx.missions.filter((m) => m.campaign === top.slug);
-    const key = branch.match(/-m(\d+[a-z]?)\b/i)?.[1]?.toLowerCase();
-    if (key) {
-      const hit = inCampaign.find((m) => m.missionKey === key);
-      if (hit) return { kind: "mission", mission: hit, step: 2 };
-    } else if (inCampaign.length === 1) {
-      return { kind: "mission", mission: inCampaign[0], step: 3 };
-    }
-  }
-
-  const label = WORKLOG_BRANCH.get(`${sessionId}|${branch}`);
-  const logged = label ? ctx.missionByTaskLabel.get(label) : undefined;
-  if (logged && logged !== AMBIGUOUS) return { kind: "mission", mission: logged, step: 4 };
-
-  const declared = ctx.campaigns.find((c) => c.declaredBranches.includes(branch));
-  if (declared) return { kind: "campaign", campaign: declared, step: 5 };
-  if (top) return { kind: "campaign", campaign: top, step: 6 };
-  return { kind: "unattributed", step: 7 };
-}
-
 // ---------------------------------------------------------------------------
 // Diff signals — three-dot vs the merge-base, excluding generated/vendored.
 // These are lane AUDIT signals only; sizing is Effort-anchored (rubric §3.3).
@@ -558,6 +221,7 @@ function diffStats(branches, base = "main") {
 // Best effort: offline, no `gh`, or no PR simply leaves these unreported.
 const PR_CACHE = new Map();
 function prsFor(branch) {
+  if (!useGh) return [];
   if (PR_CACHE.has(branch)) return PR_CACHE.get(branch);
   let list = [];
   try {
@@ -605,7 +269,7 @@ if (!existsSync(rawFile)) {
   process.exit(1);
 }
 const segments = readFileSync(rawFile, "utf8").split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l));
-const board = loadBoard();
+const board = await loadBoard(PROJECT_DIR, log);
 
 // ---------------------------------------------------------------------------
 // Work log: session -> task, recorded by `.octobots/hooks/work-log.mjs` at the
@@ -635,12 +299,15 @@ const WORKLOG_BRANCH = new Map();
   }
 }
 
-const attribution = makeAttributionContext(board);
+const attribution = makeAttributionContext(board, WORKLOG_BRANCH, segments.some((s) => s.source === "codex") ? loadLedgerWindows(PROJECT_DIR) : []);
 const groups = new Map(); // mission key -> {mission, segments[]}
 const campaignGroups = new Map(); // campaign slug -> {campaign, segments[]}
 const unattributed = [];
+const segmentAttributions = Object.create(null);
 for (const s of segments) {
-  const t = resolveAttribution(s.branch, s.session_id, attribution);
+  const t = resolveSegmentAttribution({ branch: s.branch, sessionId: s.session_id, source: s.source, startedAt: s.started_at, endedAt: s.ended_at }, attribution);
+  if (t.step === 0) s._via_window = true;
+  segmentAttributions[s.segment_id] = segmentAttribution(t, s.started_at ?? null);
   if (t.kind === "unattributed") { unattributed.push(s); continue; }
   const [map, key, owner] = t.kind === "mission"
     ? [groups, `${t.mission.campaign}/${t.mission.id}`, { mission: t.mission }]
@@ -661,6 +328,7 @@ function sumTokens(segs) {
 }
 
 const round2 = (n) => Math.round(n * 100) / 100;
+const isCodex = (s) => s.source === "codex";
 
 // ---------------------------------------------------------------------------
 // Task-level breakdown inside a mission.
@@ -708,7 +376,7 @@ function taskBreakdown(mission, segs, missionCost) {
       ? logged.split(".")[1]
       : s.branch.match(/-t(\d+)(?:[-_.].*)?$/i)?.[1];
     const key = num ? `${mission.missionKey}.${num}` : "(mission-level)";
-    s._attribution = logged ? "worklog" : (num ? "branch-inference" : "mission-level");
+    s._attribution = logged ? "worklog" : (num ? "branch-inference" : (s._via_window ? "ledger-window" : "mission-level"));
     if (!byTask.has(key)) byTask.set(key, []);
     byTask.get(key).push(s);
   }
@@ -718,8 +386,13 @@ function taskBreakdown(mission, segs, missionCost) {
     const declared = key === "(mission-level)" ? null : mission.tasks.find((t) => t.id === `T${key}`);
     const byModel = sumTokens(taskSegs);
     const cost = costOf(byModel);
-    const subs = taskSegs.filter((s) => s.kind === "subagent");
-    const orch = costOf(sumTokens(taskSegs.filter((s) => s.kind === "orchestrator")));
+    // Claude-only counters: Codex is metered separately (see `cost_by_source`), so
+    // the Claude orchestrator/subagent split and turn counts keep their meaning.
+    const claudeSegs = taskSegs.filter((s) => !isCodex(s));
+    const codexSegs = taskSegs.filter(isCodex);
+    const claudeCost = codexSegs.length ? costOf(sumTokens(claudeSegs)) : cost;
+    const subs = claudeSegs.filter((s) => s.kind === "subagent");
+    const orch = costOf(sumTokens(claudeSegs.filter((s) => s.kind === "orchestrator")));
     const totals = TOKEN_KEYS.reduce((acc, k) => (acc[k] = Object.values(byModel).reduce((n, t) => n + (t[k] ?? 0), 0), acc), {});
 
     rows.push({
@@ -733,10 +406,10 @@ function taskBreakdown(mission, segs, missionCost) {
       effort_days: est(key)?.effort_days ? Number(est(key).effort_days) : null,
       complexity_score: est(key)?.complexity_score ? Number(est(key).complexity_score) : null,
       branches: [...new Set(taskSegs.map((s) => s.branch))].sort(),
-      sessions: new Set(taskSegs.map((s) => s.session_id)).size,
-      turns: taskSegs.reduce((n, s) => n + s.turns, 0),
+      sessions: new Set(claudeSegs.map((s) => s.session_id)).size,
+      turns: claudeSegs.reduce((n, s) => n + s.turns, 0),
       subagent_dispatches: subs.length,
-      orchestrator_cost_pct: cost > 0 ? Math.round(100 * orch / cost) : 100,
+      orchestrator_cost_pct: claudeCost > 0 ? Math.round(100 * orch / claudeCost) : 100,
       agent_types: [...new Set(subs.map((s) => s.agent_type).filter(Boolean))].sort(),
       attribution: [...new Set(taskSegs.map((s) => s._attribution))].sort().join("+"),
       // The mission-level bucket deliberately reports NO churn: its branch is
@@ -752,6 +425,7 @@ function taskBreakdown(mission, segs, missionCost) {
         cache_create: totals.cache_creation_input_tokens,
       },
       cost_api_equivalent_usd: round2(cost),
+      ...(codexSegs.length ? { cost_by_source: { claude: round2(claudeCost), codex: round2(cost - claudeCost) } } : {}),
       cost_share_pct: missionCost > 0 ? Math.round(100 * cost / missionCost) : 0,
     });
   }
@@ -777,11 +451,44 @@ function taskBreakdown(mission, segs, missionCost) {
   return rows.sort((a, b) => b.cost_api_equivalent_usd - a.cost_api_equivalent_usd);
 }
 
+function codexBlock(codexSegs, claudeCost, cost) {
+  const byModel = sumTokens(codexSegs);
+  const totals = TOKEN_KEYS.reduce((acc, k) => (acc[k] = Object.values(byModel).reduce((n, t) => n + (t[k] ?? 0), 0), acc), {});
+  return {
+    cost_by_source: { claude: round2(claudeCost), codex: round2(cost - claudeCost) },
+    codex: {
+      segments: codexSegs.length,
+      sessions: new Set(codexSegs.map((s) => s.session_id)).size,
+      subagent_dispatches: codexSegs.filter((s) => s.kind === "codex-subagent").length,
+      turns: codexSegs.reduce((n, s) => n + s.turns, 0),
+      models_used: Object.keys(byModel).sort(),
+      efforts_used: [...new Set(codexSegs.flatMap((s) => s.efforts_used ?? []))].sort(),
+      tokens: {
+        input: totals.input_tokens, output: totals.output_tokens,
+        cache_read: totals.cache_read_input_tokens, cache_create: totals.cache_creation_input_tokens,
+      },
+      cost_api_equivalent_usd: round2(cost - claudeCost),
+      cost_by_model: Object.fromEntries(Object.entries(byModel).map(([m, t]) => [m, round2(costOf({ [m]: t }))])),
+      attribution: {
+        branch: codexSegs.filter((s) => !s._via_window).length,
+        ledger_window: codexSegs.filter((s) => s._via_window).length,
+      },
+    },
+  };
+}
+
 function buildRow({ mission, segments: segs }) {
   const byModel = sumTokens(segs);
   const cost = costOf(byModel);
-  const orchSegs = segs.filter((s) => s.kind === "orchestrator");
-  const subSegs = segs.filter((s) => s.kind === "subagent");
+  // Claude-metered counters (sessions, turns, dispatches, orchestrator split,
+  // cache share, primary model) stay Claude-only so adding Codex never moves them;
+  // the Codex side is reported under `codex` and `cost_by_source`.
+  const claudeSegs = segs.filter((s) => !isCodex(s));
+  const codexSegs = segs.filter(isCodex);
+  const claudeByModel = codexSegs.length ? sumTokens(claudeSegs) : byModel;
+  const claudeCost = codexSegs.length ? costOf(claudeByModel) : cost;
+  const orchSegs = claudeSegs.filter((s) => s.kind === "orchestrator");
+  const subSegs = claudeSegs.filter((s) => s.kind === "subagent");
   const orchCost = costOf(sumTokens(orchSegs));
 
   const branches = [...new Set(segs.map((s) => s.branch))];
@@ -817,7 +524,7 @@ function buildRow({ mission, segments: segs }) {
   }
 
   const a = mission.authored;
-  const models = Object.keys(byModel).sort((x, y) => costOf({ [y]: byModel[y] }) - costOf({ [x]: byModel[x] }));
+  const models = Object.keys(claudeByModel).sort((x, y) => costOf({ [y]: claudeByModel[y] }) - costOf({ [x]: claudeByModel[x] }));
   const totals = TOKEN_KEYS.reduce((acc, k) => (acc[k] = Object.values(byModel).reduce((n, t) => n + t[k], 0), acc), {});
 
   return {
@@ -836,10 +543,10 @@ function buildRow({ mission, segments: segs }) {
     story_points: a.story_points ? Number(a.story_points) : null,
 
     // Metered
-    sessions: new Set(segs.map((s) => s.session_id)).size,
-    turns: segs.reduce((n, s) => n + s.turns, 0),
+    sessions: new Set(claudeSegs.map((s) => s.session_id)).size,
+    turns: claudeSegs.reduce((n, s) => n + s.turns, 0),
     subagent_dispatches: subSegs.length,
-    orchestrator_cost_pct: cost > 0 ? Math.round(100 * orchCost / cost) : 100,
+    orchestrator_cost_pct: claudeCost > 0 ? Math.round(100 * orchCost / claudeCost) : 100,
     tokens: {
       input: totals.input_tokens,
       output: totals.output_tokens,
@@ -857,7 +564,10 @@ function buildRow({ mission, segments: segs }) {
     // differ ~2.5x in price per token, so a token-share split materially
     // understates the expensive model.
     cost_by_model: Object.fromEntries(Object.entries(byModel).map(([m, t]) => [m, round2(costOf({ [m]: t }))])),
-    cache_read_share_pct: cost > 0 ? Math.round(100 * cacheReadCost(byModel) / cost) : 0,
+    // Present only when the mission has Codex work. API-equivalent, like every
+    // figure here — Codex is quota-priced, not per-token billed.
+    ...(codexSegs.length ? codexBlock(codexSegs, claudeCost, cost) : {}),
+    cache_read_share_pct: claudeCost > 0 ? Math.round(100 * cacheReadCost(claudeByModel) / claudeCost) : 0,
 
     // Implementation-stop fields. `net_loc` is the rubric's lane signal;
     // added/removed are reported alongside because net alone hides whether the
@@ -987,7 +697,37 @@ const unattributedBucket = {
   cost_api_equivalent_usd: round2(costOf(unattrByModel)),
   // Per model, like the run rows, so `verify.mjs` can leave out models ccusage cannot price.
   cost_by_model: Object.fromEntries(Object.entries(unattrByModel).map(([m, t]) => [m, round2(costOf({ [m]: t }))])),
+  ...(unattributed.some(isCodex) ? {
+    // The Codex share of `tokens` above, so verify.mjs can leave it out of the ccusage comparison
+    // without re-deriving which segments are unattributed (a ledger-window segment on `main` is not).
+    codex_tokens: (() => {
+      const t = TOKEN_KEYS.reduce((acc, k) => (acc[k] = Object.values(sumTokens(unattributed.filter(isCodex))).reduce((n, m) => n + (m[k] ?? 0), 0), acc), {});
+      return { input: t.input_tokens, output: t.output_tokens, cache_read: t.cache_read_input_tokens, cache_create: t.cache_creation_input_tokens };
+    })(),
+    by_source: {
+      claude: round2(costOf(sumTokens(unattributed.filter((s) => !isCodex(s))))),
+      codex: round2(costOf(sumTokens(unattributed.filter(isCodex)))),
+    },
+  } : {}),
 };
+
+// Whole-repo split, only when there is Codex data. Computed from the segments
+// (attributed + unattributed), so it reconciles with the rows by construction.
+const codexAll = segments.filter(isCodex);
+const bySource = codexAll.length ? {
+  claude: {
+    segments: segments.length - codexAll.length,
+    cost_api_equivalent_usd: round2(costOf(sumTokens(segments.filter((s) => !isCodex(s))))),
+  },
+  codex: {
+    segments: codexAll.length,
+    sessions: new Set(codexAll.map((s) => s.session_id)).size,
+    cost_api_equivalent_usd: round2(costOf(sumTokens(codexAll))),
+    attributed_via_ledger_window: codexAll.filter((s) => s._via_window).length,
+    unattributed_segments: codexAll.filter((s) => unattributed.includes(s)).length,
+    label: "API-equivalent (tokens x list price); Codex use is quota-priced, not billed per token",
+  },
+} : null;
 
 const submission = {
   schema_version: "1.0",
@@ -1007,6 +747,8 @@ const submission = {
   pricing_source: pricing._source,
   pricing_fetched_at: pricing.fetched_at,
   runs,
+  segment_attributions: segmentAttributions,
+  ...(bySource ? { by_source: bySource } : {}),
   unattributed: unattributedBucket,
 };
 

@@ -324,6 +324,31 @@ describe("attribution parity: rollup.mjs and rollup.ts", () => {
     expect(ts.branchToTarget.get(c.branch), "rollup.ts").toBe(c.expect);
   });
 
+  it.each(fixture.cases)("attribute CLI: $id (step $step)", (c) => {
+    const r = spawnSync("node", [join(PACK, "tokenomics/attribute.mjs"), "--branch", c.branch, "--session", c.session], {
+      cwd: dir, encoding: "utf8", env: { ...process.env, CLAUDE_PROJECT_DIR: "/ignored-for-attribute" },
+    });
+    expect(r.status, r.stderr).toBe(0);
+    const [kind, ref] = c.expect.split(":");
+    const [campaign, mission] = (ref ?? "").split("/");
+    expect(JSON.parse(r.stdout)).toEqual({ kind, campaign: campaign || null, mission: mission || null, step: c.step });
+  });
+
+  it("emits every segment's exact target, precedence step and start time", () => {
+    const out = JSON.parse(readFileSync(join(dir, ".octobots/tokenomics/runs.json"), "utf8"));
+    const board = new BoardModel(join(dir, ".octobots"));
+    board.rebuild();
+    const tsReport = rollup({ repoRoot: dir, artifactsRoot: join(dir, ".octobots"), board,
+      source: jsonlSource(join(dir, ".octobots/tokenomics/raw/segments.jsonl")), prices: PRICES });
+    const expected = Object.fromEntries(fixture.cases.map((c, i) => {
+      const [kind, ref] = c.expect.split(":");
+      return [`${c.session}:main:${c.branch}`, { kind, ref: ref ?? null, step: c.step,
+        started_at: `2026-10-01T00:00:${String(i + 1).padStart(2, "0")}.000Z` }];
+    }));
+    expect(out.segment_attributions).toEqual(expected);
+    expect(tsReport).toHaveProperty("segmentAttributions", expected);
+  });
+
   it("exercises every one of the 7 precedence steps", () => {
     expect([...new Set(fixture.cases.map((c) => c.step))].sort()).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });

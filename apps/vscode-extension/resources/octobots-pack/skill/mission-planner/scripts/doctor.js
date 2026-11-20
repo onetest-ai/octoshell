@@ -121,7 +121,7 @@ if (existsSync(settingsPath) && settings === null) {
   fail("settings", `.claude/settings.json is not valid JSON — nothing below could be checked`, "fix the JSON by hand");
 }
 const hooks = (settings && settings.hooks) || {};
-const OUR_SCRIPTS = [".octobots/hooks/primer.mjs", ".octobots/hooks/work-log.mjs", ".octobots/hooks/mission-gate.mjs"];
+const OUR_SCRIPTS = [".octobots/hooks/primer.mjs", ".octobots/hooks/work-log.mjs", ".octobots/hooks/mission-gate.mjs", ".octobots/hooks/dispatch-on-main.mjs"];
 const dupes = [];
 let ourHookCount = 0;
 for (const [event, entries] of Object.entries(hooks)) {
@@ -146,6 +146,13 @@ if (dupes.length) {
 } else {
   ok("hooks", `${ourHookCount} hook registration(s), no duplicates`);
 }
+
+// Warn even for an opt-out: this diagnostic names the adoption step without failing the doctor.
+const dispatchPath = ".octobots/hooks/dispatch-on-main.mjs";
+const dispatchRegistered = (hooks.PreToolUse ?? []).some((entry) =>
+  (entry.hooks ?? []).some((h) => String(h.command ?? "").includes(dispatchPath)));
+if (!dispatchRegistered) warn("hooks", `PreToolUse Agent|Task missing: ${dispatchPath}`,
+  'run "Octobots: Install Octobots Pack" and enable hooks (owner: octoshell octobots-hooks.ts)');
 
 // ── 4. Status line ───────────────────────────────────────────────────────────────────────────
 const slScript = join(ROOT, ".octobots", "statusline.sh");

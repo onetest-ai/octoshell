@@ -10,3 +10,5 @@ export {
   resolveTranscriptRoots,
   type TranscriptRootsOptions,
 } from "./claude-source.js";
+
+export * from "./attribution.js";
