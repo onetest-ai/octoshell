@@ -146,12 +146,12 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
     expect(readFileSync(wf, "utf8")).toBe("// user data: historical, never touched\n");
   });
 
-  it("overwrites a skill forked as `version: 57-local` when asked to: not up to date before, up to date after", () => {
+  it("overwrites a skill forked at the current pack version with `-local` when asked to: not up to date before, up to date after", () => {
     const repo = mkdtempClean("octobots-pack-");
     installPack(PACK_SRC, repo, { store });
     const skill = join(repo, ".claude", "skills", "mission-execution", "SKILL.md");
     const original = readFileSync(skill, "utf8");
-    writeFileSync(skill, original.replace(/^version:\s*57\s*$/m, "version: 57-local") + "\nLOCAL EDIT\n");
+    writeFileSync(skill, original.replace(/^version:.*$/m, `version: ${OCTOBOTS_PACK_VERSION}-local`) + "\nLOCAL EDIT\n");
     expect(packStatus(repo).upToDate).toBe(false);
 
     installPack(PACK_SRC, repo, { store, localChanges: "overwrite" });
@@ -617,4 +617,18 @@ describe("installPack: the shipped-skill store and the git budget", () => {
     installPack(PACK_SRC, repo, { store });
     expect(spy).not.toHaveBeenCalled();
   });
+});
+
+// A prior opt-in must survive adding a new hook event to the pack.
+it("refreshes prior hook registrations when a new event is absent and hooks is unspecified", () => {
+  const repo = mkdtempClean("octobots-upgrade-hooks-");
+  installPack(PACK_SRC, repo, { store, hooks: true });
+  const path = join(repo, ".claude/settings.json");
+  const settings = JSON.parse(readFileSync(path, "utf8"));
+  delete settings.hooks.PreToolUse;
+  writeFileSync(path, JSON.stringify(settings));
+  expect(packStatus(repo).upToDate).toBe(false);
+  const result = installPack(PACK_SRC, repo, { store });
+  expect(result.hooksRegistered).toBe(true);
+  expect(claudeHookStatus(repo, OCTOBOTS_PACK_VERSION)).toEqual({ present: true, current: true });
 });

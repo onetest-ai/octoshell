@@ -13,7 +13,7 @@ import { packStatus, installPack, OCTOBOTS_PACK_VERSION } from "./host/octobots-
 import { loadShippedStore, decideLocalChanges, installCompletionMessage, shouldPromptOnActivation } from "./host/pack-deviations.js";
 import { prepareInstall, installFailureMessage } from "./host/pack-install-guard.js";
 import { readPending } from "./host/pack-updates.js";
-import { claudeHookStatus } from "./host/octobots-hooks.js";
+import { claudeHooksRegistered } from "./host/octobots-hooks.js";
 import { toolsStatus } from "./host/octobots-tools.js";
 import { launchSdlcBundleInstall } from "./host/sdlc-bundles-command.js";
 import { launchInstallGraph, launchRebuildGraph } from "./host/octograph-command.js";
@@ -56,7 +56,7 @@ async function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: s
     );
     if (decision.cancelled) return;
 
-    const alreadyHooked = claudeHookStatus(repoRoot, OCTOBOTS_PACK_VERSION).present;
+    const alreadyHooked = claudeHooksRegistered(repoRoot);
 
     let hooks: boolean | undefined;
     if (!alreadyHooked) {

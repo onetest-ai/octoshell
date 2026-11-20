@@ -12,6 +12,7 @@ interface RawTokens {
 
 interface RawSegment {
   segment_id: string;
+  source?: string;
   session_id: string;
   kind: "orchestrator" | "subagent";
   agent_type: string | null;
@@ -45,6 +46,7 @@ export function jsonlSource(file: string): TranscriptSource {
         .map(
           (r): Segment => ({
             segmentId: r.segment_id,
+            source: r.source,
             sessionId: r.session_id,
             kind: r.kind,
             agentType: r.agent_type,

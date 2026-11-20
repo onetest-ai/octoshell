@@ -217,6 +217,7 @@ describe("octobots-hooks: Claude registration", () => {
         SessionStart: [{ hooks: [{ type: "command", command: ".octobots/hooks/primer.mjs" }] }],
         PreCompact: [{ hooks: [{ type: "command", command: ".octobots/hooks/primer.mjs" }] }],
         PostToolUse: [{ hooks: [{ type: "command", command: ".octobots/hooks/work-log.mjs" }] }],
+        PreToolUse: [{ hooks: [{ type: "command", command: ".octobots/hooks/dispatch-on-main.mjs" }] }],
       },
     }));
     expect(claudeHookStatus(repo, 9)).toEqual({ present: true, current: false });

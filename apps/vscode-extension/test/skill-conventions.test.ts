@@ -1,3 +1,4 @@
+import { OCTOBOTS_PACK_VERSION } from "../src/host/octobots-skill.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -72,7 +73,7 @@ describe("mission-execution: direct sub-agent dispatch", () => {
   });
 
   it("stays at the shared pack version", () => {
-    expect(text).toMatch(/^version: 57$/m);
+    expect(text).toMatch(new RegExp(`^version: ${OCTOBOTS_PACK_VERSION}$`, "m"));
   });
 
   it("rule 10 (dead agent) indents its continuation lines by 4 spaces like every other rule", () => {
@@ -171,7 +172,7 @@ describe("mission-completion-gate: orchestrator-dispatched phases", () => {
 
   it("keeps the campaign rows in the runs.json description and the shared pack version", () => {
     expect(text).toMatch(/work_item_level: "campaign"/);
-    expect(text).toMatch(/^version: 57$/m);
+    expect(text).toMatch(new RegExp(`^version: ${OCTOBOTS_PACK_VERSION}$`, "m"));
   });
 });
 
@@ -189,9 +190,9 @@ describe("octobots-doctor: the rules of M7-AC7", () => {
   const body = text.replace(/^---\n[\s\S]*?\n---\n/, "");
   const flat = body.replace(/\s+/g, " ");
 
-  it("is a v57 pack skill whose description says when to use it", () => {
+  it("is a current pack skill whose description says when to use it", () => {
     expect(text).toMatch(/^name: octobots-doctor$/m);
-    expect(text).toMatch(/^version: 57$/m);
+    expect(text).toMatch(new RegExp(`^version: ${OCTOBOTS_PACK_VERSION}$`, "m"));
     const description = /^description: (.+)$/m.exec(text)?.[1] ?? "";
     expect(description).toMatch(/^Use when /);
     for (const trigger of [/pending pack reconcile|pack reconcile/i, /SessionStart|Octobots health/, /doctor\.js/, /validate\.js/]) expect(description).toMatch(trigger);

@@ -121,14 +121,25 @@ if (existsSync(settingsPath) && settings === null) {
   fail("settings", `.claude/settings.json is not valid JSON — nothing below could be checked`, "fix the JSON by hand");
 }
 const hooks = (settings && settings.hooks) || {};
-const OUR_SCRIPTS = [".octobots/hooks/primer.mjs", ".octobots/hooks/work-log.mjs", ".octobots/hooks/mission-gate.mjs"];
+const OUR_SCRIPTS = [".octobots/hooks/primer.mjs", ".octobots/hooks/work-log.mjs", ".octobots/hooks/mission-gate.mjs", ".octobots/hooks/dispatch-on-main.mjs"];
 const dupes = [];
 let ourHookCount = 0;
 for (const [event, entries] of Object.entries(hooks)) {
-  if (!Array.isArray(entries)) continue;
+  if (!Array.isArray(entries)) {
+    fail("hooks", `malformed ${event} configuration: expected an event array`, "fix .claude/settings.json");
+    continue;
+  }
   const seen = new Map();
   for (const e of entries) {
-    for (const h of e.hooks ?? []) {
+    if (!Array.isArray(e?.hooks)) {
+      fail("hooks", `malformed ${event} configuration: expected a nested hooks array`, "fix .claude/settings.json");
+      continue;
+    }
+    for (const h of e.hooks) {
+      if (!h || typeof h !== "object") {
+        fail("hooks", `malformed ${event} configuration: expected a hook object`, "fix .claude/settings.json");
+        continue;
+      }
       const script = OUR_SCRIPTS.find((s) => String(h.command ?? "").includes(s));
       if (!script) continue;
       ourHookCount++;
@@ -146,6 +157,13 @@ if (dupes.length) {
 } else {
   ok("hooks", `${ourHookCount} hook registration(s), no duplicates`);
 }
+
+// Warn even for an opt-out: this diagnostic names the adoption step without failing the doctor.
+const dispatchPath = ".octobots/hooks/dispatch-on-main.mjs";
+const dispatchRegistered = Array.isArray(hooks.PreToolUse) && hooks.PreToolUse.some((entry) =>
+  Array.isArray(entry?.hooks) && entry.hooks.some((h) => String(h?.command ?? "").includes(dispatchPath)));
+if (!dispatchRegistered) warn("hooks", `PreToolUse Agent|Task missing: ${dispatchPath}`,
+  'run "Octobots: Install Octobots Pack" and enable hooks (owner: octoshell octobots-hooks.ts)');
 
 // ── 4. Status line ───────────────────────────────────────────────────────────────────────────
 const slScript = join(ROOT, ".octobots", "statusline.sh");

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { forks, PACK_SRC, store } from "./fixtures/pack-store.js";
-import { installPack } from "../src/host/octobots-skill.js";
+import { installPack, OCTOBOTS_PACK_VERSION } from "../src/host/octobots-skill.js";
 import { parsePending, pendingSummary, readPending, serializePending, writePending, type PendingRecord } from "../src/host/pack-updates.js";
 import { clearInputs } from "../src/host/pack-staging.js";
 import * as packIo from "../resources/octobots-pack/skill/mission-planner/scripts/pending-io.mjs";
@@ -137,7 +137,7 @@ describe("pending.json fixture cases", () => {
 
     expect(res.pending).toEqual(["mission-execution", "mission-completion-gate"]);
     const rec = readPending(ws)!;
-    expect(rec.packVersion).toBe(57);
+    expect(rec.packVersion).toBe(OCTOBOTS_PACK_VERSION);
     expect(rec.skills.map((s) => s.skill)).toEqual(["mission-execution", "mission-completion-gate"]);
     expect(existsSync(join(ws, rec.skills[0]!.dir, "RECONCILE.md"))).toBe(true);
   });

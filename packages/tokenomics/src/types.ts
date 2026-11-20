@@ -35,6 +35,8 @@ export function addTotals(a: TokenTotals, b: TokenTotals): TokenTotals {
 export interface Segment {
   /** Stable identity, so re-collection updates a segment rather than duplicating it. */
   segmentId: string;
+  /** Collector provenance, when persisted in raw records (e.g. Codex). */
+  source?: string;
   sessionId: string;
   /** `orchestrator` = the main thread; `subagent` = a dispatched agent. */
   kind: "orchestrator" | "subagent";
@@ -77,7 +79,7 @@ export interface WorkLogEntry {
 }
 
 /** How a segment was tied to a task — a recorded fact, or a guess. */
-export type Attribution = "worklog" | "branch-inference" | "mission-level";
+export type Attribution = "worklog" | "branch-inference" | "mission-level" | "ledger-window";
 
 /** Effort/size a human authored at planning time. Nothing derives these. */
 export interface Estimate {
@@ -163,6 +165,7 @@ export interface Unattributed {
 }
 
 export interface Report {
+  segmentAttributions?: Record<string, import("./attribution.js").SegmentAttribution>;
   generatedAt: string;
   agentTool: string;
   pricesFetchedAt: string | null;

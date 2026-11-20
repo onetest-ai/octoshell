@@ -32,10 +32,11 @@ type HookEntry = { matcher?: string; hooks: { type: string; command: string; asy
 
 const CLAUDE_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/primer.mjs" --backend claude`;
 const WORK_LOG_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/work-log.mjs"`;
+const DISPATCH_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/dispatch-on-main.mjs"`;
 const MISSION_GATE_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/mission-gate.mjs"`;
 
 /** The Claude hook events we own. Every entry we write carries `_octobots`. */
-const CLAUDE_EVENTS = ["SessionStart", "PostToolUse"] as const;
+const CLAUDE_EVENTS = ["SessionStart", "PostToolUse", "PreToolUse"] as const;
 type ClaudeEvent = (typeof CLAUDE_EVENTS)[number];
 
 /**
@@ -50,6 +51,9 @@ type ClaudeEvent = (typeof CLAUDE_EVENTS)[number];
 const RETIRED_CLAUDE_EVENTS = ["PreCompact"] as const;
 
 function claudeEntries(event: ClaudeEvent, version: number): HookEntry[] {
+  if (event === "PreToolUse") {
+    return [{ matcher: "Agent|Task", hooks: [{ type: "command", command: DISPATCH_CMD, async: true }], _octobots: version }];
+  }
   if (event === "PostToolUse") {
     return [
       // The work log records which session did which task, so tokenomics
@@ -84,6 +88,7 @@ const OUR_SCRIPTS = [
   ".octobots/hooks/primer.mjs",
   ".octobots/hooks/work-log.mjs",
   ".octobots/hooks/mission-gate.mjs",
+  ".octobots/hooks/dispatch-on-main.mjs",
 ] as const;
 
 /** True when this entry is one of ours — by marker, or by the script its command runs. */
@@ -148,7 +153,17 @@ export function claudeHookStatus(repoRoot: string, version: number): { present: 
   // than reporting a partial install as healthy.
   const present = mine.every((entries) => entries.length > 0);
   const leftover = RETIRED_CLAUDE_EVENTS.some((event) => ours(event).length > 0);
-  const current = present && !leftover && mine.flat().every((e) => e._octobots === version);
+  const scriptsMatch = CLAUDE_EVENTS.every((event) => claudeEntries(event, version).every((expected) =>
+    (hooks[event] ?? []).some((entry) => entry.matcher === expected.matcher &&
+      expected.hooks.every((h) => entry.hooks.some((actual) => actual.command === h.command)))));
+  const current = present && !leftover && scriptsMatch && mine.flat().every((e) => e._octobots === version);
   return { present, current };
 }
 
+
+/** A previous opt-in remains installed even when this pack adds another required event. */
+export function claudeHooksRegistered(repoRoot: string): boolean {
+  const settings = readJson(join(repoRoot, ".claude", "settings.json"));
+  const hooks = (settings.hooks ?? {}) as Record<string, HookEntry[]>;
+  return [...CLAUDE_EVENTS, ...RETIRED_CLAUDE_EVENTS].some((event) => (hooks[event] ?? []).some(isOurs));
+}

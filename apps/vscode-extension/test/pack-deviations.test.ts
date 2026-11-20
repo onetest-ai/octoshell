@@ -122,10 +122,11 @@ describe("detectDeviations", () => {
     });
 
     it("is `reconciled-older` when reconciled-from names an earlier build of the same version", () => {
-      expect(builds.length).toBeGreaterThan(1);
-      expect(builds[0]).not.toBe(skillSha256(shipped(skill)));
-      const r = detectDeviations(reconciledAt(`${PACK}+local`, builds[0]!), PACK, store);
-      expect(r.deviations.map((d) => [d.skill, d.version, d.reason])).toEqual([[skill, `${PACK}+local`, "reconciled-older"]]);
+      // v57 actually shipped multiple builds. A new pack version need not have done so.
+      const historical = store.versions["57"]![skill]!;
+      expect(historical.length).toBeGreaterThan(1);
+      const r = detectDeviations(reconciledAt("57+local", historical[0]!), 57, store);
+      expect(r.deviations.map((d) => [d.skill, d.version, d.reason])).toEqual([[skill, "57+local", "reconciled-older"]]);
       expect(r.reconciled).toEqual([]);
     });
 
