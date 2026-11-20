@@ -741,7 +741,7 @@ describe("pack doctor.js", () => {
       mkdirSync(join(projectDir, ".octobots", "campaigns", "c1"), { recursive: true });
       mkdirSync(join(projectDir, ".octobots", "tools", "node_modules", ".bin"), { recursive: true });
       writeFileSync(join(projectDir, ".octobots", "tools", "node_modules", ".bin", "ccusage"), "");
-      settings({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: ".octobots/hooks/primer.mjs" }] }], Other: "nope" } });
+      settings({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: ".octobots/hooks/primer.mjs" }] }], Other: [] } });
       const f = findings(projectDir);
       expect(f.find((x) => x.area === "pack" && /skills installed at v57/.test(x.msg))?.level).toBe("ok");
       expect(f.find((x) => x.area === "pack" && /primer.mjs v57/.test(x.msg))?.level).toBe("ok");

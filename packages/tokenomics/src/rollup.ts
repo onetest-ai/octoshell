@@ -67,6 +67,7 @@ export function rollup(opts: RollupOptions): Report {
     missions: missions.map((entry) => ({
       id: boardId(entry.mission.title, entry.mission.folderPath, "mission") ?? "",
       campaign: campaigns.find((c) => c.campaign.id === entry.mission.campaignId)?.slug ?? "",
+      tracker: `${entry.mission.description}\n${entry.mission.notes ?? ""}`.match(/Tracker:\s*(\S+#\d+)/)?.[1] ?? null,
       missionKey: missionKey(entry.mission), missionNum: missionNumber(entry.mission) ?? 0,
       declaredBranches: entry.estimate.branches, tasks: entry.tasks.map((t) => ({ id: taskLabel(t) })), entry,
     })),

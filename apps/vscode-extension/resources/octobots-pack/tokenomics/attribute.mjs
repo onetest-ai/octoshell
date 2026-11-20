@@ -17,7 +17,7 @@ try {
   if (!values.branch)
     throw new Error("Usage: attribute --branch <b> [--session <id>] [--project-dir <dir>]");
   const root = values["project-dir"];
-  const board = await loadBoard(root);
+  const board = await loadBoard(root, (message) => { throw new Error(message); }, { strict: true });
   const workLog = new Map();
   const file = join(root, ".octobots/tokenomics/worklog.jsonl");
   if (existsSync(file))
@@ -36,6 +36,6 @@ try {
   );
   console.log(JSON.stringify(attributionLabels(target)));
 } catch (error) {
-  console.error(`attribute: ${error.message}`);
+  console.error(`attribute: ${error.message.replace(/\s*\r?\n\s*/g, " ")}`);
   process.exitCode = 1;
 }

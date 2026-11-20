@@ -54,7 +54,8 @@ function attributionLabels(target) {
 }
 function segmentAttribution(target, startedAt) {
   const { kind, campaign, mission, step } = attributionLabels(target);
-  return { kind, ref: mission ? `${campaign}/${mission}` : campaign, step, started_at: startedAt };
+  const ref = target.kind === "mission" ? target.mission.tracker ?? `${campaign}/${mission}` : campaign;
+  return { kind, ref, step, started_at: startedAt };
 }
 function loadLedgerWindows(projectDir) {
   const dir = join(projectDir, ".agents", "telemetry", "delivery");

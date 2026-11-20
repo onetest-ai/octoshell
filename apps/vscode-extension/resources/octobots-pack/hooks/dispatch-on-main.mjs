@@ -5,7 +5,17 @@ import { execFileSync } from "node:child_process";
 
 try {
   const chunks = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
+  let bytes = 0;
+  const deadline = setTimeout(() => process.exit(0), 500);
+  try {
+    for await (const chunk of process.stdin) {
+      bytes += chunk.length;
+      if (bytes > 128 * 1024) process.exit(0);
+      chunks.push(chunk);
+    }
+  } finally {
+    clearTimeout(deadline);
+  }
   const evt = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   const tool = evt?.tool_name ?? evt?.toolName;
   const session = evt?.session_id ?? evt?.sessionId;

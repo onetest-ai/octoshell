@@ -5,6 +5,7 @@ import { join } from "node:path";
 export interface AttributionMission {
   id: string;
   campaign: string;
+  tracker?: string | null;
   missionKey: string | null;
   missionNum: number;
   declaredBranches: string[];
@@ -130,7 +131,10 @@ export function segmentAttribution(
   startedAt: string | null
 ): SegmentAttribution {
   const { kind, campaign, mission, step } = attributionLabels(target);
-  return { kind, ref: mission ? `${campaign}/${mission}` : campaign, step, started_at: startedAt };
+  const ref = target.kind === "mission"
+    ? target.mission.tracker ?? `${campaign}/${mission}`
+    : campaign;
+  return { kind, ref, step, started_at: startedAt };
 }
 
 /** Existing Codex compatibility fallback: consult delivery windows only after step 7. */

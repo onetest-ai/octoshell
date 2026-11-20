@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { spawnSync, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
@@ -20,6 +20,55 @@ function run(dir: string, input: string) {
 const diagnostics = (dir: string) => join(dir, ".octobots/tokenomics/diagnostics.jsonl");
 
 describe("warn-only dispatch diagnostics", () => {
+  it("discards oversized valid input without recording a dispatch", () => {
+    const dir = repo("main");
+    const r = run(dir, JSON.stringify({ session_id: "s", tool_name: "Agent", cwd: dir, padding: "x".repeat(256 * 1024) }));
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe("");
+    expect(r.stderr).toBe("");
+    expect(existsSync(diagnostics(dir))).toBe(false);
+  });
+  it.each(["{", " ".repeat(256 * 1024)])("exits silently with stdin left open (case %#)", async (input) => {
+    const dir = repo("main");
+    const child = spawn(process.execPath, [join(pack, "hooks/dispatch-on-main.mjs")], {
+      cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
+    });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.stdin.on("error", () => { /* The hook may close stdin before the oversized write completes. */ });
+    const result = new Promise<number | null>((resolve) => child.on("close", resolve));
+    const timer = setTimeout(() => child.kill("SIGKILL"), 2500);
+    try {
+      child.stdin.write(input); // Deliberately never send EOF.
+      expect(await result).toBe(0);
+      expect(stdout).toBe("");
+      expect(stderr).toBe("");
+      expect(existsSync(diagnostics(dir))).toBe(false);
+    } finally {
+      clearTimeout(timer);
+      child.stdin.destroy();
+      child.kill();
+    }
+  });
+
+  it.each([
+    { PreToolUse: {} },
+    { PreToolUse: [{ hooks: {} }] },
+    { PreToolUse: [null, { hooks: [null] }] },
+    { SessionStart: {} },
+    { SessionStart: [{ hooks: {} }] },
+  ])("doctor reports malformed hook arrays without crashing: %j", (hooks) => {
+    const dir = repo("main");
+    mkdirSync(join(dir, ".claude"));
+    writeFileSync(join(dir, ".claude/settings.json"), JSON.stringify({ hooks }));
+    const r = spawnSync(process.execPath, [join(pack, "skill/mission-planner/scripts/doctor.js"), "--root", dir, "--json"], { encoding: "utf8" });
+    expect(r.stderr).toBe("");
+    expect(() => JSON.parse(r.stdout)).not.toThrow();
+    expect(JSON.parse(r.stdout).findings).toContainEqual(expect.objectContaining({
+      area: "hooks", level: "fail", msg: expect.stringMatching(/malformed/i),
+    }));
+  });
   it.each(["Agent", "Task"])("records exactly one %s dispatch on main without deciding", (tool_name) => {
     const dir = repo("main");
     const r = run(dir, JSON.stringify({ session_id: "session-main", tool_name, cwd: dir, tool_input: {} }));

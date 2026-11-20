@@ -404,6 +404,39 @@ describe("attribution parity: rollup.mjs and rollup.ts", () => {
   });
 });
 
+it("uses the owning tracker row reference for branch and Codex step-0 segments in both rollups", () => {
+  const dir = mkTmp();
+  const oct = join(dir, ".octobots");
+  write(join(oct, "campaigns/demo/campaign.yaml"), "name: Demo\nstatus: draft\n");
+  write(join(oct, "campaigns/demo/missions/m5-work/mission.yaml"), dump({
+    name: "M5 - Work", status: "draft", description: "Tracker: demo/project#27",
+  }));
+  write(join(dir, ".agents/telemetry/delivery/events-test.jsonl"), [
+    { plan: "demo/run-1", level: "mission", ref: "M5", event: "dispatched", at: "2026-01-01T00:00:00Z" },
+    { plan: "demo/run-1", level: "mission", ref: "M5", event: "completed", at: "2026-01-02T00:00:00Z" },
+  ].map((e) => JSON.stringify(e)).join("\n"));
+  write(join(oct, "tokenomics/prices.json"), JSON.stringify(PRICES));
+  const raw = join(oct, "tokenomics/raw/segments.jsonl");
+  write(raw, ["feat/demo-m5", "main"].map((branch, i) => JSON.stringify({
+    segment_id: `s${i}`, session_id: `session-${i}`, branch, source: i ? "codex" : "claude",
+    kind: "orchestrator", turns: 1, started_at: "2026-01-01T10:00:00Z", ended_at: "2026-01-01T10:01:00Z",
+    tokens_by_model: { cheap: { input_tokens: 1000 } },
+  })).join("\n"));
+  installPackYaml(dir);
+  execFileSync("node", [ROLLUP, "--project-dir", dir, "--no-gh", "--quiet"]);
+  const out = JSON.parse(readFileSync(join(oct, "tokenomics/runs.json"), "utf8"));
+  const board = new BoardModel(oct); board.rebuild();
+  const ts = rollup({ repoRoot: dir, artifactsRoot: oct, board, source: jsonlSource(raw), prices: PRICES });
+  expect(out.runs).toHaveLength(1);
+  expect(out.runs[0].work_item_ref).toBe("demo/project#27");
+  const expected = {
+    s0: { kind: "mission", ref: "demo/project#27", step: 2, started_at: "2026-01-01T10:00:00Z" },
+    s1: { kind: "mission", ref: "demo/project#27", step: 0, started_at: "2026-01-01T10:00:00Z" },
+  };
+  expect.soft(out.segment_attributions).toEqual(expected);
+  expect(ts.segmentAttributions).toEqual(expected);
+});
+
 function segmentCost(dir: string): number {
   const t = { byModel: segmentTotalsByModel(dir) };
   let usd = 0;

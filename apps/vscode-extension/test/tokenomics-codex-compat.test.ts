@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const pack = join(__dirname, "../resources/octobots-pack");
-it("preserves solo's Codex source fields and Claude-only counters without changing total tokens or pricing", () => {
+it("preserves a consumer's Codex source fields and Claude-only counters without changing total tokens or pricing", () => {
   const dir = mkdtempClean("codex-output-compat-");
   const write = (path: string, data: string) => { const f = join(dir, path); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, data); };
   write(".octobots/campaigns/demo/campaign.yaml", "name: Demo\nstatus: draft\n");

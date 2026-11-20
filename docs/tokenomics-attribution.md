@@ -24,13 +24,13 @@ Run the branch CLI from any directory:
 
 ```sh
 node /path/to/project/.octobots/tokenomics/attribute.mjs \
-  --branch feat/push-speed-m4-t2 --project-dir /path/to/project
+  --branch feat/demo-m4-t2 --project-dir /path/to/project
 ```
 
 It prints one JSON object:
 
 ```json
-{"kind":"mission","campaign":"push-speed","mission":"M4","step":2}
+{"kind":"mission","campaign":"demo","mission":"M4","step":2}
 ```
 
 `--project-dir` defaults to the current directory. `--session <id>` enables the
@@ -39,7 +39,7 @@ Letter missions keep their full label, such as `M6b`. The CLI does not need pric
 or run a rollup.
 
 The seven branch-resolution steps retain their existing order. A segment also
-retains solo's existing Codex fallback, labelled step `0`. It applies only after
+retains the existing Codex fallback, labelled step `0`. It applies only after
 all seven branch steps fail. The segment midpoint must fall in exactly one
 mission window from `.agents/telemetry/delivery/events-*.jsonl`. The branch CLI
 cannot infer this time-based fallback without a segment. Use the segment output
@@ -48,15 +48,16 @@ for those exceptions.
 `runs.json` adds `segment_attributions`. Each segment ID maps to an object:
 
 ```json
-{"kind":"mission","ref":"push-speed/M4","step":2,"started_at":"2026-11-20T10:00:00Z"}
+{"kind":"mission","ref":"demo/M4","step":2,"started_at":"2026-11-20T10:00:00Z"}
 ```
 
 A campaign reference is its slug. An unattributed reference is `null`.
-References use board identities, even when a report row has an external tracker
-reference. The TypeScript report exposes the same map as `segmentAttributions`.
+Mission references match the owning row's `work_item_ref`: an external tracker
+reference when present, otherwise `campaign/mission`. The TypeScript report exposes
+the same map as `segmentAttributions`.
 Consumers can partition this map by `started_at` without changing prices.
 
-The pack also preserves solo's existing Codex source fields and Claude-only
+The pack also preserves the existing Codex source fields and Claude-only
 mission and task counters. Aggregate token counts and costs include all sources.
 
 The `PreToolUse` hook records `Agent` and `Task` dispatches on `main` in

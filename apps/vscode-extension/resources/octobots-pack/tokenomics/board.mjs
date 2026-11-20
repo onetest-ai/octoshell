@@ -3,9 +3,10 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export async function loadBoard(projectDir = process.cwd(), log = console.error) {
+export async function loadBoard(projectDir = process.cwd(), log = console.error, { strict = false } = {}) {
   const PROJECT_DIR = projectDir;
   const CAMPAIGNS_DIR = join(projectDir, ".octobots/campaigns");
+  if (strict && !existsSync(CAMPAIGNS_DIR)) throw new Error("missing .octobots/campaigns");
   let yamlLoad = null;
   for (const spec of [
     pathToFileURL(
@@ -16,11 +17,13 @@ export async function loadBoard(projectDir = process.cwd(), log = console.error)
     try {
       const mod = await import(spec);
       yamlLoad = mod.load ?? mod.default?.load ?? null;
-      if (yamlLoad) break;
+      if (typeof yamlLoad === "function") break;
+      yamlLoad = null;
     } catch {
       // Try the next candidate; absence is reported by loadBoard(), not here.
     }
   }
+  if (strict && !yamlLoad) throw new Error("no YAML parser found; install the Octobots pack");
 
   // A `## Tokenomics` block on any board file:
   //   effort_days: 3
