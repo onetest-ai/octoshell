@@ -7,9 +7,28 @@ import { installPlannerScripts } from "./status-flip-board.js";
 
 export const PACK = join(__dirname, "..", "..", "resources", "octobots-pack");
 
-/** The shim texts the task specifies, written out here so the tests do not read them from the code under test. */
-export const PREPARE_SHIM = `#!/bin/sh\nnode "$(git rev-parse --show-toplevel)/.octobots/hooks/prepare-commit-msg.mjs" "$@"; exit 0\n`;
-export const COMMIT_SHIM = `#!/bin/sh\nnode "$(git rev-parse --show-toplevel)/.octobots/hooks/prepare-commit-msg.mjs" --after-edit "$@"; exit 0\n`;
+/** The shim texts, written out here so the tests do not read them from the code under test. Parity with solo's M2 shims. */
+const HELPER = ".octobots/hooks/prepare-commit-msg.mjs";
+export const PREPARE_SHIM = [
+  "#!/bin/sh",
+  "# Attribution is advisory: a missing runtime or pack script must not block Git.",
+  'command -v node >/dev/null || { echo "prepare-commit-msg: warning: node not found, no mission trailer added" >&2; exit 0; }',
+  `helper="$(git rev-parse --show-toplevel)/${HELPER}"`,
+  '[ -f "$helper" ] || { echo "prepare-commit-msg: warning: $helper not found, no mission trailer added" >&2; exit 0; }',
+  'node "$helper" "$@"',
+  "exit 0",
+  "",
+].join("\n");
+export const COMMIT_SHIM = [
+  "#!/bin/sh",
+  "# Adds the mission trailer that prepare-commit-msg deferred until the editor closed. Advisory: never blocks.",
+  "command -v node >/dev/null || exit 0",
+  `helper="$(git rev-parse --show-toplevel)/${HELPER}"`,
+  '[ -f "$helper" ] || exit 0',
+  'node "$helper" --after-edit "$@"',
+  "exit 0",
+  "",
+].join("\n");
 
 /** A git environment that ignores the developer's and any enclosing hook's repository variables. */
 export function gitEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {

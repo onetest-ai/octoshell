@@ -24,10 +24,32 @@ import { spawnSync } from "node:child_process";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PACK_SCRIPT = ".octobots/hooks/prepare-commit-msg.mjs";
 
-/** The two shims a repo commits at <core.hooksPath>/, mode 100755. */
+/**
+ * The two shims a repo commits at <core.hooksPath>/, mode 100755. Guarded like solo's M2 shims:
+ * attribution is advisory, so a missing node or a missing pack script (a fresh worktree, or a repo that
+ * commits the shim before the pack reaches it) prints one warning line and exits 0, never a stack trace.
+ */
 export const SHIMS = {
-  "prepare-commit-msg": `#!/bin/sh\nnode "$(git rev-parse --show-toplevel)/${PACK_SCRIPT}" "$@"; exit 0\n`,
-  "commit-msg": `#!/bin/sh\nnode "$(git rev-parse --show-toplevel)/${PACK_SCRIPT}" --after-edit "$@"; exit 0\n`,
+  "prepare-commit-msg": [
+    "#!/bin/sh",
+    "# Attribution is advisory: a missing runtime or pack script must not block Git.",
+    'command -v node >/dev/null || { echo "prepare-commit-msg: warning: node not found, no mission trailer added" >&2; exit 0; }',
+    `helper="$(git rev-parse --show-toplevel)/${PACK_SCRIPT}"`,
+    '[ -f "$helper" ] || { echo "prepare-commit-msg: warning: $helper not found, no mission trailer added" >&2; exit 0; }',
+    'node "$helper" "$@"',
+    "exit 0",
+    "",
+  ].join("\n"),
+  "commit-msg": [
+    "#!/bin/sh",
+    "# Adds the mission trailer that prepare-commit-msg deferred until the editor closed. Advisory: never blocks.",
+    "command -v node >/dev/null || exit 0",
+    `helper="$(git rev-parse --show-toplevel)/${PACK_SCRIPT}"`,
+    '[ -f "$helper" ] || exit 0',
+    'node "$helper" --after-edit "$@"',
+    "exit 0",
+    "",
+  ].join("\n"),
 };
 
 /** Shell-style split: whitespace separates, '...' and "..." group, backslash escapes outside single quotes. */

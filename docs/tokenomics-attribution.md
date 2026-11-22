@@ -82,15 +82,27 @@ The pack writes nothing under the repo's hooks directory. Each repo commits two 
 
 ```sh
 #!/bin/sh
-node "$(git rev-parse --show-toplevel)/.octobots/hooks/prepare-commit-msg.mjs" "$@"; exit 0
+# Attribution is advisory: a missing runtime or pack script must not block Git.
+command -v node >/dev/null || { echo "prepare-commit-msg: warning: node not found, no mission trailer added" >&2; exit 0; }
+helper="$(git rev-parse --show-toplevel)/.octobots/hooks/prepare-commit-msg.mjs"
+[ -f "$helper" ] || { echo "prepare-commit-msg: warning: $helper not found, no mission trailer added" >&2; exit 0; }
+node "$helper" "$@"
+exit 0
 ```
 
 ```sh
 #!/bin/sh
-node "$(git rev-parse --show-toplevel)/.octobots/hooks/prepare-commit-msg.mjs" --after-edit "$@"; exit 0
+# Adds the mission trailer that prepare-commit-msg deferred until the editor closed. Advisory: never blocks.
+command -v node >/dev/null || exit 0
+helper="$(git rev-parse --show-toplevel)/.octobots/hooks/prepare-commit-msg.mjs"
+[ -f "$helper" ] || exit 0
+node "$helper" --after-edit "$@"
+exit 0
 ```
 
-`commit-msg` adds the trailer after the editor closes and only when content was written, so an empty
+Both shims are guarded: a missing `node` or a missing pack script prints one warning line (from
+`prepare-commit-msg` only) and exits 0, so a fresh worktree or a repo that commits the shims before the
+pack arrives never sees a stack trace. `commit-msg` adds the trailer after the editor closes and only when content was written, so an empty
 message still aborts the commit.
 
 `node .octobots/hooks/hooks-doctor.mjs [--root <dir>]` checks both sides without writing anything:

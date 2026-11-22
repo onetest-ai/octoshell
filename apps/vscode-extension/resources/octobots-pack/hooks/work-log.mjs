@@ -33,9 +33,12 @@
 //   * Never fails the tool call. A work log is analytics; analytics must not
 //     break the board.
 import { existsSync, appendFileSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import { confirmedTransitions, parseSetStatusAll } from "./status-flip.mjs";
+
+const WORKLOG_PATH = join(".claude", "skills", "mission-planner", "scripts", "worklog-path.mjs");
 
 const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.env.OCTOBOTS_PROJECT_DIR ?? process.cwd();
 if (!existsSync(join(projectDir, ".octobots"))) process.exit(0);
@@ -94,10 +97,12 @@ try {
 }
 
 try {
-  const dir = join(projectDir, ".octobots", "tokenomics");
-  mkdirSync(dir, { recursive: true });
+  // The path comes from the one rule set-status.js writes by (worklog-path.mjs, installed with the
+  // mission-planner scripts): a flip is recorded in exactly one file.
+  const { worklogFile } = await import(pathToFileURL(join(projectDir, WORKLOG_PATH)).href);
+  const file = worklogFile({ CLAUDE_PROJECT_DIR: projectDir });
+  mkdirSync(dirname(file), { recursive: true });
   const at = new Date().toISOString();
-  const file = join(dir, "worklog.jsonl");
   // set-status.js writes this line itself now (it knows its target even when the command text passes it
   // through shell variables). This hook is the fallback for a script that had no session id, so skip a
   // flip the script already logged: the latest line for this session and target holds the same state,

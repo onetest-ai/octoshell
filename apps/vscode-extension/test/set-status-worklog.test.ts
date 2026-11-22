@@ -3,7 +3,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { SET_STATUS, makeStatusBoard, postToolUseWithOutput } from "./fixtures/status-flip-board.js";
+import { SET_STATUS, installPlannerScripts, makeStatusBoard, postToolUseWithOutput } from "./fixtures/status-flip-board.js";
+import { mkdirSync } from "node:fs";
 
 const WORK_LOG = join(__dirname, "..", "resources", "octobots-pack", "hooks", "work-log.mjs");
 const LOG = (repo: string) => join(repo, ".octobots", "tokenomics", "worklog.jsonl");
@@ -11,9 +12,9 @@ const lines = (repo: string): Record<string, unknown>[] =>
   existsSync(LOG(repo)) ? readFileSync(LOG(repo), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>) : [];
 
 /** Run a shell command as the Bash tool would, with an optional Claude Code session id in the environment. */
-function sh(repo: string, command: string, session?: string) {
-  const { CLAUDE_CODE_SESSION_ID: _s, ...env } = process.env;
-  return spawnSync("sh", ["-c", command], { cwd: repo, encoding: "utf8", env: { ...env, ...(session ? { CLAUDE_CODE_SESSION_ID: session } : {}) } });
+function sh(repo: string, command: string, session?: string, extra: Record<string, string> = {}) {
+  const { CLAUDE_CODE_SESSION_ID: _s, CLAUDE_PROJECT_DIR: _p, OCTOBOTS_PROJECT_DIR: _o, ...env } = process.env;
+  return spawnSync("sh", ["-c", command], { cwd: repo, encoding: "utf8", env: { ...env, ...extra, ...(session ? { CLAUDE_CODE_SESSION_ID: session } : {}) } });
 }
 function hook(repo: string, payload: unknown): void {
   execFileSync("node", [WORK_LOG], { cwd: repo, env: { ...process.env, CLAUDE_PROJECT_DIR: repo }, input: JSON.stringify(payload), encoding: "utf8" });
@@ -87,5 +88,27 @@ describe("set-status.js writes the work log line itself", () => {
     const go = (state: string) => sh(b.repo, `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" ${state}`, "s1");
     go("active"); go("done"); go("active");
     expect(lines(b.repo).map((l) => l.state)).toEqual(["active", "done", "active"]);
+  });
+});
+
+describe("one work-log file per flip, wherever the board lives", () => {
+  it("a flip on a worktree board with CLAUDE_PROJECT_DIR elsewhere writes one line in one file (the session's project dir)", () => {
+    const b = makeStatusBoard("ss-worklog-wt-");
+    // The session's project dir (where the hook runs and the rollup reads) is a different checkout.
+    const project = mkdtempClean("ss-worklog-proj-");
+    mkdirSync(join(project, ".octobots"), { recursive: true });
+    installPlannerScripts(project);
+    const command = `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" active`;
+    const r = sh(b.repo, command, "sess-wt", { CLAUDE_PROJECT_DIR: project });
+    expect(r.status, r.stderr).toBe(0);
+    execFileSync("node", [WORK_LOG], {
+      cwd: b.repo,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: project },
+      input: JSON.stringify(postToolUseWithOutput(b.repo, command, r.stdout, "sess-wt")),
+      encoding: "utf8",
+    });
+    expect(lines(project)).toHaveLength(1);
+    expect(lines(project)[0]).toMatchObject({ session_id: "sess-wt", task: "T1.1", state: "active" });
+    expect(existsSync(LOG(b.repo))).toBe(false);
   });
 });

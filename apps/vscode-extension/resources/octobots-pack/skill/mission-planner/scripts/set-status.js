@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
 import { dumpEntity, mapBoardStatus, readEntity, resolveEntityFile, resolveStatusTarget } from "./entity-io.mjs";
 import { planReviewStatus } from "./plan-review.mjs";
+import { worklogFile, worklogProjectDir } from "./worklog-path.mjs";
 
 // Set an entity's status in its OWN `<kind>.yaml` — status is a field in the child's file, never a
 // marker on a parent board line (children are folder-derived). Resolve the target by name within the
@@ -120,20 +121,21 @@ function recordWorklog() {
     const taskId = title.match(/^(T\d+\.\d+)\b/)?.[1] ?? null;
     const missionId = taskId ? null : (title.match(/^(M\d+)\b/)?.[1] ?? null);
     if (!taskId && !missionId) return;
+    // The file is the session's project dir's, the same rule the work-log hook uses (worklog-path.mjs).
+    // It self-gates on `.octobots/` there, like the hook. The branch is the board's own checkout's.
+    if (!existsSync(join(worklogProjectDir(), ".octobots"))) return;
     const abs = resolve(arg);
     const at = abs.indexOf(`${sep}.octobots${sep}`);
-    if (at === -1) return;
-    const root = abs.slice(0, at);
     let branch = null;
     try {
-      branch = execFileSync("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+      if (at !== -1) branch = execFileSync("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], { cwd: abs.slice(0, at), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
     } catch {
       // Detached HEAD or not a git repo: the session id alone still links the work.
     }
-    const dir = join(root, ".octobots", "tokenomics");
-    mkdirSync(dir, { recursive: true });
+    const file = worklogFile();
+    mkdirSync(dirname(file), { recursive: true });
     const target = taskId ? { task: taskId } : { mission: missionId };
-    appendFileSync(join(dir, "worklog.jsonl"), JSON.stringify({ session_id: session, ...target, state: requested, branch, at: new Date().toISOString() }) + "\n");
+    appendFileSync(file, JSON.stringify({ session_id: session, ...target, state: requested, branch, at: new Date().toISOString() }) + "\n");
   } catch {
     // Never fail the status change over analytics.
   }

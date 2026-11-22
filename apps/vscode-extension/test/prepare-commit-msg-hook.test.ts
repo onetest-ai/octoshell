@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitEnv, hookRepo, trailers } from "./fixtures/hook-repo.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const warnings = (stderr: string): string[] => stderr.split("\n").filter((l) => /warning/i.test(l));
 
@@ -204,6 +205,25 @@ describe("prepare-commit-msg trailer hook (pack port of solo's M2 hook)", () => 
     const res = r.commit(`feat/${r.slug}-m1`);
     expect(res.status, res.stderr).toBe(0);
     expect(trailers(r.body())).toEqual([]);
+    expect(res.stderr.trim().split("\n")).toHaveLength(1);
+    expect(res.stderr).toMatch(/prepare-commit-msg: warning: .*prepare-commit-msg\.mjs not found/);
+    expect(res.stderr).not.toMatch(/Error|node:internal|at .*\(/);
+  });
+
+  it("the shims print one warning and exit 0 when node is not on PATH", () => {
+    const r = hookRepo();
+    const bin = mkdtempClean("no-node-bin-");
+    symlinkSync(execFileSync("which", ["git"], { encoding: "utf8" }).trim(), join(bin, "git"));
+    const env = { ...gitEnv(), PATH: bin };
+    for (const [name, args] of [["prepare-commit-msg", [join(r.root, "msg"), "message"]], ["commit-msg", [join(r.root, "msg")]]] as const) {
+      writeFileSync(join(r.root, "msg"), "subject\n");
+      const res = spawnSync("/bin/sh", [join(r.root, ".githooks", name), ...args], { cwd: r.root, encoding: "utf8", env });
+      expect(res.status, res.stderr).toBe(0);
+      const lines = res.stderr.trim().split("\n").filter(Boolean);
+      expect(lines.length).toBeLessThanOrEqual(1);
+      if (name === "prepare-commit-msg") expect(lines).toEqual(["prepare-commit-msg: warning: node not found, no mission trailer added"]);
+      expect(readFileSync(join(r.root, "msg"), "utf8")).toBe("subject\n");
+    }
   });
 
   it("the script delegates attribution to the CLI and carries no board mapping", () => {
