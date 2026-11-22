@@ -216,6 +216,20 @@ describe("hooks-doctor: git side", () => {
     expect(res.out).toMatch(/prepare-commit-msg.*does not run \.octobots\/hooks\/prepare-commit-msg\.mjs/);
   });
 
+  for (const [name, text, why] of [
+    ["commit-msg", PREPARE_SHIM, /commit-msg.*--after-edit/],
+    ["prepare-commit-msg", COMMIT_SHIM, /prepare-commit-msg.*--after-edit/],
+  ] as const) {
+    it(`a ${name} shim with the other entry point's text is named (review round 1)`, () => {
+      const r = hookRepo();
+      withSettings(r);
+      writeFileSync(join(r.root, ".githooks", name), text);
+      const res = doctor(r);
+      expect(res.status).toBe(1);
+      expect(res.out).toMatch(why);
+    });
+  }
+
   it("honours a core.hooksPath other than .githooks", () => {
     const r = hookRepo("hook-repo-", { shims: false });
     withSettings(r);

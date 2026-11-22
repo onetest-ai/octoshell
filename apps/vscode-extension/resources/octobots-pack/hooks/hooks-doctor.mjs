@@ -177,6 +177,10 @@ function checkGit(root) {
     if (!text.includes(PACK_SCRIPT)) {
       bad(`shim ${dirRel}/${name} does not run ${PACK_SCRIPT}`);
       missingShims.push(name);
+    } else if (text.includes("--after-edit") !== (name === "commit-msg")) {
+      // The two shims share one script; the entry point is the --after-edit flag (commit-msg only).
+      bad(`shim ${dirRel}/${name} ${name === "commit-msg" ? "does not pass" : "must not pass"} --after-edit to ${PACK_SCRIPT}`);
+      missingShims.push(name);
     } else if ((statSync(file).mode & 0o111) === 0) {
       bad(`shim ${dirRel}/${name} is not executable`);
       console.log(`           fix: git add --chmod=+x ${dirRel}/${name} && chmod +x ${dirRel}/${name}`);

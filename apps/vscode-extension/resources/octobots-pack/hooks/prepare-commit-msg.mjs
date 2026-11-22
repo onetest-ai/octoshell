@@ -43,23 +43,37 @@ try {
 }
 
 // Git writes its comment lines (and the verbose scissors line) with core.commentChar. `auto` means git
-// picked a character that no message line starts with; the scissors line, when present, names it.
-function commentChar(body) {
-  let configured = "#";
-  try {
-    configured = git(["config", "--get", "core.commentChar"]) || "#";
-  } catch {
-    /* unset: git's default */
-  }
-  if (configured !== "auto") return configured[0];
-  return body.match(/^(\S) -{24} >8 -{24}$/m)?.[1] ?? "#";
-}
+// picked the first of these candidates that no message line starts with; the body then shows which one.
+const AUTO_CANDIDATES = "#;@!$%^&|:";
 const escapeRe = (c) => c.replace(/[.*+?^${}()|[\]\\\/-]/g, "\\$&");
-// What git keeps of a message: no comment lines, no verbose diff after the scissors line.
+const scissorsRe = (ch) => new RegExp(`^${escapeRe(ch)} -{24} >8 -{24}$`, "m");
+function configuredCommentChar() {
+  try {
+    return git(["config", "--get", "core.commentChar"]) || "#";
+  } catch {
+    return "#"; // unset: git's default
+  }
+}
+// The comment character of a message git prepared for the editor, and whether git wrote its comment
+// block at all. That block always holds a line that is the bare comment character (and, with -v, the
+// scissors line). Without one, git opens no editor (-m/-F) or shows no status (commit.status=false), and
+// a line that merely starts with '#' is message content, not a comment.
+function editorComments(body) {
+  const configured = configuredCommentChar();
+  const lines = body.split("\n");
+  if (configured !== "auto") {
+    const ch = configured[0];
+    return { ch, editor: lines.includes(ch) || scissorsRe(ch).test(body) };
+  }
+  const scissors = body.match(/^(\S) -{24} >8 -{24}$/m)?.[1];
+  if (scissors) return { ch: scissors, editor: true };
+  const bare = lines.filter((l) => l.length === 1 && AUTO_CANDIDATES.includes(l)).pop();
+  return bare ? { ch: bare, editor: true } : { ch: "#", editor: false };
+}
+// What git keeps of an edited message: no comment lines, no verbose diff after the scissors line.
 function content(text, ch) {
-  const scissors = new RegExp(`^${escapeRe(ch)} -{24} >8 -{24}$`, "m");
   return text
-    .split(scissors)[0]
+    .split(scissorsRe(ch))[0]
     .split("\n")
     .filter((l) => !l.startsWith(ch))
     .map((l) => l.trimEnd())
@@ -69,18 +83,31 @@ function content(text, ch) {
 
 try {
   // A stale marker (editor killed before commit-msg ran) is cleared by the next prepare-commit-msg.
-  const deferred = marker !== null && existsSync(marker) ? readFileSync(marker, "utf8") : null;
-  if (marker !== null && deferred !== null) rmSync(marker, { force: true });
-  if (afterEdit && deferred === null) process.exit(0);
+  const raw = marker !== null && existsSync(marker) ? readFileSync(marker, "utf8") : null;
+  if (marker !== null && raw !== null) rmSync(marker, { force: true });
+  if (afterEdit && raw === null) process.exit(0);
   const body = readFileSync(file, "utf8");
-  const ch = commentChar(body);
-  // A commit.template is shown in the editor; git aborts when it is left untouched, so defer it too.
-  if (!afterEdit && (!content(body, ch) || source === "template")) {
-    if (marker !== null) writeFileSync(marker, body);
-    process.exit(0);
+  if (!afterEdit) {
+    // Defer when git will drop what is there: a whitespace-only message, an editor message that is all
+    // comments, or a commit.template (git aborts when it is left untouched). The marker keeps the
+    // comment character seen now, before the editor can delete the lines that reveal it.
+    const { ch, editor } = editorComments(body);
+    if (!body.trim() || (editor && !content(body, ch)) || source === "template") {
+      if (marker !== null) writeFileSync(marker, JSON.stringify({ ch, body }));
+      process.exit(0);
+    }
+  } else {
+    let deferred;
+    try {
+      deferred = JSON.parse(raw);
+    } catch {
+      deferred = null;
+    }
+    if (typeof deferred?.ch !== "string" || typeof deferred?.body !== "string") deferred = { ch: editorComments(raw).ch, body: raw };
+    // Left empty or unchanged in the editor: git aborts the commit, so add nothing.
+    const now = content(body, deferred.ch);
+    if (!now || now === content(deferred.body, deferred.ch)) process.exit(0);
   }
-  // Left empty or unchanged in the editor: git aborts the commit, so add nothing.
-  if (afterEdit && (!content(body, ch) || content(body, ch) === content(deferred, ch))) process.exit(0);
   const lines = [];
   // An amend already carries the trailer. Avoid even loading the board in that case.
   if (!/^Octobots-(?:Mission|Campaign):/m.test(body)) {

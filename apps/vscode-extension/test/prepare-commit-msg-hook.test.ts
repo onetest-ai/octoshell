@@ -127,6 +127,52 @@ describe("prepare-commit-msg trailer hook (pack port of solo's M2 hook)", () => 
     });
   });
 
+  describe("a message whose lines start with the comment character (review round 1)", () => {
+    it("-m '#123 fix crash' keeps its subject (git keeps it without an editor) and gains one trailer", () => {
+      const r = hookRepo();
+      const res = r.commit(`feat/${r.slug}-m1`, { args: ["-m", "#123 fix crash"] });
+      expect(res.status, res.stderr).toBe(0);
+      expect(r.git("log", "-1", "--format=%s").trim()).toBe("#123 fix crash");
+      expect(trailers(r.body())).toEqual([`Octobots-Mission: ${r.slug}/M1`]);
+    });
+
+    it("-F with a '#'-led message on an unattributed branch commits and warns exactly once", () => {
+      const r = hookRepo();
+      const msg = join(r.root, "msg.txt");
+      writeFileSync(msg, "#7 tidy\n");
+      const res = r.commit("scratch/x", { args: ["-F", msg] });
+      expect(res.status, res.stderr).toBe(0);
+      expect(r.git("log", "-1", "--format=%s").trim()).toBe("#7 tidy");
+      expect(warnings(res.stderr)).toHaveLength(1);
+    });
+
+    it("-m '#123' -e left untouched still aborts (the editor strips it)", () => {
+      const r = hookRepo();
+      expect(r.commit(`feat/${r.slug}-m1`).status).toBe(0);
+      const before = r.git("rev-parse", "HEAD");
+      const res = r.commit(`feat/${r.slug}-m1`, { args: ["-m", "#123", "-e"], env: { GIT_EDITOR: "/usr/bin/true" } });
+      expect(res.status).not.toBe(0);
+      expect(res.stderr).toMatch(/Aborting commit due to empty commit message/);
+      expect(r.git("rev-parse", "HEAD")).toBe(before);
+    });
+
+    it("core.commentChar=auto with a '#'-led template: clearing the template still aborts", () => {
+      const r = hookRepo();
+      expect(r.commit(`feat/${r.slug}-m1`).status).toBe(0);
+      const before = r.git("rev-parse", "HEAD");
+      writeFileSync(join(r.root, "tpl.txt"), "# heading\nsubject\n");
+      r.git("config", "core.commentChar", "auto");
+      r.git("config", "commit.template", join(r.root, "tpl.txt"));
+      // Keep only git's own comment lines, which it wrote with ';' (the first free candidate).
+      const editor = join(r.root, "keep-comments.sh");
+      writeFileSync(editor, `#!/bin/sh\ngrep '^;' "$1" > "$1.new"; mv "$1.new" "$1"\n`);
+      chmodSync(editor, 0o755);
+      const res = r.commit(`feat/${r.slug}-m1`, { args: [], env: { GIT_EDITOR: editor } });
+      expect(res.status).not.toBe(0);
+      expect(r.git("rev-parse", "HEAD")).toBe(before);
+    });
+  });
+
   describe("attribute.mjs timeout", () => {
     const slow = (r: ReturnType<typeof hookRepo>) =>
       writeFileSync(
