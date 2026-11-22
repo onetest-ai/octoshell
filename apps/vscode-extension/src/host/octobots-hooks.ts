@@ -30,14 +30,52 @@ function writeJson(path: string, value: unknown): void {
 
 type HookEntry = { matcher?: string; hooks: { type: string; command: string; async?: boolean }[]; _octobots?: number };
 
-const CLAUDE_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/primer.mjs" --backend claude`;
-const WORK_LOG_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/work-log.mjs"`;
-const DISPATCH_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/dispatch-on-main.mjs"`;
-const MISSION_GATE_CMD = `node "\${CLAUDE_PROJECT_DIR}/.octobots/hooks/mission-gate.mjs"`;
+/**
+ * The hook entries octoshell owns, as data: the single source for what the installer writes
+ * (`claudeEntries`), for which scripts count as ours (`OUR_SCRIPTS`), and for the default list the pack
+ * doctor checks (`resources/octobots-pack/hooks/required-hooks.json`, derived by `octoshellRequiredHooks`
+ * and pinned by a test). `args` is the command-line tail the installer appends; `async: false` means
+ * the hook injects something the agent must see before it proceeds.
+ */
+export const OCTOBOTS_HOOK_SPECS = [
+  { event: "SessionStart", script: ".octobots/hooks/primer.mjs", args: "--backend claude", matcher: "startup|clear|compact|resume", async: false },
+  // The work log records which session did which task, so tokenomics attribution is a recorded fact
+  // rather than an inference from branch names. Async: nothing downstream waits on it, and it must
+  // never delay or fail the tool call.
+  { event: "PostToolUse", script: ".octobots/hooks/work-log.mjs", matcher: "Bash", async: true },
+  // The mission gate steers the agent into the blocking completion gate when a mission flips to
+  // `done`. Synchronous by design: it injects a directive the orchestrator must act on first.
+  { event: "PostToolUse", script: ".octobots/hooks/mission-gate.mjs", matcher: "Bash", async: false },
+  { event: "PreToolUse", script: ".octobots/hooks/dispatch-on-main.mjs", matcher: "Agent|Task", async: true },
+] as const satisfies readonly { event: string; script: string; args?: string; matcher: string; async: boolean }[];
 
 /** The Claude hook events we own. Every entry we write carries `_octobots`. */
 const CLAUDE_EVENTS = ["SessionStart", "PostToolUse", "PreToolUse"] as const;
 type ClaudeEvent = (typeof CLAUDE_EVENTS)[number];
+
+const commandOf = (spec: (typeof OCTOBOTS_HOOK_SPECS)[number]): string =>
+  `node "\${CLAUDE_PROJECT_DIR}/${spec.script}"${"args" in spec ? ` ${spec.args}` : ""}`;
+
+/** The installer command the pack doctor prints for a missing octoshell entry. */
+const INSTALLER_COMMAND = 'VS Code command palette: "Octobots: Install Octobots Pack" (current Octobots extension)';
+
+/** The pack doctor's default required list, in its file schema (version, installers, hooks). */
+export function octoshellRequiredHooks(): Record<string, unknown> {
+  return {
+    version: 1,
+    note: "Octoshell's own hook entries, derived from OCTOBOTS_HOOK_SPECS in octobots-hooks.ts (the installer's own list). Matched by script path and matcher in .claude/settings.json, never by command string. A repo adds other installers' entries in .agents/settings/required-hooks.json (add-only).",
+    installers: {
+      octoshell: { source: "octoshell apps/vscode-extension/src/host/octobots-hooks.ts", command: INSTALLER_COMMAND },
+    },
+    hooks: OCTOBOTS_HOOK_SPECS.map((s) => ({
+      event: s.event,
+      script: s.script,
+      matcher: s.matcher,
+      owner: "octoshell",
+      ...(s.async ? {} : { sync: true }),
+    })),
+  };
+}
 
 /**
  * Events an earlier pack registered and this one no longer does. Our entries there are stripped on
@@ -51,26 +89,11 @@ type ClaudeEvent = (typeof CLAUDE_EVENTS)[number];
 const RETIRED_CLAUDE_EVENTS = ["PreCompact"] as const;
 
 function claudeEntries(event: ClaudeEvent, version: number): HookEntry[] {
-  if (event === "PreToolUse") {
-    return [{ matcher: "Agent|Task", hooks: [{ type: "command", command: DISPATCH_CMD, async: true }], _octobots: version }];
-  }
-  if (event === "PostToolUse") {
-    return [
-      // The work log records which session did which task, so tokenomics
-      // attribution is a recorded fact rather than an inference from branch
-      // names. Async: nothing downstream waits on it, and it must never delay
-      // or fail the tool call.
-      { matcher: "Bash", hooks: [{ type: "command", command: WORK_LOG_CMD, async: true }], _octobots: version },
-      // The mission gate steers the agent into the blocking completion gate
-      // when a mission flips to `done`. Synchronous *by design* — it injects a
-      // directive the orchestrator must act on before proceeding, which an
-      // async hook could not do.
-      { matcher: "Bash", hooks: [{ type: "command", command: MISSION_GATE_CMD, async: false }], _octobots: version },
-    ];
-  }
-  const entry: HookEntry = { hooks: [{ type: "command", command: CLAUDE_CMD, async: false }], _octobots: version };
-  if (event === "SessionStart") entry.matcher = "startup|clear|compact|resume";
-  return [entry];
+  return OCTOBOTS_HOOK_SPECS.filter((spec) => spec.event === event).map((spec) => ({
+    matcher: spec.matcher,
+    hooks: [{ type: "command", command: commandOf(spec), async: spec.async }],
+    _octobots: version,
+  }));
 }
 
 /**
@@ -84,12 +107,7 @@ function claudeEntries(event: ClaudeEvent, version: number): HookEntry[] {
  * PreCompact, work-log.mjs and mission-gate.mjs twice each on PostToolUse — so every Bash tool call
  * paid four hook processes instead of two, forever, with no way to clear it by reinstalling.
  */
-const OUR_SCRIPTS = [
-  ".octobots/hooks/primer.mjs",
-  ".octobots/hooks/work-log.mjs",
-  ".octobots/hooks/mission-gate.mjs",
-  ".octobots/hooks/dispatch-on-main.mjs",
-] as const;
+const OUR_SCRIPTS: readonly string[] = OCTOBOTS_HOOK_SPECS.map((spec) => spec.script);
 
 /** True when this entry is one of ours — by marker, or by the script its command runs. */
 function isOurs(entry: HookEntry): boolean {

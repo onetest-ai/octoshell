@@ -2,7 +2,7 @@
 // QA harness (campaign "Test conventions" rule 3, owned by M2/T2.3). NOT part of the shipped extension.
 //
 // Usage: node apps/vscode-extension/scripts/qa/install-pack.mjs <workspace> [--pack-root <dir>]
-//          [--local-changes=reconcile|overwrite|keep] [--pack-version <n>]
+//          [--local-changes=reconcile|overwrite|keep] [--pack-version <n>] [--hooks]
 //
 // Runs the extension's own pack installer against <workspace> without a VS Code runtime: it bundles
 // src/host/octobots-skill.ts in memory with esbuild (that import graph is vscode-free) and calls
@@ -18,6 +18,11 @@
 //   --pack-version    overrides the pack version for detection and staging (QA only, to exercise a
 //                     later version).
 //
+//   --hooks           register octoshell's hook entries in <workspace>/.claude/settings.json, as the
+//                     install prompt's "yes" does. Needed on a fresh copy of a repo: settings.json is
+//                     gitignored, so a copy has none, and hooks are otherwise opt-in (refreshed only
+//                     when already registered). Writes nothing under the repo's git hooks directory.
+//
 // Prints JSON: {before, deviations, result, after}
 //   before / after  packStatus(<workspace>)
 //   deviations      the changed pack skills found before the install: [{skill, version, reason, retired, sha256}]
@@ -30,11 +35,12 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
-const USAGE = "usage: install-pack.mjs <workspace> [--pack-root <dir>] [--local-changes=reconcile|overwrite|keep] [--pack-version <n>]";
+const USAGE = "usage: install-pack.mjs <workspace> [--pack-root <dir>] [--local-changes=reconcile|overwrite|keep] [--pack-version <n>] [--hooks]";
 const args = process.argv.slice(2);
 let packRootArg;
 let localChanges; // undefined: the default install, which preserves skills kept earlier
 let packVersion;
+let hooks = false;
 const positional = [];
 const usage = () => { console.error(USAGE); process.exit(2); };
 for (let i = 0; i < args.length; i++) {
@@ -45,6 +51,7 @@ for (let i = 0; i < args.length; i++) {
     if (!/^\d+$/.test(v ?? "")) usage();
     packVersion = Number(v);
   }
+  else if (a === "--hooks") hooks = true;
   else if (a.startsWith("--local-changes=")) {
     localChanges = a.slice("--local-changes=".length);
     if (!["reconcile", "overwrite", "keep"].includes(localChanges)) usage();
@@ -81,7 +88,7 @@ try {
   const version = packVersion ?? mod.OCTOBOTS_PACK_VERSION;
   const before = mod.packStatus(workspace, version, store);
   const deviations = before.deviations;
-  const result = mod.installPack(packRoot, workspace, { store, ...(localChanges === undefined ? {} : { localChanges }), ...(packVersion === undefined ? {} : { packVersion }) });
+  const result = mod.installPack(packRoot, workspace, { store, ...(hooks ? { hooks: true } : {}), ...(localChanges === undefined ? {} : { localChanges }), ...(packVersion === undefined ? {} : { packVersion }) });
   const after = mod.packStatus(workspace, version, store);
   console.log(JSON.stringify({ before, deviations, result, after }, null, 2));
   if (result.error) throw new Error(result.error);

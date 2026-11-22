@@ -1,0 +1,91 @@
+import { describe, it, expect } from "vitest";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
+import { SET_STATUS, makeStatusBoard, postToolUseWithOutput } from "./fixtures/status-flip-board.js";
+
+const WORK_LOG = join(__dirname, "..", "resources", "octobots-pack", "hooks", "work-log.mjs");
+const LOG = (repo: string) => join(repo, ".octobots", "tokenomics", "worklog.jsonl");
+const lines = (repo: string): Record<string, unknown>[] =>
+  existsSync(LOG(repo)) ? readFileSync(LOG(repo), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>) : [];
+
+/** Run a shell command as the Bash tool would, with an optional Claude Code session id in the environment. */
+function sh(repo: string, command: string, session?: string) {
+  const { CLAUDE_CODE_SESSION_ID: _s, ...env } = process.env;
+  return spawnSync("sh", ["-c", command], { cwd: repo, encoding: "utf8", env: { ...env, ...(session ? { CLAUDE_CODE_SESSION_ID: session } : {}) } });
+}
+function hook(repo: string, payload: unknown): void {
+  execFileSync("node", [WORK_LOG], { cwd: repo, env: { ...process.env, CLAUDE_PROJECT_DIR: repo }, input: JSON.stringify(payload), encoding: "utf8" });
+}
+const gitInit = (repo: string) => execFileSync("git", ["init", "-q", "-b", "feat/demo-m1-t1"], { cwd: repo, encoding: "utf8" });
+
+describe("set-status.js writes the work log line itself", () => {
+  it("logs a task flip when the target and title come through shell variables", () => {
+    const b = makeStatusBoard("ss-worklog-");
+    gitInit(b.repo);
+    const r = sh(b.repo, `D='${b.missionDir}'; T='T1.1 - Parse ids'; node "${SET_STATUS}" "$D" "$T" active`, "sess-var");
+    expect(r.status, r.stderr).toBe(0);
+    expect(lines(b.repo)).toHaveLength(1);
+    expect(lines(b.repo)[0]).toMatchObject({ session_id: "sess-var", task: "T1.1", state: "active", branch: "feat/demo-m1-t1" });
+    expect(typeof lines(b.repo)[0]!.at).toBe("string");
+  });
+
+  it("logs a mission flip as session -> mission", () => {
+    const b = makeStatusBoard("ss-worklog-");
+    const r = sh(b.repo, `P='${b.campaignDir}'; node "${SET_STATUS}" "$P" "M1 - Venue ingest" done`, "sess-m");
+    expect(r.status, r.stderr).toBe(0);
+    expect(lines(b.repo)[0]).toMatchObject({ session_id: "sess-m", mission: "M1", state: "done" });
+  });
+
+  it("logs nothing without a session id, and still succeeds", () => {
+    const b = makeStatusBoard("ss-worklog-");
+    const r = sh(b.repo, `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" active`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(lines(b.repo)).toHaveLength(0);
+  });
+
+  it("logs nothing for a re-run that changed nothing, for a draft move, or for an entity that is neither task nor mission", () => {
+    const b = makeStatusBoard("ss-worklog-");
+    sh(b.repo, `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" active`, "s1");
+    expect(lines(b.repo)).toHaveLength(1);
+    sh(b.repo, `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" active`, "s1");
+    expect(lines(b.repo)).toHaveLength(1);
+    sh(b.repo, `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" draft`, "s1");
+    expect(lines(b.repo)).toHaveLength(1);
+    sh(b.repo, `node "${SET_STATUS}" "${b.campaignDir}" "C" done`, "s1");
+    expect(lines(b.repo)).toHaveLength(1);
+  });
+
+  it("logs nothing when the target does not exist", () => {
+    const b = makeStatusBoard("ss-worklog-");
+    const r = sh(b.repo, `node "${SET_STATUS}" "${b.missionDir}" "T9.9 - no such task" active`, "s1");
+    expect(r.status).toBe(1);
+    expect(lines(b.repo)).toHaveLength(0);
+  });
+
+  it("the hook does not log the same flip a second time (same session, same target, same state)", () => {
+    const b = makeStatusBoard("ss-worklog-");
+    const command = `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" active`;
+    const r = sh(b.repo, command, "sess-dup");
+    hook(b.repo, postToolUseWithOutput(b.repo, command, r.stdout, "sess-dup"));
+    expect(lines(b.repo)).toHaveLength(1);
+  });
+
+  it("the hook still records a flip set-status.js did not (no session id in its environment), and a later different state", () => {
+    const b = makeStatusBoard("ss-worklog-");
+    const start = `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" active`;
+    hook(b.repo, postToolUseWithOutput(b.repo, start, sh(b.repo, start).stdout, "sess-h"));
+    expect(lines(b.repo)).toHaveLength(1);
+    const done = `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" done`;
+    hook(b.repo, postToolUseWithOutput(b.repo, done, sh(b.repo, done, "sess-h").stdout, "sess-h"));
+    expect(lines(b.repo).map((l) => `${l.task}:${l.state}`)).toEqual(["T1.1:active", "T1.1:done"]);
+  });
+
+  it("a second activation after done is a new line, not a duplicate", () => {
+    const b = makeStatusBoard("ss-worklog-");
+    const go = (state: string) => sh(b.repo, `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" ${state}`, "s1");
+    go("active"); go("done"); go("active");
+    expect(lines(b.repo).map((l) => l.state)).toEqual(["active", "done", "active"]);
+  });
+});

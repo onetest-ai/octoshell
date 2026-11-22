@@ -9,6 +9,9 @@
 //
 //   {"session_id":"…","task":"T11.4","state":"active","branch":"feat/…","at":"…"}
 //
+// set-status.js appends that line itself (it knows its target, however the shell passed it). This hook
+// is the fallback for a run without CLAUDE_CODE_SESSION_ID, and skips a flip the script already logged.
+//
 // WHY
 // Attribution of cost and effort to a task otherwise has to be *inferred* from
 // branch names (`feat/<campaign>-m3-t2` -> T3.2). That works only while every
@@ -29,7 +32,7 @@
 //   * Writes only; emits nothing on stdout and never influences the agent.
 //   * Never fails the tool call. A work log is analytics; analytics must not
 //     break the board.
-import { existsSync, appendFileSync, mkdirSync } from "node:fs";
+import { existsSync, appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { confirmedTransitions, parseSetStatusAll } from "./status-flip.mjs";
@@ -94,10 +97,24 @@ try {
   const dir = join(projectDir, ".octobots", "tokenomics");
   mkdirSync(dir, { recursive: true });
   const at = new Date().toISOString();
-  appendFileSync(
-    join(dir, "worklog.jsonl"),
-    flips.map((f) => JSON.stringify({ session_id: sessionId, ...f, branch, at }) + "\n").join(""),
-  );
+  const file = join(dir, "worklog.jsonl");
+  // set-status.js writes this line itself now (it knows its target even when the command text passes it
+  // through shell variables). This hook is the fallback for a script that had no session id, so skip a
+  // flip the script already logged: the latest line for this session and target holds the same state,
+  // written within the last minute.
+  const recent = existsSync(file) ? readFileSync(file, "utf8").split("\n").slice(-200) : [];
+  const alreadyLogged = (f) => {
+    for (let i = recent.length - 1; i >= 0; i--) {
+      let e;
+      try { e = JSON.parse(recent[i]); } catch { continue; }
+      if (e.session_id !== sessionId || e.task !== f.task || e.mission !== f.mission) continue;
+      return e.state === f.state && Date.now() - Date.parse(e.at) < 60_000;
+    }
+    return false;
+  };
+  const fresh = flips.filter((f) => !alreadyLogged(f));
+  if (fresh.length === 0) process.exit(0);
+  appendFileSync(file, fresh.map((f) => JSON.stringify({ session_id: sessionId, ...f, branch, at }) + "\n").join(""));
 } catch {
   // Never fail the tool call over analytics.
 }
