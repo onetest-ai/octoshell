@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "note": "Octoshell's own hook entries, derived from OCTOBOTS_HOOK_SPECS in octobots-hooks.ts (the installer's own list). Matched by script path and matcher in .claude/settings.json, never by command string. A repo adds other installers' entries in .agents/settings/required-hooks.json (add-only).",
+  "installers": {
+    "octoshell": {
+      "source": "octoshell apps/vscode-extension/src/host/octobots-hooks.ts",
+      "command": "VS Code command palette: \"Octobots: Install Octobots Pack\" (current Octobots extension)"
+    }
+  },
+  "hooks": [
+    {
+      "event": "SessionStart",
+      "script": ".octobots/hooks/primer.mjs",
+      "matcher": "startup|clear|compact|resume",
+      "owner": "octoshell",
+      "sync": true
+    },
+    {
+      "event": "PostToolUse",
+      "script": ".octobots/hooks/work-log.mjs",
+      "matcher": "Bash",
+      "owner": "octoshell"
+    },
+    {
+      "event": "PostToolUse",
+      "script": ".octobots/hooks/mission-gate.mjs",
+      "matcher": "Bash",
+      "owner": "octoshell",
+      "sync": true
+    },
+    {
+      "event": "PreToolUse",
+      "script": ".octobots/hooks/dispatch-on-main.mjs",
+      "matcher": "Agent|Task",
+      "owner": "octoshell"
+    }
+  ]
+}

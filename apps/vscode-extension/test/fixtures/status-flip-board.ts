@@ -63,7 +63,10 @@ export function postToolUseWithOutput(repo: string, command: string, stdout: str
 
 /** Actually run the command (as the shell would) so the board changes, and return its real payload incl. stdout. */
 export function runAndPost(repo: string, command: string): Record<string, unknown> {
-  const r = spawnSync("sh", ["-c", command], { cwd: repo, encoding: "utf8" });
+  // set-status.js records the work log itself under CLAUDE_CODE_SESSION_ID: a developer running this suite
+  // inside a Claude Code session must not leak theirs into these runs.
+  const { CLAUDE_CODE_SESSION_ID: _session, ...env } = process.env;
+  const r = spawnSync("sh", ["-c", command], { cwd: repo, encoding: "utf8", env });
   return {
     ...postToolUse(repo, command),
     tool_response: { stdout: r.stdout, stderr: r.stderr, interrupted: false, isImage: false },

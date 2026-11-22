@@ -66,3 +66,51 @@ tool, timestamp and `dispatch-on-main` kind. The hook finds the Git worktree roo
 from the session directory. It emits no decision and fails open on errors.
 Doctor reports the missing hook by event and script path. The pack installer
 preserves an earlier hook opt-in when it adds this event.
+
+## Commit trailer hook and hook doctor (pack v59)
+
+The pack ships `.octobots/hooks/prepare-commit-msg.mjs`. It asks the attribution CLI
+(`.octobots/tokenomics/attribute.mjs`) which board item the current branch belongs to and adds one
+`Octobots-Mission: <campaign>/<M>` or `Octobots-Campaign: <campaign>` trailer, never a duplicate. It
+never blocks a commit. An unattributed branch, or a CLI that exits non-zero, gets exactly one warning
+that names the branch and points to the mission-execution skill. `OCTOBOTS_CODEX_MODEL` adds a
+`Co-Authored-By: Codex (<model>)` line. `OCTOBOTS_ATTRIBUTE_TIMEOUT_MS` raises the CLI time limit
+(default 30000).
+
+The pack writes nothing under the repo's hooks directory. Each repo commits two shims once, at
+`<core.hooksPath>/prepare-commit-msg` and `<core.hooksPath>/commit-msg`, mode 100755:
+
+```sh
+#!/bin/sh
+# Attribution is advisory: a missing runtime or pack script must not block Git.
+command -v node >/dev/null || { echo "prepare-commit-msg: warning: node not found, no mission trailer added" >&2; exit 0; }
+helper="$(git rev-parse --show-toplevel)/.octobots/hooks/prepare-commit-msg.mjs"
+[ -f "$helper" ] || { echo "prepare-commit-msg: warning: $helper not found, no mission trailer added" >&2; exit 0; }
+node "$helper" "$@"
+exit 0
+```
+
+```sh
+#!/bin/sh
+# Adds the mission trailer that prepare-commit-msg deferred until the editor closed. Advisory: never blocks.
+command -v node >/dev/null || exit 0
+helper="$(git rev-parse --show-toplevel)/.octobots/hooks/prepare-commit-msg.mjs"
+[ -f "$helper" ] || exit 0
+node "$helper" --after-edit "$@"
+exit 0
+```
+
+Both shims are guarded: a missing `node` or a missing pack script prints one warning line (from
+`prepare-commit-msg` only) and exits 0, so a fresh worktree or a repo that commits the shims before the
+pack arrives never sees a stack trace. `commit-msg` adds the trailer after the editor closes and only when content was written, so an empty
+message still aborts the commit.
+
+`node .octobots/hooks/hooks-doctor.mjs [--root <dir>]` checks both sides without writing anything:
+the octoshell hook entries in `.claude/settings.json` (by script path and matcher), and the git wiring
+(`core.hooksPath` set, both shims present, executable, running the pack script). It prints each gap with
+its owner and the exact fix. The default list is `required-hooks.json`, derived from the installer's own
+list (`OCTOBOTS_HOOK_SPECS`; regenerate with `apps/vscode-extension/scripts/required-hooks.mjs --write`).
+A repo adds other installers' entries in `.agents/settings/required-hooks.json` (add-only, keyed by event,
+script and arg).
+
+`install-pack.mjs --hooks` registers the octoshell entries in a fresh copy that has no `settings.json`.

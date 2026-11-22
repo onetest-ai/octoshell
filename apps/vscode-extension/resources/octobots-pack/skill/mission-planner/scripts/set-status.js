@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-import { existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
+import { execFileSync } from "node:child_process";
 import { dumpEntity, mapBoardStatus, readEntity, resolveEntityFile, resolveStatusTarget } from "./entity-io.mjs";
 import { planReviewStatus } from "./plan-review.mjs";
+import { worklogFile, worklogProjectDir } from "./worklog-path.mjs";
 
 // Set an entity's status in its OWN `<kind>.yaml` — status is a field in the child's file, never a
 // marker on a parent board line (children are folder-derived). Resolve the target by name within the
@@ -101,6 +103,43 @@ writeFileSync(join(match.dir, `${match.kind}.yaml`), dumpEntity(match.kind, fiel
 console.log(`set status of "${title}" to ${mapped}`);
 // Machine-readable, one per call: the hooks (hooks/status-flip.mjs) act only on a line like this.
 console.log(`octobots: status ${match.kind} ${JSON.stringify(title)} ${from} -> ${mapped}`);
+recordWorklog();
+
+/**
+ * Append the tokenomics work-log line for a real task or mission start/finish: which Claude Code session
+ * did which task (`.octobots/tokenomics/worklog.jsonl`). This script performs the transition, so it is
+ * the one place that knows the target for certain; the PostToolUse hook (work-log.mjs) can only guess it
+ * from the command text and sees nothing when the call passes its arguments through shell variables.
+ * The session comes from CLAUDE_CODE_SESSION_ID. Without one nothing is written (the hook still can).
+ * Analytics must never fail a status change.
+ */
+function recordWorklog() {
+  try {
+    const session = process.env.CLAUDE_CODE_SESSION_ID;
+    const requested = state.toLowerCase();
+    if (!session || !["active", "done"].includes(requested)) return;
+    const taskId = title.match(/^(T\d+\.\d+)\b/)?.[1] ?? null;
+    const missionId = taskId ? null : (title.match(/^(M\d+)\b/)?.[1] ?? null);
+    if (!taskId && !missionId) return;
+    // The file is the session's project dir's, the same rule the work-log hook uses (worklog-path.mjs).
+    // It self-gates on `.octobots/` there, like the hook. The branch is the board's own checkout's.
+    if (!existsSync(join(worklogProjectDir(), ".octobots"))) return;
+    const abs = resolve(arg);
+    const at = abs.indexOf(`${sep}.octobots${sep}`);
+    let branch = null;
+    try {
+      if (at !== -1) branch = execFileSync("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], { cwd: abs.slice(0, at), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    } catch {
+      // Detached HEAD or not a git repo: the session id alone still links the work.
+    }
+    const file = worklogFile();
+    mkdirSync(dirname(file), { recursive: true });
+    const target = taskId ? { task: taskId } : { mission: missionId };
+    appendFileSync(file, JSON.stringify({ session_id: session, ...target, state: requested, branch, at: new Date().toISOString() }) + "\n");
+  } catch {
+    // Never fail the status change over analytics.
+  }
+}
 
 /** Print why the move into executing is refused, and how to fix or override it, then exit 3. */
 function refuse(candidates, campaignError) {
