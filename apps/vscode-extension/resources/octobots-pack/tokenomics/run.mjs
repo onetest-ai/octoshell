@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // octobots-pack-version: 59
-// Tokenomics pipeline runner — collect -> rollup -> render, in one call.
+// Tokenomics pipeline runner — collect -> collect-codex -> rollup -> render, in one call.
 //
 // This is what the mission-completion gate invokes. It is deliberately
 // NON-BLOCKING: the gate is a correctness gate (tests, QA, review) and must
@@ -20,6 +20,7 @@ const passthrough = args.filter((a) => a !== "--strict");
 
 const stages = [
   ["collect", "collect.mjs"],
+  ["collect-codex", "collect-codex.mjs"],
   ["rollup", "rollup.mjs"],
   ["render", "render.mjs"],
 ];

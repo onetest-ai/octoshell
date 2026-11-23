@@ -29,7 +29,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, exis
 import { tmpdir } from "node:os";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import * as zlib from "node:zlib";
+// A named import would fail to load on a Node without zstd (before 22.15); see the codex suite.
+const zstdCompressSync = typeof zlib.zstdCompressSync === "function" ? zlib.zstdCompressSync : null;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..");
@@ -385,6 +388,222 @@ function runRootsSuite() {
   rmSync(base, { recursive: true, force: true });
 }
 
+// --- Codex source ----------------------------------------------------------
+// Synthetic rollouts only: every id, path, count and string below is invented.
+// SENTINEL is planted in every field the collector must NEVER read (prompts,
+// instructions, replies), so a leak into raw/segments.jsonl is detectable.
+const SENTINEL = "SENTINEL-PROMPT-TEXT-must-never-reach-the-repo";
+const CODEX_REPO = "demo-owner/demo-repo";
+
+function rolloutLine(timestamp, type, payload) { return JSON.stringify({ timestamp, type, payload }); }
+
+function writeRollout(codexDir, { id, ts, cwd, branch, repoUrl, parent = null, agentPath = null, turns, zst = false }) {
+  const day = ts.slice(0, 10).split("-");
+  const dir = join(codexDir, ...day);
+  mkdirSync(dir, { recursive: true });
+  const git = { commit_hash: "0".repeat(40), repository_url: repoUrl };
+  if (branch) git.branch = branch;
+  const lines = [rolloutLine(ts, "session_meta", {
+    id, session_id: id, timestamp: ts, cwd, originator: "codex-tui", cli_version: "0.0.0", git,
+    base_instructions: SENTINEL, ...(parent ? { parent_thread_id: parent, agent_path: agentPath, agent_nickname: SENTINEL } : {}),
+  })];
+  for (const t of turns) {
+    lines.push(rolloutLine(t.at, "turn_context", {
+      turn_id: t.turn, cwd, model: t.model, effort: t.effort,
+      collaboration_mode: { settings: { model: t.model, reasoning_effort: t.effort, developer_instructions: SENTINEL } },
+    }));
+    lines.push(rolloutLine(t.at, "response_item", { type: "message", role: "user", content: [{ type: "input_text", text: SENTINEL }] }));
+    for (const r of t.responses) {
+      const u = { input_tokens: r.in, cached_input_tokens: r.cached, cache_write_input_tokens: 0, output_tokens: r.out, reasoning_output_tokens: r.reason, total_tokens: r.in + r.out };
+      lines.push(rolloutLine(r.at, "token_usage_record", { thread_id: id, turn_id: t.turn, session_id: id, response_id: r.id, usage: u, turn_token_usage: u, thread_token_usage: u }));
+      // The same usage restated by the event stream: must not be added twice.
+      lines.push(rolloutLine(r.at, "event_msg", { type: "token_count", info: { total_token_usage: u, last_token_usage: u }, rate_limits: { primary: { used_percent: 1 } } }));
+    }
+    lines.push(rolloutLine(t.at, "event_msg", { type: "task_complete", turn_id: t.turn, last_agent_message: SENTINEL }));
+  }
+  const body = lines.join("\n") + "\n";
+  // Codex compresses older rollouts to .jsonl.zst; the collector must read both.
+  if (zst && zstdCompressSync) writeFileSync(join(dir, `rollout-${ts.replace(/:/g, "-")}-${id}.jsonl.zst`), zstdCompressSync(Buffer.from(body)));
+  else writeFileSync(join(dir, `rollout-${ts.replace(/:/g, "-")}-${id}.jsonl`), body);
+}
+
+// Counts are in thousands so costs are whole cents and a wrong rate cannot hide inside rounding.
+const R = (id, at, i, c, o, r) => ({ id, at, in: i * 1000, cached: c * 1000, out: o * 1000, reason: r * 1000 });
+const T = (turn, at, model, effort, responses) => ({ turn, at, model, effort, responses });
+
+function writeCodexRollouts(root, codexDir) {
+  const wt = join(root, ".worktrees", "builder");
+  const url = `https://github.com/${CODEX_REPO}.git`;
+  // A: a root builder session on a mission branch. Turn 1 repeats response r1
+  // (dedupe on response_id), turn 2 switches model + effort mid-session.
+  writeRollout(codexDir, { id: "a0000000-0000-0000-0000-00000000000a", ts: "2026-07-01T11:00:00.000Z", cwd: wt, branch: "feat/demo-m1-t1", repoUrl: url, turns: [
+    T("ta1", "2026-07-01T11:00:01.000Z", "gpt-6.1-sol", "high", [R("r1", "2026-07-01T11:00:10.000Z", 1000, 800, 50, 20), R("r1", "2026-07-01T11:00:10.000Z", 1000, 800, 50, 20)]),
+    T("ta2", "2026-07-01T11:05:00.000Z", "gpt-6-astra", "medium", [R("r2", "2026-07-01T11:05:10.000Z", 2000, 1500, 100, 40)]),
+  ] });
+  // B: a sub-agent forked by A.
+  writeRollout(codexDir, { id: "b0000000-0000-0000-0000-00000000000b", ts: "2026-07-01T11:02:00.000Z", cwd: wt, branch: "feat/demo-m1-t1", repoUrl: url,
+    parent: "a0000000-0000-0000-0000-00000000000a", agentPath: "/root/helper", zst: true, turns: [
+      T("tb1", "2026-07-01T11:02:01.000Z", "gpt-6.1-sol", "high", [R("r3", "2026-07-01T11:02:10.000Z", 400, 0, 10, 0)]),
+  ] });
+  // C: another repository entirely.
+  writeRollout(codexDir, { id: "c0000000-0000-0000-0000-00000000000c", ts: "2026-07-01T12:00:00.000Z", cwd: "/elsewhere/other-repo", branch: "feat/demo-m1-t1", repoUrl: "https://github.com/someone/other-repo.git", turns: [
+    T("tc1", "2026-07-01T12:00:01.000Z", "gpt-6.1-sol", "high", [R("r4", "2026-07-01T12:00:10.000Z", 9999, 0, 9999, 0)]),
+  ] });
+  // D: this repo, no branch recorded, outside every ledger window.
+  writeRollout(codexDir, { id: "d0000000-0000-0000-0000-00000000000d", ts: "2026-07-05T10:00:00.000Z", cwd: wt, branch: null, repoUrl: url, turns: [
+    T("td1", "2026-07-05T10:00:01.000Z", "gpt-6.1-sol", "high", [R("r5", "2026-07-05T10:00:10.000Z", 100, 0, 5, 0)]),
+  ] });
+  // E: started on main (orchestrator cuts the branch later) inside M1's dispatch window.
+  writeRollout(codexDir, { id: "e0000000-0000-0000-0000-00000000000e", ts: "2026-07-02T12:00:00.000Z", cwd: root, branch: "main", repoUrl: url, turns: [
+    T("te1", "2026-07-02T12:00:01.000Z", "gpt-6.1-terra", "xhigh", [R("r6", "2026-07-02T12:00:10.000Z", 3000, 1000, 200, 50)]),
+  ] });
+  // F: a model prices.json does not know.
+  writeRollout(codexDir, { id: "f0000000-0000-0000-0000-00000000000f", ts: "2026-07-01T13:00:00.000Z", cwd: wt, branch: "feat/demo-m1-t1", repoUrl: url, turns: [
+    T("tf1", "2026-07-01T13:00:01.000Z", "gpt-9-unknown", "high", [R("r7", "2026-07-01T13:00:10.000Z", 10, 0, 1, 0)]),
+  ] });
+}
+
+// Delivery ledger fixture: M1 was dispatched 07-02 09:00 and done 07-02 18:00.
+function writeLedger(root) {
+  const dir = join(root, ".agents", "telemetry", "delivery");
+  mkdirSync(dir, { recursive: true });
+  const ev = (at, level, ref, event, item) => JSON.stringify({ v: 2, at, plan: "demo/run-1", item_id: `demo/run-1/${item}`, ref, level, event });
+  writeFileSync(join(dir, "events-test.jsonl"), [
+    ev("2026-06-30T00:00:00.000Z", "mission", "M1", "created", "mission-m1"),
+    ev("2026-07-02T09:00:00.000Z", "mission", "M1", "dispatched", "mission-m1"),
+    ev("2026-07-02T18:00:00.000Z", "mission", "M1", "done", "mission-m1"),
+  ].join("\n") + "\n");
+}
+
+function runCodexSuite() {
+  console.log("\ntokenomics selftest — codex source:");
+  const root = mkdtempSync(join(tmpdir(), "tokenomics-selftest-codex-"));
+  const codexDir = join(root, "codex-sessions");
+  writeTranscripts(root);
+  writeBoard(root, "yaml");
+  writeLedger(root);
+  const tokDir = join(root, ".octobots", "tokenomics");
+  mkdirSync(tokDir, { recursive: true });
+  const pricesText = readFileSync(join(HERE, "prices.json"), "utf8");
+  writeFileSync(join(tokDir, "prices.json"), pricesText);
+  const prices = JSON.parse(pricesText).models;
+  const vendorDir = join(root, ".claude", "skills", "mission-planner", "scripts", "vendor");
+  mkdirSync(vendorDir, { recursive: true });
+  copyFileSync(VENDOR_YAML, join(vendorDir, "js-yaml.mjs"));
+  const home = mkdtempSync(join(tmpdir(), "tokenomics-selftest-home-"));
+  const env = isolatedEnv(home);
+  const sh = (script, extra = []) => execFileSync(process.execPath, [join(HERE, script), "--project-dir", root, "--no-gh", ...extra], { stdio: ["ignore", "ignore", "pipe"], env, encoding: "utf8" });
+  const rawFile = join(tokDir, "raw", "segments.jsonl");
+  // rollup's WARNINGs go to stderr; capture them (execFileSync only returns stdout).
+  const rollup = () => {
+    const r = spawnSync(process.execPath, [join(HERE, "rollup.mjs"), "--project-dir", root, "--no-gh"], { env, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`rollup failed: ${r.stderr}`);
+    return r.stderr;
+  };
+  const loadRuns = () => JSON.parse(readFileSync(join(tokDir, "runs.json"), "utf8"));
+  const collectCodex = (extra = []) => execFileSync(process.execPath, [join(HERE, "collect-codex.mjs"), "--project-dir", root, "--codex-dir", codexDir, "--repo", CODEX_REPO, "--quiet", ...extra], { stdio: ["ignore", "ignore", "inherit"], env });
+
+  // Baseline: Claude only.
+  sh("collect.mjs", ["--quiet"]);
+  rollup();
+  const base = loadRuns();
+  const baseRow = base.runs[0];
+
+  writeCodexRollouts(root, codexDir);
+  collectCodex();
+  const raw1 = readFileSync(rawFile, "utf8");
+  const segs = raw1.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const codex = segs.filter((s) => s.source === "codex");
+  const byThread = (c) => codex.find((s) => s.thread_id?.startsWith(c));
+
+  check("[codex] one segment per session x branch (A,B,D,E,F; C is another repo)", codex.length === 5, `got ${codex.length}: ${codex.map((s) => s.thread_id.slice(0, 1)).join()}`);
+  check("[codex] zstd-compressed rollout (.jsonl.zst) is read", Boolean(byThread("b")) && byThread("b")?.tokens_by_model["gpt-6.1-sol"]?.input_tokens === 400000);
+  check("[codex] other repo's session excluded", !byThread("c"));
+  check("[codex] claude segments keep no source tag (byte-identical rows)", segs.filter((s) => s.source !== "codex").every((s) => !("source" in s)));
+  check("[codex] segment ids are unique and carry the agent key", new Set(segs.map((s) => s.segment_id)).size === segs.length && byThread("b")?.segment_id.includes("/root/helper"), byThread("b")?.segment_id);
+
+  const a = byThread("a");
+  check("[codex] A: turns count unique responses (dup response_id once)", a?.turns === 2, `turns=${a?.turns}`);
+  check("[codex] A: non-cached input = input - cached", a?.tokens_by_model["gpt-6.1-sol"]?.input_tokens === 200000, JSON.stringify(a?.tokens_by_model));
+  check("[codex] A: cached input lands in cache_read", a?.tokens_by_model["gpt-6.1-sol"]?.cache_read_input_tokens === 800000);
+  check("[codex] A: output tokens (reasoning is a subset, not added)", a?.tokens_by_model["gpt-6.1-sol"]?.output_tokens === 50000 && a?.tokens_by_model["gpt-6.1-sol"]?.reasoning_output_tokens === 20000);
+  check("[codex] A: model switch mid-session split per model", a?.tokens_by_model["gpt-6-astra"]?.input_tokens === 500000 && a?.tokens_by_model["gpt-6-astra"]?.cache_read_input_tokens === 1500000, JSON.stringify(a?.tokens_by_model["gpt-6-astra"]));
+  check("[codex] A: models and efforts recorded", a?.models_used.join() === "gpt-6-astra,gpt-6.1-sol" && a?.efforts_used.join() === "high,medium", `${a?.models_used} ${a?.efforts_used}`);
+  check("[codex] A: timestamps from the usage records", a?.started_at === "2026-07-01T11:00:10.000Z" && a?.ended_at === "2026-07-01T11:05:10.000Z", `${a?.started_at} ${a?.ended_at}`);
+  check("[codex] A: root session is an orchestrator-less 'codex' kind", a?.kind === "codex" && a?.session_id === a?.thread_id);
+  const b = byThread("b");
+  check("[codex] B: sub-agent rolls up under its parent session", b?.kind === "codex-subagent" && b?.session_id === a?.thread_id && b?.agent_path === "/root/helper", JSON.stringify([b?.kind, b?.session_id, b?.agent_path]));
+  check("[codex] D: no recorded branch -> (none), not dropped", byThread("d")?.branch === "(none)");
+
+  // AC3: nothing from prompts / instructions / replies reaches the repo.
+  check("[codex] no prompt/instruction/reply text reaches segments.jsonl", !raw1.includes("SENTINEL"));
+  const allowed = new Set(["segment_id", "session_id", "thread_id", "parent_thread_id", "project_slug", "source", "kind", "agent_type", "agent_path", "branch", "cwd", "started_at", "ended_at", "turns", "models_used", "efforts_used", "tokens_by_model", "tools"]);
+  check("[codex] segment carries whitelisted keys only", codex.every((s) => Object.keys(s).every((k) => allowed.has(k))), codex.flatMap((s) => Object.keys(s)).filter((k) => !allowed.has(k)).join());
+
+  // AC1: idempotent, and re-collecting never disturbs Claude rows.
+  collectCodex();
+  check("[codex] collect-codex is idempotent", readFileSync(rawFile, "utf8") === raw1);
+  sh("collect.mjs", ["--quiet"]);
+  check("[codex] collect.mjs re-run keeps codex rows byte-identical", readFileSync(rawFile, "utf8") === raw1);
+
+  // --- rollup ---------------------------------------------------------------
+  const warn = rollup();
+  const out = loadRuns();
+  const row = out.runs[0];
+  const cost = (model, { input_tokens: i = 0, cache_read_input_tokens: c = 0, output_tokens: o = 0 }) =>
+    i * prices[model].input_cost_per_token + c * prices[model].cache_read_input_token_cost + o * prices[model].output_cost_per_token;
+  check("[codex] prices.json carries the Codex models in use", ["gpt-6.1-sol", "gpt-6-astra", "gpt-6.1-terra"].every((m) => prices[m]?.input_cost_per_token > 0 && prices[m]?.output_cost_per_token > 0));
+
+  const expA = cost("gpt-6.1-sol", { input_tokens: 200000, cache_read_input_tokens: 800000, output_tokens: 50000 }) + cost("gpt-6-astra", { input_tokens: 500000, cache_read_input_tokens: 1500000, output_tokens: 100000 });
+  const expB = cost("gpt-6.1-sol", { input_tokens: 400000, output_tokens: 10000 });
+  const expE = cost("gpt-6.1-terra", { input_tokens: 2000000, cache_read_input_tokens: 1000000, output_tokens: 200000 });
+  const expRow = expA + expB + expE; // F is unpriced: contributes 0 and is reported
+  check("[codex] mission row carries Codex cost (A+B by branch, E by ledger window)", Math.abs((row?.codex?.cost_api_equivalent_usd ?? -1) - expRow) < 0.01 && expRow > 0, `got ${row?.codex?.cost_api_equivalent_usd} want ${expRow}`);
+  check("[codex] cost_by_model shows gpt models next to claude", row?.cost_by_model["gpt-6.1-sol"] > 0 && row?.cost_by_model["gpt-6-astra"] > 0 && "claude-sonnet-5" in row.cost_by_model);
+  check("[codex] total = claude cost + codex cost", Math.abs(row?.cost_api_equivalent_usd - (baseRow.cost_api_equivalent_usd + row?.codex?.cost_api_equivalent_usd)) < 0.011, `${row?.cost_api_equivalent_usd} vs ${baseRow.cost_api_equivalent_usd}+${row?.codex?.cost_api_equivalent_usd}`);
+  check("[codex] cost_by_source splits Claude from Codex", row?.cost_by_source?.claude === baseRow.cost_api_equivalent_usd && row?.cost_by_source?.codex === row?.codex?.cost_api_equivalent_usd, JSON.stringify(row?.cost_by_source));
+  for (const k of ["turns", "sessions", "subagent_dispatches", "orchestrator_cost_pct", "cache_read_share_pct", "primary_model"]) {
+    check(`[codex] claude figure unchanged: ${k}`, row?.[k] === baseRow[k], `${row?.[k]} vs ${baseRow[k]}`);
+  }
+  check("[codex] attribution split recorded (branch vs ledger window)", row?.codex?.attribution?.branch === 3 && row?.codex?.attribution?.ledger_window === 1, JSON.stringify(row?.codex?.attribution));
+  check("[codex] codex counters live under codex", row?.codex?.sessions === 3 && row?.codex?.subagent_dispatches === 1 && row?.codex?.turns === 5, JSON.stringify([row?.codex?.sessions, row?.codex?.subagent_dispatches, row?.codex?.turns]));
+  const t1 = row?._octobots.tasks.find((t) => t.id === "T1.1");
+  check("[codex] task row picks up Codex cost by branch", t1?.cost_by_source?.codex > 0 && Math.abs(t1.cost_by_source.codex - (expA + expB)) < 0.01, JSON.stringify(t1?.cost_by_source));
+  check("[codex] no-branch codex work is unattributed, not dropped", out.unattributed.by_source?.codex > 0 && out.unattributed.branches.includes("(none)"), JSON.stringify(out.unattributed));
+  check("[codex] unattributed bucket carries its Codex token share (verify.mjs input)", out.unattributed.codex_tokens?.input > 0 && out.unattributed.codex_tokens.input < out.unattributed.tokens.input + 1, JSON.stringify(out.unattributed.codex_tokens));
+  check("[codex] unpriced Codex model is reported like an unpriced Claude model", /unpriced models.*gpt-9-unknown/.test(warn), warn);
+  check("[codex] top-level source summary", out.by_source?.codex?.segments === 5 && out.by_source?.claude?.cost_api_equivalent_usd >= 0, JSON.stringify(out.by_source));
+
+  const ccA = JSON.stringify(Object.entries(baseRow).filter(([k]) => ["work_item_ref", "effort_days", "size_tshirt"].includes(k)));
+  check("[codex] authored fields untouched", ccA === JSON.stringify(Object.entries(row).filter(([k]) => ["work_item_ref", "effort_days", "size_tshirt"].includes(k))));
+
+  // --- report ---------------------------------------------------------------
+  sh("render.mjs", ["--quiet"]);
+  const html = readFileSync(join(tokDir, "report.html"), "utf8");
+  check("[codex] report shows the Claude/Codex split", /Claude \/ Codex/.test(html) && html.includes("gpt-6.1-sol"));
+  check("[codex] report labels Codex cost API-equivalent", /Codex[^<]*API-equivalent|API-equivalent[^<]*Codex/.test(html));
+
+  // --- Claude-only project: no Codex keys at all ------------------------------
+  const clean = mkdtempSync(join(tmpdir(), "tokenomics-selftest-nocodex-"));
+  writeTranscripts(clean); writeBoard(clean, "yaml"); writeLedger(clean);
+  mkdirSync(join(clean, ".octobots", "tokenomics"), { recursive: true });
+  writeFileSync(join(clean, ".octobots", "tokenomics", "prices.json"), pricesText);
+  mkdirSync(join(clean, ".claude", "skills", "mission-planner", "scripts", "vendor"), { recursive: true });
+  copyFileSync(VENDOR_YAML, join(clean, ".claude", "skills", "mission-planner", "scripts", "vendor", "js-yaml.mjs"));
+  for (const script of ["collect.mjs", "rollup.mjs", "render.mjs"]) execFileSync(process.execPath, [join(HERE, script), "--project-dir", clean, "--no-gh", "--quiet"], { stdio: ["ignore", "ignore", "inherit"], env });
+  const cleanOut = JSON.parse(readFileSync(join(clean, ".octobots", "tokenomics", "runs.json"), "utf8"));
+  const text = JSON.stringify(cleanOut);
+  check("[codex] no Codex segments -> no codex/by_source keys anywhere", !/"codex"|by_source|cost_by_source/.test(text));
+  check("[codex] no Codex segments -> report has no split section", !/Claude \/ Codex/.test(readFileSync(join(clean, ".octobots", "tokenomics", "report.html"), "utf8")));
+  check("[codex] collect-codex on an empty Codex dir changes nothing", (() => {
+    const before = readFileSync(join(clean, ".octobots", "tokenomics", "raw", "segments.jsonl"), "utf8");
+    execFileSync(process.execPath, [join(HERE, "collect-codex.mjs"), "--project-dir", clean, "--codex-dir", join(clean, "nope"), "--quiet"], { stdio: ["ignore", "ignore", "inherit"], env });
+    return readFileSync(join(clean, ".octobots", "tokenomics", "raw", "segments.jsonl"), "utf8") === before;
+  })());
+
+  for (const d of [root, clean, home]) rmSync(d, { recursive: true, force: true });
+}
+
 // --- mission ids with a letter suffix (M6 vs M6b) ---------------------------
 // A letter-suffixed mission is its own mission, never folded into the bare number.
 function runSuffixSuite() {
@@ -525,6 +744,7 @@ if (!existsSync(VENDOR_YAML)) {
 
 for (const format of ["yaml", "md"]) runSuite(format);
 runRootsSuite();
+runCodexSuite();
 runSuffixSuite();
 runReflogSuite();
 

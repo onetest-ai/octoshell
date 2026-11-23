@@ -98,6 +98,47 @@ if (ghRows.length) {
   });
 }
 
+// --- Claude / Codex split (only when the data has Codex segments) -----------
+const bySource = d.by_source ?? null;
+const codexRuns = bySource ? runs.filter((r) => r.codex) : [];
+const splitSection = !bySource ? "" : `
+<h2>Claude / Codex split</h2>
+<p class="sub" style="margin:-4px 0 12px">Per mission, what Claude Code and what Codex CLI (builder and reviewer runs) cost.
+<strong>Codex cost is API-equivalent</strong> — tokens × the public list price of the gpt model — not a billed
+amount: Codex is used on a quota. A Codex session is attributed by the branch it <em>started</em> on; a session
+started on <code>main</code> is placed by the delivery-ledger dispatch window (column <em>Window</em>) when exactly one
+mission was active, otherwise it stays unattributed.</p>
+<div class="card scroll">
+<table>
+  <thead><tr>
+    <th class="l">Mission</th><th>Claude</th><th>Codex (API-equiv)</th><th>Codex share</th>
+    <th>Codex sessions</th><th>Sub-agents</th><th>Responses</th><th>Window</th><th class="l">Codex models</th>
+  </tr></thead>
+  <tbody>
+  ${codexRuns.map((r) => `<tr>
+    <td class="l"><span class="mission">${esc(r._octobots.mission_id)}</span> <span class="dim">${esc(r._octobots.mission_name)}</span></td>
+    <td class="n">${usd(r.cost_by_source.claude)}</td>
+    <td class="n">${usd(r.cost_by_source.codex)}</td>
+    <td class="n">${r.cost_api_equivalent_usd ? pct(Math.round(100 * r.cost_by_source.codex / r.cost_api_equivalent_usd)) : "—"}</td>
+    <td class="n">${r.codex.sessions}</td>
+    <td class="n">${r.codex.subagent_dispatches}</td>
+    <td class="n">${num(r.codex.turns)}</td>
+    <td class="n">${r.codex.attribution.ledger_window || '<span class="dim">—</span>'}</td>
+    <td class="l cmp">${r.codex.models_used.map(esc).join(", ")}</td>
+  </tr>`).join("\n  ")}
+  <tr>
+    <td class="l"><strong>Whole repo</strong> <span class="dim">(incl. unattributed)</span></td>
+    <td class="n"><strong>${usd(bySource.claude.cost_api_equivalent_usd)}</strong></td>
+    <td class="n"><strong>${usd(bySource.codex.cost_api_equivalent_usd)}</strong></td>
+    <td class="n">${pct(Math.round(100 * bySource.codex.cost_api_equivalent_usd / ((bySource.claude.cost_api_equivalent_usd + bySource.codex.cost_api_equivalent_usd) || 1)))}</td>
+    <td class="n">${bySource.codex.sessions}</td><td class="n"></td><td class="n"></td>
+    <td class="n">${bySource.codex.attributed_via_ledger_window}</td>
+    <td class="l cmp">${bySource.codex.unattributed_segments} segment(s) unattributed</td>
+  </tr>
+  </tbody>
+</table>
+</div>`;
+
 const ICON = { good: "✓", warning: "!", serious: "▲", critical: "✕" };
 
 const headerRows = [
@@ -275,6 +316,8 @@ table cached <code>${esc(d.pricing_fetched_at)}</code>, and are API-equivalent, 
 </table>
 </div>
 
+${splitSection}
+
 ${campaignRows.length ? `<h2>Campaign-level work</h2>
 <p class="sub" style="margin:-4px 0 12px">Work attributed to a campaign rather than to one of its missions — the
 campaign's own planning or hand-off branches. Included in the totals above; it is not a mission, so it
@@ -337,7 +380,7 @@ ${missions.map((r) => {
         <td class="l cmp">${t.role ? esc(t.role) : '<span class="dim">—</span>'}</td>
         <td class="n">${t.size_tshirt ?? '<span class="dim">—</span>'}</td>
         <td class="n">${t.effort_days ?? '<span class="dim">—</span>'}</td>
-        <td><div class="bar" title="${usd(t.cost_api_equivalent_usd)} — ${t.cost_share_pct}% of ${esc(o.mission_id)}">
+        <td><div class="bar" title="${usd(t.cost_api_equivalent_usd)} — ${t.cost_share_pct}% of ${esc(o.mission_id)}${t.cost_by_source ? ` (Claude ${usd(t.cost_by_source.claude)}, Codex ${usd(t.cost_by_source.codex)} API-equiv)` : ""}">
           <span class="n">${usd(t.cost_api_equivalent_usd)}</span>
           <span class="track"><span class="fill" style="width:${w}%"></span></span></div></td>
         <td class="n">${t.cost_share_pct}%</td>

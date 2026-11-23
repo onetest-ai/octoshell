@@ -179,11 +179,11 @@ describe("installPack: tokenomics files (#191)", () => {
   it("never judges prices.json or a file the pack does not ship", () => {
     const ws = installed();
     writeFileSync(live(ws, "prices.json"), "{\"local\":true}\n");
-    mk(live(ws, "collect-codex.mjs"), "// the project's own stage\n");
+    mk(live(ws, "collect-local.mjs"), "// the project's own stage\n");
     expect(detectDeviations(ws, PACK, store).deviations).toEqual([]);
     installPack(PACK_SRC, ws, { store });
     expect(readFileSync(live(ws, "prices.json"), "utf8")).toBe("{\"local\":true}\n");
-    expect(readFileSync(live(ws, "collect-codex.mjs"), "utf8")).toBe("// the project's own stage\n");
+    expect(readFileSync(live(ws, "collect-local.mjs"), "utf8")).toBe("// the project's own stage\n");
   });
 
   it("packStatus: a pending changed run.mjs is answered locally, not a stale CLI", () => {
