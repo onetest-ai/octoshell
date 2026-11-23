@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 60
+// octobots-pack-version: 61
 // Backfills a merge SHA into worklog.jsonl entries whose branch has since
 // been deleted by `gh pr merge --delete-branch` — the ONLY moment
 // `packages/graph`'s `attribute()` (task <-> file, `provenance` mode) has
@@ -49,6 +49,11 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 
 const args = process.argv.slice(2);
+// --help prints usage and exits before the script reads or writes anything.
+if (args.includes("--help") || args.includes("-h")) {
+  console.log("Usage: node .octobots/tokenomics/backfill-worklog-sha.mjs [--project-dir DIR] [--quiet]");
+  process.exit(0);
+}
 const quiet = args.includes("--quiet");
 const log = (...a) => { if (!quiet) console.error(...a); };
 

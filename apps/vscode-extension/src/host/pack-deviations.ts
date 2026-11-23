@@ -468,7 +468,13 @@ export async function decideLocalChanges(
 
 /** The install result message: the pack line, then what Reconcile staged. */
 export function installCompletionMessage(
-  res: { written: number; hooksRegistered: boolean; tools: "installed" | "failed" | "skipped"; pending: readonly string[] },
+  res: {
+    written: number;
+    hooksRegistered: boolean;
+    tools: "installed" | "failed" | "skipped";
+    pending: readonly string[];
+    prices?: { stale: boolean; workspaceFetchedAt: string | null; packFetchedAt: string | null };
+  },
   packVersion: number,
 ): string {
   const parts = [res.hooksRegistered ? "session hooks" : null, res.tools === "installed" ? "tokenomics CLI" : null].filter(Boolean);
@@ -478,6 +484,14 @@ export function installCompletionMessage(
   if (res.pending.length > 0) {
     msg += ` Staged ${res.pending.join(", ")} for reconcile in .octobots/pack-updates/v${packVersion}/. The next agent session will be asked to run the octobots-doctor skill.`;
     if (!res.hooksRegistered) msg += " The SessionStart hook is off, so ask your agent to run octobots-doctor.";
+  }
+  if (res.prices) {
+    msg += " Kept your .octobots/tokenomics/prices.json.";
+    if (res.prices.stale) {
+      const yours = res.prices.workspaceFetchedAt ? `fetched ${res.prices.workspaceFetchedAt}` : "with no fetch date";
+      const pack = res.prices.packFetchedAt ? ` (fetched ${res.prices.packFetchedAt})` : "";
+      msg += ` It is older than the pack's${pack}: yours is ${yours}. Run node .octobots/tokenomics/update-prices.mjs to refresh it, then run.mjs to re-price.`;
+    }
   }
   return msg;
 }

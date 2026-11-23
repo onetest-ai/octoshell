@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 60
+// octobots-pack-version: 61
 // Tokenomics pipeline runner — collect -> collect-codex -> rollup -> render, in one call.
 //
 // This is what the mission-completion gate invokes. It is deliberately
@@ -15,6 +15,11 @@ import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
+// --help prints usage and exits before the script reads or writes anything.
+if (args.includes("--help") || args.includes("-h")) {
+  console.log("Usage: node .octobots/tokenomics/run.mjs [--no-gh] [--quiet] [--strict]\nRuns collect, collect-codex, rollup and render, which rewrite the ledgers under .octobots/tokenomics.");
+  process.exit(0);
+}
 const strict = args.includes("--strict");
 const passthrough = args.filter((a) => a !== "--strict");
 

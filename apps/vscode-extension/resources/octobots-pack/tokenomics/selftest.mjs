@@ -34,6 +34,11 @@ import * as zlib from "node:zlib";
 // A named import would fail to load on a Node without zstd (before 22.15); see the codex suite.
 const zstdCompressSync = typeof zlib.zstdCompressSync === "function" ? zlib.zstdCompressSync : null;
 
+if (process.argv.includes("--help") || process.argv.includes("-h")) {
+  console.log("Usage: node .octobots/tokenomics/selftest.mjs\nRuns synthetic tests in temporary directories; it writes nothing to the project.");
+  process.exit(0);
+}
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..");
 // Installed layout: <repo>/.octobots/tokenomics -> <repo>/.claude/skills/...

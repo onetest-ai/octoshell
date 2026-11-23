@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# octobots-pack-version: 60
+# octobots-pack-version: 61
 # Claude Code status line — vivid accent palette
 # Fields: model name | git branch (+dirty) | session token count | context remaining
 # Reads JSON from stdin (Claude Code's statusLine protocol)

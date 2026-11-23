@@ -27,6 +27,11 @@ import { fileURLToPath } from "node:url";
 const SOURCE = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "prices.json");
 const cliArgs = process.argv.slice(2);
+// --help prints usage and exits before the script reads or writes anything.
+if (cliArgs.includes("--help") || cliArgs.includes("-h")) {
+  console.log("Usage: node .octobots/tokenomics/update-prices.mjs [--check] [--family all|claude|openai]");
+  process.exit(0);
+}
 const checkOnly = cliArgs.includes("--check");
 const famIdx = cliArgs.indexOf("--family");
 const FAMILY = famIdx !== -1 ? cliArgs[famIdx + 1] : "all"; // all | claude | openai

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync, rmSync, rmdirSync } from "node:fs";
 import { join } from "node:path";
 import { installPrimer, registerClaudeHook, unregisterClaudeHook, claudeHookStatus, claudeHooksRegistered } from "./octobots-hooks.js";
-import { installTokenomics, tokenomicsStatus } from "./octobots-tokenomics.js";
+import { installTokenomics, pricesKept, tokenomicsStatus, type PricesKept } from "./octobots-tokenomics.js";
 import { installGraph, graphStatus } from "./octograph-install.js";
 import { installStatusline, registerStatusline, unregisterStatusline, statuslineStatus } from "./octobots-statusline.js";
 import { installTools, removeTools, toolsStatus } from "./octobots-tools.js";
@@ -13,7 +13,7 @@ import { carriedFrom, clearInputs, ensureGitignore, saveOverwritten, stageEntry,
 import { parseSkillMarker, skillSha256 } from "./skill-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
-export const OCTOBOTS_PACK_VERSION = 60;
+export const OCTOBOTS_PACK_VERSION = 61;
 
 export { OCTOBOTS_SKILLS };
 
@@ -219,6 +219,8 @@ export interface InstallResult {
   kept: string[];
   /** Files in a retired skill's directory that the pack never shipped; left in place. Workspace-relative, with `/`. */
   keptFiles: string[];
+  /** The workspace's own prices.json, kept rather than replaced; absent when the pack's was installed. */
+  prices?: PricesKept;
   /** Set when nothing was installed, and why. */
   error?: string;
 }
@@ -420,6 +422,7 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
       if (tokenomicsEntryName(file) === name) tokenomicsKept.add(file);
     }
   }
+  const prices = pricesKept(srcRoot, repoRoot);
   written += installTokenomics(srcRoot, repoRoot, tokenomicsKept);
   // Graph is opt-in (see `graphStatus`'s doc comment): a general pack (re)install only refreshes
   // an already-present graph payload, so re-running this after an upgrade is what clears the
@@ -462,5 +465,5 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
   } else if (opts.tools === true || toolsStatus(repoRoot).ccusage) {
     tools = installTools(repoRoot) ? "installed" : "failed";
   }
-  return { written, hooksRegistered, statusline, tools, pending: staged, kept: kept.map((k) => k.skill), keptFiles };
+  return { written, hooksRegistered, statusline, tools, pending: staged, kept: kept.map((k) => k.skill), keptFiles, ...(prices ? { prices } : {}) };
 }

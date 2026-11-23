@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 60
+// octobots-pack-version: 61
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
