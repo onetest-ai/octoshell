@@ -66,6 +66,20 @@ export function makeAttributionContext<M extends AttributionMission, C extends A
   return { missions, campaigns, missionByTaskLabel, workLog, windows };
 }
 
+/**
+ * True when `slug` stands in `branch` as a whole name part: bounded on each side by the start or end
+ * of the branch, `/` or `-`. `demo` is in `feat/demo-m1-t1` but not in `feat/demolition-m1` or
+ * `chore/redemo` (a plain substring match gave both to `demo`).
+ */
+export function slugInBranch(slug: string, branch: string): boolean {
+  for (let at = branch.indexOf(slug); at !== -1; at = branch.indexOf(slug, at + 1)) {
+    const before = at === 0 ? "" : branch[at - 1];
+    const after = branch[at + slug.length] ?? "";
+    if ((before === "" || before === "/" || before === "-") && (after === "" || after === "/" || after === "-")) return true;
+  }
+  return false;
+}
+
 export function resolveAttribution<M extends AttributionMission, C extends AttributionCampaign>(
   branch: string,
   sessionId: string,
@@ -76,7 +90,7 @@ export function resolveAttribution<M extends AttributionMission, C extends Attri
   }
 
   const top = ctx.campaigns
-    .filter((c) => c.slug && branch.includes(c.slug))
+    .filter((c) => c.slug && slugInBranch(c.slug, branch))
     .sort(
       (a, b) => b.slug.length - a.slug.length || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0)
     )[0];

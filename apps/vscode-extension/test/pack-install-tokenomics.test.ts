@@ -250,3 +250,23 @@ describe("pack-reconcile.mjs done for a tokenomics entry", () => {
     expect(readFileSync(live(ws, "collect.mjs"), "utf8")).toBe(marker + packText("collect.mjs"));
   });
 });
+
+describe("installTokenomics: .octobots/tokenomics/.gitignore", () => {
+  const ignore = (ws: string) => join(ws, ".octobots", "tokenomics", ".gitignore");
+  it("ignores the hook's diagnostics.jsonl and keeps the ledger tracked", () => {
+    const ws = installed();
+    expect(readFileSync(ignore(ws), "utf8")).toBe("diagnostics.jsonl\n");
+    execFileSync("git", ["init", "-q"], { cwd: ws });
+    mk(live(ws, "diagnostics.jsonl"), "{}\n");
+    const ignored = (rel: string) => spawnSync("git", ["check-ignore", "-q", rel], { cwd: ws }).status === 0;
+    expect(ignored(".octobots/tokenomics/diagnostics.jsonl")).toBe(true);
+    for (const f of ["runs.json", "worklog.jsonl", "raw/segments.jsonl"]) expect(ignored(`.octobots/tokenomics/${f}`), f).toBe(false);
+  });
+  it("adds the line to the workspace's own file once, keeping its lines", () => {
+    const ws = mkdtempClean("pack-tok-ign-");
+    mk(ignore(ws), "report.html");
+    installPack(PACK_SRC, ws, { store });
+    installPack(PACK_SRC, ws, { store });
+    expect(readFileSync(ignore(ws), "utf8")).toBe("report.html\ndiagnostics.jsonl\n");
+  });
+});

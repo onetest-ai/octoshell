@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync, appendFileSync, lstatSync } from "node:fs";
 import { join } from "node:path";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
 
@@ -56,6 +56,7 @@ export function installTokenomics(srcRoot: string, repoRoot: string, keep: Reado
   if (!existsSync(from)) return 0;
   const to = join(repoRoot, ".octobots", "tokenomics");
   mkdirSync(to, { recursive: true });
+  ensureIgnored(to);
 
   let written = 0;
   for (const entry of readdirSync(from, { withFileTypes: true })) {
@@ -70,4 +71,25 @@ export function installTokenomics(srcRoot: string, repoRoot: string, keep: Reado
     written++;
   }
   return written;
+}
+
+/**
+ * Lines `.octobots/tokenomics/.gitignore` must hold. `diagnostics.jsonl` is the dispatch-on-main
+ * hook's per-machine warning log: nothing reads it back, so it is never committed. (runs.json,
+ * worklog.jsonl and raw/ ARE the project's ledger and stay tracked.)
+ */
+export const TOKENOMICS_IGNORED = ["diagnostics.jsonl"] as const;
+
+/** Appends each missing `TOKENOMICS_IGNORED` line; the rest of the file is the workspace's own. */
+function ensureIgnored(dir: string): void {
+  const file = join(dir, ".gitignore");
+  let text = "";
+  try {
+    if (lstatSync(file).isSymbolicLink()) return; // never written through
+    text = readFileSync(file, "utf8");
+  } catch { /* absent: created below */ }
+  const have = new Set(text.split(/\r?\n/).map((l) => l.trim()));
+  const missing = TOKENOMICS_IGNORED.filter((l) => !have.has(l));
+  if (missing.length === 0) return;
+  appendFileSync(file, (text && !text.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n");
 }

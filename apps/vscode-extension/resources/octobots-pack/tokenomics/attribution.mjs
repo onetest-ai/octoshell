@@ -19,11 +19,19 @@ function makeAttributionContext(board, workLog = /* @__PURE__ */ new Map(), wind
   );
   return { missions, campaigns, missionByTaskLabel, workLog, windows };
 }
+function slugInBranch(slug, branch) {
+  for (let at = branch.indexOf(slug); at !== -1; at = branch.indexOf(slug, at + 1)) {
+    const before = at === 0 ? "" : branch[at - 1];
+    const after = branch[at + slug.length] ?? "";
+    if ((before === "" || before === "/" || before === "-") && (after === "" || after === "/" || after === "-")) return true;
+  }
+  return false;
+}
 function resolveAttribution(branch, sessionId, ctx) {
   for (const m of ctx.missions) {
     if (m.declaredBranches.includes(branch)) return { kind: "mission", mission: m, step: 1 };
   }
-  const top = ctx.campaigns.filter((c) => c.slug && branch.includes(c.slug)).sort(
+  const top = ctx.campaigns.filter((c) => c.slug && slugInBranch(c.slug, branch)).sort(
     (a, b) => b.slug.length - a.slug.length || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0)
   )[0];
   if (top) {
@@ -111,5 +119,6 @@ export {
   makeAttributionContext,
   resolveAttribution,
   resolveSegmentAttribution,
-  segmentAttribution
+  segmentAttribution,
+  slugInBranch
 };
