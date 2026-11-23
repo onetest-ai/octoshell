@@ -10,7 +10,7 @@
 //   --pack-root       the pack to install from (default resources/octobots-pack); M6-AC8 points it at
 //                     the pack unzipped from the VSIX. It replaces the PACK only: detection and base
 //                     recovery always read this extension's resources/shipped-skills.json.br.
-//   --local-changes   an EXPLICIT choice for a pack skill whose SKILL.md the workspace changed, as the
+//   --local-changes   an EXPLICIT choice for a pack skill or file the workspace changed, as the
 //                     install prompt makes it. Without the flag this is the DEFAULT install, which
 //                     is what any non-interactive or activation install does: changed skills are
 //                     reconciled, except those kept earlier with an unchanged SKILL.md, which stay
@@ -27,7 +27,7 @@
 //   before / after  packStatus(<workspace>)
 //   deviations      the changed pack skills found before the install: [{skill, version, reason, retired, sha256}]
 //   result          installPack(...): {written, hooksRegistered, statusline, tools, pending, kept, keptFiles, skipped, prices?}
-// Writes `<n> skill(s) need reconcile` to stderr when n skills are staged. Exits 1 (error on stderr)
+// Writes `<n> skill(s) or file(s) need reconcile` to stderr when n skills or files are staged. Exits 1 (error on stderr)
 // if the install throws or refuses (store missing), 2 on a usage error.
 
 import { existsSync } from "node:fs";
@@ -92,7 +92,7 @@ try {
   const after = mod.packStatus(workspace, version, store);
   console.log(JSON.stringify({ before, deviations, result, after }, null, 2));
   if (result.error) throw new Error(result.error);
-  if (result.pending.length > 0) console.error(`${result.pending.length} skill(s) need reconcile`);
+  if (result.pending.length > 0) console.error(`${result.pending.length} skill(s) or file(s) need reconcile`);
   if (result.prices?.stale) console.error(`kept .octobots/tokenomics/prices.json (fetched ${result.prices.workspaceFetchedAt ?? "unknown"}) is older than the pack's (${result.prices.packFetchedAt ?? "unknown"}): run update-prices.mjs`);
 } catch (e) {
   console.error(`install-pack: ${e instanceof Error ? e.message : String(e)}`);

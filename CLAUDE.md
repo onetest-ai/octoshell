@@ -127,7 +127,7 @@ script, and no workflow entity in the board model; the extension never runs a mi
 `workflows/` folder is ignored by the board, and `validate.js` / `doctor.js` warn about it.
 
 **Pack updates (reconcile).** The pack is versioned as one unit (`OCTOBOTS_PACK_VERSION`; see
-`.agents/knowledge/architecture/pack-version-is-one-unit.md`). When `installPack` finds a SKILL.md the
+`.agents/knowledge/architecture/pack-version-is-one-unit.md`). When `installPack` finds a judged pack file the
 workspace changed locally, the install prompt offers three choices: *reconcile* (the default),
 *overwrite* (saves the local text as `overwritten-local.md` first) or *keep* (remembered while the
 file is unchanged). Reconcile leaves the live skill alone and stages `base.md`, `local.md`,
@@ -135,7 +135,7 @@ file is unchanged). Reconcile leaves the live skill alone and stages `base.md`, 
 `.octobots/pack-updates/pending.json`. The session primer sees the pending record and tells the agent
 to run the `octobots-doctor` skill, which merges the three versions and writes `merged.md` and
 `DECISIONS.md`. The bases come from `resources/shipped-skills.json.br`, the store of every SKILL.md
-the pack has shipped: any change to a pack SKILL.md is followed by
+the pack has shipped: any change to a judged pack file is followed by
 `node apps/vscode-extension/scripts/shipped-skills.mjs --write`, with the store committed.
 `installPack` also deletes skill dirs retired by a rename, so an upgraded workspace never ends up
 with two copies. This is product payload: keep it in sync with the board model in `packages/board`.

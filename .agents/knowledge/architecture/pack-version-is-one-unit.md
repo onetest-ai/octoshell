@@ -30,7 +30,7 @@ all of this, in the same PR:
 The five skills in row 2-6 are `mission-planner`, `mission-execution`, `mission-completion-gate`,
 `knowledge-explorer` and `octobots-doctor`; the hand-edited markers are therefore rows 1-10.
 
-**Every SKILL.md change is followed by `node apps/vscode-extension/scripts/shipped-skills.mjs --write`
+**Every judged pack file change is followed by `node apps/vscode-extension/scripts/shipped-skills.mjs --write`
 (from the repo root), with the new store committed in the same PR.** The store holds every SKILL.md
 the pack has shipped; pack updates classify a workspace's skill against it and recover the base of a
 three-way merge from it. `shipped-skills.mjs --verify` (the default mode, reads no git) fails naming
