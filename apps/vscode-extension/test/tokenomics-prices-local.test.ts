@@ -126,6 +126,24 @@ describe("pack prices.local.json", () => {
     expect(runs.unattributed.cost_api_equivalent_usd).toBeCloseTo(3, 6); // 1M input x 3e-6, from prices.json
   });
 
+  it("an unpriced model counts as USD 0 and the warning says so", () => {
+    const { repo, tok } = workspace();
+    const tokDir = join(repo, ".octobots", "tokenomics");
+    mkdirSync(join(tokDir, "raw"), { recursive: true });
+    const seg = (model: string) => JSON.stringify({
+      session_id: "s1", agent: "main", branch: "main", turns: 1,
+      started_at: "2026-01-01T00:00:00Z", ended_at: "2026-01-01T00:01:00Z",
+      tokens_by_model: { [model]: { input_tokens: 1_000_000 } },
+    });
+    writeFileSync(join(tokDir, "raw", "segments.jsonl"), seg("claude-sonnet-4-5") + "\n" + seg("no-such-model") + "\n");
+    const r = spawnSync(process.execPath, [join(tok, "rollup.mjs"), "--project-dir", repo, "--no-gh"], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    const runs = JSON.parse(readFileSync(join(tokDir, "runs.json"), "utf8"));
+    expect(runs.unattributed.cost_api_equivalent_usd).toBeCloseTo(3, 6);
+    expect(r.stderr).toContain("WARNING unpriced models (counted as USD 0): no-such-model");
+    expect(r.stderr).not.toContain("fallback rate");
+  });
+
   it("is preserved byte-identical when the pack is re-installed over an edited copy", () => {
     const { repo, tok } = workspace();
     const target = join(tok, "prices.local.json");
