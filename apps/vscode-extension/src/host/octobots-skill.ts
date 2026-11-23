@@ -6,9 +6,9 @@ import { installGraph, graphStatus } from "./octograph-install.js";
 import { installStatusline, registerStatusline, unregisterStatusline, statuslineStatus } from "./octobots-statusline.js";
 import { installTools, removeTools, toolsStatus } from "./octobots-tools.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
-import { RETIRED_FILES as PACK_RETIRED_FILES } from "./pack-files.js";
-import { OCTOBOTS_SKILLS, RETIRED_SKILLS, RETIRED_SKILL_FILES, TOKENOMICS_KEY_PREFIX, TOKENOMICS_UNJUDGED, tokenomicsEntryName, tokenomicsRel } from "./pack-skills.js";
-import { detectDeviations, recoverBase, recoverFileBase, GIT_BUDGET_MS, type Deviation, type ShippedStore } from "./pack-deviations.js";
+import { packFileRel, RETIRED_FILES as PACK_RETIRED_FILES } from "./pack-files.js";
+import { OCTOBOTS_SKILLS, RETIRED_SKILLS, RETIRED_SKILL_FILES, TOKENOMICS_ENTRY_PREFIX, TOKENOMICS_KEY_PREFIX, TOKENOMICS_UNJUDGED, tokenomicsEntryName } from "./pack-skills.js";
+import { detectDeviations, recoverBase, recoverFileBase, GIT_BUDGET_MS, type Deviation, type DeviationReport, type ShippedStore } from "./pack-deviations.js";
 import { assertRealPackUpdatesDir, pendingReconcile, readPending, readRegularBytes, readRegularText, writePending, pendingFile, type KeptEntry, type PendingEntry, type PendingRecord } from "./pack-updates.js";
 import { carriedFrom, clearInputs, ensureGitignore, saveOverwritten, stageEntry, stagingDirRel, stagingPath, type CarriedBlock } from "./pack-staging.js";
 import { parseSkillMarker, skillSha256 } from "./skill-marker.js";
@@ -84,7 +84,7 @@ function isNewSince(store: ShippedStore | null, skill: string, installedAt: numb
  */
 export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERSION, store: ShippedStore | null = null): PackStatus {
   const primer = join(repoRoot, ".octobots", "hooks", "primer.mjs");
-  const report = detectDeviations(repoRoot, currentVersion, store);
+  const report = actionable(detectDeviations(repoRoot, currentVersion, store));
   const base = {
     currentVersion,
     deviations: report.deviations,
@@ -217,6 +217,19 @@ export interface InstallResult {
 
 export const STORE_MISSING = "shipped-skill store missing";
 
+/**
+ * Bridge until every writer below keeps what `detectDeviations` finds (v62): only SKILL.md and
+ * tokenomics changes are acted on, so nothing is staged or offered as Keep and then overwritten.
+ */
+function actionable(report: DeviationReport): DeviationReport {
+  const acts = (name: string): boolean => name.startsWith(TOKENOMICS_ENTRY_PREFIX) || (OCTOBOTS_SKILLS as readonly string[]).includes(name);
+  return {
+    ...report,
+    deviations: report.deviations.filter((d) => d.file === undefined || d.file.startsWith(TOKENOMICS_KEY_PREFIX)),
+    reconciled: report.reconciled.filter(acts),
+  };
+}
+
 const skillDirOf = (repoRoot: string, name: string): string => join(repoRoot, ".claude", "skills", name);
 
 /** Removes empty directories under `dir` (and `dir` itself) bottom-up. */
@@ -285,11 +298,11 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
       if (e.isFile() && !TOKENOMICS_UNJUDGED.has(e.name)) currentTokenomics[TOKENOMICS_KEY_PREFIX + e.name] = skillSha256(readFileSync(join(tokSrc, e.name), "utf8"));
     }
   }
-  const report = detectDeviations(repoRoot, packVersion, store, { currentHashes, currentTokenomics });
+  const report = actionable(detectDeviations(repoRoot, packVersion, store, { currentHashes, currentFiles: currentTokenomics }));
   // Where each deviation lives in the workspace, and where its pack (upstream) body is.
-  const liveOf = (d: Deviation): string => d.file !== undefined ? join(repoRoot, ...tokenomicsRel(d.file).split("/")) : join(skillDirOf(repoRoot, d.skill), "SKILL.md");
-  const upstreamOf = (d: Deviation): string => d.file !== undefined ? join(tokSrc, d.file) : join(srcRoot, "skill", d.skill, "SKILL.md");
-  const upstreamShaOf = (d: Deviation): string | null => d.retired ? null : d.file !== undefined ? (currentTokenomics[TOKENOMICS_KEY_PREFIX + d.file] ?? null) : (currentHashes[d.skill] ?? null);
+  const liveOf = (d: Deviation): string => d.file !== undefined ? join(repoRoot, ...packFileRel(d.file).split("/")) : join(skillDirOf(repoRoot, d.skill), "SKILL.md");
+  const upstreamOf = (d: Deviation): string => d.file !== undefined ? join(srcRoot, ...d.file.split("/")) : join(srcRoot, "skill", d.skill, "SKILL.md");
+  const upstreamShaOf = (d: Deviation): string | null => d.retired ? null : d.file !== undefined ? (currentTokenomics[d.file] ?? null) : (currentHashes[d.skill] ?? null);
   const prior = readPending(repoRoot);
   const priorEntry = (skill: string): PendingEntry | undefined => prior?.skills.find((e) => e.skill === skill);
   const priorVersion = (e: PendingEntry): number => Number(e.dir.match(/\/v(\d+)\//)?.[1] ?? prior?.packVersion ?? packVersion);
@@ -404,13 +417,17 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
   // A changed tokenomics file (kept or being reconciled) and a reconciled one are left as they are,
   // as a changed SKILL.md is; Overwrite replaces it (its local text was saved first, above).
   const tokenomicsKept = new Set<string>();
-  for (const d of report.deviations) if (d.file !== undefined && !replaced.has(d.skill)) tokenomicsKept.add(d.file);
+  for (const d of report.deviations) if (d.file !== undefined && !replaced.has(d.skill)) tokenomicsKept.add(d.file.slice(TOKENOMICS_KEY_PREFIX.length));
   for (const name of report.reconciled) {
-    if (!name.startsWith("tokenomics-")) continue;
+    if (!name.startsWith(TOKENOMICS_ENTRY_PREFIX)) continue;
     for (const f of Object.keys(currentTokenomics)) {
       const file = f.slice(TOKENOMICS_KEY_PREFIX.length);
       if (tokenomicsEntryName(file) === name) tokenomicsKept.add(file);
     }
+  }
+  // A symlinked file is no longer judged: never copied through.
+  for (const key of Object.keys(currentTokenomics)) {
+    if (report.skipped.includes(packFileRel(key))) tokenomicsKept.add(key.slice(TOKENOMICS_KEY_PREFIX.length));
   }
   const prices = pricesKept(srcRoot, repoRoot);
   written += installTokenomics(srcRoot, repoRoot, tokenomicsKept);

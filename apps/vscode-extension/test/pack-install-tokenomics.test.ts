@@ -168,9 +168,9 @@ describe("installPack: tokenomics files (#191)", () => {
   it("a file reconciled against an older pack body is staged again, with that body as its base", () => {
     const ws = installed();
     const older = olderShipped("collect.mjs");
-    writeFileSync(live(ws, "collect.mjs"), `// octobots-reconciled-from: ${skillSha256(older)}\n${older}`);
+    writeFileSync(live(ws, "collect.mjs"), `// octobots-reconciled-from: ${skillSha256(older)}\n${older}// local\n`);
     const [d] = detectDeviations(ws, PACK, store).deviations;
-    expect(d).toMatchObject({ skill: "tokenomics-collect-mjs", file: "collect.mjs", reason: "reconciled-older" });
+    expect(d).toMatchObject({ skill: "tokenomics-collect-mjs", file: "tokenomics/collect.mjs", reason: "reconciled-older" });
     installPack(PACK_SRC, ws, { store });
     const e = readPending(ws)!.skills.find((s) => s.skill === "tokenomics-collect-mjs")!;
     expect(e.base).toMatchObject({ source: "reconciled-from", sha256: skillSha256(older) });
@@ -239,7 +239,7 @@ describe("pack-reconcile.mjs done for a tokenomics entry", () => {
     expect(r.status).toBe(3);
     expect(r.stderr).toContain("ESCALATED");
 
-    writeFileSync(live(ws, "collect.mjs"), marker + packText("collect.mjs"));
+    writeFileSync(live(ws, "collect.mjs"), marker + packText("collect.mjs") + "// local\n");
     r = run(ws, "done", "tokenomics-collect-mjs");
     expect(r.stderr).toBe("");
     expect(r.status).toBe(0);
@@ -247,7 +247,7 @@ describe("pack-reconcile.mjs done for a tokenomics entry", () => {
     // And the next install leaves the reconciled file alone.
     const res = installPack(PACK_SRC, ws, { store });
     expect(res.pending).toEqual([]);
-    expect(readFileSync(live(ws, "collect.mjs"), "utf8")).toBe(marker + packText("collect.mjs"));
+    expect(readFileSync(live(ws, "collect.mjs"), "utf8")).toBe(marker + packText("collect.mjs") + "// local\n");
   });
 });
 

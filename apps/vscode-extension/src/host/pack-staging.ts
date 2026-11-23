@@ -1,6 +1,7 @@
 import { lstatSync, mkdirSync, readdirSync, rmSync, rmdirSync, writeFileSync, type Stats } from "node:fs";
 import { join } from "node:path";
 import type { RecoveredBase } from "./pack-deviations.js";
+import { packFileRel } from "./pack-files.js";
 import { PACK_UPDATES_DIR, assertRealPackUpdatesDir, isStagingDir, readRegularBytes, readRegularText, type PendingEntry } from "./pack-updates.js";
 
 /**
@@ -129,7 +130,7 @@ export function carriedFrom(repoRoot: string, prior: PendingEntry | undefined, p
 
 export interface BriefInput {
   skill: string;
-  /** A tokenomics file's name (`collect.mjs`); absent for a skill. */
+  /** A file's pack path (`tokenomics/collect.mjs`); absent for a skill. */
   file?: string;
   packVersion: number;
   retired: boolean;
@@ -180,9 +181,9 @@ export function renderBrief(b: BriefInput): string {
   return out.join("\n");
 }
 
-/** The brief for a tokenomics file: the same merge, a different live target and marker. */
+/** The brief for a pack file: the same merge, a different live target and marker. */
 function renderFileBrief(b: BriefInput, file: string): string {
-  const live = `.octobots/tokenomics/${file}`;
+  const live = packFileRel(file);
   const baseLine = b.base === null
     ? "none; the merge is two-way (local against upstream)"
     : `v${b.base.version}, sha256 ${b.base.sha256}, source ${b.base.source}${b.base.source === "closest" ? " (approximate: the stored body closest to the local file)" : ""}`;
