@@ -95,7 +95,9 @@ if (cmd === "list") {
     console.log(`${e.skill}: local ${e.localVersion}, ${base}, ${e.retired ? "retired: upstream deleted it" : `upstream v${versionOf(e)}`}`);
     console.log(`  folder: ${e.dir}/`);
     const file = tokenomicsFileOf(e.skill);
-    if (file !== null) {
+    if (file === null && e.skill.startsWith(TOKENOMICS_PREFIX) && !e.retired) {
+      console.log(`  file: missing (no file in .octobots/tokenomics/ matches ${e.skill}; install merged.md there under the file's own name)`);
+    } else if (file !== null) {
       let from = "upstream.md is missing";
       try { from = `octobots-reconciled-from: ${skillSha256(io.readRegularFile(upstreamPath(e)))}`; } catch { /* reported as missing */ }
       console.log(`  file: .octobots/tokenomics/${file}`);

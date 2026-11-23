@@ -691,6 +691,7 @@ function runReflogSuite() {
   const projects = join(root, ".claude", "projects", slugOf(root));
   mkdirSync(projects, { recursive: true });
   writeFileSync(join(projects, `${SESSION}.jsonl`), [
+    turn({ branch: "HEAD", requestId: "rf-0", ts: "2025-12-31T12:00:00.000Z" }), // before the reflog begins
     turn({ branch: "HEAD", requestId: "rf-1", ts: "2026-01-01T12:00:00.000Z" }), // before any checkout
     turn({ branch: "HEAD", requestId: "rf-2", ts: "2026-01-02T12:00:00.000Z" }), // feature window
     turn({ branch: "HEAD", requestId: "rf-3", ts: "2026-01-03T12:00:00.000Z" }), // back on main
@@ -707,13 +708,14 @@ function runReflogSuite() {
   const segs = read();
   const branches = new Set(segs.map((s) => s.branch));
   const got = `got ${JSON.stringify([...branches])}`;
-  check(tag("no segment is left on the literal HEAD"), !branches.has("HEAD"), got);
+  const headTurns = segs.filter((s) => s.branch === "HEAD").reduce((n, s) => n + s.turns, 0);
+  check(tag("only the record older than the reflog stays on HEAD (nothing is guessed)"), headTurns === 1, `${got}, HEAD turns ${headTurns}`);
   check(tag("feature-branch work recovered from the reflog"), branches.has("feat/demo-m1-t1"), got);
   check(tag("main work recovered from the reflog"), branches.has("main"), got);
   check(tag("a real gitBranch wins over the reflog"), branches.has("fix/named"), got);
   // A record predating every checkout belongs to the branch the repo started on.
   check(tag("pre-first-checkout work resolves, not dropped"),
-    segs.reduce((n, s) => n + (s.turns ?? 0), 0) === 4,
+    segs.reduce((n, s) => n + (s.turns ?? 0), 0) === 5,
     `turns=${segs.map((s) => `${s.branch}:${s.turns}`).join(" ")}`);
 
   // --- re-keying must not double count ---------------------------------------
@@ -722,17 +724,32 @@ function runReflogSuite() {
   // one: coach-android's total doubled from $223 to $449 this way, with the
   // collector exiting 0. A re-scanned session is authoritative for itself; a
   // session whose transcript is gone must survive untouched.
-  const stale = { ...segs[0], segment_id: `${SESSION}:main:HEAD`, branch: "HEAD", turns: 999 };
+  const stale = { ...segs[0], segment_id: `${SESSION}:main:HEAD`, branch: "HEAD", turns: 1 };
+  const staleOther = { ...segs[0], segment_id: `${SESSION}:main:HEAD-stale`, branch: "HEAD", turns: 999 };
   const foreign = { ...segs[0], segment_id: "s0000000-dead-dead-dead-000000000002:main:main", session_id: "s0000000-dead-dead-dead-000000000002", turns: 7 };
-  writeFileSync(rawFile, [...segs, stale, foreign].map((r) => JSON.stringify(r)).join("\n") + "\n");
+  writeFileSync(rawFile, [...segs.filter((s) => s.branch !== "HEAD"), stale, foreign, { ...staleOther, branch: "HEAD" }].map((r) => JSON.stringify(r)).join("\n") + "\n");
   collect();
   const after = read();
   const ids = `ids=${after.map((s) => s.segment_id).join(" ")}`;
-  check(tag("re-keyed stale segment is dropped, not double counted"), !after.some((s) => s.segment_id === `${SESSION}:main:HEAD`), ids);
+  check(tag("a stale HEAD segment of a re-scanned session is dropped, not double counted"), !after.some((s) => s.segment_id === `${SESSION}:main:HEAD-stale`), ids);
   check(tag("a session that was NOT re-scanned survives the merge"), after.some((s) => s.segment_id.startsWith("s0000000-dead")), ids);
   check(tag("turns stay stable across a re-run"),
-    after.filter((s) => s.segment_id.startsWith(SESSION)).reduce((n, s) => n + (s.turns ?? 0), 0) === 4,
+    after.filter((s) => s.segment_id.startsWith(SESSION)).reduce((n, s) => n + (s.turns ?? 0), 0) === 5,
     `turns=${after.map((s) => `${s.branch}:${s.turns}`).join(" ")}`);
+
+  // --- the reflog is gone (expired, or the repo re-cloned at the same path) --
+  // A re-run must keep the branches resolved earlier: not pin the records to the
+  // branch checked out now, not swap them for HEAD, and not count them twice.
+  rmSync(join(root, ".git", "logs"), { recursive: true, force: true });
+  git({}, "checkout", "-q", "-b", "unrelated-now");
+  const resolvedBefore = after.filter((s) => s.segment_id.startsWith(SESSION) && s.branch !== "HEAD").map((s) => s.segment_id).sort();
+  collect();
+  const gone = read();
+  const mine = gone.filter((s) => s.segment_id.startsWith(SESSION));
+  check(tag("reflog gone: no record is pinned to the branch checked out now"), !mine.some((s) => s.branch === "unrelated-now"), JSON.stringify(mine.map((s) => s.branch)));
+  check(tag("reflog gone: the branches resolved earlier are kept"),
+    JSON.stringify(mine.filter((s) => s.branch !== "HEAD").map((s) => s.segment_id).sort()) === JSON.stringify(resolvedBefore), JSON.stringify(mine.map((s) => s.segment_id)));
+  check(tag("reflog gone: turns are not counted twice"), mine.reduce((n, s) => n + s.turns, 0) === 5, `turns=${mine.map((s) => `${s.branch}:${s.turns}`).join(" ")}`);
 
   for (const d of [root, emptyHome]) rmSync(d, { recursive: true, force: true });
 }

@@ -270,3 +270,23 @@ describe("installTokenomics: .octobots/tokenomics/.gitignore", () => {
     expect(readFileSync(ignore(ws), "utf8")).toBe("report.html\ndiagnostics.jsonl\n");
   });
 });
+
+describe("installTokenomics: a .gitignore that is not a plain file", () => {
+  it("a FIFO is left alone and the install finishes (never blocks)", () => {
+    const ws = mkdtempClean("pack-tok-fifo-");
+    mkdirSync(join(ws, ".octobots", "tokenomics"), { recursive: true });
+    execFileSync("mkfifo", [join(ws, ".octobots", "tokenomics", ".gitignore")]);
+    // A blocking read would hang here; vitest's timeout turns that into a failure.
+    const res = installPack(PACK_SRC, ws, { store });
+    expect(res.written).toBeGreaterThan(0);
+    expect(readFileSync(live(ws, "run.mjs"), "utf8")).toBe(packText("run.mjs"));
+  }, 10_000);
+
+  it("a directory is left alone and the rest of the pack still installs", () => {
+    const ws = mkdtempClean("pack-tok-dir-");
+    mkdirSync(join(ws, ".octobots", "tokenomics", ".gitignore"), { recursive: true });
+    const res = installPack(PACK_SRC, ws, { store, hooks: true });
+    expect(res.hooksRegistered).toBe(true);
+    expect(readFileSync(live(ws, "run.mjs"), "utf8")).toBe(packText("run.mjs"));
+  });
+});

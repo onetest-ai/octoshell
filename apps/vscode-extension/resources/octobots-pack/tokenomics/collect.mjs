@@ -65,13 +65,15 @@ const TOKEN_KEYS = [
 // For a "HEAD" record the branch is read from the reflog of the main checkout,
 // which records which branch HEAD pointed at over time. Only "HEAD" triggers it:
 // a record with no gitBranch (a session outside git) stays "(none)", and a real
-// branch name always wins. Limits: the reflog is local to this checkout (work
-// done in a clone or on CI resolves to nothing here) and expires (90 days by
-// default). Both are honest outcomes; neither invents a mission.
+// branch name always wins. A record is resolved only when the reflog covers its
+// time (it is at or after the oldest reflog entry); otherwise it stays "HEAD".
+// So a re-clone at the same path, an expired reflog (90 days by default), or git
+// failing or timing out leaves old records unresolved instead of pinning them to
+// whatever branch is checked out now.
 // ---------------------------------------------------------------------------
 function gitIn(...a) {
   try {
-    return execFileSync("git", ["-C", MAIN_DIR, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10000 });
+    return execFileSync("git", ["-C", MAIN_DIR, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10000, maxBuffer: 1 << 28 });
   } catch {
     return "";
   }
@@ -83,21 +85,26 @@ function branchTimeline() {
   if (timeline) return timeline;
   const events = [];
   let earliestFrom = null;
+  let start = null; // the oldest reflog entry of any kind: where the reflog's coverage begins
   for (const line of gitIn("reflog", "--date=iso-strict", "--format=%gd|%gs").split("\n")) {
-    const m = line.match(/^HEAD@\{(.+?)\}\|checkout: moving from (\S+) to (\S+)$/);
-    if (!m) continue;
-    const at = new Date(m[1]);
+    const e = line.match(/^HEAD@\{(.+?)\}\|(.*)$/);
+    if (!e) continue;
+    const at = new Date(e[1]);
     if (isNaN(at)) continue;
-    events.push({ at, branch: m[3] });
+    if (!start || at < start) start = at;
+    const m = e[2].match(/^checkout: moving from (\S+) to (\S+)$/);
+    if (!m) continue;
+    events.push({ at, branch: m[2] });
     // The reflog is newest first, so the last checkout parsed is the oldest; the
-    // branch it moved FROM is what the repo was on before any checkout.
-    earliestFrom = m[2];
+    // branch it moved FROM is what HEAD was on from the reflog's start until then.
+    earliestFrom = m[1];
   }
   events.sort((a, b) => a.at - b.at);
-  // Records older than every checkout belong to the branch the repo started on,
-  // else the current branch when the reflog holds no checkout at all.
-  const seed = earliestFrom || gitIn("symbolic-ref", "--short", "HEAD").trim();
-  if (seed) events.unshift({ at: new Date(0), branch: seed });
+  // From the reflog's start until the first checkout, HEAD was on the branch that
+  // checkout moved from (or, with no checkout at all, on the current branch).
+  // Before the reflog's start nothing is known: no seed, so those records stay "HEAD".
+  const seed = earliestFrom || (start ? gitIn("symbolic-ref", "--short", "HEAD").trim() : "");
+  if (seed && start) events.unshift({ at: start, branch: seed });
   timeline = events;
   return timeline;
 }
@@ -294,13 +301,18 @@ function collect() {
 // Merge with anything already on disk: a re-run must never lose segments whose
 // transcripts have since been pruned. Freshly collected records win on id.
 //
-// But `segment_id` embeds the branch (`<session>:<agent>:<branch>`), so a change
-// in how a branch is resolved RE-KEYS a segment, and a pure merge on id keeps the
-// old key beside the new one and counts the same work twice (coach-android's
-// total doubled from $223 to $449 when reflog recovery first ran). So a
-// session+agent that was just re-scanned is authoritative for itself: its stale
-// keys are dropped. A session that was NOT re-scanned (the pruned-transcript case
-// this merge exists for) keeps everything.
+// But `segment_id` embeds the branch (`<session>:<agent>:<branch>`), so resolving
+// a "HEAD" record's branch RE-KEYS its segment, and a pure merge on id keeps the
+// old `...:HEAD` key beside the new one and counts the same work twice
+// (coach-android's total doubled from $223 to $449 when reflog recovery first
+// ran). The rules, per session+agent that was just re-scanned:
+//   * a stored `...:HEAD` segment is dropped: the re-scan resolved or restated it;
+//   * a fresh `...:HEAD` segment is NOT written when that session+agent already
+//     has resolved segments on disk: they were resolved while the reflog still
+//     covered them, and a re-run after it expired must not swap a known branch
+//     for an unknown one (or count the work twice);
+//   * every other stored segment is kept, so a session whose transcript was
+//     pruned, or survives only as a partial snapshot, loses nothing.
 // ---------------------------------------------------------------------------
 function scopeOf(id) {
   const p = String(id).split(":");
@@ -320,14 +332,22 @@ function merge(fresh) {
     }
   }
   const before = byId.size;
+  const isHead = (s) => s.branch === "HEAD";
   const freshIds = new Set(fresh.map((s) => s.segment_id));
   const freshScopes = new Set(fresh.map((s) => scopeOf(s.segment_id)).filter(Boolean));
-  for (const id of [...byId.keys()]) {
-    if (freshIds.has(id)) continue;
+  const resolvedOnDisk = new Set();
+  for (const [id, d] of byId) {
     const sc = scopeOf(id);
-    if (sc && freshScopes.has(sc)) byId.delete(id); // superseded by this re-scan
+    if (sc && !isHead(d) && !freshIds.has(id)) resolvedOnDisk.add(sc);
   }
-  for (const s of fresh) byId.set(s.segment_id, s);
+  for (const [id, d] of [...byId]) {
+    const sc = scopeOf(id);
+    if (sc && freshScopes.has(sc) && isHead(d) && !freshIds.has(id)) byId.delete(id); // superseded by this re-scan
+  }
+  for (const s of fresh) {
+    if (isHead(s) && resolvedOnDisk.has(scopeOf(s.segment_id))) continue; // keep the branch known earlier
+    byId.set(s.segment_id, s);
+  }
   return { records: [...byId.values()].sort((a, b) => a.segment_id.localeCompare(b.segment_id)), before };
 }
 

@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync, appendFileSync, lstatSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync, appendFileSync } from "node:fs";
+import { readRegularText } from "./pack-updates.js";
 import { join } from "node:path";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
 
@@ -80,16 +81,24 @@ export function installTokenomics(srcRoot: string, repoRoot: string, keep: Reado
  */
 export const TOKENOMICS_IGNORED = ["diagnostics.jsonl"] as const;
 
-/** Appends each missing `TOKENOMICS_IGNORED` line; the rest of the file is the workspace's own. */
+/**
+ * Appends each missing `TOKENOMICS_IGNORED` line; the rest of the file is the workspace's own. The
+ * file is read only as a small regular file (never a symlink, FIFO or directory: those would hang or
+ * abort the install), and a failure to read or write it is left alone, never raised: an ignore line
+ * is not worth a half-finished install.
+ */
 function ensureIgnored(dir: string): void {
   const file = join(dir, ".gitignore");
   let text = "";
   try {
-    if (lstatSync(file).isSymbolicLink()) return; // never written through
-    text = readFileSync(file, "utf8");
-  } catch { /* absent: created below */ }
+    text = readRegularText(file, { noFollow: true, max: 1024 * 1024 });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") return; // present but not a plain file: leave it
+  }
   const have = new Set(text.split(/\r?\n/).map((l) => l.trim()));
   const missing = TOKENOMICS_IGNORED.filter((l) => !have.has(l));
   if (missing.length === 0) return;
-  appendFileSync(file, (text && !text.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n");
+  try {
+    appendFileSync(file, (text && !text.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n");
+  } catch { /* unwritable: the install goes on */ }
 }
