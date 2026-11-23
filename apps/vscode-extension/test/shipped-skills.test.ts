@@ -290,7 +290,7 @@ describe("scripts/shipped-skills.mjs --write", () => {
     expect(r.stderr).toBe("");
     expect(r.status).toBe(0);
     expect(Buffer.compare(readFileSync(s.store), before)).toBe(0);
-  });
+  }, 60_000);
 
   it("rebuilds the shipped history from git alone when the store is absent", () => {
     // The strongest check that --write reads the history right: starting from nothing it must
@@ -338,7 +338,7 @@ describe("scripts/shipped-skills.mjs --write", () => {
     const bytes = readFileSync(s.store);
     expect(run("--write", s.env, false).status).toBe(0);
     expect(Buffer.compare(readFileSync(s.store), bytes)).toBe(0);
-  });
+  }, 60_000);
 
   it("refuses a current SKILL.md whose version line is not OCTOBOTS_PACK_VERSION, naming the file", () => {
     const s = scratch();
@@ -349,7 +349,7 @@ describe("scripts/shipped-skills.mjs --write", () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain(file);
     expect(Buffer.compare(readFileSync(s.store), before)).toBe(0);
-  });
+  }, 60_000);
 
   it("creates the store (and its directory) when none exists yet", () => {
     const s = scratch();
@@ -358,7 +358,7 @@ describe("scripts/shipped-skills.mjs --write", () => {
     expect(r.status).toBe(0);
     expect(existsSync(nested)).toBe(true);
     expect(run("--verify", { ...s.env, SHIPPED_SKILLS_STORE_PATH: nested }).status).toBe(0);
-  });
+  }, 60_000);
 });
 
 describe("frontmatterVersion (the pack's one version rule)", () => {

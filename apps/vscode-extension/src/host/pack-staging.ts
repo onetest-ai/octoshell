@@ -7,7 +7,7 @@ import { PACK_UPDATES_DIR, assertRealPackUpdatesDir, isStagingDir, readRegularBy
 /**
  * Staging folders for pack updates: `.octobots/pack-updates/v<N>/<skill>/`.
  *
- * The installer writes `base.md`, `local.md`, `upstream.md` (a pack skill only) and `RECONCILE.md`.
+ * The installer writes `base.md`, `local.md`, `upstream.md` (only for a skill or file the pack still ships) and `RECONCILE.md`.
  * The agent adds `merged.md`, `DECISIONS.md` and optionally `UPSTREAM-CANDIDATES.md`; an Overwrite
  * adds `overwritten-local.md`. The installer deletes the inputs it wrote (and `merged.md`) when it
  * re-stages or the user chooses Overwrite or Keep, and NEVER deletes a decision log, a candidates
@@ -284,7 +284,7 @@ export function stageEntry(s: StageInput): PendingEntry {
   };
 }
 
-/** Saves a replaced local SKILL.md beside its staging folder. Never replaces an earlier saved file. */
+/** Saves a replaced local SKILL.md or pack file beside its staging folder. Never replaces an earlier saved file. */
 export function saveOverwritten(repoRoot: string, packVersion: number, skill: string, local: Buffer): void {
   const dir = stagingPath(repoRoot, stagingDirRel(packVersion, skill), true)!;
   for (let n = 1; ; n++) {

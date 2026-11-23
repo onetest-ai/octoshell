@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../src/cli.js";
+import { loadConfig } from "../src/config.js";
 import { appendCommits, buildRepo } from "./fixtures/repo.js";
 import { runNode } from "./fixtures/run-node.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
@@ -332,7 +333,7 @@ describe("end-to-end: the bundled .mjs against this repo's own history", () => {
   const REPO_ROOT = join(PKG_ROOT, "..", "..");
 
   it(
-    "runs doctor under bare node against octoshell's own repo and reports degraded, naming thin history as the cause",
+    "runs doctor under bare node against octoshell's own repo and grades it by its history depth: ok at or above minCommits, degraded naming thin history below it",
     () => {
       // Built by the SAME script `pnpm --filter @octoshell/graph bundle`
       // invokes — never a stale artifact left from a previous run, and never a
@@ -353,8 +354,8 @@ describe("end-to-end: the bundled .mjs against this repo's own history", () => {
       //    `cwd` — and this run's cwd is the real octoshell repo root, which
       //    does have a node_modules tree, so running from inside the package
       //    would prove nothing. (That property is bundle.test.ts's subject;
-      //    this test is about the CONTENT of the report against a real,
-      //    currently-thin-history repo. Only the executable is isolated, not
+      //    this test is about the CONTENT of the report against a real
+      //    repo. Only the executable is isolated, not
       //    the repo it runs against.)
       const isolated = join(mkdtempClean("octograph-gate-bundle-"), "octograph.mjs");
       execFileSync("node", ["scripts/bundle.mjs", isolated], { cwd: PKG_ROOT, stdio: "pipe" });
@@ -369,19 +370,45 @@ describe("end-to-end: the bundled .mjs against this repo's own history", () => {
       expect(result.stdout, `octograph exited ${result.code}: ${result.stderr}`).not.toBe("");
       const report = JSON.parse(result.stdout) as Report;
 
-      // This assertion is tied to octoshell's OWN current commit history
-      // (well under the default 200-commit bar as of this task) — it is the
-      // mission's own acceptance criterion, not a synthetic fixture, and it
-      // will need revisiting the day this repo's analysable commit count
-      // crosses config.minCommits.
-      expect(report.status).toBe("degraded");
-      expect(result.code).not.toBe(0);
-
+      // This runs against octoshell's OWN commit history, whose analysable
+      // count sits near config.minCommits and differs by checkout: a branch
+      // merged or squashed can land on either side of the bar. So the side is
+      // read from the count the report itself gives, and everything else in
+      // the report must then match that side exactly. The thin side does not
+      // depend on this repo staying thin: a synthetic thin history is covered
+      // by case (2) of "doctor's three states" above and by doctor.test.ts's
+      // "reports degraded when history is below minCommits".
       const history = report.checks.find((c) => c.name === "history depth");
       expect(history).toBeDefined();
-      expect(history?.state).toBe("warn");
-      expect(history?.detail ?? "").toMatch(/analysable commits/);
-      expect(history?.fix ?? "").not.toBe("");
+      const count = Number(history?.detail?.match(/^(\d+) analysable commits/)?.[1]);
+      expect(count, history?.detail).toBeGreaterThan(0);
+      const { minCommits } = loadConfig(REPO_ROOT, {});
+
+      if (count < minCommits) {
+        expect(report.status).toBe("degraded");
+        expect(result.code).not.toBe(0);
+        expect(result.code).toBe(1);
+        expect(history?.state).toBe("warn");
+        expect(history?.detail ?? "").toMatch(/analysable commits/);
+        expect(history?.detail).toBe(
+          `${count} analysable commits — co-change needs ~${minCommits} to be meaningful`,
+        );
+        expect(history?.fix ?? "").not.toBe("");
+        // "history shape" warns exactly when squashes dominate, which is what
+        // picks the advice.
+        const squashed = report.checks.find((c) => c.name === "history shape")?.state === "warn";
+        expect(history?.fix).toBe(
+          squashed
+            ? "nothing to unshallow — this repository squash-merges, so per-branch history was discarded at merge time; expect a sparse discovered graph and rely on the declared spine"
+            : "unshallow the clone, or accept sparse output",
+        );
+      } else {
+        expect(report.status).toBe("ok");
+        expect(result.code).toBe(0);
+        expect(history?.state).toBe("ok");
+        expect(history?.detail).toBe(`${count} analysable commits`);
+        expect(history?.fix).toBeUndefined();
+      }
     },
     30_000,
   );
