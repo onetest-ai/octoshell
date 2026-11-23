@@ -14,7 +14,7 @@ import { carriedFrom, clearInputs, ensureGitignore, saveOverwritten, stageEntry,
 import { parseSkillMarker, skillSha256 } from "./skill-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
-export const OCTOBOTS_PACK_VERSION = 62;
+export const OCTOBOTS_PACK_VERSION = 63;
 
 export { OCTOBOTS_SKILLS };
 

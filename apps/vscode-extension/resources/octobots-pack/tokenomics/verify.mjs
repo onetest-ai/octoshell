@@ -18,11 +18,11 @@
 //
 // Usage: node .octobots/tokenomics/verify.mjs [--tolerance PCT] [--project-dir DIR]
 
-import { readFileSync, existsSync, readdirSync, mkdtempSync, mkdirSync, symlinkSync, realpathSync, rmSync, statSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, mkdtempSync, mkdirSync, symlinkSync, realpathSync, rmSync } from "node:fs";
 import { basename, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { locateTranscripts } from "./roots.mjs";
+import { listSessions, locateTranscripts } from "./checkouts.mjs";
 
 const args = process.argv.slice(2);
 // --help prints usage and exits before the script reads or writes anything.
@@ -39,8 +39,9 @@ const TOLERANCE = Number(argOf("--tolerance", "10"));
 const CCUSAGE = argOf("--ccusage", "ccusage@20.0.18");
 
 // The same population rule collect.mjs reads (roots, slug, worktree unwinding): one shared module.
-// Artifacts live in the current checkout; transcripts only under the main one's slug.
-const { projectDir: PROJECT_DIR, mainDir: MAIN_DIR, slug: PROJECT_SLUG, roots: ROOTS } = locateTranscripts(args);
+// Artifacts live in the current checkout; transcripts under the main one's slug and its worktrees'.
+const LOCATED = locateTranscripts(args);
+const { projectDir: PROJECT_DIR, mainDir: MAIN_DIR, slug: PROJECT_SLUG, roots: ROOTS } = LOCATED;
 
 const TOK_DIR = join(PROJECT_DIR, ".octobots", "tokenomics");
 const runsFile = join(TOK_DIR, "runs.json");
@@ -54,9 +55,8 @@ for (const f of [runsFile, segFile]) {
 const d = JSON.parse(readFileSync(runsFile, "utf8"));
 
 // Our population: the sessions whose transcripts sit in our own slug dirs, per root.
-const present = ROOTS.filter((r) => {
-  try { return statSync(join(r, PROJECT_SLUG)).isDirectory(); } catch { return false; }
-});
+const sessions = listSessions(LOCATED);
+const present = [...new Set(sessions.map((s) => s.dir))];
 if (present.length === 0) {
   console.error(`tokenomics: no transcripts for slug ${PROJECT_SLUG} under ${ROOTS.join(", ")} - nothing to cross-check`);
   process.exit(2);
@@ -68,25 +68,47 @@ if (present.length === 0) {
 // `<sid>`, so our population's ccusage keys are the session ids (S) plus those dir names (K).
 const S = new Set();
 const K = new Set();
+const keysOf = new Map(); // session -> its nested row names
+const onDisk = new Map(); // session -> the unique turns its transcripts still hold
+let session = null;
+function countTurns(file) {
+  let text;
+  try { text = readFileSync(file, "utf8"); } catch { return; }
+  // Keyed by file name, so a second copy of a session adds only what the first lacks.
+  if (!onDisk.has(session)) onDisk.set(session, new Set());
+  const seen = onDisk.get(session);
+  let n = 0;
+  for (const line of text.split("\n")) {
+    if (!line.includes('"assistant"')) continue;
+    let r;
+    try { r = JSON.parse(line); } catch { continue; }
+    if (r.type !== "assistant" || !r.message || typeof r.message !== "object") continue;
+    seen.add(`${basename(file)} ${r.requestId || `#${n++}`}`);
+  }
+}
 function nestedKeys(dir, isSubagentsRoot) {
   let entries;
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
   for (const e of entries) {
     if (e.isDirectory()) nestedKeys(join(dir, e.name), false);
-    else if (!isSubagentsRoot && e.name.endsWith(".jsonl")) K.add(basename(dir));
+    else if (e.name.endsWith(".jsonl")) {
+      countTurns(join(dir, e.name));
+      if (isSubagentsRoot) continue;
+      K.add(basename(dir));
+      keysOf.set(session, [...(keysOf.get(session) ?? []), basename(dir)]);
+    }
   }
 }
 const rootCounts = [];
-for (const r of present) {
-  let n = 0;
-  for (const e of readdirSync(join(r, PROJECT_SLUG))) {
-    if (!e.endsWith(".jsonl")) continue;
-    const id = e.slice(0, -6);
-    S.add(id);
-    n++;
-    nestedKeys(join(r, PROJECT_SLUG, id, "subagents"), true);
-  }
-  rootCounts.push(`${r} (${n})`);
+for (const { dir, sessionId, file } of sessions) {
+  session = sessionId;
+  S.add(sessionId);
+  countTurns(file);
+  nestedKeys(join(dir, sessionId, "subagents"), true);
+}
+for (const r of ROOTS) {
+  const n = sessions.filter((s) => s.root === r).length;
+  if (n) rootCounts.push(`${r} (${n})`);
 }
 
 // Our side. Tokens come from segments.jsonl filtered to the same sessions: it keeps sessions whose
@@ -94,6 +116,26 @@ for (const r of present) {
 // prices every segment, so it is only comparable while no collected session has vanished from disk.
 const ours = { input: 0, output: 0, cache_create: 0, cache_read: 0, cost: 0 };
 const collected = new Set();
+const stored = new Map();
+for (const line of readFileSync(segFile, "utf8").split("\n")) {
+  try { const s = JSON.parse(line); stored.set(s.session_id, (stored.get(s.session_id) ?? 0) + (s.turns ?? 0)); } catch { /* blank or corrupt */ }
+}
+// A transcript shortened since it was collected keeps its stored rows, so disk cannot confirm them:
+// the session leaves both sides, like one whose transcript is gone.
+let shortened = 0;
+for (const id of [...S]) {
+  if ((stored.get(id) ?? 0) <= (onDisk.get(id)?.size ?? 0)) continue;
+  shortened++;
+  S.delete(id);
+  for (const k of keysOf.get(id) ?? []) K.delete(k);
+}
+if (shortened) {
+  console.error(`tokenomics: WARN ${shortened} session(s) have more turns stored than their transcripts hold (shortened since, or collected twice): not cross-checked`);
+}
+if (S.size === 0) {
+  console.error("tokenomics: no session left to cross-check");
+  process.exit(2);
+}
 for (const line of readFileSync(segFile, "utf8").split("\n")) {
   if (!line) continue;
   let s;
@@ -127,7 +169,7 @@ const vanished = [...collected].filter((id) => !S.has(id)).length;
 const tmp = mkdtempSync(join(tmpdir(), "octobots-verify-"));
 let raw;
 try {
-  const parents = [...new Set(present.map((r) => dirname(realpathSync(join(r, PROJECT_SLUG)))))];
+  const parents = [...new Set(present.map((r) => dirname(realpathSync(r))))];
   const staged = parents.map((p, i) => {
     const dir = join(tmp, `r${i}`);
     mkdirSync(dir);

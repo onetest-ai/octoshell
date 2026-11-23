@@ -33,8 +33,17 @@ Claude Code writes transcripts to `~/.claude/projects/<slug>/<session-id>.jsonl`
 (subagents under `<session-id>/subagents/`), **not** into the repo. `<slug>` is the
 absolute project path with every non-alphanumeric character replaced by `-`
 (`/Users/me/Dev/my_app` -> `-Users-me-Dev-my-app`). The collector computes the
-slug from the main checkout (worktree paths are unwound) and reads **only that
-slug's directory** under each root, so other projects' transcripts are never scanned.
+slugs of the project's checkouts and reads **only those directories** under each root, so other
+projects' transcripts are never scanned:
+
+- the **main checkout**, found through git from any worktree, wherever the worktree lives (without
+  git, a path under `.claude/worktrees/` or `.worktrees/` is unwound);
+- every **worktree** git registers for the repository: a session started inside one has its own slug.
+  Two paths can share a slug, so such a session counts only if the directory it records is that worktree;
+- a **removed worktree** directly under `.worktrees/` or `.claude/worktrees/`. One removed from
+  anywhere else leaves no proof of its repository and is not read.
+
+A nested checkout or clone of another repository is its own project.
 
 Roots, in priority order:
 
@@ -45,7 +54,8 @@ Roots, in priority order:
    exists, so old snapshots are not lost.
 
 A session found in more than one root is counted once (`segment_id` includes the
-session id; the copy with more turns wins), so collecting is idempotent. `selftest.mjs`
+session id; the copy with more turns wins), so collecting is idempotent. A stored row
+never shrinks: a transcript that was shortened or deleted keeps what was recorded. `selftest.mjs`
 covers these rules with `HOME` and `CLAUDE_CONFIG_DIR` isolated, and `octobots doctor`
 prints the root it expects.
 
@@ -57,8 +67,9 @@ segment per session x agent x branch into the same `raw/segments.jsonl`, tagged 
 (Claude segments carry no `source` key). `run.mjs` runs it right after `collect.mjs`.
 
 - **Which sessions.** Only this repo's: `session_meta.git.repository_url` matches the project's `origin`
-  (`--repo owner/name` / env `OCTOBOTS_TOKENOMICS_CODEX_REPO` to override), or the session `cwd` is inside the
-  main checkout or one of its worktrees. All dates. Other repos are skipped.
+  (`--repo owner/name` / env `OCTOBOTS_TOKENOMICS_CODEX_REPO` to override). Only when the session records no
+  repository, or the project has no `origin`, does the session `cwd` decide: it must be inside the main checkout or
+  one of its worktrees, and not in another repository's checkout nested there. All dates. Other repos are skipped.
 - **Whitelist, never content.** Only ids, timestamps, `cwd`, branch, repository url, `agent_path`, model, effort
   and the token counters are read. Prompts, replies, instructions and tool output are never parsed or stored;
   `selftest.mjs` plants a sentinel in all of them and asserts it never reaches `segments.jsonl`.

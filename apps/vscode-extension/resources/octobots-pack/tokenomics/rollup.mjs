@@ -18,6 +18,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { gitFreeEnv } from "./checkouts.mjs";
 import { loadBoard } from "./board.mjs";
 import { makeAttributionContext, resolveSegmentAttribution, loadLedgerWindows, segmentAttribution } from "./attribution.mjs";
 import { execFileSync } from "node:child_process";
@@ -115,7 +116,7 @@ function cacheReadCost(byModel) {
 
 function git(...a) {
   try {
-    return execFileSync("git", a, { cwd: PROJECT_DIR, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync("git", a, { cwd: PROJECT_DIR, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: gitFreeEnv() }).trim();
   } catch {
     return null;
   }
@@ -233,7 +234,7 @@ function prsFor(branch) {
     const out = execFileSync("gh", [
       "pr", "list", "--head", branch, "--state", "all", "--limit", "5",
       "--json", "number,createdAt,additions,deletions,changedFiles,baseRefName",
-    ], { cwd: PROJECT_DIR, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000 });
+    ], { cwd: PROJECT_DIR, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000, env: gitFreeEnv() });
     list = JSON.parse(out);
   } catch { /* offline / no gh / no PR */ }
   PR_CACHE.set(branch, list);

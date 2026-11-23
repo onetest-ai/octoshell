@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
@@ -70,5 +70,36 @@ describe("tokenomics selftest.mjs", () => {
     const lines = rootsOkLines();
     expect(lines.some((l) => /\[roots\]\[isolation\].*CLAUDE_CONFIG_DIR/.test(l))).toBe(true);
     expect(lines.some((l) => /\[roots\]\[isolation\].*HOME/.test(l))).toBe(true);
+  });
+
+  it("leaves the real repository alone when a hook in a worktree exports GIT_DIR", { timeout: 130_000 }, () => {
+    const base = mkdtempClean("selftest-gitdir-");
+    const repo = join(base, "r");
+    const wt = join(base, "w");
+    const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+    const git = (cwd: string, ...a: string[]): string =>
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd, encoding: "utf8", env: clean }).trim();
+    mkdirSync(repo);
+    git(repo, "init", "-q");
+    git(repo, "commit", "-q", "--allow-empty", "-m", "seed");
+    git(repo, "worktree", "add", "-q", wt);
+    const state = (): string[] => [
+      readFileSync(join(repo, ".git", "config"), "utf8"),
+      git(repo, "for-each-ref"),
+      git(repo, "log", "--all", "--oneline"),
+    ];
+    const before = state();
+    const r = spawnSync(process.execPath, [SELFTEST], {
+      cwd: wt,
+      encoding: "utf8",
+      env: { ...clean, GIT_DIR: git(wt, "rev-parse", "--absolute-git-dir") },
+      timeout: 120_000,
+    });
+    expect(r.stdout).toContain("all checks passed");
+    expect(state()).toEqual(before);
+  });
+
+  it("ran the checkouts suite", () => {
+    expect(selftest().stdout.match(/^\s+ok\s+\[checkouts\]/gm)?.length ?? 0).toBeGreaterThanOrEqual(20);
   });
 });
