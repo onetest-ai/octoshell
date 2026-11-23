@@ -8,8 +8,8 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symli
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { PACK_SRC } from "./fixtures/pack-store.js";
-import { OCTOBOTS_SKILLS } from "../src/host/octobots-skill.js";
+import { PACK_SRC, store } from "./fixtures/pack-store.js";
+import { OCTOBOTS_PACK_VERSION, OCTOBOTS_SKILLS, installPack } from "../src/host/octobots-skill.js";
 import { RETIRED_SKILLS } from "../src/host/pack-skills.js";
 import { RETIRED_PACK_PATHS, isJudgedPackPath, packFileEntryName, packFileRel } from "../src/host/pack-files.js";
 
@@ -423,6 +423,59 @@ describe("pack-reconcile.mjs: a pack-file entry", () => {
   });
 });
 
+describe("pack-reconcile.mjs over a kept v61 skill-marker.mjs", () => {
+  // The installer keeps a locally changed skill-marker.mjs, so this script may import a copy that
+  // lacks whatever v62 added to it. A name it lacks is a SyntaxError before the first line runs.
+  const MARKER = "skill/mission-planner/scripts/skill-marker.mjs";
+  const HOOK = "hooks/primer.mjs";
+  const live = (ws: string, key: string) => join(ws, ...packFileRel(key).split("/"));
+  const packText = (key: string) => readFileSync(join(PACK_SRC, ...key.split("/")), "utf8");
+  const upstreamSha = (key: string) => createHash("sha256").update(packText(key)).digest("hex");
+
+  it("list and done work after a v62 install that kept it", () => {
+    const v61 = store.bodies[store.versions["61"]![MARKER]!.at(-1)!]!;
+    expect(v61).not.toContain("withoutReconciledFrom"); // what makes it the v61 copy
+    const keptMarker = v61 + "// a project's own line\n";
+    const ws = mkdtempClean("pack-reconcile-v61-");
+    installPack(PACK_SRC, ws, { store, localChanges: "overwrite" });
+    writeFileSync(live(ws, MARKER), keptMarker);
+    writeFileSync(live(ws, HOOK), packText(HOOK) + "// a project's own line\n");
+    installPack(PACK_SRC, ws, { store });
+    expect(readFileSync(live(ws, MARKER), "utf8")).toBe(keptMarker);
+
+    const keys = [HOOK, MARKER]; // the hook first: its done runs on the kept v61 copy
+    expect(pendingSkills(ws).sort()).toEqual(keys.map(packFileEntryName).sort());
+    const list = run(ws, "list");
+    expect(list.err).toBe("");
+    expect(list.code).toBe(0);
+    for (const key of keys) {
+      expect(list.out).toContain(`  file: ${packFileRel(key)}\n`);
+      expect(list.out).toContain(`  marker: a comment line holding octobots-reconciled-from: ${upstreamSha(key)}\n`);
+    }
+
+    for (const key of keys) {
+      const name = packFileEntryName(key);
+      mk(join(ws, ".octobots", "pack-updates", `v${OCTOBOTS_PACK_VERSION}`, name, "DECISIONS.md"), CLOSED);
+      const early = run(ws, "done", name);
+      expect(early.code, early.err).toBe(3);
+      expect(early.err).toContain(`it must hold a comment line octobots-reconciled-from: ${upstreamSha(key)}`);
+      const local = readFileSync(live(ws, key), "utf8");
+      const shebang = local.match(/^#!.*\n/)?.[0] ?? "";
+      const line = `// octobots-reconciled-from: ${upstreamSha(key)}\n`;
+      writeFileSync(live(ws, key), shebang + line + line + local.slice(shebang.length));
+      const twice = run(ws, "done", name);
+      expect(twice.code).toBe(3);
+      expect(twice.err).toContain("holds 2 octobots-reconciled-from lines");
+      writeFileSync(live(ws, key), shebang + line + local.slice(shebang.length));
+      const done = run(ws, "done", name);
+      expect(done.err).toBe("");
+      expect(done.code).toBe(0);
+      expect(pendingSkills(ws)).not.toContain(name);
+    }
+    expect(pendingSkills(ws)).toEqual([]);
+  });
+});
+
 describe("pack-reconcile.mjs workspace resolution and source", () => {
   it("run from an unrelated cwd it acts on the workspace it is installed in, not the cwd", () => {
     const ws = workspace();
@@ -454,7 +507,7 @@ describe("pack-reconcile.mjs workspace resolution and source", () => {
     const imports = full.split("\n").filter((l) => /^import .* from "\.\.\/\.\.\//.test(l));
     expect(imports).toEqual([
       'import * as io from "../../mission-planner/scripts/pending-io.mjs";',
-      'import { fileReconciledFrom, parseSkillMarker, skillSha256, withoutReconciledFrom } from "../../mission-planner/scripts/skill-marker.mjs";',
+      'import { fileReconciledFrom, parseSkillMarker, skillSha256 } from "../../mission-planner/scripts/skill-marker.mjs";',
     ]);
     const src = full.split("\n").filter((l) => !/^import /.test(l)).join("\n");
     for (const s of [...OCTOBOTS_SKILLS, ...RETIRED_SKILLS.filter((r) => r !== "octobots")]) expect(src, s).not.toContain(s);

@@ -25,11 +25,13 @@
 // --root <dir>; never the current directory. Dependency-free. Its logic names no skill: which skill is
 // retired comes from its pending entry. The shared pack modules are imported from their one fixed
 // home (a fixed path, never a search of .claude/skills, so no other skill's code is ever loaded).
+// A locally changed copy of either is kept by an install and may be as old as v61, so only names v61
+// exported are imported: a missing one would stop this script from loading, and no entry could finish.
 import { existsSync, lstatSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as io from "../../mission-planner/scripts/pending-io.mjs";
-import { fileReconciledFrom, parseSkillMarker, skillSha256, withoutReconciledFrom } from "../../mission-planner/scripts/skill-marker.mjs";
+import { fileReconciledFrom, parseSkillMarker, skillSha256 } from "../../mission-planner/scripts/skill-marker.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SKILLS_DIR = resolve(HERE, "..", "..");
@@ -106,6 +108,9 @@ const present = (file) => {
   try { lstatSync(file); return true; } catch (err) { return err.code !== "ENOENT" && err.code !== "ENOTDIR"; }
 };
 
+// The standalone marker line: a copy of withoutReconciledFrom's pattern, which a kept v61 marker module
+// lacks. The extension's test/skill-marker-parity.test.ts pins it to both twins.
+const MARKER_LINE = /^[ \t]*(?:(?:\/\/|#)[ \t]*octobots-reconciled-from:[ \t]*[0-9a-fA-F]{64}|<!--[ \t]*octobots-reconciled-from:[ \t]*[0-9a-fA-F]{64}[ \t]*-->)[ \t]*(?:\r?\n|$)/m;
 const versionOf = (e) => Number(e.dir.match(/\/v(\d+)\//)[1]); // isStagingDir guarantees the shape
 const upstreamPath = (e) => join(ROOT, ...e.dir.split("/"), "upstream.md");
 
@@ -167,9 +172,9 @@ if (liveFile.kind === "invalid") {
   if (!existsSync(upstreamPath(e))) refuse(`${e.dir}/upstream.md is missing, so octobots-reconciled-from cannot be checked`);
   const liveText = readOrRefuse(file, rel, { noFollow: true });
   const want = skillSha256(readOrRefuse(upstreamPath(e), `${e.dir}/upstream.md`));
-  // A marker is a whole comment line, as withoutReconciledFrom strips it. The installer strips only
+  // A marker is a whole comment line, as the installer strips it. It strips only
   // one, so a second would leave the file a local change for good.
-  const markers = liveText.split(/\r?\n/).filter((l) => withoutReconciledFrom(l) !== l);
+  const markers = liveText.split(/\r?\n/).filter((l) => MARKER_LINE.test(l));
   if (markers.length > 1) refuse(`${rel} holds ${markers.length} octobots-reconciled-from lines; it must hold exactly one, with ${want}:\n${markers.map((l) => `  ${l.trim()}`).join("\n")}`);
   const from = markers.length ? fileReconciledFrom(markers[0]) : null;
   if (from !== want) refuse(`${rel} reads octobots-reconciled-from: ${from ?? "(none)"}; it must hold a comment line octobots-reconciled-from: ${want} (the sha256 of ${e.dir}/upstream.md), with nothing else on that line`);

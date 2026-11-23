@@ -42,7 +42,7 @@ export function parseSkillMarker(text) {
 
 /**
  * The `octobots-reconciled-from: <sha256>` marker of a reconciled pack FILE other than a SKILL.md
- * (a tokenomics script): the first line holding it, in whatever comment syntax the file uses
+ * (a script, hook, template or the status line): the first line holding it, in whatever comment syntax the file uses
  * (`// ...`, `# ...`, `<!-- ... -->`). Lower-cased; null when absent. A file has no frontmatter, so
  * the marker alone says what it was reconciled against.
  */

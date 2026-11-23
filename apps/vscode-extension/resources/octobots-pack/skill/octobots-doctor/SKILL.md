@@ -32,6 +32,14 @@ question still open from an older pack version reaches you in the named folder's
 `Carried over from v<old>:`; copy each one, verbatim, as an open `- ESCALATED:` entry under Conflicts
 in this folder's DECISIONS.md (unless the user answers it in this conversation).
 
+Merge entries whose live file is under `mission-planner/scripts/` or `octobots-doctor/scripts/`
+first: `pack-reconcile.mjs` runs on those files. If it does not load, or lists an entry whose
+RECONCILE.md has a `- File:` line as a skill (no `file:` line), take that entry's values from its
+RECONCILE.md: the live path is on `- File: <path> (pending entry <entry>)`, the upstream hash is the
+sha256 on `- Upstream: pack v<N> (sha256 <hash>)`, and the whole marker line is its last line. Its
+folder is the `dir` in pending.json, which you read and never edit. Install those entries' merged.md
+files, then run done for each, before you start the others.
+
 For each named folder `.octobots/pack-updates/v<N>/<skill>/`:
 
 1. Read RECONCILE.md, then base.md, local.md and upstream.md. If a DECISIONS.md there has an open

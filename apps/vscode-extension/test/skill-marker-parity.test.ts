@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseSkillMarker as parseMjs, withoutReconciledFrom as stripMjs } from "../resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs";
 import { parseSkillMarker as parseTs, withoutReconciledFrom as stripTs, type SkillMarker } from "../src/host/skill-marker.js";
@@ -93,5 +95,24 @@ describe("skill-marker: one rule, two runtimes", () => {
         expect(stripMjs(t)).toBe(t);
       });
     }
+
+    // pack-reconcile.mjs holds its own copy: it must load beside a kept v61 skill-marker.mjs, which
+    // lacks withoutReconciledFrom. It cannot be imported (it runs on load), so its text is read.
+    describe("pack-reconcile.mjs's own copy of the pattern", () => {
+      const root = join(__dirname, "..");
+      const read = (rel: string) => readFileSync(join(root, rel), "utf8");
+      const copy = read("resources/octobots-pack/skill/octobots-doctor/scripts/pack-reconcile.mjs").match(/^const MARKER_LINE = \/(.+)\/m;$/m)?.[1];
+      it("is the twins' pattern, character for character", () => {
+        const twin = (rel: string) => read(rel).match(/return text\.replace\(\/(.+)\/m, ""\);/)?.[1];
+        expect(copy).toBeTypeOf("string");
+        expect(copy).toBe(twin("src/host/skill-marker.ts"));
+        expect(copy).toBe(twin("resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs"));
+      });
+      it("decides every case of the table as the twins do", () => {
+        const re = new RegExp(copy ?? "(?!)", "m");
+        for (const [input, want] of strip) expect(input.replace(re, "")).toBe(want);
+        for (const t of keep) expect(re.test(t), t).toBe(false);
+      });
+    });
   });
 });
