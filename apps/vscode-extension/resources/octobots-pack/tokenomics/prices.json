@@ -1,7 +1,7 @@
 {
   "_comment": "CACHED FROM LITELLM — do not hand-edit. Refresh with `node .octobots/tokenomics/update-prices.mjs` and commit. Entries are verbatim upstream: costs are USD PER TOKEN (not per million), under upstream's own field names. Refreshing this file re-prices all historical runs on the next rollup.",
   "_source": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
-  "fetched_at": "2026-08-16",
+  "fetched_at": "2026-11-23",
   "fetched_at_openai": "2026-11-12",
   "models": {
     "claude-3-7-sonnet-20250219": {
@@ -44,6 +44,20 @@
       "cache_creation_input_token_cost": 0.0000125,
       "cache_creation_input_token_cost_above_1hr": 0.00002
     },
+    "claude-fable-5-1": {
+      "input_cost_per_token": 0.00001,
+      "output_cost_per_token": 0.00005,
+      "cache_read_input_token_cost": 2.5e-7,
+      "cache_creation_input_token_cost": 0.0000125,
+      "cache_creation_input_token_cost_above_1hr": 0.00002
+    },
+    "claude-fable-5-2": {
+      "input_cost_per_token": 0.000008,
+      "output_cost_per_token": 0.00004,
+      "cache_read_input_token_cost": 2e-7,
+      "cache_creation_input_token_cost": 0.00001,
+      "cache_creation_input_token_cost_above_1hr": 0.000016
+    },
     "claude-haiku-4-5": {
       "input_cost_per_token": 0.000001,
       "output_cost_per_token": 0.000005,
@@ -58,12 +72,33 @@
       "cache_creation_input_token_cost": 0.00000125,
       "cache_creation_input_token_cost_above_1hr": 0.000002
     },
+    "claude-haiku-5-5": {
+      "input_cost_per_token": 1e-7,
+      "output_cost_per_token": 5e-7,
+      "cache_read_input_token_cost": 1e-8,
+      "cache_creation_input_token_cost": 1.25e-7,
+      "cache_creation_input_token_cost_above_1hr": 2e-7
+    },
     "claude-mythos-5": {
       "input_cost_per_token": 0.00001,
       "output_cost_per_token": 0.00005,
       "cache_read_input_token_cost": 0.000001,
       "cache_creation_input_token_cost": 0.0000125,
       "cache_creation_input_token_cost_above_1hr": 0.00002
+    },
+    "claude-mythos-5-1": {
+      "input_cost_per_token": 0.00001,
+      "output_cost_per_token": 0.00005,
+      "cache_read_input_token_cost": 2.5e-7,
+      "cache_creation_input_token_cost": 0.0000125,
+      "cache_creation_input_token_cost_above_1hr": 0.00002
+    },
+    "claude-mythos-5-2": {
+      "input_cost_per_token": 0.000008,
+      "output_cost_per_token": 0.00004,
+      "cache_read_input_token_cost": 2e-7,
+      "cache_creation_input_token_cost": 0.00001,
+      "cache_creation_input_token_cost_above_1hr": 0.000016
     },
     "claude-mythos-preview": {
       "input_cost_per_token": 0.00001,
@@ -149,6 +184,13 @@
       "cache_creation_input_token_cost": 0.00000625,
       "cache_creation_input_token_cost_above_1hr": 0.00001
     },
+    "claude-opus-5-5": {
+      "input_cost_per_token": 0.000004,
+      "output_cost_per_token": 0.00002,
+      "cache_read_input_token_cost": 2e-7,
+      "cache_creation_input_token_cost": 0.000005,
+      "cache_creation_input_token_cost_above_1hr": 0.000008
+    },
     "claude-sonnet-4-20250514": {
       "input_cost_per_token": 0.000003,
       "output_cost_per_token": 0.000015,
@@ -181,6 +223,13 @@
       "input_cost_per_token": 0.000002,
       "output_cost_per_token": 0.00001,
       "cache_read_input_token_cost": 2e-7,
+      "cache_creation_input_token_cost": 0.0000025,
+      "cache_creation_input_token_cost_above_1hr": 0.000004
+    },
+    "claude-sonnet-5-5": {
+      "input_cost_per_token": 0.000002,
+      "output_cost_per_token": 0.00001,
+      "cache_read_input_token_cost": 1e-7,
       "cache_creation_input_token_cost": 0.0000025,
       "cache_creation_input_token_cost_above_1hr": 0.000004
     },

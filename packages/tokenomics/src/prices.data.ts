@@ -53,6 +53,20 @@ export const PRICES: Record<string, PriceEntry> = {
     "cache_creation_input_token_cost": 0.0000125,
     "cache_creation_input_token_cost_above_1hr": 0.00002
   },
+  "claude-fable-5-1": {
+    "input_cost_per_token": 0.00001,
+    "output_cost_per_token": 0.00005,
+    "cache_read_input_token_cost": 2.5e-7,
+    "cache_creation_input_token_cost": 0.0000125,
+    "cache_creation_input_token_cost_above_1hr": 0.00002
+  },
+  "claude-fable-5-2": {
+    "input_cost_per_token": 0.000008,
+    "output_cost_per_token": 0.00004,
+    "cache_read_input_token_cost": 2e-7,
+    "cache_creation_input_token_cost": 0.00001,
+    "cache_creation_input_token_cost_above_1hr": 0.000016
+  },
   "claude-haiku-4-5": {
     "input_cost_per_token": 0.000001,
     "output_cost_per_token": 0.000005,
@@ -67,12 +81,33 @@ export const PRICES: Record<string, PriceEntry> = {
     "cache_creation_input_token_cost": 0.00000125,
     "cache_creation_input_token_cost_above_1hr": 0.000002
   },
+  "claude-haiku-5-5": {
+    "input_cost_per_token": 1e-7,
+    "output_cost_per_token": 5e-7,
+    "cache_read_input_token_cost": 1e-8,
+    "cache_creation_input_token_cost": 1.25e-7,
+    "cache_creation_input_token_cost_above_1hr": 2e-7
+  },
   "claude-mythos-5": {
     "input_cost_per_token": 0.00001,
     "output_cost_per_token": 0.00005,
     "cache_read_input_token_cost": 0.000001,
     "cache_creation_input_token_cost": 0.0000125,
     "cache_creation_input_token_cost_above_1hr": 0.00002
+  },
+  "claude-mythos-5-1": {
+    "input_cost_per_token": 0.00001,
+    "output_cost_per_token": 0.00005,
+    "cache_read_input_token_cost": 2.5e-7,
+    "cache_creation_input_token_cost": 0.0000125,
+    "cache_creation_input_token_cost_above_1hr": 0.00002
+  },
+  "claude-mythos-5-2": {
+    "input_cost_per_token": 0.000008,
+    "output_cost_per_token": 0.00004,
+    "cache_read_input_token_cost": 2e-7,
+    "cache_creation_input_token_cost": 0.00001,
+    "cache_creation_input_token_cost_above_1hr": 0.000016
   },
   "claude-mythos-preview": {
     "input_cost_per_token": 0.00001,
@@ -203,7 +238,7 @@ export const PRICES: Record<string, PriceEntry> = {
   "claude-sonnet-5-5": {
     "input_cost_per_token": 0.000002,
     "output_cost_per_token": 0.00001,
-    "cache_read_input_token_cost": 2e-7,
+    "cache_read_input_token_cost": 1e-7,
     "cache_creation_input_token_cost": 0.0000025,
     "cache_creation_input_token_cost_above_1hr": 0.000004
   }

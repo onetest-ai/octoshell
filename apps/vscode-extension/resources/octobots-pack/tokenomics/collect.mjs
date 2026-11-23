@@ -30,6 +30,11 @@ import { execFileSync } from "node:child_process";
 import { locateTranscripts } from "./roots.mjs";
 
 const args = process.argv.slice(2);
+// --help prints usage and exits before the script reads or writes anything.
+if (args.includes("--help") || args.includes("-h")) {
+  console.log("Usage: node .octobots/tokenomics/collect.mjs [--project-dir DIR] [--projects-dir DIR] [--quiet]");
+  process.exit(0);
+}
 const quiet = args.includes("--quiet");
 const log = (...a) => { if (!quiet) console.error(...a); };
 

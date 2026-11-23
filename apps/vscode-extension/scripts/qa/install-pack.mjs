@@ -26,7 +26,7 @@
 // Prints JSON: {before, deviations, result, after}
 //   before / after  packStatus(<workspace>)
 //   deviations      the changed pack skills found before the install: [{skill, version, reason, retired, sha256}]
-//   result          installPack(...): {written, hooksRegistered, statusline, tools, pending, kept, keptFiles}
+//   result          installPack(...): {written, hooksRegistered, statusline, tools, pending, kept, keptFiles, prices?}
 // Writes `<n> skill(s) need reconcile` to stderr when n skills are staged. Exits 1 (error on stderr)
 // if the install throws or refuses (store missing), 2 on a usage error.
 
@@ -93,6 +93,7 @@ try {
   console.log(JSON.stringify({ before, deviations, result, after }, null, 2));
   if (result.error) throw new Error(result.error);
   if (result.pending.length > 0) console.error(`${result.pending.length} skill(s) need reconcile`);
+  if (result.prices?.stale) console.error(`kept .octobots/tokenomics/prices.json (fetched ${result.prices.workspaceFetchedAt ?? "unknown"}) is older than the pack's (${result.prices.packFetchedAt ?? "unknown"}): run update-prices.mjs`);
 } catch (e) {
   console.error(`install-pack: ${e instanceof Error ? e.message : String(e)}`);
   process.exit(1);

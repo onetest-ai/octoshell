@@ -44,6 +44,42 @@ export function tokenomicsStatus(repoRoot: string, version: number): TokenomicsS
   return { present: true, current: v === version };
 }
 
+/** What `installPack` reports about a workspace `prices.json` it kept rather than replaced. */
+export interface PricesKept {
+  kept: true;
+  /** The pack's table is newer than the workspace's, or the workspace's has no readable `fetched_at`. */
+  stale: boolean;
+  workspaceFetchedAt: string | null;
+  packFetchedAt: string | null;
+}
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The `fetched_at` date (YYYY-MM-DD) of a price table, or null when the file cannot be read as one. */
+function fetchedAt(file: string): string | null {
+  try {
+    const v = (JSON.parse(readRegularText(file, { noFollow: true, max: 16 * 1024 * 1024 })) as { fetched_at?: unknown }).fetched_at;
+    return typeof v === "string" && DATE.test(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Describes the workspace `prices.json` that `installTokenomics` will keep (see `PRESERVED`), or
+ * undefined when there is none and the pack's table is installed. A kept table is never staged for
+ * reconcile: `update-prices.mjs` rewrites it, so it differs from the pack's in every workspace that
+ * has refreshed. The install reports it instead, so an old table does not stay unnoticed.
+ */
+export function pricesKept(srcRoot: string, repoRoot: string): PricesKept | undefined {
+  const target = join(repoRoot, ".octobots", "tokenomics", "prices.json");
+  if (!existsSync(target)) return undefined;
+  const workspaceFetchedAt = fetchedAt(target);
+  const packFetchedAt = fetchedAt(join(srcRoot, "tokenomics", "prices.json"));
+  const stale = workspaceFetchedAt === null || (packFetchedAt !== null && workspaceFetchedAt < packFetchedAt);
+  return { kept: true, stale, workspaceFetchedAt, packFetchedAt };
+}
+
 /**
  * Install the CLI into `<repoRoot>/.octobots/tokenomics/`.
  *

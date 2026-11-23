@@ -25,6 +25,11 @@ import { execFileSync } from "node:child_process";
 import { locateTranscripts } from "./roots.mjs";
 
 const args = process.argv.slice(2);
+// --help prints usage and exits before the script reads or writes anything.
+if (args.includes("--help") || args.includes("-h")) {
+  console.log("Usage: node .octobots/tokenomics/verify.mjs [--tolerance PCT] [--project-dir DIR]");
+  process.exit(0);
+}
 const argOf = (name, dflt) => {
   const i = args.indexOf(name);
   return i !== -1 ? args[i + 1] : dflt;

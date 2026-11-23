@@ -14,6 +14,11 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const args = process.argv.slice(2);
+// --help prints usage and exits before the script reads or writes anything.
+if (args.includes("--help") || args.includes("-h")) {
+  console.log("Usage: node .octobots/tokenomics/render.mjs [--project-dir DIR] [--quiet]");
+  process.exit(0);
+}
 const quiet = args.includes("--quiet");
 const pdIdx = args.indexOf("--project-dir");
 const PROJECT_DIR = pdIdx !== -1 ? args[pdIdx + 1] : (process.env.CLAUDE_PROJECT_DIR ?? process.cwd());

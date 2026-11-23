@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { PACK_SRC, store } from "./fixtures/pack-store.js";
 import { installPack, packStatus, OCTOBOTS_PACK_VERSION } from "../src/host/octobots-skill.js";
-import { detectDeviations, deviationPrompt } from "../src/host/pack-deviations.js";
+import { detectDeviations, deviationPrompt, installCompletionMessage } from "../src/host/pack-deviations.js";
 import { readPending } from "../src/host/pack-updates.js";
 import { tokenomicsEntryName } from "../src/host/pack-skills.js";
 import { fileReconciledFrom, skillSha256 } from "../src/host/skill-marker.js";
@@ -288,5 +288,52 @@ describe("installTokenomics: a .gitignore that is not a plain file", () => {
     const res = installPack(PACK_SRC, ws, { store, hooks: true });
     expect(res.hooksRegistered).toBe(true);
     expect(readFileSync(live(ws, "run.mjs"), "utf8")).toBe(packText("run.mjs"));
+  });
+});
+
+// A workspace's prices.json is its own (update-prices.mjs refreshes it), so the install keeps it. It
+// must not do so silently: the result says it was kept and, when the pack's table is newer than the
+// workspace's, that it should be refreshed. Found on coach-android's v60 install.
+describe("installPack: a workspace prices.json is kept, and the install says so", () => {
+  const withPrices = (fetchedAt: string | null) => {
+    const ws = installed();
+    const table = { _source: "test", ...(fetchedAt ? { fetched_at: fetchedAt } : {}), models: { "my-model": { input_cost_per_token: 1e-6 } } };
+    mk(live(ws, "prices.json"), JSON.stringify(table, null, 2) + "\n");
+    return ws;
+  };
+  const packFetchedAt = JSON.parse(packText("prices.json")).fetched_at as string;
+
+  it("reports kept and stale when the workspace table is older than the pack's; the file is untouched", () => {
+    const ws = withPrices("2026-01-01");
+    const before = readFileSync(live(ws, "prices.json"));
+    const res = installPack(PACK_SRC, ws, { store });
+    expect(readFileSync(live(ws, "prices.json"))).toEqual(before);
+    expect(res.prices).toEqual({ kept: true, stale: true, workspaceFetchedAt: "2026-01-01", packFetchedAt });
+    expect(installCompletionMessage(res, PACK)).toMatch(/kept your \.octobots\/tokenomics\/prices\.json.*update-prices\.mjs/i);
+    expect(res.pending.some((p) => p.startsWith("tokenomics-prices"))).toBe(false); // not staged for the doctor
+  });
+
+  it("reports kept, not stale, when the workspace table is as new as the pack's or newer", () => {
+    const ws = withPrices("2099-01-01");
+    const res = installPack(PACK_SRC, ws, { store });
+    expect(res.prices).toEqual({ kept: true, stale: false, workspaceFetchedAt: "2099-01-01", packFetchedAt });
+    const msg = installCompletionMessage(res, PACK);
+    expect(msg).toMatch(/kept your \.octobots\/tokenomics\/prices\.json/i);
+    expect(msg).not.toMatch(/update-prices/);
+  });
+
+  it("treats a table with no readable fetched_at as stale", () => {
+    for (const ws of [withPrices(null), (() => { const w = installed(); mk(live(w, "prices.json"), "not json"); return w; })()]) {
+      const res = installPack(PACK_SRC, ws, { store });
+      expect(res.prices).toEqual({ kept: true, stale: true, workspaceFetchedAt: null, packFetchedAt });
+    }
+  });
+
+  it("says nothing about prices on a first install, which writes the pack's table", () => {
+    const ws = mkdtempClean("pack-tok-first-");
+    const res = installPack(PACK_SRC, ws, { store });
+    expect(res.prices).toBeUndefined();
+    expect(readFileSync(live(ws, "prices.json"), "utf8")).toBe(packText("prices.json"));
+    expect(installCompletionMessage(res, PACK)).not.toMatch(/prices\.json/);
   });
 });

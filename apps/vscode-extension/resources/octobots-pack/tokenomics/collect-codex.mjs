@@ -49,6 +49,11 @@ import { execFileSync } from "node:child_process";
 import { mainCheckoutDir, resolveProjectDir } from "./roots.mjs";
 
 const args = process.argv.slice(2);
+// --help prints usage and exits before the script reads or writes anything.
+if (args.includes("--help") || args.includes("-h")) {
+  console.log("Usage: node .octobots/tokenomics/collect-codex.mjs [--project-dir DIR] [--codex-dir DIR] [--repo owner/name] [--quiet]");
+  process.exit(0);
+}
 const quiet = args.includes("--quiet");
 const log = (...a) => { if (!quiet) console.error(...a); };
 const argOf = (name) => { const i = args.indexOf(name); return i !== -1 ? args[i + 1] : null; };

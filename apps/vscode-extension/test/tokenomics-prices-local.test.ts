@@ -9,7 +9,12 @@ import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const PACK = join(dirname(fileURLToPath(import.meta.url)), "..", "resources", "octobots-pack");
 
-// Independent source of truth: solo's prices.json values for the two seeded models.
+// Independent source of truth: Anthropic's published price list,
+// https://platform.claude.com/docs/en/about-claude/pricing (read 2026-11-23), per MTok:
+//   Opus 5.5                in $4   5m write $5    1h write $8   cache hit $0.20  out $20
+//   Sonnet 5.5              in $2   5m write $2.50 1h write $4   cache hit $0.10  out $10
+// (Sonnet 5.5's cache hit is 0.05x input, not the usual 0.1x: v60 shipped 2e-07 here, copied from a
+// LiteLLM refresh that had it wrong.)
 const OPUS_5_5 = {
   input_cost_per_token: 0.000004,
   output_cost_per_token: 0.00002,
@@ -20,7 +25,7 @@ const OPUS_5_5 = {
 const SONNET_5_5 = {
   input_cost_per_token: 0.000002,
   output_cost_per_token: 0.00001,
-  cache_read_input_token_cost: 0.0000002,
+  cache_read_input_token_cost: 0.0000001,
   cache_creation_input_token_cost: 0.0000025,
   cache_creation_input_token_cost_above_1hr: 0.000004,
 };

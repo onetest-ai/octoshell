@@ -23,6 +23,11 @@ import { makeAttributionContext, resolveSegmentAttribution, loadLedgerWindows, s
 import { execFileSync } from "node:child_process";
 
 const args = process.argv.slice(2);
+// --help prints usage and exits before the script reads or writes anything.
+if (args.includes("--help") || args.includes("-h")) {
+  console.log("Usage: node .octobots/tokenomics/rollup.mjs [--project-dir DIR] [--no-gh] [--quiet]");
+  process.exit(0);
+}
 const quiet = args.includes("--quiet");
 const useGh = !args.includes("--no-gh");
 const log = (...a) => { if (!quiet) console.error(...a); };
