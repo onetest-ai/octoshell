@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { registerClaudeHook, OCTOBOTS_HOOK_SPECS, octoshellRequiredHooks } from "../src/host/octobots-hooks.js";
 import { COMMIT_SHIM, PACK, PREPARE_SHIM, gitEnv, hookRepo, snapshotDir, type HookRepo } from "./fixtures/hook-repo.js";
+import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const INSTALLER_COMMAND = 'VS Code command palette: "Octobots: Install Octobots Pack" (current Octobots extension)';
 
@@ -227,6 +228,107 @@ describe("hooks-doctor: git side", () => {
       const res = doctor(r);
       expect(res.status).toBe(1);
       expect(res.out).toMatch(why);
+    });
+  }
+
+  for (const [name, shim] of [
+    ["prepare-commit-msg", PREPARE_SHIM],
+    ["commit-msg", COMMIT_SHIM],
+  ] as const) {
+    describe(`the ${name} shim's text and committed mode`, () => {
+      const ready = () => {
+        const r = hookRepo();
+        withSettings(r);
+        return { r, file: join(r.root, ".githooks", name) };
+      };
+      const differs = `shim .githooks/${name} differs from the pack shim`;
+
+      it("a CRLF copy differs, and the shim text is printed", () => {
+        const { r, file } = ready();
+        writeFileSync(file, shim.replace(/\n/g, "\r\n"));
+        const res = doctor(r);
+        expect(res.status).toBe(1);
+        expect(res.out).toContain(differs);
+        expect(res.out).toContain(shim.trim());
+      });
+
+      it("a pack script named only in a comment, with nothing run, differs", () => {
+        const { r, file } = ready();
+        const flag = name === "commit-msg" ? " --after-edit" : "";
+        writeFileSync(file, `#!/bin/sh\n# .octobots/hooks/prepare-commit-msg.mjs${flag}\nexit 0\n`);
+        const res = doctor(r);
+        expect(res.status).toBe(1);
+        expect(res.out).toContain(differs);
+      });
+
+      it("an added command differs", () => {
+        const { r, file } = ready();
+        writeFileSync(file, shim.replace("exit 0\n", "echo own step\nexit 0\n"));
+        const res = doctor(r);
+        expect(res.status).toBe(1);
+        expect(res.out).toContain(differs);
+      });
+
+      it("trailing spaces and tabs, and extra blank lines at end of file, are not a difference", () => {
+        const { r, file } = ready();
+        writeFileSync(file, shim.replace(/\n/g, " \t\n") + "\n \n\n");
+        const res = doctor(r);
+        expect(res.status, res.out).toBe(0);
+      });
+
+      it("a directory at the shim path is one clean line", () => {
+        const { r, file } = ready();
+        rmSync(file);
+        mkdirSync(file);
+        const res = doctor(r);
+        expect(res.status).toBe(1);
+        expect(res.out.match(/cannot be read/g)).toHaveLength(1);
+        expect(res.out).toContain(`shim .githooks/${name} cannot be read (EISDIR)`);
+        expect(res.out).not.toMatch(/node:internal|\n\s+at /);
+      });
+
+      it("tracked as 100644 with an executable working file is named, with the fix", () => {
+        const { r, file } = ready();
+        r.git("add", `.githooks/${name}`);
+        r.git("update-index", "--chmod=-x", `.githooks/${name}`);
+        expect(statSync(file).mode & 0o111).not.toBe(0);
+        const res = doctor(r);
+        expect(res.status).toBe(1);
+        expect(res.out).toContain(`shim .githooks/${name} is committed without the executable bit`);
+        expect(res.out).toContain(`git add --chmod=+x .githooks/${name}`);
+      });
+
+      it("tracked as 100644 is also found through a symlinked absolute hooksPath", () => {
+        const { r } = ready();
+        const link = join(mkdtempClean("hooks-link-"), "hooks");
+        symlinkSync(join(r.root, ".githooks"), link);
+        r.git("config", "core.hooksPath", link);
+        r.git("add", `.githooks/${name}`);
+        r.git("update-index", "--chmod=-x", `.githooks/${name}`);
+        const res = doctor(r);
+        expect(res.status).toBe(1);
+        expect(res.out).toContain(`shim ${link}/${name} is committed without the executable bit`);
+        // Git refuses a path that goes through the link, so the fix names the real one.
+        const real = join(realpathSync(r.root), ".githooks", name);
+        expect(res.out).toContain(`git add --chmod=+x ${real}`);
+        r.git("add", "--chmod=+x", real);
+        expect(doctor(r).status).toBe(0);
+      });
+
+      it("tracked as 100755 is fine", () => {
+        const { r } = ready();
+        r.git("add", `.githooks/${name}`);
+        r.git("update-index", "--chmod=+x", `.githooks/${name}`);
+        const res = doctor(r);
+        expect(res.status, res.out).toBe(0);
+      });
+
+      it("untracked is fine", () => {
+        const { r } = ready();
+        expect(r.git("ls-files", "-s", "--", `.githooks/${name}`)).toBe("");
+        const res = doctor(r);
+        expect(res.status, res.out).toBe(0);
+      });
     });
   }
 

@@ -12,8 +12,8 @@
 //     for a shared launcher, its first positional argument), never by the command string or a checkout
 //     path, and, when an entry names a matcher, by that matcher.
 // (b) the git side: core.hooksPath is set, and the two shims (prepare-commit-msg, commit-msg) exist
-//     there, are executable and run the pack's .octobots/hooks/prepare-commit-msg.mjs. A repo commits
-//     the shims once; the pack never writes them.
+//     there, hold the pack's shim text (trailing whitespace aside), and are executable both on disk and,
+//     when tracked, in the git index. A repo commits the shims once; the pack never writes them.
 //
 // Exit: 0 all wired, 1 something missing, 2 a settings or list file is unreadable.
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
@@ -87,7 +87,8 @@ export function tokenize(cmd) {
   return out;
 }
 
-// A token is the script when it equals the path or ends with it on a "/" boundary.
+// A token is the script when it equals the path or ends with it on a "/" boundary. Trust limit: only that
+// path suffix is compared, so a registered copy in another checkout counts as wired.
 const isScript = (tok, script) => tok === script || tok.endsWith("/" + script);
 const keyOf = (h) => `${h.event}|${h.script}|${h.arg ?? ""}`;
 
@@ -169,6 +170,11 @@ function printShims(dirRel, names) {
   }
 }
 
+// Trailing whitespace does not change what a shim runs. A carriage return does: the kernel reads it as part
+// of the interpreter's name.
+const normalShim = (text) => text.split("\n").map((l) => l.replace(/[ \t]+$/, "")).join("\n").trimEnd();
+const differsFromShim = (text, name) => text.includes("\r") || normalShim(text) !== normalShim(SHIMS[name]);
+
 /** The git side. Returns the number of problems found; prints each with its fix. */
 function checkGit(root) {
   const top = gitOut(root, "rev-parse", "--show-toplevel") ?? root;
@@ -187,6 +193,13 @@ function checkGit(root) {
   }
   const dir = isAbsolute(hp) ? hp : join(top, hp);
   const dirRel = isAbsolute(hp) ? hp : hp.replace(/\/+$/, "");
+  // Git refuses a path that goes through a symlink, such as a symlinked absolute hooksPath.
+  let realDir = dir;
+  try {
+    realDir = realpathSync(dir);
+  } catch {
+    /* A hooks directory that does not exist is reported shim by shim. */
+  }
   const missingShims = [];
   for (const name of Object.keys(SHIMS)) {
     const file = join(dir, name);
@@ -195,7 +208,14 @@ function checkGit(root) {
       missingShims.push(name);
       continue;
     }
-    const text = readFileSync(file, "utf8");
+    let text;
+    try {
+      text = readFileSync(file, "utf8");
+    } catch (err) {
+      bad(`shim ${dirRel}/${name} cannot be read (${err.code})`);
+      missingShims.push(name);
+      continue;
+    }
     if (!text.includes(PACK_SCRIPT)) {
       bad(`shim ${dirRel}/${name} does not run ${PACK_SCRIPT}`);
       missingShims.push(name);
@@ -203,9 +223,17 @@ function checkGit(root) {
       // The two shims share one script; the entry point is the --after-edit flag (commit-msg only).
       bad(`shim ${dirRel}/${name} ${name === "commit-msg" ? "does not pass" : "must not pass"} --after-edit to ${PACK_SCRIPT}`);
       missingShims.push(name);
+    } else if (differsFromShim(text, name)) {
+      bad(`shim ${dirRel}/${name} differs from the pack shim`);
+      missingShims.push(name);
     } else if ((statSync(file).mode & 0o111) === 0) {
       bad(`shim ${dirRel}/${name} is not executable`);
       console.log(`           fix: git add --chmod=+x ${dirRel}/${name} && chmod +x ${dirRel}/${name}`);
+    } else if (gitOut(top, "ls-files", "-s", "--", join(realDir, name))?.startsWith("100644 ")) {
+      // An executable working copy hides it here; every fresh clone gets a shim git will not run.
+      const fixPath = realDir === dir ? `${dirRel}/${name}` : join(realDir, name);
+      bad(`shim ${dirRel}/${name} is committed without the executable bit`);
+      console.log(`           fix: git add --chmod=+x ${fixPath} && chmod +x ${fixPath}`);
     } else console.log(`  ok       git          ${dirRel}/${name}`);
   }
   if (missingShims.length) {
