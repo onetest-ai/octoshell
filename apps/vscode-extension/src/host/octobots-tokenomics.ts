@@ -100,8 +100,9 @@ export function installTokenomics(srcRoot: string, repoRoot: string, keep: Reado
     if (!entry.isFile()) continue;
     const target = join(to, entry.name);
     if (PRESERVED.has(entry.name) && existsSync(target)) continue;
-    // A file the workspace changed locally (see `installPack`): kept, and staged for reconcile there.
-    if (keep.has(entry.name) && existsSync(target)) continue;
+    // A file the workspace changed locally (kept, and staged by `installPack`) or a symlink, dangling
+    // ones included: `existsSync` would follow the link, and the copy would create its target.
+    if (keep.has(entry.name)) continue;
     const f = join(from, entry.name);
     if (!statSync(f).isFile()) continue;
     copyFileSync(f, target);

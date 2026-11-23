@@ -1,7 +1,7 @@
 // v62: every judged pack file (skill scripts, hooks, the statusline, templates, the tokenomics CLI)
 // is told apart from the pack's own by content, and a changed retired file is a retired deviation.
 import { spawn, execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { installPack, OCTOBOTS_PACK_VERSION, OCTOBOTS_SKILLS } from "../src/host/octobots-skill.js";
@@ -44,8 +44,8 @@ function installed(): string {
 }
 
 /** `text` with its marker line after a leading shebang line, or first when there is none. */
-function marked(text: string, sha256: string): string {
-  const line = `// octobots-reconciled-from: ${sha256}\n`;
+function marked(text: string, sha256: string, syntax = "//"): string {
+  const line = `${syntax} octobots-reconciled-from: ${sha256}${syntax === "<!--" ? " -->" : ""}\n`;
   const shebang = text.match(/^#!.*\r?\n/)?.[0] ?? "";
   return shebang + line + text.slice(shebang.length);
 }
@@ -147,6 +147,46 @@ describe.each(MODES)("detectDeviations judges every pack file, %s", (_mode, opts
     expect(detect(ws).deviations).toEqual([]);
   });
 
+  // The template has no older body: its current one stands in, then an unshipped text.
+  it("the marker in # and <!-- syntax", () => {
+    const ws = installed();
+    const sl = "statusline/statusline.sh";
+    const tc = "skill/mission-planner/templates/TC-template.md";
+    const b = olderShipped(sl);
+    mk(live(ws, sl), marked(b, skillSha256(b), "#"));
+    mk(live(ws, tc), marked(packText(tc), "a".repeat(64), "<!--"));
+    expect(detect(ws)).toMatchObject({ deviations: [], reconciled: [] });
+
+    mk(live(ws, sl), marked(b, "a".repeat(64), "#"));
+    mk(live(ws, tc), marked(packText(tc) + "local\n", "a".repeat(64), "<!--"));
+    expect(detect(ws).deviations.map((d) => [d.file, d.reason])).toEqual([[tc, "reconciled-older"], [sl, "reconciled-older"]]);
+
+    mk(live(ws, sl), marked(b, skillSha256(packText(sl)), "#"));
+    mk(live(ws, tc), marked("local\n", skillSha256(packText(tc)), "<!--"));
+    expect(detect(ws)).toMatchObject({ deviations: [], reconciled: [packFileEntryName(tc), packFileEntryName(sl)] });
+  });
+
+  it("a retired file with a marker: its own body is not a deviation, a changed one is", () => {
+    const ws = installed();
+    const b = olderShipped(SET_STEP);
+    mk(live(ws, SET_STEP), marked(b, skillSha256(b)));
+    expect(detect(ws)).toMatchObject({ deviations: [], reconciled: [] });
+    for (const text of [marked(b, skillSha256(b)) + "// local\n", marked(b, "a".repeat(64))]) {
+      writeFileSync(live(ws, SET_STEP), text);
+      expect(detect(ws).deviations).toEqual([expect.objectContaining({ file: SET_STEP, reason: "reconciled-older", retired: true })]);
+    }
+  });
+
+  it("a second marker line is local content: only the first is stripped, and only the first is read", () => {
+    const ws = installed();
+    const b = olderShipped(VALIDATE);
+    const current = skillSha256(packText(VALIDATE));
+    writeFileSync(live(ws, VALIDATE), marked(marked(b, current), skillSha256(b)));
+    expect(detect(ws)).toMatchObject({ deviations: [{ file: VALIDATE, reason: "reconciled-older" }], reconciled: [] });
+    writeFileSync(live(ws, VALIDATE), marked(marked(b, skillSha256(b)), current));
+    expect(detect(ws)).toMatchObject({ deviations: [], reconciled: [packFileEntryName(VALIDATE)] });
+  });
+
   it("special files are skipped", () => {
     const ws = installed();
     const fifo = live(ws, "hooks/primer.mjs");
@@ -181,6 +221,13 @@ describe("detectDeviations and recoverFileBase, other cases", () => {
     expect(detectDeviations(ws, PACK, null).deviations).toEqual([]);
   });
 
+  it("no store: a file whose marker names the current body is still reconciled", () => {
+    const ws = installed();
+    writeFileSync(live(ws, VALIDATE), marked("// local\n", skillSha256(packText(VALIDATE))));
+    expect(detectDeviations(ws, PACK, null, { currentFiles })).toMatchObject({ deviations: [], reconciled: [packFileEntryName(VALIDATE)] });
+    expect(detectDeviations(ws, PACK, null)).toMatchObject({ deviations: [], reconciled: [] });
+  });
+
   it("recoverFileBase takes a pack path and reads the marker's body", () => {
     const b = olderShipped(VALIDATE);
     const base = recoverFileBase(installed(), VALIDATE, marked(b, skillSha256(b)) + "// local\n", PACK, store);
@@ -196,5 +243,25 @@ describe("detectDeviations and recoverFileBase, other cases", () => {
     git("add", packFileRel(VALIDATE));
     git("commit", "-qm", "install");
     expect(recoverFileBase(ws, VALIDATE, b + "// local\n", PACK, store)).toMatchObject({ source: "workspace-git", sha256: skillSha256(b) });
+  });
+});
+
+describe("installPack: a symlinked tokenomics file", () => {
+  it.each([["live", true], ["dangling", false]])("%s: never copied through, the link stays", (_name, exists) => {
+    const ws = installed();
+    const outside = join(mkdtempClean("pack-files-out-"), "collect.mjs");
+    if (exists) writeFileSync(outside, "// not the pack's\n");
+    rmSync(live(ws, COLLECT));
+    symlinkSync(outside, live(ws, COLLECT));
+    installPack(PACK_SRC, ws, { store });
+    expect(existsSync(outside) ? readFileSync(outside, "utf8") : null).toBe(exists ? "// not the pack's\n" : null);
+    expect(lstatSync(live(ws, COLLECT)).isSymbolicLink()).toBe(true);
+  });
+
+  it("a missing tokenomics file is installed", () => {
+    const ws = installed();
+    rmSync(live(ws, COLLECT));
+    installPack(PACK_SRC, ws, { store });
+    expect(readFileSync(live(ws, COLLECT), "utf8")).toBe(packText(COLLECT));
   });
 });
