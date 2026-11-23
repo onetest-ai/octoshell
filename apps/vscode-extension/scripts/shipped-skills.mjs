@@ -156,50 +156,99 @@ function git(args, cwd, opts = {}) {
  * makes the `octobots` -> `mission-planner` rename an add plus a delete, so both skill names are
  * read. Deleted files are skipped: their last body is already in the store.
  */
+/**
+ * The contents of `objects` (`<commit>:<path>`), read through ONE `git cat-file --batch`: a Map to
+ * the bytes, or to null for an object that is missing (or is not a blob). One process for the whole
+ * history instead of one per file per commit keeps --write (and the tests that run it) fast.
+ */
+function catBatch(objects, top) {
+  const out = new Map();
+  const list = [...new Set(objects)];
+  if (list.length === 0) return out;
+  const buf = git(["cat-file", "--batch"], top, { input: list.join("\n") + "\n", stdio: ["pipe", "pipe", "pipe"] });
+  let at = 0;
+  for (const obj of list) {
+    const nl = buf.indexOf(0x0a, at);
+    const header = buf.subarray(at, nl).toString("utf8");
+    at = nl + 1;
+    const m = header.match(/^[0-9a-f]+ (\w+) (\d+)$/);
+    if (!m) { out.set(obj, null); continue; } // "<obj> missing" (or ambiguous)
+    const size = Number(m[2]);
+    out.set(obj, m[1] === "blob" ? buf.subarray(at, at + size) : null);
+    at += size + 1; // the content, then a newline
+  }
+  return out;
+}
+
 function* historicalBodies() {
   const top = git(["rev-parse", "--show-toplevel"], EXT_ROOT).toString().trim();
   const packRel = relative(top, DEFAULT_PACK_SKILLS).split("\\").join("/");
   const tokRel = relative(top, DEFAULT_PACK_TOKENOMICS).split("\\").join("/");
+  const srcRel = relative(top, SKILL_SRC).split("\\").join("/");
   const log = git(
     ["log", "-m", "--reverse", "--topo-order", "--no-renames", "--name-status", "--format=%x00%H", "HEAD", "--",
-      `${packRel}/*/SKILL.md`, `${tokRel}/*`],
+      `${packRel}/*/SKILL.md`, `${tokRel}/*`, srcRel],
     top,
   ).toString("utf8");
-  const versionAtCommit = new Map();
-  const packVersionAt = (commit) => {
-    if (versionAtCommit.has(commit)) return versionAtCommit.get(commit);
-    let v = null;
-    try {
-      const srcRel = relative(top, SKILL_SRC).split("\\").join("/");
-      const m = git(["show", `${commit}:${srcRel}`], top).toString("utf8").match(/OCTOBOTS_PACK_VERSION\s*=\s*(\d+)/);
-      v = m ? Number(m[1]) : null;
-    } catch {
-      v = null;
-    }
-    versionAtCommit.set(commit, v);
-    return v;
-  };
+
+  // Pass 1: what each commit touched, in log order.
+  const items = [];
   for (const block of log.split("\0").slice(1)) {
     const [commit, ...lines] = block.split("\n");
     for (const line of lines) {
       if (!line.trim()) continue;
       const [status, path] = line.split("\t");
       if (!path || status.startsWith("D")) continue;
+      if (path === srcRel) { items.push({ commit, bump: true }); continue; }
       const isTokenomics = path.startsWith(`${tokRel}/`);
       if (isTokenomics && path.slice(tokRel.length + 1).includes("/")) continue; // only the CLI's top level ships
       if (isTokenomics && TOKENOMICS_UNJUDGED.has(path.split("/").at(-1))) continue;
       const skill = isTokenomics ? `${TOKENOMICS_KEY_PREFIX}${path.split("/").at(-1)}` : path.split("/").at(-2);
-      const buf = git(["cat-file", "blob", `${commit}:${path}`], top);
-      const text = buf.toString("utf8");
-      if (Buffer.compare(Buffer.from(text, "utf8"), buf) !== 0) {
-        throw new Error(`${path} at ${commit} is not valid UTF-8`);
-      }
-      // The body's own `version:` line is what detection looks a file up by; the pack constant at
-      // that commit is the fallback for a body without one.
-      const version = (isTokenomics ? null : frontmatterVersion(text)) ?? packVersionAt(commit);
-      if (version === null) throw new Error(`cannot tell the pack version of ${path} at ${commit}`);
-      yield { commit, skill, version, text };
+      items.push({ commit, path, skill, isTokenomics });
     }
+  }
+
+  // The pack constant at every commit involved.
+  const srcs = catBatch(items.map((it) => `${it.commit}:${srcRel}`), top);
+  const packVersionAt = (commit) => {
+    const m = srcs.get(`${commit}:${srcRel}`)?.toString("utf8").match(/OCTOBOTS_PACK_VERSION\s*=\s*(\d+)/);
+    return m ? Number(m[1]) : null;
+  };
+
+  // A tokenomics file carries no version of its own: it shipped at every pack version during which it
+  // was the pack's file. So each commit that changes OCTOBOTS_PACK_VERSION indexes every tokenomics
+  // file present at it under the new version, the way --write run at that bump would have. Without
+  // this a file left unchanged across a bump is missing from the new version, and a store rebuilt
+  // from git differs from one built up run by run.
+  let lastVersion = null;
+  const expanded = [];
+  for (const it of items) {
+    if (!it.bump) { expanded.push(it); continue; }
+    const v = packVersionAt(it.commit);
+    if (v === null || v === lastVersion) continue;
+    lastVersion = v;
+    let tree;
+    try { tree = git(["ls-tree", `${it.commit}:${tokRel}`], top, { stdio: ["ignore", "pipe", "ignore"] }).toString("utf8"); } catch { continue; } // no CLI yet
+    for (const row of tree.split("\n").filter(Boolean)) {
+      const [meta, name] = row.split("\t");
+      if (!meta.split(" ")[1]?.startsWith("blob") || TOKENOMICS_UNJUDGED.has(name)) continue;
+      expanded.push({ commit: it.commit, path: `${tokRel}/${name}`, skill: `${TOKENOMICS_KEY_PREFIX}${name}`, isTokenomics: true, version: v });
+    }
+  }
+
+  const blobs = catBatch(expanded.map((it) => `${it.commit}:${it.path}`), top);
+  for (const it of expanded) {
+    const buf = blobs.get(`${it.commit}:${it.path}`);
+    if (!buf) throw new Error(`${it.path} at ${it.commit} could not be read`);
+    const text = buf.toString("utf8");
+    if (Buffer.compare(Buffer.from(text, "utf8"), buf) !== 0) {
+      throw new Error(`${it.path} at ${it.commit} is not valid UTF-8`);
+    }
+    // The body's own `version:` line is what detection looks a file up by; the pack constant at
+    // that commit is the fallback for a body without one.
+    const version = it.version ?? (it.isTokenomics ? null : frontmatterVersion(text)) ?? packVersionAt(it.commit);
+    if (version === null) throw new Error(`cannot tell the pack version of ${it.path} at ${it.commit}`);
+    yield { commit: it.commit, skill: it.skill, version, text };
   }
 }
 
