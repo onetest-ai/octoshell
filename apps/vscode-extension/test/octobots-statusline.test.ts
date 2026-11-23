@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   installStatusline,
@@ -10,7 +10,7 @@ import {
 } from "../src/host/octobots-statusline.js";
 import { resolveDoctorScript } from "../src/host/octobots-doctor-command.js";
 import { installTools, resolveCcusage, toolsStatus } from "../src/host/octobots-tools.js";
-import { installPack } from "../src/host/octobots-skill.js";
+import { OCTOBOTS_PACK_VERSION, installPack } from "../src/host/octobots-skill.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { store } from "./fixtures/pack-store.js";
 
@@ -184,6 +184,65 @@ describe("doctor", () => {
     const { out } = doctor(repo, { CLAUDE_CONFIG_DIR: join(repo, ".claude") });
     const sl = JSON.parse(out).findings.filter((x: any) => x.area === "statusline");
     expect(sl.some((x: any) => x.level === "fail" && /ABSOLUTE path/.test(x.msg))).toBe(true);
+  });
+
+  describe("a locally changed primer.mjs or statusline.sh is a note, not a version mismatch", () => {
+    const PRIMER = join(".octobots", "hooks", "primer.mjs");
+    const SL = join(".octobots", "statusline.sh");
+    const stale = { [PRIMER]: "// octobots-pack-version: 1\n", [SL]: "#!/bin/bash\n# octobots-pack-version: 1\n" };
+    const MARK = `octobots-reconciled-from: ${"a".repeat(64)}`;
+
+    function workspace(file: string, text: string, record?: { skills?: string[]; kept?: string[] }): string {
+      const repo = mkdtempClean("octo-doc-");
+      installPack(PACK_SRC, repo, { store });
+      installStatusline(PACK_SRC, repo);
+      registerStatusline(repo);
+      mkdirSync(join(repo, ".octobots", "hooks"), { recursive: true });
+      writeFileSync(join(repo, file), text);
+      if (record) {
+        mkdirSync(join(repo, ".octobots", "pack-updates"), { recursive: true });
+        writeFileSync(join(repo, ".octobots", "pack-updates", "pending.json"), JSON.stringify({
+          packVersion: OCTOBOTS_PACK_VERSION,
+          skills: (record.skills ?? []).map((skill) => ({
+            skill, action: "reconcile", localVersion: "1", localSha256: "b".repeat(64), base: null,
+            upstreamSha256: "c".repeat(64), retired: false, dir: `.octobots/pack-updates/v${OCTOBOTS_PACK_VERSION}/${skill}`,
+          })),
+          kept: (record.kept ?? []).map((skill) => ({ skill, packVersion: OCTOBOTS_PACK_VERSION, sha256: "b".repeat(64) })),
+        }));
+      }
+      return repo;
+    }
+    const about = (repo: string, name: string): Array<{ level: string; msg: string }> =>
+      JSON.parse(doctor(repo).out).findings.filter((f: any) => f.msg.includes(name) && !f.msg.startsWith("pack reconcile pending"));
+
+    for (const [file, name, entry, level] of [
+      [PRIMER, "primer.mjs", "hooks-primer-mjs", "fail"],
+      [SL, "statusline.sh", "statusline-statusline-sh", "warn"],
+    ] as const) {
+      const only = (repo: string, state: RegExp) => {
+        const f = about(repo, name);
+        expect(f.map((x) => x.level)).toEqual(["note"]);
+        expect(f[0]!.msg).toMatch(state);
+      };
+      it(`${name}: unexplained, it is still a ${level}`, () => {
+        const f = about(workspace(file, stale[file]!), name);
+        expect(f.map((x) => x.level)).toEqual([level]);
+        expect(f[0]!.msg).toMatch(/is v1/);
+      });
+      it(`${name}: pending`, () => only(workspace(file, stale[file]!, { skills: [entry] }), /pending reconcile/));
+      it(`${name}: kept`, () => only(workspace(file, stale[file]!, { kept: [entry] }), /kept/));
+      it(`${name}: reconciled`, () => only(workspace(file, stale[file]! + `${file === SL ? "#" : "//"} ${MARK}\n`), /reconciled/));
+    }
+
+    it("an unreadable statusline.sh is reported, never waited on", () => {
+      const repo = workspace(SL, stale[SL]!);
+      rmSync(join(repo, SL));
+      execFileSync("mkfifo", [join(repo, SL)]);
+      const r = spawnSync("node", [DOCTOR, "--root", repo, "--json"], { encoding: "utf8", timeout: 10_000 });
+      expect(r.error).toBeUndefined();
+      const f = JSON.parse(r.stdout).findings.filter((x: any) => x.msg.includes("statusline.sh"));
+      expect(f).toEqual([expect.objectContaining({ level: "warn", msg: expect.stringMatching(/not a readable regular file/) })]);
+    });
   });
 
   it("prefers the workspace's installed doctor over the bundled one", () => {
