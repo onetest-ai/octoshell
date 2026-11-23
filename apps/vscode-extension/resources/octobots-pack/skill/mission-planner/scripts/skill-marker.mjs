@@ -50,3 +50,12 @@ export function fileReconciledFrom(text) {
   const m = normalise(text).match(/octobots-reconciled-from:[ \t]*([0-9a-fA-F]{64})(?![0-9a-fA-F])/);
   return m ? m[1].toLowerCase() : null;
 }
+
+/**
+ * `text` without its one standalone `octobots-reconciled-from: <64 hex>` marker line (and that
+ * line's newline, CRLF or LF): the first such line, nothing else. A line with code before the
+ * marker, or text after the hash, is local content and the text comes back unchanged.
+ */
+export function withoutReconciledFrom(text) {
+  return text.replace(/^[ \t]*(?:(?:\/\/|#)[ \t]*octobots-reconciled-from:[ \t]*[0-9a-fA-F]{64}|<!--[ \t]*octobots-reconciled-from:[ \t]*[0-9a-fA-F]{64}[ \t]*-->)[ \t]*(?:\r?\n|$)/m, "");
+}

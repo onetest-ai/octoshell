@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { parseSkillMarker as parseMjs } from "../resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs";
-import { parseSkillMarker as parseTs, type SkillMarker } from "../src/host/skill-marker.js";
+import { parseSkillMarker as parseMjs, withoutReconciledFrom as stripMjs } from "../resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs";
+import { parseSkillMarker as parseTs, withoutReconciledFrom as stripTs, type SkillMarker } from "../src/host/skill-marker.js";
 
 const sha = (text: string) => createHash("sha256").update(text.replace(/\r\n/g, "\n")).digest("hex");
 const HASH = "a".repeat(64);
@@ -63,5 +63,35 @@ describe("skill-marker: one rule, two runtimes", () => {
 
   it("a one-byte edit changes the hash", () => {
     expect(parseTs(fm("version: 57")).sha256).not.toBe(parseTs(fm("version: 57") + " ").sha256);
+  });
+
+  describe("withoutReconciledFrom", () => {
+    const H = "a".repeat(64);
+    const keep = [
+      `// octobots-reconciled-from: ${"a".repeat(65)}\n`,
+      `doWork(); // octobots-reconciled-from: ${H}\n`,
+      `// octobots-reconciled-from: ${H} and more\n`,
+      `const s = "octobots-reconciled-from: ${H}";\n`,
+      `// octobots-reconciled-from: ${"a".repeat(63)}\n`,
+      "no marker\n",
+    ];
+    const strip: [string, string][] = [
+      [`#!/usr/bin/env node\n// octobots-reconciled-from: ${H}\ncode\n`, "#!/usr/bin/env node\ncode\n"],
+      [`# octobots-reconciled-from: ${H}\r\nx\r\n`, "x\r\n"],
+      [`<!-- octobots-reconciled-from: ${H} -->\nbody\n`, "body\n"],
+      [`// octobots-reconciled-from: ${H}\n// octobots-reconciled-from: ${H}\n`, `// octobots-reconciled-from: ${H}\n`],
+    ];
+    for (const [input, want] of strip) {
+      it(`strips the marker line: ${JSON.stringify(input.slice(0, 40))}`, () => {
+        expect(stripTs(input)).toBe(want);
+        expect(stripMjs(input)).toBe(want);
+      });
+    }
+    for (const t of keep) {
+      it(`leaves local content alone: ${JSON.stringify(t.slice(0, 50))}`, () => {
+        expect(stripTs(t)).toBe(t);
+        expect(stripMjs(t)).toBe(t);
+      });
+    }
   });
 });

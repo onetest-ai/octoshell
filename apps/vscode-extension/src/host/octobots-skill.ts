@@ -6,6 +6,7 @@ import { installGraph, graphStatus } from "./octograph-install.js";
 import { installStatusline, registerStatusline, unregisterStatusline, statuslineStatus } from "./octobots-statusline.js";
 import { installTools, removeTools, toolsStatus } from "./octobots-tools.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
+import { RETIRED_FILES as PACK_RETIRED_FILES } from "./pack-files.js";
 import { OCTOBOTS_SKILLS, RETIRED_SKILLS, RETIRED_SKILL_FILES, TOKENOMICS_KEY_PREFIX, TOKENOMICS_UNJUDGED, tokenomicsEntryName, tokenomicsRel } from "./pack-skills.js";
 import { detectDeviations, recoverBase, recoverFileBase, GIT_BUDGET_MS, type Deviation, type ShippedStore } from "./pack-deviations.js";
 import { assertRealPackUpdatesDir, pendingReconcile, readPending, readRegularBytes, readRegularText, writePending, pendingFile, type KeptEntry, type PendingEntry, type PendingRecord } from "./pack-updates.js";
@@ -21,18 +22,7 @@ export { OCTOBOTS_SKILLS };
  * Files earlier pack versions installed that no longer exist. Removed on install, so an upgraded
  * workspace never keeps a script the skills no longer mention. Paths are relative to `.claude`.
  */
-const RETIRED_FILES = [
-  "skills/mission-planner/scripts/set-step.js",
-  // Workflow support was removed (direct sub-agent dispatch replaced the Workflow tool). Only pack
-  // files are listed: a user's `.octobots/**/workflows/` folders are data and are never touched.
-  "skills/mission-planner/scripts/add-workflow.js",
-  "skills/mission-planner/scripts/sync-meta.js",
-  "skills/mission-planner/scripts/add-run.js",
-  "skills/mission-planner/scripts/mission-input.js",
-  "skills/mission-planner/scripts/extract-meta.mjs",
-  "skills/mission-planner/scripts/workflow-meta.mjs",
-  "skills/mission-planner/scripts/vendor/acorn.mjs",
-] as const;
+const RETIRED_FILES = PACK_RETIRED_FILES.map((p) => p.replace(/^skill\//, "skills/"));
 
 /** Skill ids an agent needs to drive Octobots. Today every agent needs the whole pack. */
 export function requiredSkillsForAgent(_agent: string): string[] {
