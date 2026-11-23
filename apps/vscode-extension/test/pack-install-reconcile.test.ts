@@ -58,6 +58,10 @@ function expectPackFilesInstalled(ws: string, skill: string): void {
 const RETIRED_SCRIPTS = ["add-workflow.js", "sync-meta.js", "add-run.js", "mission-input.js", "extract-meta.mjs", "workflow-meta.mjs", "vendor/acorn.mjs", "set-step.js"];
 const DESIGNER_BODY = store.bodies[store.versions["56"]!["workflow-designer"]!.at(-1)!]! + "\nA local note.\n";
 
+/** Every body the pack shipped at `key`, oldest first. */
+const shippedBodies = (key: string): string[] =>
+  Object.keys(store.versions).map(Number).sort((a, b) => a - b).flatMap((v) => store.versions[String(v)]?.[key] ?? []).map((h) => store.bodies[h]!);
+
 /** A workspace at the pack with solo's two 57-local forks, a 57-local mission-planner and a changed retired workflow-designer. */
 function soloLike(): { ws: string; f: ReturnType<typeof forks>; planner: Buffer; designer: Buffer } {
   const ws = mkdtempClean("pack-reconcile-");
@@ -68,9 +72,9 @@ function soloLike(): { ws: string; f: ReturnType<typeof forks>; planner: Buffer;
   const planner = Buffer.from(versionLine(readFileSync(join(SKILLS, "mission-planner", "SKILL.md"), "utf8"), "57-local") + "\nLocal planner rule.\n");
   writeFileSync(skillMd(ws, "mission-planner"), planner);
   const scripts = join(ws, ".claude", "skills", "mission-planner", "scripts");
-  for (const r of RETIRED_SCRIPTS) mk(join(scripts, r), "// retired\n");
+  for (const r of RETIRED_SCRIPTS) mk(join(scripts, r), shippedBodies(`skill/mission-planner/scripts/${r}`).at(-1)!);
   mk(join(scripts, "create-team.js"), "// the user's own script\n");
-  writeFileSync(join(scripts, "validate.js"), "// stale validate\n");
+  writeFileSync(join(scripts, "validate.js"), shippedBodies("skill/mission-planner/scripts/validate.js")[0]!);
   const designer = Buffer.from(DESIGNER_BODY);
   mk(skillMd(ws, "workflow-designer"), designer);
   mk(join(ws, ".claude", "skills", "workflow-designer", "my-notes.md"), "notes\n");

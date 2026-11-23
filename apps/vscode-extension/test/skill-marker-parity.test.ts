@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseSkillMarker as parseMjs } from "../resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs";
-import { parseSkillMarker as parseTs, type SkillMarker } from "../src/host/skill-marker.js";
+import { parseSkillMarker as parseMjs, withoutReconciledFrom as stripMjs } from "../resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs";
+import { parseSkillMarker as parseTs, withoutReconciledFrom as stripTs, type SkillMarker } from "../src/host/skill-marker.js";
 
 const sha = (text: string) => createHash("sha256").update(text.replace(/\r\n/g, "\n")).digest("hex");
 const HASH = "a".repeat(64);
@@ -63,5 +65,54 @@ describe("skill-marker: one rule, two runtimes", () => {
 
   it("a one-byte edit changes the hash", () => {
     expect(parseTs(fm("version: 57")).sha256).not.toBe(parseTs(fm("version: 57") + " ").sha256);
+  });
+
+  describe("withoutReconciledFrom", () => {
+    const H = "a".repeat(64);
+    const keep = [
+      `// octobots-reconciled-from: ${"a".repeat(65)}\n`,
+      `doWork(); // octobots-reconciled-from: ${H}\n`,
+      `// octobots-reconciled-from: ${H} and more\n`,
+      `const s = "octobots-reconciled-from: ${H}";\n`,
+      `// octobots-reconciled-from: ${"a".repeat(63)}\n`,
+      "no marker\n",
+    ];
+    const strip: [string, string][] = [
+      [`#!/usr/bin/env node\n// octobots-reconciled-from: ${H}\ncode\n`, "#!/usr/bin/env node\ncode\n"],
+      [`# octobots-reconciled-from: ${H}\r\nx\r\n`, "x\r\n"],
+      [`<!-- octobots-reconciled-from: ${H} -->\nbody\n`, "body\n"],
+      [`// octobots-reconciled-from: ${H}\n// octobots-reconciled-from: ${H}\n`, `// octobots-reconciled-from: ${H}\n`],
+    ];
+    for (const [input, want] of strip) {
+      it(`strips the marker line: ${JSON.stringify(input.slice(0, 40))}`, () => {
+        expect(stripTs(input)).toBe(want);
+        expect(stripMjs(input)).toBe(want);
+      });
+    }
+    for (const t of keep) {
+      it(`leaves local content alone: ${JSON.stringify(t.slice(0, 50))}`, () => {
+        expect(stripTs(t)).toBe(t);
+        expect(stripMjs(t)).toBe(t);
+      });
+    }
+
+    // pack-reconcile.mjs holds its own copy: it must load beside a kept v61 skill-marker.mjs, which
+    // lacks withoutReconciledFrom. It cannot be imported (it runs on load), so its text is read.
+    describe("pack-reconcile.mjs's own copy of the pattern", () => {
+      const root = join(__dirname, "..");
+      const read = (rel: string) => readFileSync(join(root, rel), "utf8");
+      const copy = read("resources/octobots-pack/skill/octobots-doctor/scripts/pack-reconcile.mjs").match(/^const MARKER_LINE = \/(.+)\/m;$/m)?.[1];
+      it("is the twins' pattern, character for character", () => {
+        const twin = (rel: string) => read(rel).match(/return text\.replace\(\/(.+)\/m, ""\);/)?.[1];
+        expect(copy).toBeTypeOf("string");
+        expect(copy).toBe(twin("src/host/skill-marker.ts"));
+        expect(copy).toBe(twin("resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs"));
+      });
+      it("decides every case of the table as the twins do", () => {
+        const re = new RegExp(copy ?? "(?!)", "m");
+        for (const [input, want] of strip) expect(input.replace(re, "")).toBe(want);
+        for (const t of keep) expect(re.test(t), t).toBe(false);
+      });
+    });
   });
 });

@@ -85,6 +85,12 @@ const flips = (await confirmedTransitions(candidates, evt, projectDir)).map((c) 
 );
 if (flips.length === 0) process.exit(0);
 
+const worklogModule = join(projectDir, WORKLOG_PATH);
+if (!existsSync(worklogModule)) {
+  console.error(`work-log: warning: ${worklogModule} not found; this hook cannot record the status flip (install the Octobots pack again)`);
+  process.exit(0);
+}
+
 let branch = null;
 try {
   branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
@@ -99,7 +105,7 @@ try {
 try {
   // The path comes from the one rule set-status.js writes by (worklog-path.mjs, installed with the
   // mission-planner scripts): a flip is recorded in exactly one file.
-  const { worklogFile } = await import(pathToFileURL(join(projectDir, WORKLOG_PATH)).href);
+  const { worklogFile } = await import(pathToFileURL(worklogModule).href);
   const file = worklogFile({ CLAUDE_PROJECT_DIR: projectDir });
   mkdirSync(dirname(file), { recursive: true });
   const at = new Date().toISOString();

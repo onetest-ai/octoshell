@@ -106,7 +106,7 @@ describe("scripts/qa/install-pack.mjs: local changes", () => {
     const ws = forked();
     const { status, stderr, report } = go([ws]);
     expect(status).toBe(0);
-    expect(stderr.trim()).toBe("1 skill(s) need reconcile");
+    expect(stderr.trim()).toBe("1 skill(s) or file(s) need reconcile");
     expect(report!.before.deviations).toEqual([expectedDeviation]);
     expect(report!.deviations).toEqual([expectedDeviation]);
     expect(report!.before.upToDate).toBe(false);
@@ -163,7 +163,7 @@ describe("scripts/qa/install-pack.mjs: local changes", () => {
     const { stderr, report } = go([ws, "--pack-version", "58"]);
     expect(report!.before.currentVersion).toBe(58);
     expect(report!.result.pending).toEqual(["mission-execution"]);
-    expect(stderr.trim()).toBe("1 skill(s) need reconcile");
+    expect(stderr.trim()).toBe("1 skill(s) or file(s) need reconcile");
     expect(existsSync(join(ws, ".octobots", "pack-updates", "v58", "mission-execution", "local.md"))).toBe(true);
   });
 

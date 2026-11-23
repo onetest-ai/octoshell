@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync, appendFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, mkdirSync, copyFileSync, statSync, appendFileSync } from "node:fs";
 import { readRegularText } from "./pack-updates.js";
 import { join } from "node:path";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
@@ -40,7 +40,7 @@ export function tokenomicsStatus(repoRoot: string, version: number): TokenomicsS
   const entry = join(repoRoot, ".octobots", "tokenomics", TOKENOMICS_ENTRY);
   if (!existsSync(entry)) return { present: false, current: false };
   let v: number | null;
-  try { v = parseTokenomicsVersion(readFileSync(entry, "utf8")); } catch { return { present: false, current: false }; }
+  try { v = parseTokenomicsVersion(readRegularText(entry, { noFollow: true })); } catch { return { present: false, current: false }; }
   return { present: true, current: v === version };
 }
 
@@ -52,6 +52,9 @@ export interface PricesKept {
   workspaceFetchedAt: string | null;
   packFetchedAt: string | null;
 }
+
+/** Anything at `path`, a dangling symlink included: `existsSync` would follow it, and a copy would create its target. */
+const occupied = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false }) !== undefined;
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -73,7 +76,7 @@ function fetchedAt(file: string): string | null {
  */
 export function pricesKept(srcRoot: string, repoRoot: string): PricesKept | undefined {
   const target = join(repoRoot, ".octobots", "tokenomics", "prices.json");
-  if (!existsSync(target)) return undefined;
+  if (!occupied(target)) return undefined;
   const workspaceFetchedAt = fetchedAt(target);
   const packFetchedAt = fetchedAt(join(srcRoot, "tokenomics", "prices.json"));
   const stale = workspaceFetchedAt === null || (packFetchedAt !== null && workspaceFetchedAt < packFetchedAt);
@@ -99,9 +102,9 @@ export function installTokenomics(srcRoot: string, repoRoot: string, keep: Reado
   for (const entry of readdirSync(from, { withFileTypes: true })) {
     if (!entry.isFile()) continue;
     const target = join(to, entry.name);
-    if (PRESERVED.has(entry.name) && existsSync(target)) continue;
-    // A file the workspace changed locally (see `installPack`): kept, and staged for reconcile there.
-    if (keep.has(entry.name) && existsSync(target)) continue;
+    if (PRESERVED.has(entry.name) && occupied(target)) continue;
+    // Files `installPack` keeps: changed locally, reconciled, or special (a symlink, a FIFO).
+    if (keep.has(entry.name)) continue;
     const f = join(from, entry.name);
     if (!statSync(f).isFile()) continue;
     copyFileSync(f, target);

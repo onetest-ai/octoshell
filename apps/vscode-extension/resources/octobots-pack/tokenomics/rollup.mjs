@@ -762,6 +762,6 @@ writeFileSync(join(TOK_DIR, "runs.json"), JSON.stringify(submission, null, 2) + 
 const totalCost = runs.reduce((n, r) => n + r.cost_api_equivalent_usd, 0);
 const missingSizing = missionRows.filter((r) => r.effort_days === null).map((r) => r._octobots.mission_id);
 log(`tokenomics: ${missionRows.length} mission rows · ${campaignRows.length} campaign rows · $${round2(totalCost)} attributed · $${unattributedBucket.cost_api_equivalent_usd} unattributed`);
-if (unpriced.size) log(`tokenomics: WARNING unpriced models (fallback rate used): ${[...unpriced].join(", ")}`);
+if (unpriced.size) log(`tokenomics: WARNING unpriced models (counted as USD 0): ${[...unpriced].join(", ")}`);
 if (missingSizing.length) log(`tokenomics: NOTE no authored sizing for ${missingSizing.join(", ")} — add a 'tokenomics:' map (effort_days, size_tshirt) to those mission.yaml files`);
 log(`tokenomics: wrote ${join(TOK_DIR, "runs.json")}`);

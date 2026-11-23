@@ -1,12 +1,13 @@
 import { lstatSync, mkdirSync, readdirSync, rmSync, rmdirSync, writeFileSync, type Stats } from "node:fs";
 import { join } from "node:path";
 import type { RecoveredBase } from "./pack-deviations.js";
+import { commentSyntaxOf, packFileRel } from "./pack-files.js";
 import { PACK_UPDATES_DIR, assertRealPackUpdatesDir, isStagingDir, readRegularBytes, readRegularText, type PendingEntry } from "./pack-updates.js";
 
 /**
  * Staging folders for pack updates: `.octobots/pack-updates/v<N>/<skill>/`.
  *
- * The installer writes `base.md`, `local.md`, `upstream.md` (a pack skill only) and `RECONCILE.md`.
+ * The installer writes `base.md`, `local.md`, `upstream.md` (only for a skill or file the pack still ships) and `RECONCILE.md`.
  * The agent adds `merged.md`, `DECISIONS.md` and optionally `UPSTREAM-CANDIDATES.md`; an Overwrite
  * adds `overwritten-local.md`. The installer deletes the inputs it wrote (and `merged.md`) when it
  * re-stages or the user chooses Overwrite or Keep, and NEVER deletes a decision log, a candidates
@@ -110,18 +111,19 @@ export function carriedBlocks(brief: string): CarriedBlock[] {
 }
 
 /**
- * Questions a re-staged entry inherits from the entry it replaces: the open ESCALATED entries of
+ * Questions an entry being staged inherits from `dirRel`, the folder of the entry it replaces or,
+ * when it has none (an entry dropped earlier), its own folder as it is on disk: the open ESCALATED entries of
  * its DECISIONS.md, or, when the agent never ran there, the blocks its RECONCILE.md itself carried.
  */
-export function carriedFrom(repoRoot: string, prior: PendingEntry | undefined, priorVersion: number): CarriedBlock[] {
+export function carriedFrom(repoRoot: string, dirRel: string, version: number): CarriedBlock[] {
   let dir: string | null;
-  try { dir = prior ? stagingPath(repoRoot, prior.dir) : null; } catch { return []; }
+  try { dir = stagingPath(repoRoot, dirRel); } catch { return []; }
   if (!dir) return [];
   const decisions = join(dir, "DECISIONS.md");
   if (lstatOrNull(decisions) !== null) {
     try {
       const lines = openEscalations(readRegularText(decisions));
-      return lines.length > 0 ? [{ version: priorVersion, lines }] : [];
+      return lines.length > 0 ? [{ version, lines }] : [];
     } catch { return []; }
   }
   try { return carriedBlocks(readRegularText(join(dir, "RECONCILE.md"))); } catch { return []; }
@@ -129,8 +131,10 @@ export function carriedFrom(repoRoot: string, prior: PendingEntry | undefined, p
 
 export interface BriefInput {
   skill: string;
-  /** A tokenomics file's name (`collect.mjs`); absent for a skill. */
+  /** A file's pack path (`tokenomics/collect.mjs`); absent for a skill. */
   file?: string;
+  /** The file starts with YAML frontmatter, so its marker line cannot come first. */
+  frontmatter?: boolean;
   packVersion: number;
   retired: boolean;
   localVersion: string;
@@ -180,9 +184,9 @@ export function renderBrief(b: BriefInput): string {
   return out.join("\n");
 }
 
-/** The brief for a tokenomics file: the same merge, a different live target and marker. */
+/** The brief for a pack file: the same merge, a different live target and marker. */
 function renderFileBrief(b: BriefInput, file: string): string {
-  const live = `.octobots/tokenomics/${file}`;
+  const live = packFileRel(file);
   const baseLine = b.base === null
     ? "none; the merge is two-way (local against upstream)"
     : `v${b.base.version}, sha256 ${b.base.sha256}, source ${b.base.source}${b.base.source === "closest" ? " (approximate: the stored body closest to the local file)" : ""}`;
@@ -192,19 +196,37 @@ function renderFileBrief(b: BriefInput, file: string): string {
     `- File: ${live} (pending entry ${b.skill})`,
     `- Local: ${b.localVersion === "unversioned" ? "no pack version marker" : `pack version marker ${b.localVersion}`} (sha256 ${b.localSha256})`,
     `- Base: ${baseLine}`,
-    `- Upstream: pack v${b.packVersion} (sha256 ${b.upstreamSha256})`,
+    b.retired
+      ? `- Upstream: none. The pack retired this file in v${b.packVersion}, so upstream deleted it.`
+      : `- Upstream: pack v${b.packVersion} (sha256 ${b.upstreamSha256})`,
     "",
   ];
   for (const c of b.carried) out.push(`Carried over from v${c.version}:`, ...c.lines, "");
   out.push(
-    "Inputs in this folder: local.md" + (b.base ? ", base.md" : "") + ", upstream.md. Each holds the file's text unchanged;",
+    "Inputs in this folder: local.md" + (b.base ? ", base.md" : "") + (b.retired ? "" : ", upstream.md") + ". Each holds the file's text unchanged;",
     "the .md name is only the staging convention.",
     "",
     `The installer kept your ${live} and installed the rest of the pack. Run the octobots-doctor skill;`,
     "do not edit the live file by hand.",
     "",
+  );
+  if (b.retired) {
+    out.push(
+      "This file is retired. Its upstream is deletion, so there is nothing to merge. The decision is the user's:",
+      "keep it as a project file under a new name outside the pack's paths, or delete it. Ask; do not decide.",
+      "",
+    );
+    return out.join("\n");
+  }
+  const syntax = commentSyntaxOf(file);
+  out.push(
     "Merge per change (local only: keep; upstream only: take; both the same: take; both different: conflict).",
     "Write merged.md and DECISIONS.md here; escalate any policy conflict to the user.",
+    "",
+    b.frontmatter
+      ? "The merged file carries this marker on a line of its own, right after the closing `---` of its frontmatter:"
+      : "The merged file carries this marker on a line of its own, first in the file (or right after its `#!` line):",
+    `${syntax} octobots-reconciled-from: ${b.upstreamSha256}${syntax === "<!--" ? " -->" : ""}`,
     "",
   );
   return out.join("\n");
@@ -233,19 +255,22 @@ export interface StageInput extends BriefInput {
   upstreamBytes: Buffer | null;
   /** The folder of the entry this one replaces, when it is not this one's folder. */
   replacedDir?: string;
-  /** Delete a stale `merged.md`: the entry is being re-staged. */
-  restage: boolean;
 }
 
-/** Writes one skill's staging folder and returns its pending entry. */
+const startsWithFrontmatter = (b: Buffer | null): boolean => b !== null && /^\uFEFF?---\r?\n/.test(b.toString("utf8"));
+
+/**
+ * Writes one skill's staging folder and returns its pending entry. A merged.md in it is always stale
+ * (it was made from other inputs, possibly for an entry dropped since) and is deleted.
+ */
 export function stageEntry(s: StageInput): PendingEntry {
   const dirRel = stagingDirRel(s.packVersion, s.skill);
   const dir = stagingPath(s.repoRoot, dirRel, true)!;
-  if (s.restage) rmSync(join(dir, "merged.md"), { force: true });
+  rmSync(join(dir, "merged.md"), { force: true });
   writeIfChanged(join(dir, "local.md"), s.localBytes);
   if (s.base) writeIfChanged(join(dir, "base.md"), s.base.body); else rmSync(join(dir, "base.md"), { force: true });
   if (s.upstreamBytes) writeIfChanged(join(dir, "upstream.md"), s.upstreamBytes); else rmSync(join(dir, "upstream.md"), { force: true });
-  writeIfChanged(join(dir, "RECONCILE.md"), renderBrief(s));
+  writeIfChanged(join(dir, "RECONCILE.md"), renderBrief({ ...s, frontmatter: startsWithFrontmatter(s.localBytes) || startsWithFrontmatter(s.upstreamBytes) }));
   if (s.replacedDir && s.replacedDir !== dirRel) clearInputs(s.repoRoot, s.replacedDir);
   return {
     skill: s.skill,
@@ -259,7 +284,7 @@ export function stageEntry(s: StageInput): PendingEntry {
   };
 }
 
-/** Saves a replaced local SKILL.md beside its staging folder. Never replaces an earlier saved file. */
+/** Saves a replaced local SKILL.md or pack file beside its staging folder. Never replaces an earlier saved file. */
 export function saveOverwritten(repoRoot: string, packVersion: number, skill: string, local: Buffer): void {
   const dir = stagingPath(repoRoot, stagingDirRel(packVersion, skill), true)!;
   for (let n = 1; ; n++) {

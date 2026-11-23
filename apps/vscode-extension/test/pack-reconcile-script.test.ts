@@ -4,13 +4,14 @@
 // pending.json and its staging folders), so each case states exactly the record it starts from.
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { PACK_SRC } from "./fixtures/pack-store.js";
-import { OCTOBOTS_SKILLS } from "../src/host/octobots-skill.js";
+import { PACK_SRC, store } from "./fixtures/pack-store.js";
+import { OCTOBOTS_PACK_VERSION, OCTOBOTS_SKILLS, installPack } from "../src/host/octobots-skill.js";
 import { RETIRED_SKILLS } from "../src/host/pack-skills.js";
+import { RETIRED_PACK_PATHS, isJudgedPackPath, packFileEntryName, packFileRel } from "../src/host/pack-files.js";
 
 const SCRIPT_REL = [".claude", "skills", "octobots-doctor", "scripts", "pack-reconcile.mjs"];
 const SKILL = "mission-completion-gate";
@@ -204,6 +205,274 @@ describe("pack-reconcile.mjs done: clears a finished reconcile", () => {
     expect(r.code).toBe(0);
     expect(r.out.trim()).toBe(`no pending reconcile for ${SKILL}`);
     expect(existsSync(pendingPath(ws))).toBe(false);
+  });
+});
+
+// A pack-file entry (v62): its live file is the one its RECONCILE.md names.
+const FILE_UPSTREAM = "#!/usr/bin/env node\n// upstream\n";
+const FILE_SHA = createHash("sha256").update(FILE_UPSTREAM).digest("hex");
+const VALIDATE = "skill/mission-planner/scripts/validate.js";
+const VALIDATE_REL = ".claude/skills/mission-planner/scripts/validate.js";
+const fileLine = (rel: string, name: string) => `- File: ${rel} (pending entry ${name})`;
+
+/** `workspace()` whose only pending entries are `files`, each staged with the brief line the installer writes. */
+function fileWorkspace(files: Array<{ packPath: string; retired?: boolean; brief?: string | null; live?: string | null }>): string {
+  const ws = workspace();
+  for (const f of files) {
+    const name = packFileEntryName(f.packPath);
+    const d = staging(ws, name);
+    mk(join(d, "local.md"), "local\n");
+    mk(join(d, "DECISIONS.md"), CLOSED);
+    if (!f.retired) mk(join(d, "upstream.md"), FILE_UPSTREAM);
+    if (f.brief !== null) mk(join(d, "RECONCILE.md"), f.brief ?? `# Reconcile\n\n${fileLine(packFileRel(f.packPath), name)}\n- Base: none\n`);
+    if (f.live !== null && f.live !== undefined) mk(join(ws, packFileRel(f.packPath)), f.live);
+  }
+  mk(pendingPath(ws), JSON.stringify({ packVersion: 57, skills: files.map((f) => entry(packFileEntryName(f.packPath), f.retired ?? false)), kept: [] }));
+  return ws;
+}
+const fileMarked = (sha = FILE_SHA) => `#!/usr/bin/env node\n// octobots-reconciled-from: ${sha}\n// merged\n`;
+
+describe("pack-reconcile.mjs: a pack-file entry", () => {
+  const HOOK = "hooks/status-flip.mjs";
+  const HOOK_NAME = packFileEntryName(HOOK);
+  const RETIRED_FILE = "skill/mission-planner/scripts/set-step.js";
+  const RETIRED_NAME = packFileEntryName(RETIRED_FILE);
+
+  it("list prints the workspace path and the marker of a skill-script and a hook entry", () => {
+    const ws = fileWorkspace([{ packPath: VALIDATE }, { packPath: HOOK }]);
+    const r = run(ws, "list");
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toContain(`  file: ${VALIDATE_REL}\n`);
+    expect(r.out).toContain("  file: .octobots/hooks/status-flip.mjs\n");
+    expect(r.out.match(new RegExp(`octobots-reconciled-from: ${FILE_SHA}`, "g"))).toHaveLength(2);
+    expect(r.out).not.toContain("+local");
+  });
+
+  it("maps every judged and every retired pack path as the installer does (parity with pack-files.ts)", () => {
+    const shipped = (readdirSync(PACK_SRC, { recursive: true, withFileTypes: true }))
+      .filter((d) => d.isFile())
+      .map((d) => join(d.parentPath, d.name).slice(PACK_SRC.length + 1).split("\\").join("/"));
+    const judged = shipped.filter(isJudgedPackPath);
+    expect(judged.length).toBeGreaterThan(30);
+    const retired = RETIRED_PACK_PATHS.map((packPath) => ({ packPath, retired: true }));
+    const r = run(fileWorkspace([...judged.map((packPath) => ({ packPath })), ...retired]), "list");
+    expect(r.code, r.err).toBe(0);
+    const listed = [...r.out.matchAll(/^ {2}file: (.*)$/gm)].map((m) => m[1]);
+    expect(listed).toEqual([...judged, ...RETIRED_PACK_PATHS].map(packFileRel));
+
+    const unjudged = shipped.filter((p) => !isJudgedPackPath(p));
+    expect(unjudged).toContain("graph/octograph.mjs");
+    expect(unjudged).toContain("tokenomics/prices.json");
+    const u = run(fileWorkspace(unjudged.filter((p) => !p.startsWith("graph/")).map((packPath) => ({ packPath }))), "list");
+    expect(u.code, u.err).toBe(0);
+    const refusedFiles = [...u.out.matchAll(/^ {2}file: (.*)$/gm)].map((m) => m[1]!);
+    expect(refusedFiles).toHaveLength(unjudged.filter((p) => !p.startsWith("graph/")).length);
+    expect(refusedFiles.length).toBeGreaterThan(5);
+    for (const f of refusedFiles) expect(f).toMatch(/^missing/);
+  });
+
+  it.each([VALIDATE, HOOK, "tokenomics/collect.mjs", "statusline/statusline.sh"])("done %s: refused until the live file carries the marker of upstream.md", (packPath) => {
+    const name = packFileEntryName(packPath);
+    const ws = fileWorkspace([{ packPath, live: "// unmerged\n" }]);
+    const refused = (reason: RegExp) => {
+      const r = run(ws, "done", name);
+      expect(r.code).toBe(3);
+      expect(r.err).toMatch(reason);
+      expect(pendingSkills(ws)).toEqual([name]);
+    };
+    const live = join(ws, packFileRel(packPath));
+    refused(/octobots-reconciled-from: \(none\)/);
+    writeFileSync(live, fileMarked("c".repeat(64)));
+    refused(/octobots-reconciled-from: c{64}/);
+    writeFileSync(live, fileMarked() + "// ESCALATED: exit code: awaiting the user's answer, see DECISIONS.md\n");
+    refused(/ESCALATED/);
+    rmSync(live);
+    refused(/does not exist/);
+    writeFileSync(live, fileMarked());
+    decisions(ws, name, OPEN);
+    refused(/open escalation/);
+    decisions(ws, name, CLOSED);
+    const r = run(ws, "done", name);
+    expect(r.code, r.err).toBe(0);
+    expect(pendingSkills(ws)).toEqual([]);
+  });
+
+  it("done refuses a second marker line (a second reconcile that kept the old one), and passes once only the new one is left", () => {
+    const ws = fileWorkspace([{ packPath: HOOK }]);
+    const live = join(ws, packFileRel(HOOK));
+    for (const other of ["c".repeat(64), FILE_SHA]) {
+      mk(live, fileMarked() + `# octobots-reconciled-from: ${other}\r\n`);
+      const r = run(ws, "done", HOOK_NAME);
+      expect(r.code).toBe(3);
+      expect(r.err).toMatch(/holds 2 octobots-reconciled-from lines; it must hold exactly one/);
+      expect(pendingSkills(ws)).toEqual([HOOK_NAME]);
+    }
+    writeFileSync(live, fileMarked());
+    expect(run(ws, "done", HOOK_NAME).code).toBe(0);
+  });
+
+  it.each([
+    ["in a string", `const s = "octobots-reconciled-from: ${FILE_SHA}";\n`],
+    ["after code", `run(); // octobots-reconciled-from: ${FILE_SHA}\n`],
+    ["with text after the hash", `// octobots-reconciled-from: ${FILE_SHA} (merged)\n`],
+    ["without comment syntax", `octobots-reconciled-from: ${FILE_SHA}\n`],
+    ["as an unclosed HTML comment", `<!-- octobots-reconciled-from: ${FILE_SHA}\n`],
+    ["below another mention the installer would read first", `const s = "octobots-reconciled-from: ${"c".repeat(64)}";\n// octobots-reconciled-from: ${FILE_SHA}\n`],
+  ])("done refuses a marker %s", (_, text) => {
+    const ws = fileWorkspace([{ packPath: HOOK, live: text }]);
+    const r = run(ws, "done", HOOK_NAME);
+    expect(r.code).toBe(3);
+    expect(r.err).toMatch(/octobots-reconciled-from/);
+    expect(pendingSkills(ws)).toEqual([HOOK_NAME]);
+  });
+
+  it.each(["//", "#", "<!--"])("done takes the marker in every form v60 and v61 named: %s, LF or CRLF", (c) => {
+    for (const eol of ["\n", "\r\n"]) {
+      const marker = `${c} octobots-reconciled-from: ${FILE_SHA}${c === "<!--" ? " -->" : ""}`;
+      const ws = fileWorkspace([{ packPath: "tokenomics/collect.mjs", live: ["first", marker, "last", ""].join(eol) }]);
+      const r = run(ws, "done", "tokenomics-collect-mjs");
+      expect(r.code, r.err).toBe(0);
+    }
+  });
+
+  it("done refuses a live file that is a symlink, even to a marked file", () => {
+    const ws = fileWorkspace([{ packPath: HOOK }]);
+    const target = join(mkdtempClean("pack-reconcile-target-"), "x.mjs");
+    writeFileSync(target, fileMarked());
+    mkdirSync(join(ws, ".octobots", "hooks"), { recursive: true });
+    symlinkSync(target, join(ws, packFileRel(HOOK)));
+    const r = run(ws, "done", HOOK_NAME);
+    expect(r.code).toBe(3);
+    expect(r.err).toMatch(/not a readable regular file/);
+    expect(pendingSkills(ws)).toEqual([HOOK_NAME]);
+  });
+
+  it("a retired file: list prints no marker; done needs a closed DECISIONS.md and the live file gone", () => {
+    const ws = fileWorkspace([{ packPath: RETIRED_FILE, retired: true, live: "// mine\n" }]);
+    const live = join(ws, packFileRel(RETIRED_FILE));
+    const l = run(ws, "list");
+    expect(l.out).toContain("  file: .claude/skills/mission-planner/scripts/set-step.js\n");
+    expect(l.out).not.toMatch(/marker:|reconciled-from/);
+
+    let r = run(ws, "done", RETIRED_NAME); // closed, but the file is there
+    expect(r.code).toBe(3);
+    expect(r.err).toMatch(/set-step\.js still exists/);
+    rmSync(live);
+    symlinkSync(join(ws, "nowhere"), live); // a dangling symlink is still there
+    expect(run(ws, "done", RETIRED_NAME).code).toBe(3);
+    rmSync(live);
+    decisions(ws, RETIRED_NAME, OPEN); // gone, but unanswered
+    expect(run(ws, "done", RETIRED_NAME).code).toBe(3);
+    rmSync(join(staging(ws, RETIRED_NAME), "DECISIONS.md"));
+    expect(run(ws, "done", RETIRED_NAME).code).toBe(3);
+    expect(pendingSkills(ws)).toEqual([RETIRED_NAME]);
+    decisions(ws, RETIRED_NAME, CLOSED);
+    r = run(ws, "done", RETIRED_NAME);
+    expect(r.code, r.err).toBe(0);
+    expect(pendingSkills(ws)).toEqual([]);
+  });
+
+  describe.each([
+    ["active", VALIDATE, false],
+    ["retired", RETIRED_FILE, true],
+  ] as const)("an invalid brief of an %s entry is `file: missing`, and done exits 3", (_, packPath, retired) => {
+    const name = packFileEntryName(packPath);
+    const rel = packFileRel(packPath);
+    const briefs: Array<[string, string | null]> = [
+      ["a path out of the workspace", fileLine("../../etc/passwd", name)],
+      ["an absolute path", fileLine(`/${rel}`, name)],
+      ["a backslash path", fileLine(rel.split("/").join("\\"), name)],
+      ["a NUL in the path", fileLine(`${rel}\0`, name)],
+      ["a `..` segment", fileLine(rel.replace("scripts/", "scripts/../scripts/"), name)],
+      ["a `.` segment", fileLine(rel.replace("scripts/", "scripts/./"), name)],
+      ["an empty segment", fileLine(rel.replace("scripts/", "scripts//"), name)],
+      ["another entry's path", fileLine(".octobots/hooks/primer.mjs", name)],
+      ["a SKILL.md", fileLine(".claude/skills/mission-planner/SKILL.md", name)],
+      ["a path outside the four roots", fileLine(`.claude/${packPath}`, name)],
+      ["no File line", "# Reconcile\n"],
+      ["no RECONCILE.md", null],
+    ];
+    it.each(briefs)("%s", (_case, brief) => {
+      const ws = fileWorkspace([{ packPath, retired, brief, live: retired ? null : fileMarked() }]);
+      const l = run(ws, "list");
+      expect(l.code, l.err).toBe(0);
+      expect(l.out).toMatch(/^ {2}file: missing/m);
+      expect(l.out).not.toMatch(/marker:/);
+      const r = run(ws, "done", name);
+      expect(r.code).toBe(3);
+      expect(r.err).toMatch(/RECONCILE\.md/);
+      expect(pendingSkills(ws)).toEqual([name]);
+    });
+
+    it("a symlinked RECONCILE.md", () => {
+      const ws = fileWorkspace([{ packPath, retired, brief: null, live: retired ? null : fileMarked() }]);
+      const target = join(mkdtempClean("pack-reconcile-brief-"), "b.md");
+      writeFileSync(target, fileLine(rel, name));
+      symlinkSync(target, join(staging(ws, name), "RECONCILE.md"));
+      expect(run(ws, "list").out).toMatch(/^ {2}file: missing/m);
+      expect(run(ws, "done", name).code).toBe(3);
+      expect(pendingSkills(ws)).toEqual([name]);
+    });
+  });
+
+  it("an entry named after a SKILL.md never maps to it", () => {
+    const name = "skill-mission-planner-skill-md";
+    const ws = fileWorkspace([{ packPath: "skill/mission-planner/SKILL.md", brief: fileLine(".claude/skills/mission-planner/SKILL.md", name) }]);
+    expect(run(ws, "list").out).toMatch(/^ {2}file: missing/m);
+    expect(run(ws, "done", name).code).toBe(3);
+  });
+});
+
+describe("pack-reconcile.mjs over a kept v61 skill-marker.mjs", () => {
+  // The installer keeps a locally changed skill-marker.mjs, so this script may import a copy that
+  // lacks whatever v62 added to it. A name it lacks is a SyntaxError before the first line runs.
+  const MARKER = "skill/mission-planner/scripts/skill-marker.mjs";
+  const HOOK = "hooks/primer.mjs";
+  const live = (ws: string, key: string) => join(ws, ...packFileRel(key).split("/"));
+  const packText = (key: string) => readFileSync(join(PACK_SRC, ...key.split("/")), "utf8");
+  const upstreamSha = (key: string) => createHash("sha256").update(packText(key)).digest("hex");
+
+  it("list and done work after a v62 install that kept it", () => {
+    const v61 = store.bodies[store.versions["61"]![MARKER]!.at(-1)!]!;
+    expect(v61).not.toContain("withoutReconciledFrom"); // what makes it the v61 copy
+    const keptMarker = v61 + "// a project's own line\n";
+    const ws = mkdtempClean("pack-reconcile-v61-");
+    installPack(PACK_SRC, ws, { store, localChanges: "overwrite" });
+    writeFileSync(live(ws, MARKER), keptMarker);
+    writeFileSync(live(ws, HOOK), packText(HOOK) + "// a project's own line\n");
+    installPack(PACK_SRC, ws, { store });
+    expect(readFileSync(live(ws, MARKER), "utf8")).toBe(keptMarker);
+
+    const keys = [HOOK, MARKER]; // the hook first: its done runs on the kept v61 copy
+    expect(pendingSkills(ws).sort()).toEqual(keys.map(packFileEntryName).sort());
+    const list = run(ws, "list");
+    expect(list.err).toBe("");
+    expect(list.code).toBe(0);
+    for (const key of keys) {
+      expect(list.out).toContain(`  file: ${packFileRel(key)}\n`);
+      expect(list.out).toContain(`  marker: a comment line holding octobots-reconciled-from: ${upstreamSha(key)}\n`);
+    }
+
+    for (const key of keys) {
+      const name = packFileEntryName(key);
+      mk(join(ws, ".octobots", "pack-updates", `v${OCTOBOTS_PACK_VERSION}`, name, "DECISIONS.md"), CLOSED);
+      const early = run(ws, "done", name);
+      expect(early.code, early.err).toBe(3);
+      expect(early.err).toContain(`it must hold a comment line octobots-reconciled-from: ${upstreamSha(key)}`);
+      const local = readFileSync(live(ws, key), "utf8");
+      const shebang = local.match(/^#!.*\n/)?.[0] ?? "";
+      const line = `// octobots-reconciled-from: ${upstreamSha(key)}\n`;
+      writeFileSync(live(ws, key), shebang + line + line + local.slice(shebang.length));
+      const twice = run(ws, "done", name);
+      expect(twice.code).toBe(3);
+      expect(twice.err).toContain("holds 2 octobots-reconciled-from lines");
+      writeFileSync(live(ws, key), shebang + line + local.slice(shebang.length));
+      const done = run(ws, "done", name);
+      expect(done.err).toBe("");
+      expect(done.code).toBe(0);
+      expect(pendingSkills(ws)).not.toContain(name);
+    }
+    expect(pendingSkills(ws)).toEqual([]);
   });
 });
 

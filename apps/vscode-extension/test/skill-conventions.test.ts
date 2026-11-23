@@ -343,6 +343,26 @@ describe("octobots-doctor: the rules of M7-AC7", () => {
     expect(prose).toMatch(/pending reconcile is never acknowledged/);
   });
 
+  it("reconciles a pack file at the path its brief names", () => {
+    const file = sectionUnder(body, /^### A pack file/m).replace(/\s+/g, " ");
+    expect(file).toMatch(/`\/\/` for `\.js` and `\.mjs`, `#` for `\.sh`, `<!-- -->` for `\.md`/);
+    expect(file).toMatch(/on the line after a `#!` line/);
+    expect(file).toMatch(/YAML frontmatter[^.]*right after the closing `---`/);
+    expect(file).toMatch(/live file unchanged, no symlink\), then copy merged\.md byte for byte to the path RECONCILE\.md names/);
+    expect(file).toMatch(/Only for a tokenomics file, run `node \.octobots\/tokenomics\/selftest\.mjs`/);
+    expect(file).toMatch(/replace any existing `octobots-reconciled-from` line: the file holds exactly one/);
+    expect(file).toMatch(/[Aa]lways escalate a retired pack file/);
+    expect(file).toMatch(/move never overwrites an existing destination/);
+    expect(flat).toContain("(for a pack-file entry, the workspace path RECONCILE.md names in place of the skill's directory)");
+  });
+
+  it("never installs through a symlink, and merges again when an answer finds no merged.md", () => {
+    expect(flat).toMatch(/never write through a live path that is a symlink or not a regular file, or lies under a symlinked directory: escalate/);
+    expect(flat).toMatch(/Before copying[^.]*\(skill or pack file\)[^:]*still equals local\.md byte for byte/);
+    expect(flat).toMatch(/changed since staging, do not copy: re-run the pack install to stage it again, or escalate/);
+    expect(sectionUnder(body, /^## 3\. /m).replace(/\s+/g, " ")).toMatch(/merged\.md is missing[^.]*the entry is not retired, merge again from the current inputs, using the answer/);
+  });
+
   it("names no retired skill outside its legacy-folder paragraph", () => {
     const legacy = sectionUnder(body, /^## \d+\. Leftover `workflows\/` folders/m);
     const outside = body.replace(legacy, "");

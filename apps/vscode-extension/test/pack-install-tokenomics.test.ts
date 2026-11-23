@@ -10,7 +10,7 @@ import { PACK_SRC, store } from "./fixtures/pack-store.js";
 import { installPack, packStatus, OCTOBOTS_PACK_VERSION } from "../src/host/octobots-skill.js";
 import { detectDeviations, deviationPrompt, installCompletionMessage } from "../src/host/pack-deviations.js";
 import { readPending } from "../src/host/pack-updates.js";
-import { tokenomicsEntryName } from "../src/host/pack-skills.js";
+import { packFileEntryName } from "../src/host/pack-files.js";
 import { fileReconciledFrom, skillSha256 } from "../src/host/skill-marker.js";
 import { fileReconciledFrom as fileReconciledFromMjs } from "../resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs";
 
@@ -18,7 +18,7 @@ const PACK = OCTOBOTS_PACK_VERSION;
 const TOK_SRC = join(PACK_SRC, "tokenomics");
 const packText = (file: string) => readFileSync(join(TOK_SRC, file), "utf8");
 const live = (ws: string, file: string) => join(ws, ".octobots", "tokenomics", file);
-const stagingDir = (ws: string, file: string) => join(ws, ".octobots", "pack-updates", `v${PACK}`, tokenomicsEntryName(file));
+const stagingDir = (ws: string, file: string) => join(ws, ".octobots", "pack-updates", `v${PACK}`, packFileEntryName(`tokenomics/${file}`));
 const mk = (p: string, content: string) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, content); };
 
 /** An older body the pack really shipped for `file` (not the current one). */
@@ -87,7 +87,7 @@ describe("installPack: tokenomics files (#191)", () => {
     expect(readFileSync(live(ws, "collect.mjs"), "utf8")).toBe(local);
     expect(readFileSync(live(ws, "rollup.mjs"), "utf8")).toBe(packText("rollup.mjs"));
     for (const [f, bytes] of ledger) expect(readFileSync(live(ws, f)).equals(bytes), f).toBe(true);
-    const name = tokenomicsEntryName("collect.mjs");
+    const name = packFileEntryName("tokenomics/collect.mjs");
     expect(name).toBe("tokenomics-collect-mjs");
     expect(res.pending).toContain(name);
 
@@ -168,9 +168,9 @@ describe("installPack: tokenomics files (#191)", () => {
   it("a file reconciled against an older pack body is staged again, with that body as its base", () => {
     const ws = installed();
     const older = olderShipped("collect.mjs");
-    writeFileSync(live(ws, "collect.mjs"), `// octobots-reconciled-from: ${skillSha256(older)}\n${older}`);
+    writeFileSync(live(ws, "collect.mjs"), `// octobots-reconciled-from: ${skillSha256(older)}\n${older}// local\n`);
     const [d] = detectDeviations(ws, PACK, store).deviations;
-    expect(d).toMatchObject({ skill: "tokenomics-collect-mjs", file: "collect.mjs", reason: "reconciled-older" });
+    expect(d).toMatchObject({ skill: "tokenomics-collect-mjs", file: "tokenomics/collect.mjs", reason: "reconciled-older" });
     installPack(PACK_SRC, ws, { store });
     const e = readPending(ws)!.skills.find((s) => s.skill === "tokenomics-collect-mjs")!;
     expect(e.base).toMatchObject({ source: "reconciled-from", sha256: skillSha256(older) });
@@ -239,7 +239,7 @@ describe("pack-reconcile.mjs done for a tokenomics entry", () => {
     expect(r.status).toBe(3);
     expect(r.stderr).toContain("ESCALATED");
 
-    writeFileSync(live(ws, "collect.mjs"), marker + packText("collect.mjs"));
+    writeFileSync(live(ws, "collect.mjs"), marker + packText("collect.mjs") + "// local\n");
     r = run(ws, "done", "tokenomics-collect-mjs");
     expect(r.stderr).toBe("");
     expect(r.status).toBe(0);
@@ -247,7 +247,7 @@ describe("pack-reconcile.mjs done for a tokenomics entry", () => {
     // And the next install leaves the reconciled file alone.
     const res = installPack(PACK_SRC, ws, { store });
     expect(res.pending).toEqual([]);
-    expect(readFileSync(live(ws, "collect.mjs"), "utf8")).toBe(marker + packText("collect.mjs"));
+    expect(readFileSync(live(ws, "collect.mjs"), "utf8")).toBe(marker + packText("collect.mjs") + "// local\n");
   });
 });
 

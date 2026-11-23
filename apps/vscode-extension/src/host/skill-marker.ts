@@ -53,11 +53,20 @@ export function parseSkillMarker(text: string): SkillMarker {
 
 /**
  * The `octobots-reconciled-from: <sha256>` marker of a reconciled pack FILE other than a SKILL.md
- * (a tokenomics script): the first line holding it, in whatever comment syntax the file uses
+ * (a script, hook, template or the status line): the first line holding it, in whatever comment syntax the file uses
  * (`// ...`, `# ...`, `<!-- ... -->`). Lower-cased; null when absent. A file has no frontmatter, so
  * the marker alone says what it was reconciled against.
  */
 export function fileReconciledFrom(text: string): string | null {
   const m = normalise(text).match(/octobots-reconciled-from:[ \t]*([0-9a-fA-F]{64})(?![0-9a-fA-F])/);
   return m ? m[1]!.toLowerCase() : null;
+}
+
+/**
+ * `text` without its one standalone `octobots-reconciled-from: <64 hex>` marker line (and that
+ * line's newline, CRLF or LF): the first such line, nothing else. A line with code before the
+ * marker, or text after the hash, is local content and the text comes back unchanged.
+ */
+export function withoutReconciledFrom(text: string): string {
+  return text.replace(/^[ \t]*(?:(?:\/\/|#)[ \t]*octobots-reconciled-from:[ \t]*[0-9a-fA-F]{64}|<!--[ \t]*octobots-reconciled-from:[ \t]*[0-9a-fA-F]{64}[ \t]*-->)[ \t]*(?:\r?\n|$)/m, "");
 }

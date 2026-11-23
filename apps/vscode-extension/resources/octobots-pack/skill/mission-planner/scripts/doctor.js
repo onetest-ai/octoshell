@@ -17,7 +17,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
 import { findLegacyWorkflowFolders, isCampaignDir, NO_LONGER_READ } from "./legacy-workflows.mjs";
-import { parseSkillMarker } from "./skill-marker.mjs";
+import { fileReconciledFrom, parseSkillMarker } from "./skill-marker.mjs";
 import { parseTestLanes } from "./lanes.mjs";
 import { readPending, readRegularFile, MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX } from "./pending-io.mjs";
 
@@ -63,7 +63,11 @@ const keptSkills = new Set(record ? record.kept.map((k) => k.skill) : []);
 const primer = join(ROOT, ".octobots", "hooks", "primer.mjs");
 // Read only as small regular files: a FIFO or a symlink to a device must not hang the doctor.
 const readSmall = (p) => { try { return readRegularFile(p); } catch { return null; } };
-const primerVersion = existsSync(primer) ? markerOf(readSmall(primer) ?? "") : null;
+const primerText = existsSync(primer) ? readSmall(primer) ?? "" : "";
+const primerVersion = markerOf(primerText);
+// Why a pack file (by its pending entry name) is not expected to match the pack's version, or null.
+const fileState = (entry, text) =>
+  pendingSkills.has(entry) ? "pending reconcile" : keptSkills.has(entry) ? "kept" : fileReconciledFrom(text) !== null ? "reconciled" : null;
 const installed = [];
 for (const s of SKILLS) {
   const p = join(ROOT, ".claude", "skills", s, "SKILL.md");
@@ -109,7 +113,9 @@ if (record && record.skills.length) {
 if (!existsSync(primer)) fail("pack", "primer.mjs is missing", 'run "Octobots: Install Octobots Pack"');
 else {
   const v = primerVersion;
-  if (packVersion !== null && v !== packVersion) {
+  const state = fileState("hooks-primer-mjs", primerText);
+  if (state) note("pack", `primer.mjs is not compared with the pack version (${state})`);
+  else if (packVersion !== null && v !== packVersion) {
     fail("pack", `primer.mjs is v${v}, skills are v${packVersion}`, 'run "Octobots: Install Octobots Pack"');
   } else ok("pack", `primer.mjs v${v}`);
 }
@@ -177,8 +183,12 @@ if (!sl?.command) {
   fail("statusline", "settings point at .octobots/statusline.sh but the script is missing",
     'run "Octobots: Install Octobots Pack"');
 } else {
-  const v = markerOf(readFileSync(slScript, "utf8"));
-  if (packVersion !== null && v !== packVersion) warn("statusline", `statusline.sh is v${v}, pack is v${packVersion}`, 'run "Octobots: Install Octobots Pack"');
+  const text = readSmall(slScript);
+  const v = markerOf(text ?? "");
+  const state = fileState("statusline-statusline-sh", text ?? "");
+  if (state) note("statusline", `statusline.sh is not compared with the pack version (${state})`);
+  else if (text === null) warn("statusline", "statusline.sh is not a readable regular file", 'run "Octobots: Install Octobots Pack"');
+  else if (packVersion !== null && v !== packVersion) warn("statusline", `statusline.sh is v${v}, pack is v${packVersion}`, 'run "Octobots: Install Octobots Pack"');
   else ok("statusline", `installed and registered (v${v})`);
   if (String(sl.command).includes("/Users/") || /^[A-Za-z]:\\/.test(String(sl.command))) {
     fail("statusline", `the registration uses an ABSOLUTE path — it breaks on another machine or a fresh clone`,

@@ -7,17 +7,25 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { frontmatterVersion, readPackVersionFromSource } from "../scripts/shipped-skills.mjs";
+import {
+  currentPackFiles,
+  frontmatterVersion,
+  isJudgedPackPath as isJudgedPackPathMjs,
+  readPackVersionFromSource,
+} from "../scripts/shipped-skills.mjs";
 import { OCTOBOTS_PACK_VERSION } from "../src/host/octobots-skill.js";
+import { RETIRED_PACK_PATHS, isJudgedPackPath } from "../src/host/pack-files.js";
+import { skillSha256 } from "../resources/octobots-pack/skill/mission-planner/scripts/skill-marker.mjs";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 
 const EXT_ROOT = join(__dirname, "..");
 const SCRIPT = join(EXT_ROOT, "scripts", "shipped-skills.mjs");
 const STORE_PATH = join(EXT_ROOT, "resources", "shipped-skills.json.br");
-const PACK_SKILLS = join(EXT_ROOT, "resources", "octobots-pack", "skill");
+const PACK_ROOT = join(EXT_ROOT, "resources", "octobots-pack");
+const PACK_SKILLS = join(PACK_ROOT, "skill");
 
 interface Store {
   versions: Record<string, Record<string, string[]>>;
@@ -34,6 +42,13 @@ const currentSkills = () =>
   readdirSync(PACK_SKILLS, { withFileTypes: true })
     .filter((d) => d.isDirectory() && existsSync(join(PACK_SKILLS, d.name, "SKILL.md")))
     .map((d) => d.name);
+
+/** Every file under the pack root, as a pack path (`/`-separated). */
+const packPaths = () =>
+  readdirSync(PACK_ROOT, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => relative(PACK_ROOT, join(e.parentPath, e.name)).split("\\").join("/"))
+    .sort();
 
 /** Runs the script. `GIT_DIR` points at an empty directory by default, so any git read fails. */
 function run(mode: string, env: Record<string, string> = {}, noGit = true) {
@@ -67,6 +82,42 @@ describe("resources/shipped-skills.json.br (committed store)", () => {
       const hash = sha(text);
       expect(store.versions[String(OCTOBOTS_PACK_VERSION)]?.[skill], skill).toContain(hash);
       expect(store.bodies[hash], skill).toBe(text.replace(/\r\n/g, "\n"));
+    }
+  });
+
+  it("indexes every current judged pack file under the pack version", () => {
+    const judged = packPaths().filter(isJudgedPackPath);
+    expect(judged.length).toBeGreaterThan(40);
+    for (const packPath of judged) {
+      const text = readFileSync(join(PACK_ROOT, packPath), "utf8");
+      const hash = skillSha256(text);
+      expect(store.versions[String(OCTOBOTS_PACK_VERSION)]?.[packPath], packPath).toContain(hash);
+      expect(store.bodies[hash], packPath).toBe(text.replace(/\r\n/g, "\n"));
+    }
+  });
+
+  it("holds only judged pack paths and skill names as keys", () => {
+    for (const [v, keys] of Object.entries(store.versions)) {
+      for (const key of Object.keys(keys)) {
+        expect(!key.includes("/") || isJudgedPackPath(key), `v${v} ${key}`).toBe(true);
+      }
+    }
+  });
+
+  it("indexes an older body of validate.js", () => {
+    const key = "skill/mission-planner/scripts/validate.js";
+    const current = skillSha256(readFileSync(join(PACK_ROOT, key), "utf8"));
+    const older = Object.entries(store.versions)
+      .filter(([v]) => Number(v) < OCTOBOTS_PACK_VERSION)
+      .flatMap(([, keys]) => keys[key] ?? []);
+    expect(older.some((h) => h !== current)).toBe(true);
+  });
+
+  it("a retired script has shipped bodies", () => {
+    expect(RETIRED_PACK_PATHS.length).toBeGreaterThan(0);
+    for (const key of RETIRED_PACK_PATHS) {
+      const hashes = Object.values(store.versions).flatMap((keys) => keys[key] ?? []);
+      expect(hashes.length, key).toBeGreaterThanOrEqual(1);
     }
   });
 
@@ -121,13 +172,46 @@ describe("resources/shipped-skills.json.br (committed store)", () => {
     expect(Object.keys(store.bodies).sort()).toEqual([...store.order].sort());
   });
 
-  it("stays within the 160 KB budget", () => {
-    // 100 KB held the skills alone; the tokenomics CLI history (#191) adds about 50 KB.
-    expect(readFileSync(STORE_PATH).length).toBeLessThanOrEqual(160 * 1024);
+  it("stays within the 333 KB budget", () => {
+    // 309068 bytes when every judged pack file was first indexed (v62), plus 10%. The two vendored
+    // files are about 66 KB of it.
+    expect(readFileSync(STORE_PATH).length).toBeLessThanOrEqual(333 * 1024);
+  });
+});
+
+describe("the judged-path rule", () => {
+  it("the .mjs judged-path rule matches isJudgedPackPath", () => {
+    // The pack and the retired paths, plus shapes neither of them holds today.
+    const extra = [
+      "skill/x/SKILL.md", "skill/x/sub/SKILL.md", "skill/SKILL.md", "skill/x//a.js", "skill/x/a.json",
+      "hooks", "hooks/a.mjs", "hooks/sub/a.mjs", "hooks/a.json", "statusline/other.sh",
+      "statusline/sub/statusline.sh", "tokenomics/a.mjs", "tokenomics/sub/a.mjs", "tokenomics/prices.json",
+      "tokenomics/prices.local.json", "graph/octograph.mjs", "agents/a/AGENT.md", "README.md", "",
+    ];
+    const paths = [...packPaths(), ...RETIRED_PACK_PATHS, ...extra];
+    for (const p of paths) expect(isJudgedPackPathMjs(p), p).toBe(isJudgedPackPath(p));
+  });
+
+  it("currentPackFiles lists exactly the judged files, keyed by pack path", () => {
+    expect(currentPackFiles(PACK_ROOT).map((f) => f.skill)).toEqual(packPaths().filter(isJudgedPackPath));
   });
 });
 
 describe("scripts/shipped-skills.mjs --verify", () => {
+  it("--verify fails on an unindexed hook and skill script", () => {
+    const root = join(mkdtempClean("shipped-skills-root-"), "octobots-pack");
+    cpSync(PACK_ROOT, root, { recursive: true });
+    const env = { SHIPPED_SKILLS_PACK_ROOT: root };
+    expect(run("--verify", env).status).toBe(0);
+    const hook = join(root, "hooks", "primer.mjs");
+    const script = join(root, "skill", "mission-planner", "scripts", "validate.js");
+    for (const f of [hook, script]) writeFileSync(f, readFileSync(f, "utf8") + "\n// unrecorded\n");
+    const r = run("--verify", env);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(`${hook}: not indexed`);
+    expect(r.stderr).toContain(`${script}: not indexed`);
+  });
+
   it("exits 0 on the committed store and reads no git (GIT_DIR points at an empty directory)", () => {
     const r = run("--verify");
     expect(r.stderr).toBe("");
@@ -206,7 +290,7 @@ describe("scripts/shipped-skills.mjs --write", () => {
     expect(r.stderr).toBe("");
     expect(r.status).toBe(0);
     expect(Buffer.compare(readFileSync(s.store), before)).toBe(0);
-  });
+  }, 60_000);
 
   it("rebuilds the shipped history from git alone when the store is absent", () => {
     // The strongest check that --write reads the history right: starting from nothing it must
@@ -254,7 +338,7 @@ describe("scripts/shipped-skills.mjs --write", () => {
     const bytes = readFileSync(s.store);
     expect(run("--write", s.env, false).status).toBe(0);
     expect(Buffer.compare(readFileSync(s.store), bytes)).toBe(0);
-  });
+  }, 60_000);
 
   it("refuses a current SKILL.md whose version line is not OCTOBOTS_PACK_VERSION, naming the file", () => {
     const s = scratch();
@@ -265,7 +349,7 @@ describe("scripts/shipped-skills.mjs --write", () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain(file);
     expect(Buffer.compare(readFileSync(s.store), before)).toBe(0);
-  });
+  }, 60_000);
 
   it("creates the store (and its directory) when none exists yet", () => {
     const s = scratch();
@@ -274,7 +358,7 @@ describe("scripts/shipped-skills.mjs --write", () => {
     expect(r.status).toBe(0);
     expect(existsSync(nested)).toBe(true);
     expect(run("--verify", { ...s.env, SHIPPED_SKILLS_STORE_PATH: nested }).status).toBe(0);
-  });
+  }, 60_000);
 });
 
 describe("frontmatterVersion (the pack's one version rule)", () => {

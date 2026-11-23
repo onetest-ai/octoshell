@@ -109,8 +109,9 @@ try {
     if (!now || now === content(deferred.body, deferred.ch)) process.exit(0);
   }
   const lines = [];
-  // An amend already carries the trailer. Avoid even loading the board in that case.
-  if (!/^Octobots-(?:Mission|Campaign):/m.test(body)) {
+  // An amend already carries the trailer. Avoid even loading the board in that case. Git compares trailer
+  // keys without case, so this does too.
+  if (!/^Octobots-(?:Mission|Campaign):/im.test(body)) {
     try {
       const root = git(["rev-parse", "--show-toplevel"]);
       try {
@@ -128,8 +129,11 @@ try {
           timeout,
         }),
       );
-      if (result.kind === "mission" && result.campaign && result.mission) lines.push(`Octobots-Mission: ${result.campaign}/${result.mission}`);
-      else if (result.kind === "campaign" && result.campaign) lines.push(`Octobots-Campaign: ${result.campaign}`);
+      // A line break inside a name would add a line of its own to the message.
+      const campaign = result.campaign?.replace(/[\r\n]/g, " ").trim();
+      const mission = result.mission?.replace(/[\r\n]/g, " ").trim();
+      if (result.kind === "mission" && campaign && mission) lines.push(`Octobots-Mission: ${campaign}/${mission}`);
+      else if (result.kind === "campaign" && campaign) lines.push(`Octobots-Campaign: ${campaign}`);
       else warn("unattributed");
     } catch {
       warn("attribution unavailable");

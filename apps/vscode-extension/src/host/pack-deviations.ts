@@ -1,12 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { readRegularText } from "./pack-updates.js";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { PACK_UPDATES_DIR, readRegularText, type PendingRecord } from "./pack-updates.js";
 import { join } from "node:path";
 import { brotliDecompressSync } from "node:zlib";
-import { OCTOBOTS_SKILLS, RETIRED_SKILLS, TOKENOMICS_KEY_PREFIX, TOKENOMICS_UNJUDGED, tokenomicsEntryName, tokenomicsRel } from "./pack-skills.js";
-import { fileReconciledFrom, parseSkillMarker, skillSha256 } from "./skill-marker.js";
+import { isJudgedPackPath, packFileEntryName, packFileRel, RETIRED_FILES, RETIRED_PACK_PATHS } from "./pack-files.js";
+import { OCTOBOTS_SKILLS, RETIRED_SKILLS } from "./pack-skills.js";
+import { fileReconciledFrom, parseSkillMarker, skillSha256, withoutReconciledFrom } from "./skill-marker.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
-import type { PendingRecord } from "./pack-updates.js";
 
 /**
  * Deviation detection and base recovery for pack updates (M7).
@@ -14,8 +14,8 @@ import type { PendingRecord } from "./pack-updates.js";
  * A workspace may carry a locally changed pack skill. Whether a `.claude/skills/<skill>/SKILL.md` is
  * the pack's own, a fork, or a reconciled fork is decided here against the store of every SKILL.md
  * the pack ever shipped (`resources/shipped-skills.json.br`, built by `scripts/shipped-skills.mjs`).
- * Only SKILL.md is judged: the rest of a skill's directory always installs. The tokenomics CLI's
- * files (`.octobots/tokenomics/<file>`) are judged too, each on its own, by content alone (#191).
+ * Every other judged pack file (`isJudgedPackPath`: skill scripts and templates, hooks, the
+ * statusline, the tokenomics CLI, and their retired files) is judged on its own, by content alone.
  * This module reads and writes nothing in the workspace; staging is `pack-updates.ts`.
  */
 
@@ -43,33 +43,35 @@ export function loadShippedStore(file: string): ShippedStore | null {
 export type DeviationReason = "label" | "content" | "unknown-version" | "reconciled-older";
 
 export interface Deviation {
-  /** The pending entry name: the skill, or `tokenomics-<slug>` for a tokenomics file. */
+  /** The pending entry name: the skill, or `packFileEntryName(file)` for a file. */
   skill: string;
-  /** A tokenomics file's name (`collect.mjs`); absent for a skill. */
+  /** A file's pack path (`skill/mission-planner/scripts/validate.js`); absent for a SKILL.md. */
   file?: string;
-  /** The version label as written in the workspace's SKILL.md (`missing` when it has none). */
+  /** The version label as written in the workspace's SKILL.md (`missing` when it has none); a file's pack version marker, or `unversioned`. */
   version: string;
   reason: DeviationReason;
   retired: boolean;
-  /** sha256 of the workspace's SKILL.md (CRLF normalised). */
+  /** sha256 of the workspace's SKILL.md or file (CRLF normalised). */
   sha256: string;
 }
 
 export interface DeviationReport {
-  /** In OCTOBOTS_SKILLS, then RETIRED_SKILLS, order. */
+  /** In OCTOBOTS_SKILLS, then RETIRED_SKILLS, order; then files by pack path. */
   deviations: Deviation[];
-  /** `<N>+local` at the pack version whose `reconciled-from` is the pack's current SKILL.md. */
+  /** `<N>+local` at the pack version whose `reconciled-from` is the pack's current SKILL.md; then files whose marker names the current body (entry names). */
   reconciled: string[];
   /** A version above the pack version. Never a deviation; every install choice leaves it alone. */
   newer: string[];
+  /** Judged paths that hold no readable regular file (a symlink, FIFO, directory, oversized file): workspace paths. */
+  skipped: string[];
 }
 
 export interface DetectOptions {
   /**
-   * sha256 of each CURRENT pack tokenomics file, keyed `tokenomics/<file>`, when the caller has the
-   * pack at hand. Without it the files the store lists at the pack version are judged.
+   * sha256 of each CURRENT judged pack file, keyed by pack path, when the caller has the pack at
+   * hand. Without it the files the store lists at the pack version are judged.
    */
-  currentTokenomics?: Record<string, string>;
+  currentFiles?: Record<string, string>;
   /**
    * sha256 of each pack skill's CURRENT SKILL.md, when the caller has the pack at hand (installPack
    * does). Without it the newest build the store lists at the pack version stands for the current
@@ -96,7 +98,7 @@ export function detectDeviations(
   store: ShippedStore | null,
   opts: DetectOptions = {},
 ): DeviationReport {
-  const report: DeviationReport = { deviations: [], reconciled: [], newer: [] };
+  const report: DeviationReport = { deviations: [], reconciled: [], newer: [], skipped: [] };
   const names = [
     ...OCTOBOTS_SKILLS.map((skill) => ({ skill, retired: false })),
     ...RETIRED_SKILLS.map((skill) => ({ skill, retired: true })),
@@ -133,7 +135,7 @@ export function detectDeviations(
       else if (!listed.includes(m.sha256)) deviate("content");
     }
   }
-  detectTokenomics(repoRoot, packVersion, store, opts, report);
+  detectFiles(repoRoot, packVersion, store, opts, report);
   return report;
 }
 
@@ -144,44 +146,57 @@ function shippedHashes(store: ShippedStore, key: string): Set<string> {
   return out;
 }
 
-/** The tokenomics files to judge, with the hash of each one's current pack body. */
-function tokenomicsCurrent(store: ShippedStore | null, packVersion: number, opts: DetectOptions): Map<string, string> {
-  const out = new Map<string, string>();
-  const from = opts.currentTokenomics ?? Object.fromEntries(
-    Object.entries(store?.versions[String(packVersion)] ?? {})
-      .filter(([k]) => k.startsWith(TOKENOMICS_KEY_PREFIX))
-      .map(([k, hashes]) => [k, hashes.at(-1)!]),
+/** The files to judge by pack path, each with its current pack body's hash (undefined: retired). */
+function filesCurrent(store: ShippedStore | null, packVersion: number, opts: DetectOptions): Map<string, string | undefined> {
+  const out = new Map<string, string | undefined>();
+  const from = opts.currentFiles ?? Object.fromEntries(
+    Object.entries(store?.versions[String(packVersion)] ?? {}).map(([k, hashes]) => [k, hashes.at(-1)!]),
   );
-  for (const [key, hash] of Object.entries(from)) {
-    const file = key.slice(TOKENOMICS_KEY_PREFIX.length);
-    if (!key.startsWith(TOKENOMICS_KEY_PREFIX) || TOKENOMICS_UNJUDGED.has(file) || file.includes("/")) continue;
-    out.set(file, hash);
-  }
+  for (const [packPath, hash] of Object.entries(from)) if (isJudgedPackPath(packPath)) out.set(packPath, hash);
+  for (const packPath of RETIRED_PACK_PATHS) out.set(packPath, undefined);
   return out;
 }
 
 /**
- * Tokenomics files are judged by content: the pack's current body, a body the pack shipped at any
- * version (an older install, replaced as before) and a file whose `octobots-reconciled-from:` names
- * the current body (reconciled) are not deviations; anything else is. With no store nothing can be
- * told apart, so no file deviates (as for skills).
+ * Files are judged by content. Not a deviation: the pack's current body, with or without a marker
+ * line; a body the pack shipped for this file at any version (an older install, replaced as before);
+ * and such a body under a marker that names it (the marker rule: nothing local is left in it). A
+ * file whose marker names the current body is reconciled. Anything else is a deviation, an older
+ * body marked as something else included: someone chose it. With no store nothing can be told
+ * apart, so no file deviates (as for skills). A file of a skill newer than the pack is not judged:
+ * the install leaves that directory alone, but for `RETIRED_FILES`, which it deletes from any skill.
  */
-function detectTokenomics(repoRoot: string, packVersion: number, store: ShippedStore | null, opts: DetectOptions, report: DeviationReport): void {
-  for (const [file, current] of [...tokenomicsCurrent(store, packVersion, opts)].sort(([a], [b]) => (a < b ? -1 : 1))) {
-    const live = join(repoRoot, ...tokenomicsRel(file).split("/"));
-    if (!existsSync(live)) continue;
+function detectFiles(repoRoot: string, packVersion: number, store: ShippedStore | null, opts: DetectOptions, report: DeviationReport): void {
+  for (const [packPath, current] of [...filesCurrent(store, packVersion, opts)].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const deletable = (RETIRED_FILES as readonly string[]).includes(packPath);
+    if (!deletable && report.newer.some((s) => packPath.startsWith(`skill/${s}/`))) continue;
+    const rel = packFileRel(packPath);
+    const live = join(repoRoot, ...rel.split("/"));
     let text: string;
-    try { text = readRegularText(live); } catch { continue; }
+    try {
+      if (!lstatSync(live).isFile()) { report.skipped.push(rel); continue; }
+      text = readRegularText(live, { noFollow: true });
+    } catch (e) {
+      const { code } = e as NodeJS.ErrnoException;
+      if (code !== "ENOENT" && code !== "ENOTDIR") report.skipped.push(rel);
+      continue;
+    }
     const sha256 = skillSha256(text);
     if (sha256 === current) continue;
-    const skill = tokenomicsEntryName(file);
     const from = fileReconciledFrom(text);
-    if (from === current) { report.reconciled.push(skill); continue; }
-    if (store === null || shippedHashes(store, TOKENOMICS_KEY_PREFIX + file).has(sha256)) continue;
+    const strippedSha = from === null ? null : skillSha256(withoutReconciledFrom(text));
+    if (strippedSha !== null && strippedSha === current) continue;
+    if (store !== null) {
+      const shipped = shippedHashes(store, packPath);
+      if (shipped.has(sha256) || (strippedSha !== null && strippedSha === from && shipped.has(strippedSha))) continue;
+    }
+    const skill = packFileEntryName(packPath);
+    if (current !== undefined && from === current) { report.reconciled.push(skill); continue; }
+    if (store === null) continue;
     const n = parsePackVersionMarker(text);
     report.deviations.push({
-      skill, file, version: n === null ? "unversioned" : String(n),
-      reason: from === null ? "content" : "reconciled-older", retired: false, sha256,
+      skill, file: packPath, version: n === null ? "unversioned" : String(n),
+      reason: from === null ? "content" : "reconciled-older", retired: RETIRED_PACK_PATHS.includes(packPath), sha256,
     });
   }
 }
@@ -332,20 +347,20 @@ export function recoverBase(
 }
 
 /**
- * `recoverBase` for a tokenomics file (`collect.mjs`). Rule 1 reads the file's
+ * `recoverBase` for a judged file, by pack path. Rule 1 reads the file's
  * `octobots-reconciled-from:` line; rule 3 never applies (a file declares no version), so rule 4
  * weighs every stored body up to the pack version.
  */
 export function recoverFileBase(
   repoRoot: string,
-  file: string,
+  packPath: string,
   localBytes: Buffer | string,
   packVersion: number,
   store: ShippedStore,
   opts: RecoverOptions = {},
 ): RecoveredBase | null {
   const local = typeof localBytes === "string" ? localBytes : localBytes.toString("utf8");
-  return recoverFrom(repoRoot, tokenomicsRel(file), TOKENOMICS_KEY_PREFIX + file, local, fileReconciledFrom(local), null, packVersion, store, opts);
+  return recoverFrom(repoRoot, packFileRel(packPath), packPath, local, fileReconciledFrom(local), null, packVersion, store, opts);
 }
 
 function recoverFrom(
@@ -405,22 +420,22 @@ export type PromptChoice = "reconcile" | "overwrite" | "keep";
 const BUTTONS = { reconcile: "Reconcile", overwrite: "Overwrite", keep: "Keep mine" } as const;
 
 function deviationLine(d: Deviation, packVersion: number): string {
+  const retired = d.retired ? `; retired in v${packVersion}, so Overwrite deletes it` : "";
   if (d.file !== undefined) {
     const fileWhy = d.reason === "reconciled-older" ? "reconciled against an earlier pack file" : "differs from every file the pack shipped";
-    return `• ${tokenomicsRel(d.file)}: ${fileWhy}`;
+    return `• ${packFileRel(d.file)}: ${fileWhy}${retired}`;
   }
   const why =
     d.reason === "label" ? "not a pack version"
     : d.reason === "content" ? `differs from the pack's v${d.version} file`
     : d.reason === "unknown-version" ? "not a file the pack shipped"
     : "reconciled against an earlier pack file";
-  const retired = d.retired ? `; retired in v${packVersion}, so Overwrite deletes it` : "";
   return `• ${d.skill}: version ${d.version} (${why}${retired})`;
 }
 
 /** The modal shown before an install writes anything, when `deviations` is not empty. */
 export function deviationPrompt(deviations: readonly Deviation[], packVersion: number): DeviationPrompt {
-  // Skills only: the wording every earlier release used. A tokenomics file adds "and files".
+  // Skills only: the wording every earlier release used. A file adds "and files".
   const files = deviations.some((d) => d.file !== undefined);
   const what = files ? "skills and files" : "skills";
   const detail = [
@@ -473,6 +488,7 @@ export function installCompletionMessage(
     hooksRegistered: boolean;
     tools: "installed" | "failed" | "skipped";
     pending: readonly string[];
+    skipped?: readonly string[];
     prices?: { stale: boolean; workspaceFetchedAt: string | null; packFetchedAt: string | null };
   },
   packVersion: number,
@@ -485,6 +501,7 @@ export function installCompletionMessage(
     msg += ` Staged ${res.pending.join(", ")} for reconcile in .octobots/pack-updates/v${packVersion}/. The next agent session will be asked to run the octobots-doctor skill.`;
     if (!res.hooksRegistered) msg += " The SessionStart hook is off, so ask your agent to run octobots-doctor.";
   }
+  if (res.skipped && res.skipped.length > 0) msg += ` Left alone, not readable regular files: ${res.skipped.join(", ")}.`;
   if (res.prices) {
     msg += " Kept your .octobots/tokenomics/prices.json.";
     if (res.prices.stale) {
@@ -511,7 +528,10 @@ export function shouldPromptOnActivation(
   if (status.upToDate) return false;
   if (!status.upToDateExceptLocal) return true;
   return status.deviations.some((d) => {
-    const pend = pending?.packVersion === packVersion && pending.skills.some((e) => e.skill === d.skill && e.localSha256 === d.sha256);
+    // The entry's folder names the version it was staged for: one whose file could not be read since
+    // keeps its older folder in a record of a newer version.
+    const pend = pending?.packVersion === packVersion && pending.skills.some((e) =>
+      e.skill === d.skill && e.localSha256 === d.sha256 && e.dir.startsWith(`${PACK_UPDATES_DIR}/v${packVersion}/`));
     const kept = pending?.kept.some((k) => k.skill === d.skill && k.packVersion === packVersion && k.sha256 === d.sha256) ?? false;
     return !pend && !kept;
   });

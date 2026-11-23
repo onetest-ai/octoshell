@@ -57,7 +57,7 @@ function forks(): Record<"mission-execution" | "mission-completion-gate", Buffer
 describe("detectDeviations", () => {
   it("reports nothing for a workspace holding the pack's own files", () => {
     const ws = workspace(pristine());
-    expect(detectDeviations(ws, PACK, store)).toEqual({ deviations: [], reconciled: [], newer: [] });
+    expect(detectDeviations(ws, PACK, store)).toEqual({ deviations: [], reconciled: [], newer: [], skipped: [] });
   });
 
   it("reports solo's 57-local forks as `label` deviations, in pack order, with the file's sha256", () => {
@@ -118,7 +118,7 @@ describe("detectDeviations", () => {
     it("is RECONCILED when N is the pack version and reconciled-from is the sha256 of the pack's current file", () => {
       expect(builds.at(-1)).toBe(skillSha256(shipped(skill))); // the store's newest build is the shipped file
       const r = detectDeviations(reconciledAt(`${PACK}+local`, skillSha256(shipped(skill))), PACK, store);
-      expect(r).toEqual({ deviations: [], reconciled: [skill], newer: [] });
+      expect(r).toEqual({ deviations: [], reconciled: [skill], newer: [], skipped: [] });
     });
 
     it("is `reconciled-older` when reconciled-from names an earlier build of the same version", () => {
@@ -139,7 +139,7 @@ describe("detectDeviations", () => {
 
     it("is `newer` at a version above the pack version, whatever reconciled-from says", () => {
       const r = detectDeviations(reconciledAt(`${PACK + 1}+local`, skillSha256(shipped(skill))), PACK, store);
-      expect(r).toEqual({ deviations: [], reconciled: [], newer: [skill] });
+      expect(r).toEqual({ deviations: [], reconciled: [], newer: [skill], skipped: [] });
     });
 
     it("takes the current hash from the caller when it has the pack at hand", () => {
@@ -168,7 +168,7 @@ describe("detectDeviations", () => {
   });
 
   it("skips skills that are not installed", () => {
-    expect(detectDeviations(workspace({}), PACK, store)).toEqual({ deviations: [], reconciled: [], newer: [] });
+    expect(detectDeviations(workspace({}), PACK, store)).toEqual({ deviations: [], reconciled: [], newer: [], skipped: [] });
   });
 
   it("without a store, takes an integer version at its word and still calls a label a deviation", () => {
