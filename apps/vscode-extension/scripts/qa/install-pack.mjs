@@ -26,7 +26,7 @@
 // Prints JSON: {before, deviations, result, after}
 //   before / after  packStatus(<workspace>)
 //   deviations      the changed pack skills found before the install: [{skill, version, reason, retired, sha256}]
-//   result          installPack(...): {written, hooksRegistered, statusline, tools, pending, kept, keptFiles, prices?}
+//   result          installPack(...): {written, hooksRegistered, statusline, tools, pending, kept, keptFiles, skipped, prices?}
 // Writes `<n> skill(s) need reconcile` to stderr when n skills are staged. Exits 1 (error on stderr)
 // if the install throws or refuses (store missing), 2 on a usage error.
 

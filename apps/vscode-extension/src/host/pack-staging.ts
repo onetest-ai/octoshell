@@ -1,7 +1,7 @@
 import { lstatSync, mkdirSync, readdirSync, rmSync, rmdirSync, writeFileSync, type Stats } from "node:fs";
 import { join } from "node:path";
 import type { RecoveredBase } from "./pack-deviations.js";
-import { packFileRel } from "./pack-files.js";
+import { commentSyntaxOf, packFileRel } from "./pack-files.js";
 import { PACK_UPDATES_DIR, assertRealPackUpdatesDir, isStagingDir, readRegularBytes, readRegularText, type PendingEntry } from "./pack-updates.js";
 
 /**
@@ -132,6 +132,8 @@ export interface BriefInput {
   skill: string;
   /** A file's pack path (`tokenomics/collect.mjs`); absent for a skill. */
   file?: string;
+  /** The file starts with YAML frontmatter, so its marker line cannot come first. */
+  frontmatter?: boolean;
   packVersion: number;
   retired: boolean;
   localVersion: string;
@@ -193,19 +195,37 @@ function renderFileBrief(b: BriefInput, file: string): string {
     `- File: ${live} (pending entry ${b.skill})`,
     `- Local: ${b.localVersion === "unversioned" ? "no pack version marker" : `pack version marker ${b.localVersion}`} (sha256 ${b.localSha256})`,
     `- Base: ${baseLine}`,
-    `- Upstream: pack v${b.packVersion} (sha256 ${b.upstreamSha256})`,
+    b.retired
+      ? `- Upstream: none. The pack retired this file in v${b.packVersion}, so upstream deleted it.`
+      : `- Upstream: pack v${b.packVersion} (sha256 ${b.upstreamSha256})`,
     "",
   ];
   for (const c of b.carried) out.push(`Carried over from v${c.version}:`, ...c.lines, "");
   out.push(
-    "Inputs in this folder: local.md" + (b.base ? ", base.md" : "") + ", upstream.md. Each holds the file's text unchanged;",
+    "Inputs in this folder: local.md" + (b.base ? ", base.md" : "") + (b.retired ? "" : ", upstream.md") + ". Each holds the file's text unchanged;",
     "the .md name is only the staging convention.",
     "",
     `The installer kept your ${live} and installed the rest of the pack. Run the octobots-doctor skill;`,
     "do not edit the live file by hand.",
     "",
+  );
+  if (b.retired) {
+    out.push(
+      "This file is retired. Its upstream is deletion, so there is nothing to merge. The decision is the user's:",
+      "keep it as a project file under a new name outside the pack's paths, or delete it. Ask; do not decide.",
+      "",
+    );
+    return out.join("\n");
+  }
+  const syntax = commentSyntaxOf(file);
+  out.push(
     "Merge per change (local only: keep; upstream only: take; both the same: take; both different: conflict).",
     "Write merged.md and DECISIONS.md here; escalate any policy conflict to the user.",
+    "",
+    b.frontmatter
+      ? "The merged file carries this marker on a line of its own, right after the closing `---` of its frontmatter:"
+      : "The merged file carries this marker on a line of its own, first in the file (or right after its `#!` line):",
+    `${syntax} octobots-reconciled-from: ${b.upstreamSha256}${syntax === "<!--" ? " -->" : ""}`,
     "",
   );
   return out.join("\n");
@@ -238,6 +258,8 @@ export interface StageInput extends BriefInput {
   restage: boolean;
 }
 
+const startsWithFrontmatter = (b: Buffer | null): boolean => b !== null && /^\uFEFF?---\r?\n/.test(b.toString("utf8"));
+
 /** Writes one skill's staging folder and returns its pending entry. */
 export function stageEntry(s: StageInput): PendingEntry {
   const dirRel = stagingDirRel(s.packVersion, s.skill);
@@ -246,7 +268,7 @@ export function stageEntry(s: StageInput): PendingEntry {
   writeIfChanged(join(dir, "local.md"), s.localBytes);
   if (s.base) writeIfChanged(join(dir, "base.md"), s.base.body); else rmSync(join(dir, "base.md"), { force: true });
   if (s.upstreamBytes) writeIfChanged(join(dir, "upstream.md"), s.upstreamBytes); else rmSync(join(dir, "upstream.md"), { force: true });
-  writeIfChanged(join(dir, "RECONCILE.md"), renderBrief(s));
+  writeIfChanged(join(dir, "RECONCILE.md"), renderBrief({ ...s, frontmatter: startsWithFrontmatter(s.localBytes) || startsWithFrontmatter(s.upstreamBytes) }));
   if (s.replacedDir && s.replacedDir !== dirRel) clearInputs(s.repoRoot, s.replacedDir);
   return {
     skill: s.skill,

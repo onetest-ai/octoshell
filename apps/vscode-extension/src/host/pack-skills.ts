@@ -13,9 +13,6 @@ export { RETIRED_SKILLS, RETIRED_SKILL_FILES } from "./pack-files.js";
  * reader already accepts, so the record needs no new field.
  */
 export const TOKENOMICS_KEY_PREFIX = "tokenomics/";
-export const TOKENOMICS_ENTRY_PREFIX = "tokenomics-";
-/** The workspace's own after the first install (`PRESERVED` in octobots-tokenomics.ts): never judged. */
-export const TOKENOMICS_UNJUDGED: ReadonlySet<string> = new Set(["prices.json", "prices.local.json"]);
 
 /** The pending entry name of a tokenomics file: `tokenomics-` plus its lower-cased name, non-alphanumerics as `-`. */
 export const tokenomicsEntryName = (file: string): string => packFileEntryName(TOKENOMICS_KEY_PREFIX + file);

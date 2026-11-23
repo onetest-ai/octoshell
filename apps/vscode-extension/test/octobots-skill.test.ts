@@ -23,7 +23,7 @@ vi.mock("../src/host/pack-deviations.js", async (importOriginal) => {
 
 const PACK_SRC = join(__dirname, "..", "resources", "octobots-pack");
 
-/** The newest SKILL.md the pack ever shipped for `skill`: a pristine file of a retired skill. */
+/** The newest body the pack ever shipped for `skill` (a skill, or a file's pack path): a pristine retired one. */
 const shippedBody = (skill: string): string => {
   const versions = Object.keys(store.versions).map(Number).sort((a, b) => b - a);
   const v = versions.find((n) => store.versions[String(n)]?.[skill]);
@@ -119,7 +119,7 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
     const repo = mkdtempClean("octobots-pack-");
     const stale = join(repo, ".claude", "skills", "mission-planner", "scripts", "set-step.js");
     mkdirSync(join(repo, ".claude", "skills", "mission-planner", "scripts"), { recursive: true });
-    writeFileSync(stale, "// old", "utf8");
+    writeFileSync(stale, shippedBody("skill/mission-planner/scripts/set-step.js"), "utf8");
     installPack(PACK_SRC, repo, { store });
     expect(existsSync(stale)).toBe(false);
   });
@@ -132,7 +132,7 @@ describe("installPack + packStatus (real payload → temp repo)", () => {
     writeFileSync(join(skills, "workflow-designer", "SKILL.md"), shippedBody("workflow-designer"));
     mkdirSync(join(scripts, "vendor"), { recursive: true });
     const retired = ["add-workflow.js", "sync-meta.js", "add-run.js", "mission-input.js", "extract-meta.mjs", "workflow-meta.mjs", "vendor/acorn.mjs"];
-    for (const f of retired) writeFileSync(join(scripts, f), "// old\n");
+    for (const f of retired) writeFileSync(join(scripts, f), shippedBody(`skill/mission-planner/scripts/${f}`));
     writeFileSync(join(scripts, "create-team.js"), "// the user's own script\n");
     const wf = join(repo, ".octobots", "campaigns", "c", "workflows", "ship", "workflow.js");
     mkdirSync(join(wf, ".."), { recursive: true });
@@ -407,7 +407,7 @@ describe("packStatus: deviations, reconciled and newer skills", () => {
     const repo = installed();
     relabel(repo, "mission-execution", "57-local");
     const primer = join(repo, ".octobots", "hooks", "primer.mjs");
-    writeFileSync(primer, readFileSync(primer, "utf8").replace(/octobots-pack-version:\s*\d+/, "octobots-pack-version: 1"));
+    writeFileSync(primer, store.bodies[store.versions["56"]!["hooks/primer.mjs"]!.at(-1)!]!);
     const st = packStatus(repo, OCTOBOTS_PACK_VERSION, store);
     expect([st.installed, st.upToDate, st.upToDateExceptLocal]).toEqual([true, false, false]);
   });

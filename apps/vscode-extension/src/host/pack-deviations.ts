@@ -486,6 +486,7 @@ export function installCompletionMessage(
     hooksRegistered: boolean;
     tools: "installed" | "failed" | "skipped";
     pending: readonly string[];
+    skipped?: readonly string[];
     prices?: { stale: boolean; workspaceFetchedAt: string | null; packFetchedAt: string | null };
   },
   packVersion: number,
@@ -498,6 +499,7 @@ export function installCompletionMessage(
     msg += ` Staged ${res.pending.join(", ")} for reconcile in .octobots/pack-updates/v${packVersion}/. The next agent session will be asked to run the octobots-doctor skill.`;
     if (!res.hooksRegistered) msg += " The SessionStart hook is off, so ask your agent to run octobots-doctor.";
   }
+  if (res.skipped && res.skipped.length > 0) msg += ` Left alone, not readable regular files: ${res.skipped.join(", ")}.`;
   if (res.prices) {
     msg += " Kept your .octobots/tokenomics/prices.json.";
     if (res.prices.stale) {

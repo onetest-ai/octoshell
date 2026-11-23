@@ -1,14 +1,14 @@
 import { mkdirSync, readFileSync, writeFileSync, copyFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-/** Copy the pack's hooks/ payload (primer.mjs + package.json) into <repo>/.octobots/hooks. */
-export function installPrimer(srcRoot: string, repoRoot: string): number {
+/** Copy the pack's hooks/ payload into <repo>/.octobots/hooks, except the file names in `keep` (local changes and special files). */
+export function installPrimer(srcRoot: string, repoRoot: string, keep: ReadonlySet<string> = new Set()): number {
   const from = join(srcRoot, "hooks");
   const to = join(repoRoot, ".octobots", "hooks");
   mkdirSync(to, { recursive: true });
   let written = 0;
   for (const entry of readdirSync(from, { withFileTypes: true })) {
-    if (!entry.isFile()) continue;
+    if (!entry.isFile() || keep.has(entry.name)) continue;
     copyFileSync(join(from, entry.name), join(to, entry.name));
     written++;
   }

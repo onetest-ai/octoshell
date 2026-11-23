@@ -1,12 +1,13 @@
 // v62: every judged pack file (skill scripts, hooks, the statusline, templates, the tokenomics CLI)
 // is told apart from the pack's own by content, and a changed retired file is a retired deviation.
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { installPack, OCTOBOTS_PACK_VERSION, OCTOBOTS_SKILLS } from "../src/host/octobots-skill.js";
-import { detectDeviations, deviationPrompt, recoverFileBase, type DetectOptions } from "../src/host/pack-deviations.js";
+import { installPack, OCTOBOTS_PACK_VERSION, OCTOBOTS_SKILLS, packStatus } from "../src/host/octobots-skill.js";
+import { detectDeviations, deviationPrompt, installCompletionMessage, recoverFileBase, shouldPromptOnActivation, type DetectOptions } from "../src/host/pack-deviations.js";
 import { isJudgedPackPath, packFileEntryName, packFileRel } from "../src/host/pack-files.js";
+import { readPending, serializePending } from "../src/host/pack-updates.js";
 import { skillSha256 } from "../src/host/skill-marker.js";
 import { PACK_SRC, store } from "./fixtures/pack-store.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
@@ -263,5 +264,424 @@ describe("installPack: a symlinked tokenomics file", () => {
     rmSync(live(ws, COLLECT));
     installPack(PACK_SRC, ws, { store });
     expect(readFileSync(live(ws, COLLECT), "utf8")).toBe(packText(COLLECT));
+  });
+});
+
+const stagingDir = (ws: string, key: string, v: number = PACK) => join(ws, ".octobots", "pack-updates", `v${v}`, packFileEntryName(key));
+const read = (p: string) => readFileSync(p, "utf8");
+const STATUSLINE = "statusline/statusline.sh";
+const PRIMER = "hooks/primer.mjs";
+const RUN = "tokenomics/run.mjs";
+const FLIP = "hooks/status-flip.mjs";
+const TC = "skill/mission-planner/templates/TC-template.md";
+
+/** The text was kept live and staged, base.md included when a base was recovered. */
+function expectStaged(ws: string, key: string, local: string, res: { pending: string[] }): void {
+  const name = packFileEntryName(key);
+  expect(read(live(ws, key))).toBe(local);
+  expect(res.pending).toContain(name);
+  const dir = stagingDir(ws, key);
+  expect(read(join(dir, "local.md"))).toBe(local);
+  expect(read(join(dir, "upstream.md"))).toBe(packText(key));
+  expect(read(join(dir, "RECONCILE.md"))).toContain(`- File: ${packFileRel(key)} (pending entry ${name})`);
+  const entry = readPending(ws)!.skills.find((e) => e.skill === name)!;
+  expect(entry).toMatchObject({ retired: false, localSha256: skillSha256(local), upstreamSha256: skillSha256(packText(key)) });
+  expect(existsSync(join(dir, "base.md"))).toBe(entry.base !== null);
+}
+
+/** Runs `fn` with `fifo` in place; from 8 s on a helper releases any blocked open of it, so a hang fails the test. */
+function unblocked<T>(fifo: string, fn: () => T): T {
+  const helper = spawn(process.execPath, ["-e", "setTimeout(() => setInterval(() => { const fs = require('fs'); fs.closeSync(fs.openSync(process.argv[1], 'r+')); }, 20), 8000)", fifo], { stdio: "ignore" });
+  try {
+    const start = Date.now();
+    const r = fn();
+    expect(Date.now() - start).toBeLessThan(7000);
+    return r;
+  } finally {
+    helper.kill("SIGKILL");
+  }
+}
+
+describe("installPack: a changed pack file is kept and staged", () => {
+  it("a changed skill script is kept byte for byte and staged; its siblings update", () => {
+    const ws = installed();
+    const local = packText(VALIDATE) + "// local\n";
+    writeFileSync(live(ws, VALIDATE), local);
+    writeFileSync(live(ws, LIST), olderShipped(LIST));
+    const res = installPack(PACK_SRC, ws, { store });
+    expectStaged(ws, VALIDATE, local, res);
+    expect(read(live(ws, LIST))).toBe(packText(LIST));
+    expect(res.pending).toEqual(["skill-mission-planner-scripts-validate-js"]);
+    const brief = read(join(ws, `.octobots/pack-updates/v${PACK}/skill-mission-planner-scripts-validate-js/RECONCILE.md`));
+    expect(brief).toContain("- File: .claude/skills/mission-planner/scripts/validate.js");
+    expect(brief).toContain(`// octobots-reconciled-from: ${skillSha256(packText(VALIDATE))}`);
+  });
+
+  it("a changed hook is kept and staged", () => {
+    const ws = installed();
+    const local = packText(FLIP) + "// local\n";
+    writeFileSync(live(ws, FLIP), local);
+    writeFileSync(live(ws, "hooks/work-log.mjs"), olderShipped("hooks/work-log.mjs"));
+    const res = installPack(PACK_SRC, ws, { store });
+    expectStaged(ws, FLIP, local, res);
+    expect(read(live(ws, "hooks/work-log.mjs"))).toBe(packText("hooks/work-log.mjs"));
+  });
+
+  it("statusline, registered: kept, staged, still executable", () => {
+    const ws = installed();
+    installPack(PACK_SRC, ws, { store, statusline: true });
+    const local = packText(STATUSLINE) + "# local\n";
+    writeFileSync(live(ws, STATUSLINE), local);
+    const res = installPack(PACK_SRC, ws, { store });
+    expectStaged(ws, STATUSLINE, local, res);
+    expect(res.statusline).toBe("registered");
+    expect(statSync(live(ws, STATUSLINE)).mode & 0o111).toBe(0o111);
+    expect(read(join(stagingDir(ws, STATUSLINE), "RECONCILE.md"))).toContain(`# octobots-reconciled-from: ${skillSha256(packText(STATUSLINE))}`);
+  });
+
+  it.each([undefined, false])("statusline, not registered (statusline: %s): staged, untouched; Overwrite replaces it without registering", (statusline) => {
+    const ws = installed();
+    const opts = { store, ...(statusline === undefined ? {} : { statusline }) };
+    const local = packText(STATUSLINE) + "# local\n";
+    mk(live(ws, STATUSLINE), local);
+    expectStaged(ws, STATUSLINE, local, installPack(PACK_SRC, ws, opts));
+    installPack(PACK_SRC, ws, { ...opts, localChanges: "keep" });
+    expect(read(live(ws, STATUSLINE))).toBe(local);
+    const res = installPack(PACK_SRC, ws, { ...opts, localChanges: "overwrite" });
+    expect(read(live(ws, STATUSLINE))).toBe(packText(STATUSLINE));
+    expect(read(join(stagingDir(ws, STATUSLINE), "overwritten-local.md"))).toBe(local);
+    expect(res.statusline).toBe("skipped");
+    expect(existsSync(join(ws, ".claude", "settings.json")) ? read(join(ws, ".claude", "settings.json")) : "").not.toContain("statusline.sh");
+    expect(installPack(PACK_SRC, ws, opts).pending).toEqual([]);
+  });
+
+  it("TC template is kept and staged; the brief puts the marker after the frontmatter", () => {
+    const ws = installed();
+    const local = packText(TC) + "local\n";
+    writeFileSync(live(ws, TC), local);
+    expectStaged(ws, TC, local, installPack(PACK_SRC, ws, { store }));
+    const brief = read(join(stagingDir(ws, TC), "RECONCILE.md"));
+    expect(brief).toContain(`<!-- octobots-reconciled-from: ${skillSha256(packText(TC))} -->`);
+    expect(brief).toContain("right after the closing `---`");
+  });
+
+  it("a Markdown file without frontmatter gets no frontmatter instruction", () => {
+    const ws = installed();
+    const key = "tokenomics/README.md";
+    const local = packText(key) + "local\n";
+    writeFileSync(live(ws, key), local);
+    expectStaged(ws, key, local, installPack(PACK_SRC, ws, { store }));
+    expect(read(join(stagingDir(ws, key), "RECONCILE.md"))).not.toContain("closing `---`");
+  });
+
+  it("pack-owned JSON is replaced, nothing staged", () => {
+    const ws = installed();
+    const json = ["skill/mission-planner/scripts/package.json", "hooks/required-hooks.json"];
+    for (const k of json) writeFileSync(live(ws, k), "{\"local\":1}\n");
+    const res = installPack(PACK_SRC, ws, { store });
+    for (const k of json) {
+      expect(read(live(ws, k))).toBe(packText(k));
+      expect(res.pending.some((p) => p.startsWith(packFileEntryName(k)))).toBe(false);
+    }
+  });
+
+  it("every choice leaves a reconciled file alone, Overwrite included", () => {
+    for (const localChanges of ["reconcile", "overwrite", "keep"] as const) {
+      for (const key of [VALIDATE, FLIP, STATUSLINE, COLLECT]) {
+        const ws = installed();
+        const local = marked("local\n", skillSha256(packText(key)), key === STATUSLINE ? "#" : "//");
+        mk(live(ws, key), local);
+        const res = installPack(PACK_SRC, ws, { store, localChanges, ...(key === STATUSLINE ? { statusline: true } : {}) });
+        expect(read(live(ws, key)), `${key} ${localChanges}`).toBe(local);
+        expect([res.pending, res.kept]).toEqual([[], []]);
+      }
+    }
+  });
+
+  it("a second identical install reuses the entry", () => {
+    const ws = installed();
+    writeFileSync(live(ws, VALIDATE), "// local\n");
+    installPack(PACK_SRC, ws, { store });
+    writeFileSync(join(stagingDir(ws, VALIDATE), "merged.md"), "half merged\n");
+    expect(installPack(PACK_SRC, ws, { store }).pending).toEqual([packFileEntryName(VALIDATE)]);
+    expect(read(join(stagingDir(ws, VALIDATE), "merged.md"))).toBe("half merged\n");
+  });
+
+  it("a file of a newer skill survives every choice, and Overwrite does not claim to replace it", () => {
+    for (const localChanges of ["reconcile", "overwrite", "keep"] as const) {
+      const ws = installed();
+      const md = live(ws, "skill/mission-planner/SKILL.md");
+      writeFileSync(md, read(md).replace(/^version:.*$/m, `version: ${PACK + 1}`));
+      writeFileSync(live(ws, VALIDATE), "// from the future\n");
+      mk(live(ws, SET_STEP), "// from the future\n");
+      installPack(PACK_SRC, ws, { store, localChanges });
+      expect(read(live(ws, VALIDATE)), localChanges).toBe("// from the future\n");
+      expect(read(live(ws, SET_STEP)), localChanges).toBe("// from the future\n");
+      expect(existsSync(join(stagingDir(ws, VALIDATE), "overwritten-local.md"))).toBe(false);
+    }
+  });
+});
+
+describe("installPack: retired files", () => {
+  it("a changed retired file is kept and staged as retired; an unchanged one is deleted", () => {
+    const ws = installed();
+    mk(live(ws, SET_STEP), "// local\n");
+    const res = installPack(PACK_SRC, ws, { store });
+    const name = packFileEntryName(SET_STEP);
+    expect(read(live(ws, SET_STEP))).toBe("// local\n");
+    expect(res.pending).toEqual([name]);
+    expect(readdirSync(stagingDir(ws, SET_STEP)).sort()).toEqual(["RECONCILE.md", "base.md", "local.md"]);
+    const brief = read(join(stagingDir(ws, SET_STEP), "RECONCILE.md"));
+    expect(brief).toContain("This file is retired.");
+    expect(brief).not.toContain("- Upstream: pack");
+    expect(brief).not.toContain("upstream.md");
+    expect(brief).not.toContain("octobots-reconciled-from:");
+    expect(readPending(ws)!.skills).toEqual([expect.objectContaining({ skill: name, retired: true, upstreamSha256: null })]);
+
+    writeFileSync(live(ws, SET_STEP), olderShipped(SET_STEP));
+    expect(installPack(PACK_SRC, ws, { store }).pending).toEqual([]);
+    expect(existsSync(live(ws, SET_STEP))).toBe(false);
+  });
+
+  it("the same for a retired skill's script, its SKILL.md unchanged", () => {
+    const key = "skill/octobots/scripts/validate.js";
+    const ws = installed();
+    mk(live(ws, "skill/octobots/SKILL.md"), olderShipped("octobots"));
+    mk(live(ws, key), "// local\n");
+    mk(live(ws, "skill/octobots/scripts/list.js"), olderShipped("skill/octobots/scripts/list.js"));
+    mk(live(ws, "skill/octobots/scripts/package.json"), "{}\n");
+    mk(live(ws, "skill/octobots/scripts/mine.js"), "// mine\n");
+    const res = installPack(PACK_SRC, ws, { store });
+    expect(read(live(ws, key))).toBe("// local\n");
+    expect(readdirSync(join(ws, ".claude/skills/octobots")).sort()).toEqual(["scripts"]);
+    expect(readdirSync(join(ws, ".claude/skills/octobots/scripts")).sort()).toEqual(["mine.js", "validate.js"]);
+    expect(res.pending).toEqual([packFileEntryName(key)]);
+    expect(res.keptFiles).toEqual([".claude/skills/octobots/scripts/mine.js"]);
+    expect(existsSync(join(stagingDir(ws, key), "upstream.md"))).toBe(false);
+
+    writeFileSync(live(ws, key), olderShipped(key));
+    rmSync(live(ws, "skill/octobots/scripts/mine.js"));
+    expect(installPack(PACK_SRC, ws, { store }).pending).toEqual([]);
+    expect(existsSync(join(ws, ".claude/skills/octobots"))).toBe(false);
+  });
+
+  it("Overwrite saves a retired file and deletes it; Keep leaves it", () => {
+    for (const key of [SET_STEP, "skill/octobots/scripts/validate.js"]) {
+      const ws = installed();
+      mk(live(ws, key), "// local\n");
+      installPack(PACK_SRC, ws, { store, localChanges: "keep" });
+      expect(read(live(ws, key))).toBe("// local\n");
+      installPack(PACK_SRC, ws, { store, localChanges: "overwrite" });
+      expect(existsSync(live(ws, key))).toBe(false);
+      expect(read(join(stagingDir(ws, key), "overwritten-local.md"))).toBe("// local\n");
+    }
+  });
+
+  it("a symlink, dangling link or empty directory at a retired path is left, not deleted or pruned", () => {
+    const ws = installed();
+    const out = mkdtempClean("pack-files-out-");
+    writeFileSync(join(out, "t.js"), "// outside\n");
+    symlinkSync(join(out, "t.js"), live(ws, SET_STEP));
+    const [link, dir] = ["skill/octobots/scripts/list.js", "skill/octobots/scripts/validate.js"];
+    mkdirSync(live(ws, dir!), { recursive: true });
+    symlinkSync(join(out, "none.js"), live(ws, link!));
+    for (const localChanges of [undefined, "overwrite"] as const) {
+      const res = installPack(PACK_SRC, ws, { store, ...(localChanges ? { localChanges } : {}) });
+      expect(res.skipped.sort()).toEqual([SET_STEP, link!, dir!].map(packFileRel).sort());
+      expect(res.keptFiles).toEqual([]);
+      expect(lstatSync(live(ws, SET_STEP)).isSymbolicLink()).toBe(true);
+      expect(lstatSync(live(ws, link!)).isSymbolicLink()).toBe(true);
+      expect(lstatSync(live(ws, dir!)).isDirectory()).toBe(true);
+      expect(read(join(out, "t.js"))).toBe("// outside\n");
+    }
+  });
+});
+
+describe("installPack: special files", () => {
+  const KEYS = [STATUSLINE, PRIMER, VALIDATE, COLLECT];
+  it.each([["live", true], ["dangling", false]] as const)("symlinks (%s): never written through or replaced, and reported", (_n, exists) => {
+    for (const localChanges of [undefined, "overwrite", "keep"] as const) {
+      const ws = installed();
+      installPack(PACK_SRC, ws, { store, statusline: true });
+      const out = mkdtempClean("pack-files-out-");
+      const target = (k: string) => join(out, packFileEntryName(k));
+      for (const k of KEYS) {
+        if (exists) writeFileSync(target(k), "// outside\n");
+        rmSync(live(ws, k));
+        symlinkSync(target(k), live(ws, k));
+      }
+      const res = installPack(PACK_SRC, ws, { store, ...(localChanges ? { localChanges } : {}) });
+      for (const k of KEYS) {
+        expect(readlinkSync(live(ws, k))).toBe(target(k));
+        expect(existsSync(target(k)) ? read(target(k)) : null).toBe(exists ? "// outside\n" : null);
+      }
+      expect(res.skipped.sort()).toEqual(KEYS.map(packFileRel).sort());
+      expect(res.pending).toEqual([]);
+      expect(installCompletionMessage(res, PACK)).toContain(".octobots/hooks/primer.mjs");
+      expect(packStatus(ws, PACK, store)).toMatchObject({ installed: true, upToDateExceptLocal: true });
+    }
+  });
+
+  it.each([PRIMER, STATUSLINE, RUN])("a FIFO at %s: installPack and packStatus return", (key) => {
+    const ws = installed();
+    installPack(PACK_SRC, ws, { store, statusline: true });
+    rmSync(live(ws, key));
+    execFileSync("mkfifo", [live(ws, key)]);
+    unblocked(live(ws, key), () => {
+      for (const localChanges of [undefined, "overwrite"] as const) {
+        const res = installPack(PACK_SRC, ws, { store, ...(localChanges ? { localChanges } : {}) });
+        expect(res.skipped).toEqual([packFileRel(key)]);
+      }
+      expect(packStatus(ws, PACK, store)).toMatchObject({ installed: true, upToDateExceptLocal: true });
+      packStatus(ws, PACK, null);
+    });
+    expect(lstatSync(live(ws, key)).isFIFO()).toBe(true);
+  }, 30_000);
+
+  it("a directory at a judged path is left and the install finishes", () => {
+    const ws = installed();
+    rmSync(live(ws, VALIDATE));
+    mkdirSync(live(ws, VALIDATE));
+    expect(installPack(PACK_SRC, ws, { store }).skipped).toEqual([packFileRel(VALIDATE)]);
+    expect(lstatSync(live(ws, VALIDATE)).isDirectory()).toBe(true);
+  });
+
+  it.each(["prices.json", "prices.local.json"])("a symlinked %s, live or dangling, is never copied through", (file) => {
+    for (const exists of [true, false]) {
+      const ws = installed();
+      const target = join(mkdtempClean("pack-files-out-"), file);
+      if (exists) writeFileSync(target, "{}\n");
+      const path = join(ws, ".octobots", "tokenomics", file);
+      rmSync(path, { force: true });
+      symlinkSync(target, path);
+      const res = installPack(PACK_SRC, ws, { store });
+      expect(existsSync(target) ? read(target) : null).toBe(exists ? "{}\n" : null);
+      expect(readlinkSync(path)).toBe(target);
+      expect(res.prices).toMatchObject({ kept: true });
+    }
+  });
+
+  it("a clean install skips nothing, and says nothing about it", () => {
+    const res = installPack(PACK_SRC, installed(), { store });
+    expect(res.skipped).toEqual([]);
+    expect(installCompletionMessage(res, PACK)).not.toMatch(/left/i);
+  });
+});
+
+describe("packStatus with a local primer", () => {
+  const bump = (text: string, marker: string) => text.replace(/^.*octobots-pack-version:.*\r?\n/m, marker);
+  it.each([["an old marker", "// octobots-pack-version: 1\n"], ["no marker", ""]])("changed, kept and reconciled, with %s", (_n, marker) => {
+    const ws = installed();
+    const status = () => packStatus(ws, PACK, store);
+    const prompts = () => shouldPromptOnActivation(status(), readPending(ws), PACK);
+    const text = bump(packText(PRIMER), marker) + "// local\n";
+    expect(text).not.toContain(`octobots-pack-version: ${PACK}`);
+    writeFileSync(live(ws, PRIMER), text);
+    expect(status()).toMatchObject({ installed: true, upToDate: false, upToDateExceptLocal: true });
+    expect(prompts()).toBe(true);
+    installPack(PACK_SRC, ws, { store });
+    expect(status()).toMatchObject({ installed: true, upToDateExceptLocal: true });
+    expect(prompts()).toBe(false);
+    installPack(PACK_SRC, ws, { store, localChanges: "keep" });
+    expect(status()).toMatchObject({ installed: true, upToDateExceptLocal: true });
+    expect(prompts()).toBe(false);
+    writeFileSync(live(ws, PRIMER), marked(text, skillSha256(packText(PRIMER))));
+    expect(status()).toMatchObject({ installed: true, upToDate: true, upToDateExceptLocal: true });
+    expect(prompts()).toBe(false);
+  });
+});
+
+describe("installPack: marker loop, choices and messages", () => {
+  it.each([COLLECT, VALIDATE])("marker loop end to end: %s", (key) => {
+    const ws = installed();
+    const b = olderShipped(key);
+    writeFileSync(live(ws, key), marked(b, skillSha256(b)));
+    const res = installPack(PACK_SRC, ws, { store });
+    expect(read(live(ws, key))).toBe(packText(key));
+    expect(res.pending).not.toContain(packFileEntryName(key));
+    expect(readPending(ws)?.skills ?? []).toEqual([]);
+
+    const chosen = marked(b, skillSha256(packText(key)));
+    writeFileSync(live(ws, key), chosen);
+    expect(installPack(PACK_SRC, ws, { store }).pending).toEqual([]);
+    expect(read(live(ws, key))).toBe(chosen);
+    expect(readPending(ws)?.skills ?? []).toEqual([]);
+  });
+
+  it.each([VALIDATE, FLIP, COLLECT, TC])("Overwrite and Keep: %s", (key) => {
+    const ws = installed();
+    const name = packFileEntryName(key);
+    const local = packText(key) + "// local\n";
+    writeFileSync(live(ws, key), local);
+    const kept = installPack(PACK_SRC, ws, { store, localChanges: "keep" });
+    expect(read(live(ws, key))).toBe(local);
+    expect(kept).toMatchObject({ pending: [], kept: [name] });
+    expect(readPending(ws)!.kept).toEqual([{ skill: name, packVersion: PACK, sha256: skillSha256(local) }]);
+    expect(installPack(PACK_SRC, ws, { store })).toMatchObject({ pending: [], kept: [name] });
+    expect(read(live(ws, key))).toBe(local);
+
+    const res = installPack(PACK_SRC, ws, { store, localChanges: "overwrite" });
+    expect(read(join(stagingDir(ws, key), "overwritten-local.md"))).toBe(local);
+    expect(read(live(ws, key))).toBe(packText(key));
+    expect(res).toMatchObject({ pending: [], kept: [] });
+    expect(readPending(ws)).toMatchObject({ skills: [], kept: [] });
+  });
+
+  it("the prompt and the message name the workspace path", () => {
+    const ws = installed();
+    writeFileSync(live(ws, VALIDATE), "// local\n");
+    const { deviations } = packStatus(ws, PACK, store);
+    expect(deviationPrompt(deviations, PACK).detail).toContain(".claude/skills/mission-planner/scripts/validate.js");
+    expect(installCompletionMessage(installPack(PACK_SRC, ws, { store }), PACK)).toContain("skill-mission-planner-scripts-validate-js");
+  });
+});
+
+describe("v61 record", () => {
+  const name = "tokenomics-collect-mjs";
+  const local = packText(COLLECT) + "// local\n";
+  function seed(ws: string, v: number): string {
+    const b = olderShipped(COLLECT);
+    const dir = stagingDir(ws, COLLECT, v);
+    writeFileSync(live(ws, COLLECT), local);
+    mk(join(dir, "local.md"), local);
+    mk(join(dir, "base.md"), b);
+    mk(join(dir, "upstream.md"), packText(COLLECT));
+    mk(join(dir, "RECONCILE.md"), `# Reconcile .octobots/tokenomics/collect.mjs (pack v${v})\n\n- File: .octobots/tokenomics/collect.mjs (pending entry ${name})\n`);
+    mk(join(ws, ".octobots", "pack-updates", "pending.json"), serializePending({
+      packVersion: v,
+      skills: [{
+        skill: name, action: "reconcile", localVersion: "unversioned", localSha256: skillSha256(local),
+        base: { version: 57, sha256: skillSha256(b), source: "closest" }, upstreamSha256: skillSha256(packText(COLLECT)),
+        retired: false, dir: `.octobots/pack-updates/v${v}/${name}`,
+      }],
+      kept: [],
+    }));
+    return dir;
+  }
+
+  it("an entry in v61's format at this pack version is reused", () => {
+    const ws = installed();
+    const dir = seed(ws, PACK);
+    const brief = read(join(dir, "RECONCILE.md"));
+    const before = readPending(ws);
+    installPack(PACK_SRC, ws, { store });
+    expect(readPending(ws)).toEqual(before);
+    expect(read(join(dir, "RECONCILE.md"))).toBe(brief);
+  });
+
+  it("a v61 record is re-staged, its open escalation carried over and its log kept", () => {
+    const ws = installed();
+    const dir = seed(ws, 61);
+    const open = "- ESCALATED: reflog: local a; upstream b; question c?";
+    writeFileSync(join(dir, "DECISIONS.md"), `# Decisions\n${open}\n`);
+    expect(readPending(ws)!.packVersion).toBe(61);
+    const res = installPack(PACK_SRC, ws, { store });
+    expectStaged(ws, COLLECT, local, res);
+    expect(readPending(ws)).toMatchObject({ packVersion: PACK, skills: [{ skill: name, dir: `.octobots/pack-updates/v${PACK}/${name}` }] });
+    const brief = read(join(stagingDir(ws, COLLECT), "RECONCILE.md"));
+    expect(brief).toContain("Carried over from v61:");
+    expect(brief).toContain(open);
+    expect(readdirSync(dir)).toEqual(["DECISIONS.md"]);
+    expect(read(join(dir, "DECISIONS.md"))).toContain(open);
   });
 });

@@ -16,6 +16,7 @@
 import { mkdirSync, readFileSync, writeFileSync, copyFileSync, chmodSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
+import { readRegularText } from "./pack-updates.js";
 
 /** Relative to the repo root — the installed script and the token the registration must contain. */
 const SCRIPT_REL = ".octobots/statusline.sh";
@@ -38,8 +39,9 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, JSON.stringify(value, null, 2) + "\n", "utf8");
 }
 
-/** Copy the pack's statusline script into <repo>/.octobots. Returns files written. */
-export function installStatusline(srcRoot: string, repoRoot: string): number {
+/** Copy the pack's statusline script into <repo>/.octobots, unless `keep` (a local change or special file). Returns files written. */
+export function installStatusline(srcRoot: string, repoRoot: string, keep = false): number {
+  if (keep) return 0;
   const from = join(srcRoot, "statusline", "statusline.sh");
   if (!existsSync(from)) return 0;
   const to = join(repoRoot, SCRIPT_REL);
@@ -101,7 +103,7 @@ export function statuslineStatus(repoRoot: string, expected: number): Statusline
   const scriptPresent = existsSync(scriptPath);
   let version: number | null = null;
   if (scriptPresent) {
-    try { version = parsePackVersionMarker(readFileSync(scriptPath, "utf8")); } catch { version = null; }
+    try { version = parsePackVersionMarker(readRegularText(scriptPath, { noFollow: true })); } catch { version = null; }
   }
   let sl: StatusLine | undefined;
   try { sl = readJson(join(repoRoot, ".claude", "settings.json")).statusLine as StatusLine | undefined; }
