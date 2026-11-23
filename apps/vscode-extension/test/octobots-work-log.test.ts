@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
 import { makeStatusBoard, postToolUse, postToolUseWithOutput, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
@@ -185,6 +185,24 @@ describe("work-log.mjs", () => {
       setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done");
     run(b.repo, runAndPost(b.repo, cmd));
     expect(entries(b.repo).map((e) => `${e.task ?? e.mission}:${e.state}`)).toEqual(["T1.1:done", "M1:done"]);
+  });
+
+  it("work-log warns once when worklog-path.mjs is missing", () => {
+    const b = makeStatusBoard("octo-worklog-");
+    const payload = runAndPost(b.repo, setStatusCommand(b.missionDir, "T1.1 - Parse ids", "active"));
+    rmSync(join(b.repo, ".claude", "skills", "mission-planner", "scripts", "worklog-path.mjs"));
+    const res = spawnSync("node", [WORK_LOG], {
+      cwd: b.repo,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: b.repo },
+      input: JSON.stringify(payload),
+      encoding: "utf8",
+    });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    const lines = res.stderr.split("\n").filter(Boolean);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^work-log: warning: .*worklog-path\.mjs/);
+    expect(existsSync(LOG(b.repo))).toBe(false);
   });
 
   it("never imports an entity-io.mjs beside a set-status.js path the command merely names (security)", () => {

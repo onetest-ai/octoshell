@@ -226,6 +226,55 @@ describe("prepare-commit-msg trailer hook (pack port of solo's M2 hook)", () => 
     }
   });
 
+  describe("a trailer in another case counts as present", () => {
+    it("a lower-case campaign trailer on a mission branch gains no second trailer", () => {
+      const r = hookRepo();
+      const res = r.commit(`feat/${r.slug}-m1`, { args: ["-m", "Hook probe", "-m", "octobots-campaign: x"] });
+      expect(res.status, res.stderr).toBe(0);
+      expect(r.body().match(/^octobots-(?:mission|campaign):.*$/gim)).toEqual(["octobots-campaign: x"]);
+    });
+
+    it("a lower-case mission trailer on an unattributed branch prints no warning", () => {
+      const r = hookRepo();
+      const res = r.commit("scratch/x", { args: ["-m", "Hook probe", "-m", "octobots-mission: x/M9"] });
+      expect(res.status, res.stderr).toBe(0);
+      expect(warnings(res.stderr)).toEqual([]);
+    });
+  });
+
+  describe("a newline in the attribution result cannot add a line", () => {
+    const answer = (r: ReturnType<typeof hookRepo>, result: Record<string, string>) =>
+      writeFileSync(join(r.root, ".octobots", "tokenomics", "attribute.mjs"), `console.log(${JSON.stringify(JSON.stringify(result))});\n`);
+
+    it("a mission result becomes one trailer line", () => {
+      const r = hookRepo();
+      answer(r, { kind: "mission", campaign: "a\nEvil: 1", mission: "M1\r\nEvil: 2" });
+      const res = r.commit(`feat/${r.slug}-m1`);
+      expect(res.status, res.stderr).toBe(0);
+      expect(r.body()).not.toMatch(/^Evil:/m);
+      expect(trailers(r.body())).toEqual(["Octobots-Mission: a Evil: 1/M1  Evil: 2"]);
+    });
+
+    it("a campaign result becomes one trailer line", () => {
+      const r = hookRepo();
+      answer(r, { kind: "campaign", campaign: "a\nEvil: 1" });
+      const res = r.commit(`feat/${r.slug}-m1`);
+      expect(res.status, res.stderr).toBe(0);
+      expect(r.body()).not.toMatch(/^Evil:/m);
+      expect(trailers(r.body())).toEqual(["Octobots-Campaign: a Evil: 1"]);
+    });
+
+    it("a name that is only line breaks is unattributed: no trailer, one warning", () => {
+      const r = hookRepo();
+      answer(r, { kind: "mission", campaign: "a", mission: "\r\n" });
+      const res = r.commit(`feat/${r.slug}-m1`);
+      expect(res.status, res.stderr).toBe(0);
+      expect(trailers(r.body())).toEqual([]);
+      expect(warnings(res.stderr)).toHaveLength(1);
+      expect(res.stderr).toContain("unattributed");
+    });
+  });
+
   it("the script delegates attribution to the CLI and carries no board mapping", () => {
     const r = hookRepo();
     const source = readFileSync(join(r.root, ".octobots", "hooks", "prepare-commit-msg.mjs"), "utf8");
