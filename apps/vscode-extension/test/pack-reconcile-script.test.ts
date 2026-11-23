@@ -265,7 +265,10 @@ describe("pack-reconcile.mjs: a pack-file entry", () => {
     expect(unjudged).toContain("tokenomics/prices.json");
     const u = run(fileWorkspace(unjudged.filter((p) => !p.startsWith("graph/")).map((packPath) => ({ packPath }))), "list");
     expect(u.code, u.err).toBe(0);
-    for (const m of u.out.matchAll(/^ {2}file: (.*)$/gm)) expect(m[1]).toMatch(/^missing/);
+    const refusedFiles = [...u.out.matchAll(/^ {2}file: (.*)$/gm)].map((m) => m[1]!);
+    expect(refusedFiles).toHaveLength(unjudged.filter((p) => !p.startsWith("graph/")).length);
+    expect(refusedFiles.length).toBeGreaterThan(5);
+    for (const f of refusedFiles) expect(f).toMatch(/^missing/);
   });
 
   it.each([VALIDATE, HOOK, "tokenomics/collect.mjs", "statusline/statusline.sh"])("done %s: refused until the live file carries the marker of upstream.md", (packPath) => {
@@ -292,6 +295,44 @@ describe("pack-reconcile.mjs: a pack-file entry", () => {
     const r = run(ws, "done", name);
     expect(r.code, r.err).toBe(0);
     expect(pendingSkills(ws)).toEqual([]);
+  });
+
+  it("done refuses a second marker line (a second reconcile that kept the old one), and passes once only the new one is left", () => {
+    const ws = fileWorkspace([{ packPath: HOOK }]);
+    const live = join(ws, packFileRel(HOOK));
+    for (const other of ["c".repeat(64), FILE_SHA]) {
+      mk(live, fileMarked() + `# octobots-reconciled-from: ${other}\r\n`);
+      const r = run(ws, "done", HOOK_NAME);
+      expect(r.code).toBe(3);
+      expect(r.err).toMatch(/holds 2 octobots-reconciled-from lines; it must hold exactly one/);
+      expect(pendingSkills(ws)).toEqual([HOOK_NAME]);
+    }
+    writeFileSync(live, fileMarked());
+    expect(run(ws, "done", HOOK_NAME).code).toBe(0);
+  });
+
+  it.each([
+    ["in a string", `const s = "octobots-reconciled-from: ${FILE_SHA}";\n`],
+    ["after code", `run(); // octobots-reconciled-from: ${FILE_SHA}\n`],
+    ["with text after the hash", `// octobots-reconciled-from: ${FILE_SHA} (merged)\n`],
+    ["without comment syntax", `octobots-reconciled-from: ${FILE_SHA}\n`],
+    ["as an unclosed HTML comment", `<!-- octobots-reconciled-from: ${FILE_SHA}\n`],
+    ["below another mention the installer would read first", `const s = "octobots-reconciled-from: ${"c".repeat(64)}";\n// octobots-reconciled-from: ${FILE_SHA}\n`],
+  ])("done refuses a marker %s", (_, text) => {
+    const ws = fileWorkspace([{ packPath: HOOK, live: text }]);
+    const r = run(ws, "done", HOOK_NAME);
+    expect(r.code).toBe(3);
+    expect(r.err).toMatch(/octobots-reconciled-from/);
+    expect(pendingSkills(ws)).toEqual([HOOK_NAME]);
+  });
+
+  it.each(["//", "#", "<!--"])("done takes the marker in every form v60 and v61 named: %s, LF or CRLF", (c) => {
+    for (const eol of ["\n", "\r\n"]) {
+      const marker = `${c} octobots-reconciled-from: ${FILE_SHA}${c === "<!--" ? " -->" : ""}`;
+      const ws = fileWorkspace([{ packPath: "tokenomics/collect.mjs", live: ["first", marker, "last", ""].join(eol) }]);
+      const r = run(ws, "done", "tokenomics-collect-mjs");
+      expect(r.code, r.err).toBe(0);
+    }
   });
 
   it("done refuses a live file that is a symlink, even to a marked file", () => {
@@ -413,7 +454,7 @@ describe("pack-reconcile.mjs workspace resolution and source", () => {
     const imports = full.split("\n").filter((l) => /^import .* from "\.\.\/\.\.\//.test(l));
     expect(imports).toEqual([
       'import * as io from "../../mission-planner/scripts/pending-io.mjs";',
-      'import { fileReconciledFrom, parseSkillMarker, skillSha256 } from "../../mission-planner/scripts/skill-marker.mjs";',
+      'import { fileReconciledFrom, parseSkillMarker, skillSha256, withoutReconciledFrom } from "../../mission-planner/scripts/skill-marker.mjs";',
     ]);
     const src = full.split("\n").filter((l) => !/^import /.test(l)).join("\n");
     for (const s of [...OCTOBOTS_SKILLS, ...RETIRED_SKILLS.filter((r) => r !== "octobots")]) expect(src, s).not.toContain(s);

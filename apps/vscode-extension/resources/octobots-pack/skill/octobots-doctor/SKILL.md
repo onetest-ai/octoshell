@@ -83,7 +83,12 @@ For each named folder `.octobots/pack-updates/v<N>/<skill>/`:
     is answered. Do not run done. Ask in your reply (§10).
 11. Otherwise install. In merged.md's frontmatter replace the `version:` line with
     `version: <N>+local` and add the line `reconciled-from: <sha256>` below it, both values exactly
-    as `pack-reconcile.mjs list` prints them for this skill under `marker:`. Then copy merged.md byte for byte to `.claude/skills/<skill>/SKILL.md` and run:
+    as `pack-reconcile.mjs list` prints them for this skill under `marker:`. Before copying, check
+    that the live file (skill or pack file) still equals local.md byte for byte (or is the merged.md
+    you copied there before a fix). If it changed since staging, do not copy: re-run the pack install
+    to stage it again, or escalate. And never write through a live path that is a symlink or not a
+    regular file, or lies under a symlinked directory: escalate instead. Then copy merged.md byte for
+    byte to `.claude/skills/<skill>/SKILL.md` and run:
 
     ```bash
     node .claude/skills/octobots-doctor/scripts/pack-reconcile.mjs done <skill>
@@ -91,7 +96,6 @@ For each named folder `.octobots/pack-updates/v<N>/<skill>/`:
 
     Exit 3 prints what is unfinished (done also refuses a live file that still holds an
     `<!-- ESCALATED: ... -->` line); fix it and run done again. Never edit pending.json yourself.
-    And never write through a live path that is a symlink or not a regular file: escalate instead.
 
 The marker is exactly `<N>+local`. A plain `<N>` makes the fork look like the pack's own file, so a
 later update would overwrite it; `<N>-local` reads as a fork nobody reconciled.
@@ -153,14 +157,17 @@ output), and with these differences:
 - In merged.md, the stand-in for an escalated behaviour is one comment line in that syntax:
   `// ESCALATED: <rule>: awaiting the user's answer, see DECISIONS.md`.
 - Step 11 instead: add the comment line `octobots-reconciled-from: <sha256>` to merged.md, on a line of
-  its own, with the value exactly as `pack-reconcile.mjs list` prints it under `marker:`. It goes
-  first in the file, or on the line after a `#!` line; in a Markdown file with YAML frontmatter it goes
-  right after the closing `---`. Copy merged.md byte for byte to the path RECONCILE.md names, under
-  step 11's symlink rule. Only for a tokenomics file, run `node .octobots/tokenomics/selftest.mjs`; if
-  it fails, fix merged.md and copy again. Then run `pack-reconcile.mjs done <entry>`.
+  its own, with the value exactly as `pack-reconcile.mjs list` prints it under `marker:`, and replace
+  any existing `octobots-reconciled-from` line: the file holds exactly one. It goes first in the file,
+  or on the line after a `#!` line; in a Markdown file with YAML frontmatter it goes right after the
+  closing `---`. Make step 11's two checks (live file unchanged, no symlink), then copy merged.md byte
+  for byte to the path RECONCILE.md names. Only for a tokenomics file, run
+  `node .octobots/tokenomics/selftest.mjs`; if it fails, fix merged.md and copy again. Then run
+  `pack-reconcile.mjs done <entry>`.
 - A retired file has no upstream.md, so there is nothing to merge. Always escalate a retired pack file,
   with the question of "A retired skill" (the new name is a path outside the pack's directories). Once
-  the user answers, record the answer (§3), delete or move the live file as they said, and run done.
+  the user answers, record the answer (§3), delete or move the live file as they said, and run done. A
+  move never overwrites an existing destination: ask for another name.
 - A project's data never goes into the merge: runs.json, worklog.jsonl and raw/ are not pack files,
   and prices.json and prices.local.json are never staged.
 
@@ -181,8 +188,8 @@ above). Never CLAUDE.md, AGENTS.md
   `- RESOLVED (user, <YYYY-MM-DD>): <rule>: <answer>`, replace the rule's
   `<!-- ESCALATED: ... -->` line in merged.md with the answer applied, and when no `- ESCALATED:`
   entry is left, finish with step 11 of §2 (a retired skill: as "A retired skill" says; a pack file:
-  as "A pack file" says). If merged.md is missing (the entry was staged again since), merge again from
-  the current inputs, using the answer.
+  as "A pack file" says). If merged.md is missing (the entry was staged again since)
+  and the entry is not retired, merge again from the current inputs, using the answer.
 
 ## 4. Leftover `workflows/` folders
 

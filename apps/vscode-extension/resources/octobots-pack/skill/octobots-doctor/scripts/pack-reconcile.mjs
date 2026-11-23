@@ -17,7 +17,7 @@
 //     kept lives on under another directory name;
 //   - for a pack file (an entry named `skill-`, `hooks-`, `statusline-` or `tokenomics-<slug>`, e.g.
 //     hooks-primer-mjs for .octobots/hooks/primer.mjs; its RECONCILE.md names the live file): the live
-//     file holds a comment line `octobots-reconciled-from: <sha256 of upstream.md>` and no
+//     file holds exactly one comment line `octobots-reconciled-from: <sha256 of upstream.md>` and no
 //     `ESCALATED:` placeholder comment line. A retired one: the live file is gone.
 // A skill with no entry exits 0 and changes nothing. Exit codes: 0 done / listed, 2 usage, 3 refused.
 //
@@ -29,7 +29,7 @@ import { existsSync, lstatSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as io from "../../mission-planner/scripts/pending-io.mjs";
-import { fileReconciledFrom, parseSkillMarker, skillSha256 } from "../../mission-planner/scripts/skill-marker.mjs";
+import { fileReconciledFrom, parseSkillMarker, skillSha256, withoutReconciledFrom } from "../../mission-planner/scripts/skill-marker.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SKILLS_DIR = resolve(HERE, "..", "..");
@@ -167,8 +167,13 @@ if (liveFile.kind === "invalid") {
   if (!existsSync(upstreamPath(e))) refuse(`${e.dir}/upstream.md is missing, so octobots-reconciled-from cannot be checked`);
   const liveText = readOrRefuse(file, rel, { noFollow: true });
   const want = skillSha256(readOrRefuse(upstreamPath(e), `${e.dir}/upstream.md`));
-  const from = fileReconciledFrom(liveText);
-  if (from !== want) refuse(`${rel} reads octobots-reconciled-from: ${from ?? "(none)"}; it must hold a comment line octobots-reconciled-from: ${want} (the sha256 of ${e.dir}/upstream.md)`);
+  // A marker is a whole comment line, as withoutReconciledFrom strips it. The installer strips only
+  // one, so a second would leave the file a local change for good.
+  const markers = liveText.split(/\r?\n/).filter((l) => withoutReconciledFrom(l) !== l);
+  if (markers.length > 1) refuse(`${rel} holds ${markers.length} octobots-reconciled-from lines; it must hold exactly one, with ${want}:\n${markers.map((l) => `  ${l.trim()}`).join("\n")}`);
+  const from = markers.length ? fileReconciledFrom(markers[0]) : null;
+  if (from !== want) refuse(`${rel} reads octobots-reconciled-from: ${from ?? "(none)"}; it must hold a comment line octobots-reconciled-from: ${want} (the sha256 of ${e.dir}/upstream.md), with nothing else on that line`);
+  if (fileReconciledFrom(liveText) !== want) refuse(`${rel} mentions another octobots-reconciled-from: hash above its marker line, and the installer reads the first; move the marker line above it`);
   const placeholders = liveText.split(/\r?\n/).filter((l) => /^\s*(\/\/|#|<!--)\s*ESCALATED:/.test(l)).map((l) => l.trim());
   if (placeholders.length) refuse(`${rel} still holds ${placeholders.length} \`ESCALATED:\` placeholder line(s); every escalated rule needs the user's answer applied before the merge is installed:\n${placeholders.map((l) => `  ${l}`).join("\n")}`);
 } else if (e.retired) {
