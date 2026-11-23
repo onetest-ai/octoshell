@@ -406,20 +406,6 @@ describe("installPack: a changed pack file is kept and staged", () => {
     expect(installPack(PACK_SRC, ws, { store }).pending).toEqual([packFileEntryName(VALIDATE)]);
     expect(read(join(stagingDir(ws, VALIDATE), "merged.md"))).toBe("half merged\n");
   });
-
-  it("a file of a newer skill survives every choice, and Overwrite does not claim to replace it", () => {
-    for (const localChanges of ["reconcile", "overwrite", "keep"] as const) {
-      const ws = installed();
-      const md = live(ws, "skill/mission-planner/SKILL.md");
-      writeFileSync(md, read(md).replace(/^version:.*$/m, `version: ${PACK + 1}`));
-      writeFileSync(live(ws, VALIDATE), "// from the future\n");
-      mk(live(ws, SET_STEP), "// from the future\n");
-      installPack(PACK_SRC, ws, { store, localChanges });
-      expect(read(live(ws, VALIDATE)), localChanges).toBe("// from the future\n");
-      expect(read(live(ws, SET_STEP)), localChanges).toBe("// from the future\n");
-      expect(existsSync(join(stagingDir(ws, VALIDATE), "overwritten-local.md"))).toBe(false);
-    }
-  });
 });
 
 describe("installPack: retired files", () => {
@@ -683,5 +669,102 @@ describe("v61 record", () => {
     expect(brief).toContain(open);
     expect(readdirSync(dir)).toEqual(["DECISIONS.md"]);
     expect(read(join(dir, "DECISIONS.md"))).toContain(open);
+  });
+});
+
+describe("a skill newer than the pack", () => {
+  const NAME = packFileEntryName(VALIDATE);
+  const FUTURE = "// from the future\n";
+  function makeNewer(ws: string): void {
+    const md = live(ws, "skill/mission-planner/SKILL.md");
+    writeFileSync(md, read(md).replace(/^version:.*$/m, `version: ${PACK + 1}`));
+  }
+  function newer(): string {
+    const ws = installed();
+    makeNewer(ws);
+    writeFileSync(live(ws, VALIDATE), FUTURE);
+    return ws;
+  }
+
+  it.each([undefined, "reconcile", "overwrite", "keep"] as const)("%s: a changed file is left, not staged, kept or prompted for, twice over", (localChanges) => {
+    const ws = newer();
+    writeFileSync(live(ws, LIST), marked("// local\n", skillSha256(packText(LIST)))); // would be reconciled
+    for (let i = 0; i < 2; i++) {
+      expect(detectDeviations(ws, PACK, store, { currentHashes, currentFiles })).toEqual({ deviations: [], reconciled: [], newer: ["mission-planner"], skipped: [] });
+      const st = packStatus(ws, PACK, store);
+      expect(st).toMatchObject({ installed: true, upToDate: false, upToDateExceptLocal: true, deviations: [], reconciled: [] });
+      expect(shouldPromptOnActivation(st, readPending(ws), PACK)).toBe(false);
+      const res = installPack(PACK_SRC, ws, { store, ...(localChanges ? { localChanges } : {}) });
+      expect(res).toMatchObject({ pending: [], kept: [], skipped: [] });
+      expect(read(live(ws, VALIDATE))).toBe(FUTURE);
+      expect(existsSync(join(ws, ".octobots", "pack-updates"))).toBe(false);
+    }
+  });
+
+  it("a changed file of another skill, a hook or tokenomics is still judged", () => {
+    const ws = newer();
+    const keys = ["skill/mission-execution/scripts/scan-parked.js", FLIP, COLLECT];
+    for (const k of keys) writeFileSync(live(ws, k), "// local\n");
+    expect(detectDeviations(ws, PACK, store).deviations.map((d) => d.file).sort()).toEqual([...keys].sort());
+  });
+
+  it("a symlink or directory at a current path is left and not listed", () => {
+    const ws = newer();
+    const target = join(mkdtempClean("pack-files-out-"), "none.js");
+    rmSync(live(ws, VALIDATE));
+    symlinkSync(target, live(ws, VALIDATE));
+    rmSync(live(ws, LIST));
+    mkdirSync(live(ws, LIST));
+    expect(installPack(PACK_SRC, ws, { store, localChanges: "overwrite" }).skipped).toEqual([]);
+    expect(readlinkSync(live(ws, VALIDATE))).toBe(target);
+    expect(existsSync(target)).toBe(false);
+    expect(lstatSync(live(ws, LIST)).isDirectory()).toBe(true);
+  });
+
+  it("a retired file in it is still judged: kept by default, saved before Overwrite deletes it, a symlink left", () => {
+    const ws = newer();
+    mk(live(ws, SET_STEP), "// local\n");
+    expect(installPack(PACK_SRC, ws, { store }).pending).toEqual([packFileEntryName(SET_STEP)]);
+    expect(read(live(ws, SET_STEP))).toBe("// local\n");
+    installPack(PACK_SRC, ws, { store, localChanges: "keep" });
+    expect(read(live(ws, SET_STEP))).toBe("// local\n");
+    installPack(PACK_SRC, ws, { store, localChanges: "overwrite" });
+    expect(existsSync(live(ws, SET_STEP))).toBe(false);
+    expect(read(join(stagingDir(ws, SET_STEP), "overwritten-local.md"))).toBe("// local\n");
+    expect(read(live(ws, VALIDATE))).toBe(FUTURE);
+
+    const target = join(mkdtempClean("pack-files-out-"), "t.js");
+    symlinkSync(target, live(ws, SET_STEP));
+    expect(installPack(PACK_SRC, ws, { store, localChanges: "overwrite" }).skipped).toEqual([packFileRel(SET_STEP)]);
+    expect(readlinkSync(live(ws, SET_STEP))).toBe(target);
+  });
+
+  it("a newer retired skill is left whole: its changed files are neither judged nor deleted", () => {
+    const key = "skill/octobots/scripts/validate.js";
+    for (const localChanges of [undefined, "overwrite"] as const) {
+      const ws = installed();
+      mk(live(ws, "skill/octobots/SKILL.md"), `---\nname: octobots\nversion: ${PACK + 1}\n---\n`);
+      mk(live(ws, key), FUTURE);
+      const res = installPack(PACK_SRC, ws, { store, ...(localChanges ? { localChanges } : {}) });
+      expect(res).toMatchObject({ pending: [], kept: [], skipped: [] });
+      expect(read(live(ws, key))).toBe(FUTURE);
+      expect(existsSync(join(ws, ".octobots", "pack-updates"))).toBe(false);
+    }
+  });
+
+  it.each([undefined, "overwrite", "keep"] as const)("%s: an entry staged before the skill became newer is dropped; its folder and DECISIONS.md stay", (localChanges) => {
+    const ws = installed();
+    writeFileSync(live(ws, VALIDATE), FUTURE);
+    installPack(PACK_SRC, ws, { store });
+    const dir = stagingDir(ws, VALIDATE);
+    const log = "# Decisions\n- ESCALATED: x: local a; upstream b; question c?\n";
+    writeFileSync(join(dir, "DECISIONS.md"), log);
+    makeNewer(ws);
+    const res = installPack(PACK_SRC, ws, { store, ...(localChanges ? { localChanges } : {}) });
+    expect(res).toMatchObject({ pending: [], kept: [] });
+    expect(readPending(ws)!.skills.map((e) => e.skill)).not.toContain(NAME);
+    expect(read(join(dir, "DECISIONS.md"))).toBe(log);
+    expect(read(join(dir, "local.md"))).toBe(FUTURE);
+    expect(read(live(ws, VALIDATE))).toBe(FUTURE);
   });
 });

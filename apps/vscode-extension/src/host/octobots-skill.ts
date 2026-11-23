@@ -349,9 +349,7 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
   for (const e of prior?.skills ?? []) stagingPath(repoRoot, e.dir);
 
   const deviated = new Set(report.deviations.map((d) => d.skill));
-  // A newer skill's directory is not written to at all, so Overwrite cannot replace a file in it.
-  const inNewerSkill = (d: Deviation): boolean => d.file !== undefined && report.newer.some((s) => d.file!.startsWith(`skill/${s}/`));
-  const replaced = new Set(choice === "overwrite" ? report.deviations.filter((d) => !inNewerSkill(d)).map((d) => d.skill) : []);
+  const replaced = new Set(choice === "overwrite" ? deviated : []);
   // Overwrite saves what it replaces FIRST: if that fails, nothing else has been touched.
   for (const dev of report.deviations) {
     if (replaced.has(dev.skill)) saveOverwritten(repoRoot, packVersion, dev.skill, localBytes.get(dev.skill)!);

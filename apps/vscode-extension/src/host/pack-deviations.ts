@@ -3,7 +3,7 @@ import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { readRegularText } from "./pack-updates.js";
 import { join } from "node:path";
 import { brotliDecompressSync } from "node:zlib";
-import { isJudgedPackPath, packFileEntryName, packFileRel, RETIRED_PACK_PATHS } from "./pack-files.js";
+import { isJudgedPackPath, packFileEntryName, packFileRel, RETIRED_FILES, RETIRED_PACK_PATHS } from "./pack-files.js";
 import { OCTOBOTS_SKILLS, RETIRED_SKILLS } from "./pack-skills.js";
 import { fileReconciledFrom, parseSkillMarker, skillSha256, withoutReconciledFrom } from "./skill-marker.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
@@ -164,10 +164,13 @@ function filesCurrent(store: ShippedStore | null, packVersion: number, opts: Det
  * and such a body under a marker that names it (the marker rule: nothing local is left in it). A
  * file whose marker names the current body is reconciled. Anything else is a deviation, an older
  * body marked as something else included: someone chose it. With no store nothing can be told
- * apart, so no file deviates (as for skills).
+ * apart, so no file deviates (as for skills). A file of a skill newer than the pack is not judged:
+ * the install leaves that directory alone, but for `RETIRED_FILES`, which it deletes from any skill.
  */
 function detectFiles(repoRoot: string, packVersion: number, store: ShippedStore | null, opts: DetectOptions, report: DeviationReport): void {
   for (const [packPath, current] of [...filesCurrent(store, packVersion, opts)].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const deletable = (RETIRED_FILES as readonly string[]).includes(packPath);
+    if (!deletable && report.newer.some((s) => packPath.startsWith(`skill/${s}/`))) continue;
     const rel = packFileRel(packPath);
     const live = join(repoRoot, ...rel.split("/"));
     let text: string;
