@@ -3,20 +3,43 @@ import { existsSync, mkdirSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 
+// At most this much of the payload is ever held. An Agent dispatch with a very long prompt is
+// larger; its record is then built from the payload's head (see headFields).
+const LIMIT = 128 * 1024;
+
+/**
+ * session_id, tool_name and cwd read from the first LIMIT bytes of a payload that is larger. Claude
+ * Code writes these top-level keys before `tool_input`, the part that grows. A key spelled inside a
+ * JSON string is escaped (`\"tool_name\"`), so it never matches `"tool_name"`.
+ */
+function headFields(text) {
+  const str = (key) => {
+    const m = text.match(new RegExp(`"${key}"\\s*:\\s*("(?:[^"\\\\]|\\\\.)*")`));
+    try { return m ? JSON.parse(m[1]) : undefined; } catch { return undefined; }
+  };
+  return { session_id: str("session_id"), tool_name: str("tool_name"), cwd: str("cwd"), truncated: true };
+}
+
 try {
   const chunks = [];
   let bytes = 0;
+  let over = false;
   const deadline = setTimeout(() => process.exit(0), 500);
   try {
     for await (const chunk of process.stdin) {
+      if (bytes + chunk.length > LIMIT) {
+        chunks.push(chunk.subarray(0, LIMIT - bytes));
+        over = true;
+        break;
+      }
       bytes += chunk.length;
-      if (bytes > 128 * 1024) process.exit(0);
       chunks.push(chunk);
     }
   } finally {
     clearTimeout(deadline);
   }
-  const evt = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  const text = Buffer.concat(chunks).toString("utf8");
+  const evt = over ? headFields(text) : JSON.parse(text);
   const tool = evt?.tool_name ?? evt?.toolName;
   const session = evt?.session_id ?? evt?.sessionId;
   if (["Agent", "Task"].includes(tool) && typeof session === "string" && session) {
@@ -49,6 +72,7 @@ try {
             session_id: session,
             branch,
             tool_name: tool,
+            ...(evt.truncated ? { truncated: true } : {}),
             at: new Date().toISOString()
           }) + "\n"
         );

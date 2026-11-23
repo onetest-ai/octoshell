@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Builds and verifies `resources/shipped-skills.json.br`: the store of every SKILL.md the Octobots
-// pack has shipped. Pack updates (M7) classify a workspace's skill against it, recover the base of
+// pack has shipped, and of every file of its tokenomics CLI (keyed `tokenomics/<file>`). Pack updates (M7) classify a workspace's skill against it, recover the base of
 // a three-way merge from it, and recognise a reconciled file by the hash it names.
 //
 // The store is ONE brotli-compressed JSON:
@@ -41,6 +41,20 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const EXT_ROOT = join(HERE, "..");
 const SKILL_SRC = join(EXT_ROOT, "src", "host", "octobots-skill.ts");
 const DEFAULT_PACK_SKILLS = join(EXT_ROOT, "resources", "octobots-pack", "skill");
+const DEFAULT_PACK_TOKENOMICS = join(EXT_ROOT, "resources", "octobots-pack", "tokenomics");
+
+/**
+ * The tokenomics CLI ships beside the skills and is judged the same way (#191): a workspace file
+ * whose body the pack shipped at some version is the pack's own and is replaced; any other body is a
+ * local change and is staged for reconcile. Its bodies are indexed under `tokenomics/<file>`, at the
+ * pack version of the commit that shipped them (these files carry no frontmatter version).
+ */
+export const TOKENOMICS_KEY_PREFIX = "tokenomics/";
+/**
+ * The workspace's own after the first install (`PRESERVED` in src/host/octobots-tokenomics.ts): never
+ * replaced, so never judged, so not stored.
+ */
+export const TOKENOMICS_UNJUDGED = new Set(["prices.json", "prices.local.json"]);
 
 /**
  * `SHIPPED_SKILLS_STORE_PATH` and `SHIPPED_SKILLS_PACK_DIR` exist for tests only: the failure
@@ -52,6 +66,7 @@ const DEFAULT_PACK_SKILLS = join(EXT_ROOT, "resources", "octobots-pack", "skill"
 export const STORE_PATH =
   process.env.SHIPPED_SKILLS_STORE_PATH ?? join(EXT_ROOT, "resources", "shipped-skills.json.br");
 export const PACK_SKILLS_DIR = process.env.SHIPPED_SKILLS_PACK_DIR ?? DEFAULT_PACK_SKILLS;
+export const PACK_TOKENOMICS_DIR = process.env.SHIPPED_SKILLS_TOKENOMICS_DIR ?? DEFAULT_PACK_TOKENOMICS;
 
 /** Reads OCTOBOTS_PACK_VERSION out of octobots-skill.ts by regex; bare node cannot import the .ts. */
 export function readPackVersionFromSource(text = readFileSync(SKILL_SRC, "utf8")) {
@@ -141,45 +156,99 @@ function git(args, cwd, opts = {}) {
  * makes the `octobots` -> `mission-planner` rename an add plus a delete, so both skill names are
  * read. Deleted files are skipped: their last body is already in the store.
  */
+/**
+ * The contents of `objects` (`<commit>:<path>`), read through ONE `git cat-file --batch`: a Map to
+ * the bytes, or to null for an object that is missing (or is not a blob). One process for the whole
+ * history instead of one per file per commit keeps --write (and the tests that run it) fast.
+ */
+function catBatch(objects, top) {
+  const out = new Map();
+  const list = [...new Set(objects)];
+  if (list.length === 0) return out;
+  const buf = git(["cat-file", "--batch"], top, { input: list.join("\n") + "\n", stdio: ["pipe", "pipe", "pipe"] });
+  let at = 0;
+  for (const obj of list) {
+    const nl = buf.indexOf(0x0a, at);
+    const header = buf.subarray(at, nl).toString("utf8");
+    at = nl + 1;
+    const m = header.match(/^[0-9a-f]+ (\w+) (\d+)$/);
+    if (!m) { out.set(obj, null); continue; } // "<obj> missing" (or ambiguous)
+    const size = Number(m[2]);
+    out.set(obj, m[1] === "blob" ? buf.subarray(at, at + size) : null);
+    at += size + 1; // the content, then a newline
+  }
+  return out;
+}
+
 function* historicalBodies() {
   const top = git(["rev-parse", "--show-toplevel"], EXT_ROOT).toString().trim();
   const packRel = relative(top, DEFAULT_PACK_SKILLS).split("\\").join("/");
+  const tokRel = relative(top, DEFAULT_PACK_TOKENOMICS).split("\\").join("/");
+  const srcRel = relative(top, SKILL_SRC).split("\\").join("/");
   const log = git(
-    ["log", "-m", "--reverse", "--topo-order", "--no-renames", "--name-status", "--format=%x00%H", "HEAD", "--", `${packRel}/*/SKILL.md`],
+    ["log", "-m", "--reverse", "--topo-order", "--no-renames", "--name-status", "--format=%x00%H", "HEAD", "--",
+      `${packRel}/*/SKILL.md`, `${tokRel}/*`, srcRel],
     top,
   ).toString("utf8");
-  const versionAtCommit = new Map();
-  const packVersionAt = (commit) => {
-    if (versionAtCommit.has(commit)) return versionAtCommit.get(commit);
-    let v = null;
-    try {
-      const srcRel = relative(top, SKILL_SRC).split("\\").join("/");
-      const m = git(["show", `${commit}:${srcRel}`], top).toString("utf8").match(/OCTOBOTS_PACK_VERSION\s*=\s*(\d+)/);
-      v = m ? Number(m[1]) : null;
-    } catch {
-      v = null;
-    }
-    versionAtCommit.set(commit, v);
-    return v;
-  };
+
+  // Pass 1: what each commit touched, in log order.
+  const items = [];
   for (const block of log.split("\0").slice(1)) {
     const [commit, ...lines] = block.split("\n");
     for (const line of lines) {
       if (!line.trim()) continue;
       const [status, path] = line.split("\t");
       if (!path || status.startsWith("D")) continue;
-      const skill = path.split("/").at(-2);
-      const buf = git(["cat-file", "blob", `${commit}:${path}`], top);
-      const text = buf.toString("utf8");
-      if (Buffer.compare(Buffer.from(text, "utf8"), buf) !== 0) {
-        throw new Error(`${path} at ${commit} is not valid UTF-8`);
-      }
-      // The body's own `version:` line is what detection looks a file up by; the pack constant at
-      // that commit is the fallback for a body without one.
-      const version = frontmatterVersion(text) ?? packVersionAt(commit);
-      if (version === null) throw new Error(`cannot tell the pack version of ${path} at ${commit}`);
-      yield { commit, skill, version, text };
+      if (path === srcRel) { items.push({ commit, bump: true }); continue; }
+      const isTokenomics = path.startsWith(`${tokRel}/`);
+      if (isTokenomics && path.slice(tokRel.length + 1).includes("/")) continue; // only the CLI's top level ships
+      if (isTokenomics && TOKENOMICS_UNJUDGED.has(path.split("/").at(-1))) continue;
+      const skill = isTokenomics ? `${TOKENOMICS_KEY_PREFIX}${path.split("/").at(-1)}` : path.split("/").at(-2);
+      items.push({ commit, path, skill, isTokenomics });
     }
+  }
+
+  // The pack constant at every commit involved.
+  const srcs = catBatch(items.map((it) => `${it.commit}:${srcRel}`), top);
+  const packVersionAt = (commit) => {
+    const m = srcs.get(`${commit}:${srcRel}`)?.toString("utf8").match(/OCTOBOTS_PACK_VERSION\s*=\s*(\d+)/);
+    return m ? Number(m[1]) : null;
+  };
+
+  // A tokenomics file carries no version of its own: it shipped at every pack version during which it
+  // was the pack's file. So each commit that changes OCTOBOTS_PACK_VERSION indexes every tokenomics
+  // file present at it under the new version, the way --write run at that bump would have. Without
+  // this a file left unchanged across a bump is missing from the new version, and a store rebuilt
+  // from git differs from one built up run by run.
+  let lastVersion = null;
+  const expanded = [];
+  for (const it of items) {
+    if (!it.bump) { expanded.push(it); continue; }
+    const v = packVersionAt(it.commit);
+    if (v === null || v === lastVersion) continue;
+    lastVersion = v;
+    let tree;
+    try { tree = git(["ls-tree", `${it.commit}:${tokRel}`], top, { stdio: ["ignore", "pipe", "ignore"] }).toString("utf8"); } catch { continue; } // no CLI yet
+    for (const row of tree.split("\n").filter(Boolean)) {
+      const [meta, name] = row.split("\t");
+      if (!meta.split(" ")[1]?.startsWith("blob") || TOKENOMICS_UNJUDGED.has(name)) continue;
+      expanded.push({ commit: it.commit, path: `${tokRel}/${name}`, skill: `${TOKENOMICS_KEY_PREFIX}${name}`, isTokenomics: true, version: v });
+    }
+  }
+
+  const blobs = catBatch(expanded.map((it) => `${it.commit}:${it.path}`), top);
+  for (const it of expanded) {
+    const buf = blobs.get(`${it.commit}:${it.path}`);
+    if (!buf) throw new Error(`${it.path} at ${it.commit} could not be read`);
+    const text = buf.toString("utf8");
+    if (Buffer.compare(Buffer.from(text, "utf8"), buf) !== 0) {
+      throw new Error(`${it.path} at ${it.commit} is not valid UTF-8`);
+    }
+    // The body's own `version:` line is what detection looks a file up by; the pack constant at
+    // that commit is the fallback for a body without one.
+    const version = it.version ?? (it.isTokenomics ? null : frontmatterVersion(text)) ?? packVersionAt(it.commit);
+    if (version === null) throw new Error(`cannot tell the pack version of ${it.path} at ${it.commit}`);
+    yield { commit: it.commit, skill: it.skill, version, text };
   }
 }
 
@@ -191,6 +260,18 @@ export function currentSkills(dir = PACK_SKILLS_DIR) {
     .map((d) => {
       const file = join(dir, d.name, "SKILL.md");
       return { skill: d.name, file, text: readFileSync(file, "utf8") };
+    })
+    .sort((a, b) => (a.skill < b.skill ? -1 : 1));
+}
+
+/** The current pack tokenomics files: [{skill: "tokenomics/<file>", file, text}]. */
+export function currentTokenomics(dir = PACK_TOKENOMICS_DIR) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((d) => d.isFile() && !TOKENOMICS_UNJUDGED.has(d.name))
+    .map((d) => {
+      const file = join(dir, d.name);
+      return { skill: `${TOKENOMICS_KEY_PREFIX}${d.name}`, file, text: readFileSync(file, "utf8") };
     })
     .sort((a, b) => (a.skill < b.skill ? -1 : 1));
 }
@@ -211,6 +292,9 @@ function write() {
       );
       process.exit(1);
     }
+    if (addBody(store, packVersion, skill, text)) added++;
+  }
+  for (const { skill, text } of currentTokenomics()) {
     if (addBody(store, packVersion, skill, text)) added++;
   }
   if (added === 0 && existsSync(STORE_PATH)) {
@@ -252,7 +336,7 @@ export function verify() {
       }
     }
   }
-  for (const { skill, file, text } of currentSkills()) {
+  for (const { skill, file, text } of [...currentSkills(), ...currentTokenomics()]) {
     const listed = store.versions[String(packVersion)]?.[skill] ?? [];
     if (!listed.includes(bodyHash(text))) {
       problems.push(

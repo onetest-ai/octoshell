@@ -6,14 +6,14 @@ import { installGraph, graphStatus } from "./octograph-install.js";
 import { installStatusline, registerStatusline, unregisterStatusline, statuslineStatus } from "./octobots-statusline.js";
 import { installTools, removeTools, toolsStatus } from "./octobots-tools.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
-import { OCTOBOTS_SKILLS, RETIRED_SKILLS, RETIRED_SKILL_FILES } from "./pack-skills.js";
-import { detectDeviations, recoverBase, GIT_BUDGET_MS, type Deviation, type ShippedStore } from "./pack-deviations.js";
+import { OCTOBOTS_SKILLS, RETIRED_SKILLS, RETIRED_SKILL_FILES, TOKENOMICS_KEY_PREFIX, TOKENOMICS_UNJUDGED, tokenomicsEntryName, tokenomicsRel } from "./pack-skills.js";
+import { detectDeviations, recoverBase, recoverFileBase, GIT_BUDGET_MS, type Deviation, type ShippedStore } from "./pack-deviations.js";
 import { assertRealPackUpdatesDir, pendingReconcile, readPending, readRegularBytes, readRegularText, writePending, pendingFile, type KeptEntry, type PendingEntry, type PendingRecord } from "./pack-updates.js";
 import { carriedFrom, clearInputs, ensureGitignore, saveOverwritten, stageEntry, stagingDirRel, stagingPath, type CarriedBlock } from "./pack-staging.js";
 import { parseSkillMarker, skillSha256 } from "./skill-marker.js";
 
 /** Bump when the skill or either agent payload changes; covers the pack as one unit. */
-export const OCTOBOTS_PACK_VERSION = 59;
+export const OCTOBOTS_PACK_VERSION = 60;
 
 export { OCTOBOTS_SKILLS };
 
@@ -149,12 +149,15 @@ export function packStatus(repoRoot: string, currentVersion = OCTOBOTS_PACK_VERS
   // and re-prompt on every open. Once present, staleness feeds `upToDate` exactly as graph's does,
   // which is what lets an upgrade repair the duplicate entries older versions left behind.
   const graph = graphStatus(repoRoot, currentVersion);
-  const otherPayloadsCurrent =
-    primerV === currentVersion && claudeReadable && (!claudeRegistered || claude.current) &&
-    tokenomics.current && (!graph.present || graph.current);
   // A skill that is none of deviated, newer or reconciled is the pack's own file for SOME version:
   // current only when that version is this one (an older pristine file is stale, a pack matter).
   const local = new Set([...report.deviations.map((d) => d.skill), ...report.newer, ...report.reconciled]);
+  // A locally changed or reconciled run.mjs keeps its own version marker: that is a local matter
+  // (asked about through `deviations`), not a stale CLI.
+  const tokenomicsCurrent = tokenomics.current || local.has(tokenomicsEntryName("run.mjs"));
+  const otherPayloadsCurrent =
+    primerV === currentVersion && claudeReadable && (!claudeRegistered || claude.current) &&
+    tokenomicsCurrent && (!graph.present || graph.current);
   const stale = [...markers].filter(([s, m]) => !local.has(s) && !(m?.kind === "integer" && m.n === currentVersion));
   const upToDateExceptLocal = otherPayloadsCurrent && stale.length === 0 && missingNew.length === 0;
   const upToDate = upToDateExceptLocal && report.deviations.length === 0 && report.newer.length === 0;
@@ -283,11 +286,22 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
     const f = join(srcRoot, "skill", name, "SKILL.md");
     if (existsSync(f)) currentHashes[name] = skillSha256(readFileSync(f, "utf8"));
   }
-  const report = detectDeviations(repoRoot, packVersion, store, { currentHashes });
+  const currentTokenomics: Record<string, string> = {};
+  const tokSrc = join(srcRoot, "tokenomics");
+  if (existsSync(tokSrc)) {
+    for (const e of readdirSync(tokSrc, { withFileTypes: true })) {
+      if (e.isFile() && !TOKENOMICS_UNJUDGED.has(e.name)) currentTokenomics[TOKENOMICS_KEY_PREFIX + e.name] = skillSha256(readFileSync(join(tokSrc, e.name), "utf8"));
+    }
+  }
+  const report = detectDeviations(repoRoot, packVersion, store, { currentHashes, currentTokenomics });
+  // Where each deviation lives in the workspace, and where its pack (upstream) body is.
+  const liveOf = (d: Deviation): string => d.file !== undefined ? join(repoRoot, ...tokenomicsRel(d.file).split("/")) : join(skillDirOf(repoRoot, d.skill), "SKILL.md");
+  const upstreamOf = (d: Deviation): string => d.file !== undefined ? join(tokSrc, d.file) : join(srcRoot, "skill", d.skill, "SKILL.md");
+  const upstreamShaOf = (d: Deviation): string | null => d.retired ? null : d.file !== undefined ? (currentTokenomics[TOKENOMICS_KEY_PREFIX + d.file] ?? null) : (currentHashes[d.skill] ?? null);
   const prior = readPending(repoRoot);
   const priorEntry = (skill: string): PendingEntry | undefined => prior?.skills.find((e) => e.skill === skill);
   const priorVersion = (e: PendingEntry): number => Number(e.dir.match(/\/v(\d+)\//)?.[1] ?? prior?.packVersion ?? packVersion);
-  const localBytes = new Map<string, Buffer>(report.deviations.map((d) => [d.skill, readRegularBytes(join(skillDirOf(repoRoot, d.skill), "SKILL.md"))]));
+  const localBytes = new Map<string, Buffer>(report.deviations.map((d) => [d.skill, readRegularBytes(liveOf(d))]));
 
   // Decide, before writing anything, what to stage: an entry that is unchanged is reused untouched.
   interface Plan { dev: Deviation; reuse: PendingEntry | null; base: ReturnType<typeof recoverBase>; upstream: Buffer | null; carried: CarriedBlock[]; replacedDir?: string }
@@ -304,18 +318,19 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
     for (const dev of report.deviations) {
       if (remembered.has(dev.skill)) continue;
       const dirRel = stagingDirRel(packVersion, dev.skill);
-      const upstreamSha = dev.retired ? null : (currentHashes[dev.skill] ?? null);
+      const upstreamSha = upstreamShaOf(dev);
       const old = priorEntry(dev.skill);
       const unchanged = old !== undefined && old.dir === dirRel && old.localSha256 === dev.sha256 && old.localVersion === dev.version &&
         old.retired === dev.retired && old.upstreamSha256 === upstreamSha && prior?.packVersion === packVersion &&
         existsSync(join(repoRoot, ...dirRel.split("/"), "local.md")) && existsSync(join(repoRoot, ...dirRel.split("/"), "RECONCILE.md"));
       if (unchanged) { plans.push({ dev, reuse: old, base: null, upstream: null, carried: [] }); continue; }
-      const upstreamFile = join(srcRoot, "skill", dev.skill, "SKILL.md");
       plans.push({
         dev,
         reuse: null,
-        base: recoverBase(repoRoot, dev.skill, localBytes.get(dev.skill)!, packVersion, store, { gitDeadline }),
-        upstream: dev.retired ? null : readFileSync(upstreamFile),
+        base: dev.file !== undefined
+          ? recoverFileBase(repoRoot, dev.file, localBytes.get(dev.skill)!, packVersion, store, { gitDeadline })
+          : recoverBase(repoRoot, dev.skill, localBytes.get(dev.skill)!, packVersion, store, { gitDeadline }),
+        upstream: dev.retired ? null : readFileSync(upstreamOf(dev)),
         carried: carriedFrom(repoRoot, old, old ? priorVersion(old) : packVersion),
         ...(old ? { replacedDir: old.dir } : {}),
       });
@@ -365,8 +380,8 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
     const { dev } = plan;
     if (plan.reuse) { skills.push(plan.reuse); staged.push(dev.skill); continue; }
     skills.push(stageEntry({
-      repoRoot, skill: dev.skill, packVersion, retired: dev.retired, localVersion: dev.version, localSha256: dev.sha256,
-      base: plan.base, upstreamSha256: dev.retired ? null : (currentHashes[dev.skill] ?? null), carried: plan.carried,
+      repoRoot, skill: dev.skill, ...(dev.file !== undefined ? { file: dev.file } : {}), packVersion, retired: dev.retired, localVersion: dev.version, localSha256: dev.sha256,
+      base: plan.base, upstreamSha256: upstreamShaOf(dev), carried: plan.carried,
       localBytes: localBytes.get(dev.skill)!, upstreamBytes: plan.upstream,
       ...(plan.replacedDir ? { replacedDir: plan.replacedDir } : {}), restage: priorEntry(dev.skill) !== undefined,
     }));
@@ -394,7 +409,18 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
   if (existsSync(join(repoRoot, ".octobots", "pack-updates"))) ensureGitignore(repoRoot);
 
   written += installPrimer(srcRoot, repoRoot);
-  written += installTokenomics(srcRoot, repoRoot);
+  // A changed tokenomics file (kept or being reconciled) and a reconciled one are left as they are,
+  // as a changed SKILL.md is; Overwrite replaces it (its local text was saved first, above).
+  const tokenomicsKept = new Set<string>();
+  for (const d of report.deviations) if (d.file !== undefined && !replaced.has(d.skill)) tokenomicsKept.add(d.file);
+  for (const name of report.reconciled) {
+    if (!name.startsWith("tokenomics-")) continue;
+    for (const f of Object.keys(currentTokenomics)) {
+      const file = f.slice(TOKENOMICS_KEY_PREFIX.length);
+      if (tokenomicsEntryName(file) === name) tokenomicsKept.add(file);
+    }
+  }
+  written += installTokenomics(srcRoot, repoRoot, tokenomicsKept);
   // Graph is opt-in (see `graphStatus`'s doc comment): a general pack (re)install only refreshes
   // an already-present graph payload, so re-running this after an upgrade is what clears the
   // staleness `packStatus` flagged — without silently installing graph into a workspace that

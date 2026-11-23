@@ -3,8 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { readRegularText } from "./pack-updates.js";
 import { join } from "node:path";
 import { brotliDecompressSync } from "node:zlib";
-import { OCTOBOTS_SKILLS, RETIRED_SKILLS } from "./pack-skills.js";
-import { parseSkillMarker, skillSha256 } from "./skill-marker.js";
+import { OCTOBOTS_SKILLS, RETIRED_SKILLS, TOKENOMICS_KEY_PREFIX, TOKENOMICS_UNJUDGED, tokenomicsEntryName, tokenomicsRel } from "./pack-skills.js";
+import { fileReconciledFrom, parseSkillMarker, skillSha256 } from "./skill-marker.js";
+import { parsePackVersionMarker } from "./pack-version-marker.js";
 import type { PendingRecord } from "./pack-updates.js";
 
 /**
@@ -13,8 +14,9 @@ import type { PendingRecord } from "./pack-updates.js";
  * A workspace may carry a locally changed pack skill. Whether a `.claude/skills/<skill>/SKILL.md` is
  * the pack's own, a fork, or a reconciled fork is decided here against the store of every SKILL.md
  * the pack ever shipped (`resources/shipped-skills.json.br`, built by `scripts/shipped-skills.mjs`).
- * Only SKILL.md is judged: the rest of a skill's directory always installs. This module reads and
- * writes nothing in the workspace; staging is `pack-updates.ts`.
+ * Only SKILL.md is judged: the rest of a skill's directory always installs. The tokenomics CLI's
+ * files (`.octobots/tokenomics/<file>`) are judged too, each on its own, by content alone (#191).
+ * This module reads and writes nothing in the workspace; staging is `pack-updates.ts`.
  */
 
 /** The decoded `resources/shipped-skills.json.br`. */
@@ -41,7 +43,10 @@ export function loadShippedStore(file: string): ShippedStore | null {
 export type DeviationReason = "label" | "content" | "unknown-version" | "reconciled-older";
 
 export interface Deviation {
+  /** The pending entry name: the skill, or `tokenomics-<slug>` for a tokenomics file. */
   skill: string;
+  /** A tokenomics file's name (`collect.mjs`); absent for a skill. */
+  file?: string;
   /** The version label as written in the workspace's SKILL.md (`missing` when it has none). */
   version: string;
   reason: DeviationReason;
@@ -60,6 +65,11 @@ export interface DeviationReport {
 }
 
 export interface DetectOptions {
+  /**
+   * sha256 of each CURRENT pack tokenomics file, keyed `tokenomics/<file>`, when the caller has the
+   * pack at hand. Without it the files the store lists at the pack version are judged.
+   */
+  currentTokenomics?: Record<string, string>;
   /**
    * sha256 of each pack skill's CURRENT SKILL.md, when the caller has the pack at hand (installPack
    * does). Without it the newest build the store lists at the pack version stands for the current
@@ -123,7 +133,57 @@ export function detectDeviations(
       else if (!listed.includes(m.sha256)) deviate("content");
     }
   }
+  detectTokenomics(repoRoot, packVersion, store, opts, report);
   return report;
+}
+
+/** Every hash the store lists for `key`, at any version. */
+function shippedHashes(store: ShippedStore, key: string): Set<string> {
+  const out = new Set<string>();
+  for (const per of Object.values(store.versions)) for (const h of per[key] ?? []) out.add(h);
+  return out;
+}
+
+/** The tokenomics files to judge, with the hash of each one's current pack body. */
+function tokenomicsCurrent(store: ShippedStore | null, packVersion: number, opts: DetectOptions): Map<string, string> {
+  const out = new Map<string, string>();
+  const from = opts.currentTokenomics ?? Object.fromEntries(
+    Object.entries(store?.versions[String(packVersion)] ?? {})
+      .filter(([k]) => k.startsWith(TOKENOMICS_KEY_PREFIX))
+      .map(([k, hashes]) => [k, hashes.at(-1)!]),
+  );
+  for (const [key, hash] of Object.entries(from)) {
+    const file = key.slice(TOKENOMICS_KEY_PREFIX.length);
+    if (!key.startsWith(TOKENOMICS_KEY_PREFIX) || TOKENOMICS_UNJUDGED.has(file) || file.includes("/")) continue;
+    out.set(file, hash);
+  }
+  return out;
+}
+
+/**
+ * Tokenomics files are judged by content: the pack's current body, a body the pack shipped at any
+ * version (an older install, replaced as before) and a file whose `octobots-reconciled-from:` names
+ * the current body (reconciled) are not deviations; anything else is. With no store nothing can be
+ * told apart, so no file deviates (as for skills).
+ */
+function detectTokenomics(repoRoot: string, packVersion: number, store: ShippedStore | null, opts: DetectOptions, report: DeviationReport): void {
+  for (const [file, current] of [...tokenomicsCurrent(store, packVersion, opts)].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const live = join(repoRoot, ...tokenomicsRel(file).split("/"));
+    if (!existsSync(live)) continue;
+    let text: string;
+    try { text = readRegularText(live); } catch { continue; }
+    const sha256 = skillSha256(text);
+    if (sha256 === current) continue;
+    const skill = tokenomicsEntryName(file);
+    const from = fileReconciledFrom(text);
+    if (from === current) { report.reconciled.push(skill); continue; }
+    if (store === null || shippedHashes(store, TOKENOMICS_KEY_PREFIX + file).has(sha256)) continue;
+    const n = parsePackVersionMarker(text);
+    report.deviations.push({
+      skill, file, version: n === null ? "unversioned" : String(n),
+      reason: from === null ? "content" : "reconciled-older", retired: false, sha256,
+    });
+  }
 }
 
 export type BaseSource = "reconciled-from" | "workspace-git" | "declared" | "closest";
@@ -168,8 +228,7 @@ function versionOfBody(store: ShippedStore, hash: string, skill: string): number
  * shipped one. Skipped (null) when git is absent, `repoRoot` is not a repository, `.claude` is
  * ignored, or git runs past its time budget.
  */
-function baseFromWorkspaceGit(repoRoot: string, skill: string, store: ShippedStore, deadline: number): RecoveredBase | null {
-  const rel = `.claude/skills/${skill}/SKILL.md`;
+function baseFromWorkspaceGit(repoRoot: string, rel: string, skill: string, store: ShippedStore, deadline: number): RecoveredBase | null {
   const env = { ...process.env };
   for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"]) delete env[k];
   const git = (args: string[]): Buffer => {
@@ -269,14 +328,45 @@ export function recoverBase(
 ): RecoveredBase | null {
   const local = typeof localBytes === "string" ? localBytes : localBytes.toString("utf8");
   const m = parseSkillMarker(local);
+  return recoverFrom(repoRoot, `.claude/skills/${skill}/SKILL.md`, skill, local, m.reconciledFrom, m.n, packVersion, store, opts);
+}
 
-  const named = m.reconciledFrom?.toLowerCase();
+/**
+ * `recoverBase` for a tokenomics file (`collect.mjs`). Rule 1 reads the file's
+ * `octobots-reconciled-from:` line; rule 3 never applies (a file declares no version), so rule 4
+ * weighs every stored body up to the pack version.
+ */
+export function recoverFileBase(
+  repoRoot: string,
+  file: string,
+  localBytes: Buffer | string,
+  packVersion: number,
+  store: ShippedStore,
+  opts: RecoverOptions = {},
+): RecoveredBase | null {
+  const local = typeof localBytes === "string" ? localBytes : localBytes.toString("utf8");
+  return recoverFrom(repoRoot, tokenomicsRel(file), TOKENOMICS_KEY_PREFIX + file, local, fileReconciledFrom(local), null, packVersion, store, opts);
+}
+
+function recoverFrom(
+  repoRoot: string,
+  rel: string,
+  skill: string,
+  local: string,
+  reconciledFrom: string | null,
+  declared: number | null,
+  packVersion: number,
+  store: ShippedStore,
+  opts: RecoverOptions,
+): RecoveredBase | null {
+  const m = { n: declared };
+  const named = reconciledFrom?.toLowerCase();
   if (named && store.bodies[named] !== undefined) {
     const version = versionOfBody(store, named, skill);
     if (version !== null) return { version, sha256: named, source: "reconciled-from", body: store.bodies[named]! };
   }
 
-  const fromGit = baseFromWorkspaceGit(repoRoot, skill, store, opts.gitDeadline ?? Date.now() + GIT_BUDGET_MS);
+  const fromGit = baseFromWorkspaceGit(repoRoot, rel, skill, store, opts.gitDeadline ?? Date.now() + GIT_BUDGET_MS);
   if (fromGit) return fromGit;
 
   if (m.n !== null) {
@@ -315,6 +405,10 @@ export type PromptChoice = "reconcile" | "overwrite" | "keep";
 const BUTTONS = { reconcile: "Reconcile", overwrite: "Overwrite", keep: "Keep mine" } as const;
 
 function deviationLine(d: Deviation, packVersion: number): string {
+  if (d.file !== undefined) {
+    const fileWhy = d.reason === "reconciled-older" ? "reconciled against an earlier pack file" : "differs from every file the pack shipped";
+    return `• ${tokenomicsRel(d.file)}: ${fileWhy}`;
+  }
   const why =
     d.reason === "label" ? "not a pack version"
     : d.reason === "content" ? `differs from the pack's v${d.version} file`
@@ -326,16 +420,19 @@ function deviationLine(d: Deviation, packVersion: number): string {
 
 /** The modal shown before an install writes anything, when `deviations` is not empty. */
 export function deviationPrompt(deviations: readonly Deviation[], packVersion: number): DeviationPrompt {
+  // Skills only: the wording every earlier release used. A tokenomics file adds "and files".
+  const files = deviations.some((d) => d.file !== undefined);
+  const what = files ? "skills and files" : "skills";
   const detail = [
-    `Installing the Octobots pack v${packVersion} would replace or delete these skills:`,
+    `Installing the Octobots pack v${packVersion} would replace or delete these ${what}:`,
     ...deviations.map((d) => deviationLine(d, packVersion)),
-    `Reconcile: install everything else and stage these skills in .octobots/pack-updates/v${packVersion}/; your next agent session merges them with the octobots-doctor skill.`,
+    `Reconcile: install everything else and stage these ${what} in .octobots/pack-updates/v${packVersion}/; your next agent session merges them with the octobots-doctor skill.`,
     "Overwrite: replace them with the pack's files.",
-    "Keep mine: install everything else and leave these skills as they are.",
+    `Keep mine: install everything else and leave these ${what} as they are.`,
     "Cancel: install nothing.",
   ].join("\n");
   return {
-    message: `Octobots: ${deviations.length} pack skill(s) in this workspace were changed locally.`,
+    message: `Octobots: ${deviations.length} pack ${files ? "skill(s) or file(s)" : "skill(s)"} in this workspace were changed locally.`,
     detail,
     buttons: [BUTTONS.reconcile, BUTTONS.overwrite, BUTTONS.keep],
   };

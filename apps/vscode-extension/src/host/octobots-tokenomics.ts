@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync, appendFileSync } from "node:fs";
+import { readRegularText } from "./pack-updates.js";
 import { join } from "node:path";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
 
@@ -46,26 +47,58 @@ export function tokenomicsStatus(repoRoot: string, version: number): TokenomicsS
 /**
  * Install the CLI into `<repoRoot>/.octobots/tokenomics/`.
  *
- * Only the files the pack ships are written, so collected artifacts already in that directory
+ * Only the files the pack ships are written, except those in `keep`, so collected artifacts already in that directory
  * (`worklog.jsonl`, `raw/segments.jsonl`, `runs.json`, `report.html`) survive an upgrade untouched.
  * Those are the measurements themselves — agent transcripts are pruned outside the repo, so a
  * clobbered artifact is unrecoverable, not merely stale.
  */
-export function installTokenomics(srcRoot: string, repoRoot: string): number {
+export function installTokenomics(srcRoot: string, repoRoot: string, keep: ReadonlySet<string> = new Set()): number {
   const from = join(srcRoot, "tokenomics");
   if (!existsSync(from)) return 0;
   const to = join(repoRoot, ".octobots", "tokenomics");
   mkdirSync(to, { recursive: true });
+  ensureIgnored(to);
 
   let written = 0;
   for (const entry of readdirSync(from, { withFileTypes: true })) {
     if (!entry.isFile()) continue;
     const target = join(to, entry.name);
     if (PRESERVED.has(entry.name) && existsSync(target)) continue;
+    // A file the workspace changed locally (see `installPack`): kept, and staged for reconcile there.
+    if (keep.has(entry.name) && existsSync(target)) continue;
     const f = join(from, entry.name);
     if (!statSync(f).isFile()) continue;
     copyFileSync(f, target);
     written++;
   }
   return written;
+}
+
+/**
+ * Lines `.octobots/tokenomics/.gitignore` must hold. `diagnostics.jsonl` is the dispatch-on-main
+ * hook's per-machine warning log: nothing reads it back, so it is never committed. (runs.json,
+ * worklog.jsonl and raw/ ARE the project's ledger and stay tracked.)
+ */
+export const TOKENOMICS_IGNORED = ["diagnostics.jsonl"] as const;
+
+/**
+ * Appends each missing `TOKENOMICS_IGNORED` line; the rest of the file is the workspace's own. The
+ * file is read only as a small regular file (never a symlink, FIFO or directory: those would hang or
+ * abort the install), and a failure to read or write it is left alone, never raised: an ignore line
+ * is not worth a half-finished install.
+ */
+function ensureIgnored(dir: string): void {
+  const file = join(dir, ".gitignore");
+  let text = "";
+  try {
+    text = readRegularText(file, { noFollow: true, max: 1024 * 1024 });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") return; // present but not a plain file: leave it
+  }
+  const have = new Set(text.split(/\r?\n/).map((l) => l.trim()));
+  const missing = TOKENOMICS_IGNORED.filter((l) => !have.has(l));
+  if (missing.length === 0) return;
+  try {
+    appendFileSync(file, (text && !text.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n");
+  } catch { /* unwritable: the install goes on */ }
 }

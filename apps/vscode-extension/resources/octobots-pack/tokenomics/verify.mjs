@@ -102,8 +102,10 @@ for (const line of readFileSync(segFile, "utf8").split("\n")) {
     ours.cache_create += m.cache_creation_input_tokens ?? 0;
   }
 }
-for (const r of d.runs ?? []) ours.cost += r.cost_api_equivalent_usd;
-ours.cost += d.unattributed?.cost_api_equivalent_usd ?? 0;
+// ccusage reads Claude Code transcripts only. Codex segments are never in S (their session ids are not
+// ccusage sessions), so tokens above already exclude them; leave the Codex share out of the cost too.
+for (const r of d.runs ?? []) ours.cost += r.cost_api_equivalent_usd - (r.cost_by_source?.codex ?? 0);
+ours.cost += (d.unattributed?.cost_api_equivalent_usd ?? 0) - (d.unattributed?.by_source?.codex ?? 0);
 // Our cost per model (runs + the unattributed bucket), keyed by the normalised model id, so the
 // models ccusage cannot price can be taken out of the cost comparison.
 const normModel = (m) => String(m).replace(/\[.*$/, "").replace(/-\d{8}$/, "");

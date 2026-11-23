@@ -20,11 +20,23 @@ function run(dir: string, input: string) {
 const diagnostics = (dir: string) => join(dir, ".octobots/tokenomics/diagnostics.jsonl");
 
 describe("warn-only dispatch diagnostics", () => {
-  it("discards oversized valid input without recording a dispatch", () => {
+  it("records an oversized dispatch from the payload's head, marked truncated, holding at most 128 KB", () => {
+    // A long Agent prompt is a real dispatch: it must be recorded, not dropped silently.
     const dir = repo("main");
-    const r = run(dir, JSON.stringify({ session_id: "s", tool_name: "Agent", cwd: dir, padding: "x".repeat(256 * 1024) }));
+    const prompt = '"tool_name": "Bash" ' + "x".repeat(256 * 1024);
+    const r = run(dir, JSON.stringify({ session_id: "s-big", transcript_path: "/t", cwd: dir, hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { prompt } }));
     expect(r.status).toBe(0);
     expect(r.stdout).toBe("");
+    expect(r.stderr).toBe("");
+    const lines = readFileSync(diagnostics(dir), "utf8").trim().split("\n");
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ kind: "dispatch-on-main", session_id: "s-big", tool_name: "Agent", truncated: true });
+  });
+
+  it("an oversized payload whose head names no Agent dispatch records nothing", () => {
+    const dir = repo("main");
+    const r = run(dir, JSON.stringify({ padding: "x".repeat(256 * 1024), session_id: "s", tool_name: "Agent" }));
+    expect(r.status).toBe(0);
     expect(r.stderr).toBe("");
     expect(existsSync(diagnostics(dir))).toBe(false);
   });

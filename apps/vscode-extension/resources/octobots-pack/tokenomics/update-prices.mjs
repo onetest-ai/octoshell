@@ -3,6 +3,8 @@
 //
 //   node .octobots/tokenomics/update-prices.mjs          # refresh prices.json, then commit it
 //   node .octobots/tokenomics/update-prices.mjs --check   # report drift, write nothing
+//   node .octobots/tokenomics/update-prices.mjs --family openai   # refresh ONLY the Codex (gpt-*) rows
+//                                                                 # (or `claude`); the other family is kept as cached
 //
 // Run this manually, occasionally — when models change or prices move. The
 // pipeline never fetches: `prices.json` is a cached artifact, so collect /
@@ -24,7 +26,14 @@ import { fileURLToPath } from "node:url";
 
 const SOURCE = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "prices.json");
-const checkOnly = process.argv.slice(2).includes("--check");
+const cliArgs = process.argv.slice(2);
+const checkOnly = cliArgs.includes("--check");
+const famIdx = cliArgs.indexOf("--family");
+const FAMILY = famIdx !== -1 ? cliArgs[famIdx + 1] : "all"; // all | claude | openai
+if (!["all", "claude", "openai"].includes(FAMILY)) {
+  console.error(`tokenomics: unknown --family ${FAMILY} (all | claude | openai)`);
+  process.exit(1);
+}
 
 // The cost fields we keep, under upstream's own names.
 const COST_FIELDS = [
@@ -42,6 +51,16 @@ const COST_FIELDS = [
 const isFirstPartyClaude = (id, e) =>
   /^claude-/.test(id) && e?.litellm_provider === "anthropic" && e?.mode === "chat";
 
+// First-party OpenAI ids as the Codex CLI reports them in `turn_context.model`
+// (gpt-6.1-sol, gpt-6-astra, gpt-6.1-terra, ...): generation 5.6 and up, provider
+// `openai`. Azure/regional/reseller variants (`azure/…`, `chatgpt/…`) are skipped
+// for the same reason as the Claude ones. Upstream's >272k-context tier fields are
+// not kept: the Codex context window is below that, so the base rate always applies.
+const isFirstPartyCodex = (id, e) =>
+  /^gpt-(5\.[6-9]|[6-9]|\d\d)/.test(id) && e?.litellm_provider === "openai" && ["chat", "responses"].includes(e?.mode);
+const wanted = (id, e) =>
+  (FAMILY !== "openai" && isFirstPartyClaude(id, e)) || (FAMILY !== "claude" && isFirstPartyCodex(id, e));
+
 const res = await fetch(SOURCE);
 if (!res.ok) {
   console.error(`tokenomics: price fetch failed — HTTP ${res.status} from ${SOURCE}`);
@@ -50,18 +69,24 @@ if (!res.ok) {
 }
 const catalog = await res.json();
 
-const models = {};
+const prevCached = existsSync(OUT) ? JSON.parse(readFileSync(OUT, "utf8")) : { models: {} };
+const familyOf = (id) => (id.startsWith("claude-") ? "claude" : "openai");
+// A family-limited refresh must leave the other family's cached rows exactly as they are.
+const models = FAMILY === "all" ? {} : Object.fromEntries(Object.entries(prevCached.models ?? {}).filter(([id]) => familyOf(id) !== FAMILY));
 for (const id of Object.keys(catalog).sort()) {
   const entry = catalog[id];
-  if (!isFirstPartyClaude(id, entry)) continue;
+  if (!wanted(id, entry)) continue;
   if (entry.input_cost_per_token == null || entry.output_cost_per_token == null) continue;
   const kept = {};
   for (const f of COST_FIELDS) if (entry[f] != null) kept[f] = entry[f];
   models[id] = kept;
 }
+const sortedModels = Object.fromEntries(Object.entries(models).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+for (const k of Object.keys(models)) delete models[k];
+Object.assign(models, sortedModels);
 
 if (!Object.keys(models).length) {
-  console.error("tokenomics: no first-party Claude models matched — upstream schema may have changed.");
+  console.error("tokenomics: no first-party models matched — upstream schema may have changed.");
   console.error("tokenomics: refusing to overwrite prices.json with an empty table.");
   process.exit(1);
 }
@@ -72,7 +97,11 @@ const next = {
     "Entries are verbatim upstream: costs are USD PER TOKEN (not per million), under upstream's " +
     "own field names. Refreshing this file re-prices all historical runs on the next rollup.",
   _source: SOURCE,
-  fetched_at: new Date().toISOString().slice(0, 10),
+  // `fetched_at` dates the Claude rows. A Codex-only refresh must not re-date rows it did not touch.
+  fetched_at: FAMILY === "openai" ? (prevCached.fetched_at ?? new Date().toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10),
+  ...(FAMILY === "claude"
+    ? (prevCached.fetched_at_openai ? { fetched_at_openai: prevCached.fetched_at_openai } : {})
+    : { fetched_at_openai: new Date().toISOString().slice(0, 10) }),
   models,
 };
 
@@ -89,7 +118,7 @@ if (existsSync(OUT)) {
       if (old[f] !== p[f]) changes.push(`~ ${id}.${f}: ${old[f] ?? "—"} -> ${p[f] ?? "—"}`);
     }
   }
-  for (const id of Object.keys(prev.models ?? {})) if (!models[id]) changes.push(`- ${id} (gone upstream)`);
+  for (const id of Object.keys(prev.models ?? {})) if (!models[id] && (FAMILY === "all" || familyOf(id) === FAMILY)) changes.push(`- ${id} (gone upstream)`);
 
   changed = changes.length > 0;
   if (changed) {
@@ -103,4 +132,4 @@ if (existsSync(OUT)) {
 }
 
 writeFileSync(OUT, JSON.stringify(next, null, 2) + "\n");
-console.error(`tokenomics: wrote ${OUT} (${Object.keys(models).length} Claude models, fetched ${next.fetched_at})`);
+console.error(`tokenomics: wrote ${OUT} (${Object.keys(models).length} models, fetched ${next.fetched_at}, openai ${next.fetched_at_openai ?? "n/a"})`);

@@ -49,6 +49,48 @@ session id; the copy with more turns wins), so collecting is idempotent. `selfte
 covers these rules with `HOME` and `CLAUDE_CONFIG_DIR` isolated, and `octobots doctor`
 prints the root it expects.
 
+## Codex sessions (second source)
+
+`collect-codex.mjs` reads Codex CLI rollouts from `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
+(override: `--codex-dir` or env `OCTOBOTS_TOKENOMICS_CODEX_DIR`; also honours `$CODEX_HOME`) and merges one
+segment per session x agent x branch into the same `raw/segments.jsonl`, tagged `"source": "codex"`
+(Claude segments carry no `source` key). `run.mjs` runs it right after `collect.mjs`.
+
+- **Which sessions.** Only this repo's: `session_meta.git.repository_url` matches the project's `origin`
+  (`--repo owner/name` / env `OCTOBOTS_TOKENOMICS_CODEX_REPO` to override), or the session `cwd` is inside the
+  main checkout or one of its worktrees. All dates. Other repos are skipped.
+- **Whitelist, never content.** Only ids, timestamps, `cwd`, branch, repository url, `agent_path`, model, effort
+  and the token counters are read. Prompts, replies, instructions and tool output are never parsed or stored;
+  `selftest.mjs` plants a sentinel in all of them and asserts it never reaches `segments.jsonl`.
+- **Units.** Codex `input_tokens` includes the cached part and `output_tokens` includes reasoning. Segments store
+  `input_tokens = input - cached`, `cache_read_input_tokens = cached`, `output_tokens` as reported (reasoning is a
+  subset; `reasoning_output_tokens` is informational), so the rollup prices both sources with the same code.
+  Per-response usage is the unit, deduped on `response_id`; a sub-agent rollout rolls up under its parent session.
+- **Prices.** `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6.1-terra` (and siblings) are first-party rows in LiteLLM, so they
+  are cached in `prices.json` like the Claude ones. `update-prices.mjs --family openai` refreshes only those rows,
+  `--family claude` only the Claude ones, and no flag both; a refresh of one family leaves the other as cached.
+  Upstream's above-272k-context tier is not kept (the Codex context window is smaller). An unpriced Codex model is
+  reported like an unpriced Claude one (`WARNING unpriced models`).
+- **In the output.** `runs.json` rows add `cost_by_source`, a `codex` block and gpt ids in `cost_by_model`, and
+  `cost_api_equivalent_usd` includes Codex. Counters that describe the Claude side (`sessions`, `turns`,
+  `subagent_dispatches`, `orchestrator_cost_pct`, `cache_read_share_pct`, `primary_model`) stay Claude-only. These
+  keys exist only when there is Codex data, so a Claude-only run is byte-identical to before. The report adds a
+  Claude / Codex split. Codex cost is **API-equivalent** (quota-priced in reality, not billed per token).
+  `verify.mjs` subtracts Codex before comparing with ccusage, which reads Claude only.
+- **KNOWN GAP: branch at session start only.** Codex stamps `git.branch` once, when the session starts, unlike
+  Claude's per-record `gitBranch`. A session that switches branches, or that starts on `main` before the
+  orchestrator cuts the task branch (e.g. a builder that runs with git writes off), is attributed to its start
+  branch. Fallbacks, in order: a recognised mission branch; else, for
+  `main`/no-branch/unmapped sessions, the mission whose delivery-ledger window (first `dispatched`/`first_commit`
+  to the last non-planning event of the mission and its tasks, in `.agents/telemetry/delivery/events-*.jsonl`)
+  contains the session midpoint, but only if exactly one window does; else unattributed (reported, never dropped).
+  A window match lands at mission level (no task), and is counted in `codex.attribution.ledger_window`.
+- **Reconciliation.** Checked exact per run (input including cache reads, and output) against a hand-kept
+  per-run usage log in the project this collector came from; runs made without `--json` were missing from the
+  hand-kept log, which is the gap this collector closes.
+- **Compressed rollouts.** Codex compresses older rollouts to `.jsonl.zst`. Reading them needs Node 22.15+; an
+  older Node skips them with one warning, and the stage still succeeds.
+
 ## The three stages
 
 | Stage | Script | Input | Output |

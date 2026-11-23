@@ -4,9 +4,12 @@
 // Scans this repo's Claude Code transcripts and emits one segment record per
 // (session x agent x git branch) into `.octobots/tokenomics/raw/segments.jsonl`.
 //
-// Pure derivation: no board reads, no git, no pricing. Re-running is safe and
+// Near-pure derivation: no board reads, no pricing. Re-running is safe and
 // idempotent — segments are keyed by `segment_id` and rewritten in place, so a
 // mission that gets more work later simply updates its segment.
+//
+// The one exception is git: a record whose `gitBranch` is the literal "HEAD" gets
+// its branch from the reflog (see "Branch recovery" below).
 //
 // Why this layer exists separately: Claude Code transcripts are not in git and
 // are large (~80MB for one session). These segments ARE the durable artifact — they
@@ -23,6 +26,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
+import { execFileSync } from "node:child_process";
 import { locateTranscripts } from "./roots.mjs";
 
 const args = process.argv.slice(2);
@@ -35,7 +39,7 @@ const log = (...a) => { if (!quiet) console.error(...a); };
 // checkout (so a worktree stays isolated); transcripts are only ever looked up
 // by the MAIN checkout's slug.
 // ---------------------------------------------------------------------------
-const { projectDir: PROJECT_DIR, slug: PROJECT_SLUG, roots: ROOTS } = locateTranscripts(args);
+const { projectDir: PROJECT_DIR, mainDir: MAIN_DIR, slug: PROJECT_SLUG, roots: ROOTS } = locateTranscripts(args);
 
 const OUT_DIR = join(PROJECT_DIR, ".octobots", "tokenomics");
 const RAW_DIR = join(OUT_DIR, "raw");
@@ -48,12 +52,84 @@ const TOKEN_KEYS = [
 ];
 
 // ---------------------------------------------------------------------------
+// Branch recovery (upstreamed from coach-android's fork, 2026-08-07).
+//
+// `gitBranch` is the attribution key. Claude Code builds from mid-2026 wrote the
+// literal "HEAD" on every record, even for a session that ran its whole length
+// on a named branch (2400 of 2400 records in one project). Every segment then
+// buckets under one meaningless branch, the rollup maps it to no mission, and
+// the campaign reports as unattributed while this script exits 0. Current builds
+// record the real branch; the fallback matters when old transcripts are
+// collected again.
+//
+// For a "HEAD" record the branch is read from the reflog of the main checkout,
+// which records which branch HEAD pointed at over time. Only "HEAD" triggers it:
+// a record with no gitBranch (a session outside git) stays "(none)", and a real
+// branch name always wins. A record is resolved only when the reflog covers its
+// time (it is at or after the oldest reflog entry); otherwise it stays "HEAD".
+// So a re-clone at the same path, an expired reflog (90 days by default), or git
+// failing or timing out leaves old records unresolved instead of pinning them to
+// whatever branch is checked out now.
+// ---------------------------------------------------------------------------
+function gitIn(...a) {
+  try {
+    return execFileSync("git", ["-C", MAIN_DIR, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10000, maxBuffer: 1 << 28 });
+  } catch {
+    return "";
+  }
+}
+
+// [{ at: Date, branch }] ascending; `branch` is current from `at` onward.
+let timeline;
+function branchTimeline() {
+  if (timeline) return timeline;
+  const events = [];
+  let earliestFrom = null;
+  let start = null; // the oldest reflog entry of any kind: where the reflog's coverage begins
+  for (const line of gitIn("reflog", "--date=iso-strict", "--format=%gd|%gs").split("\n")) {
+    const e = line.match(/^HEAD@\{(.+?)\}\|(.*)$/);
+    if (!e) continue;
+    const at = new Date(e[1]);
+    if (isNaN(at)) continue;
+    if (!start || at < start) start = at;
+    const m = e[2].match(/^checkout: moving from (\S+) to (\S+)$/);
+    if (!m) continue;
+    events.push({ at, branch: m[2] });
+    // The reflog is newest first, so the last checkout parsed is the oldest; the
+    // branch it moved FROM is what HEAD was on from the reflog's start until then.
+    earliestFrom = m[1];
+  }
+  events.sort((a, b) => a.at - b.at);
+  // From the reflog's start until the first checkout, HEAD was on the branch that
+  // checkout moved from (or, with no checkout at all, on the current branch).
+  // Before the reflog's start nothing is known: no seed, so those records stay "HEAD".
+  const seed = earliestFrom || (start ? gitIn("symbolic-ref", "--short", "HEAD").trim() : "");
+  if (seed && start) events.unshift({ at: start, branch: seed });
+  timeline = events;
+  return timeline;
+}
+
+function resolveBranch(gitBranch, timestamp) {
+  if (gitBranch !== "HEAD") return gitBranch || "(none)";
+  const t = timestamp ? new Date(timestamp) : null;
+  if (t && !isNaN(t)) {
+    let cur = null;
+    for (const e of branchTimeline()) {
+      if (e.at <= t) cur = e.branch;
+      else break;
+    }
+    if (cur) return cur;
+  }
+  return "HEAD";
+}
+
+// ---------------------------------------------------------------------------
 // Aggregate one transcript file into per-branch buckets.
 //
 // Two correctness details that dominate the numbers:
 //   * dedupe on `requestId` — streaming re-emits the same `usage` payload on
 //     several records; without this every token count roughly doubles.
-//   * `gitBranch` is stamped on EVERY record, and one long session spans many
+//   * the branch is resolved PER RECORD, and one long session spans many
 //     branches, so buckets are per-branch, not per-file.
 // ---------------------------------------------------------------------------
 function aggregate(file) {
@@ -75,7 +151,7 @@ function aggregate(file) {
     const msg = d.message;
     if (!msg || typeof msg !== "object") continue;
 
-    const branch = d.gitBranch || "(none)";
+    const branch = resolveBranch(d.gitBranch, d.timestamp);
     let b = buckets.get(branch);
     if (!b) {
       b = {
@@ -224,7 +300,25 @@ function collect() {
 // ---------------------------------------------------------------------------
 // Merge with anything already on disk: a re-run must never lose segments whose
 // transcripts have since been pruned. Freshly collected records win on id.
+//
+// But `segment_id` embeds the branch (`<session>:<agent>:<branch>`), so resolving
+// a "HEAD" record's branch RE-KEYS its segment, and a pure merge on id keeps the
+// old `...:HEAD` key beside the new one and counts the same work twice
+// (coach-android's total doubled from $223 to $449 when reflog recovery first
+// ran). The rules, per session+agent that was just re-scanned:
+//   * a stored `...:HEAD` segment is dropped: the re-scan resolved or restated it;
+//   * a fresh `...:HEAD` segment is NOT written when that session+agent already
+//     has resolved segments on disk: they were resolved while the reflog still
+//     covered them, and a re-run after it expired must not swap a known branch
+//     for an unknown one (or count the work twice);
+//   * every other stored segment is kept, so a session whose transcript was
+//     pruned, or survives only as a partial snapshot, loses nothing.
 // ---------------------------------------------------------------------------
+function scopeOf(id) {
+  const p = String(id).split(":");
+  return p.length >= 3 ? `${p[0]}:${p[1]}` : null;
+}
+
 function merge(fresh) {
   const byId = new Map();
   const outFile = join(RAW_DIR, "segments.jsonl");
@@ -238,7 +332,22 @@ function merge(fresh) {
     }
   }
   const before = byId.size;
-  for (const s of fresh) byId.set(s.segment_id, s);
+  const isHead = (s) => s.branch === "HEAD";
+  const freshIds = new Set(fresh.map((s) => s.segment_id));
+  const freshScopes = new Set(fresh.map((s) => scopeOf(s.segment_id)).filter(Boolean));
+  const resolvedOnDisk = new Set();
+  for (const [id, d] of byId) {
+    const sc = scopeOf(id);
+    if (sc && !isHead(d) && !freshIds.has(id)) resolvedOnDisk.add(sc);
+  }
+  for (const [id, d] of [...byId]) {
+    const sc = scopeOf(id);
+    if (sc && freshScopes.has(sc) && isHead(d) && !freshIds.has(id)) byId.delete(id); // superseded by this re-scan
+  }
+  for (const s of fresh) {
+    if (isHead(s) && resolvedOnDisk.has(scopeOf(s.segment_id))) continue; // keep the branch known earlier
+    byId.set(s.segment_id, s);
+  }
   return { records: [...byId.values()].sort((a, b) => a.segment_id.localeCompare(b.segment_id)), before };
 }
 
