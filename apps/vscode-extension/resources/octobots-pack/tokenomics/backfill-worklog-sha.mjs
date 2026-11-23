@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 62
+// octobots-pack-version: 63
 // Backfills a merge SHA into worklog.jsonl entries whose branch has since
 // been deleted by `gh pr merge --delete-branch` — the ONLY moment
 // `packages/graph`'s `attribute()` (task <-> file, `provenance` mode) has
@@ -46,6 +46,7 @@
 // Usage: node backfill-worklog-sha.mjs [--project-dir DIR] [--quiet]
 import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { gitFreeEnv } from "./checkouts.mjs";
 import { execFileSync } from "node:child_process";
 
 const args = process.argv.slice(2);
@@ -109,7 +110,7 @@ function resolveMergedSha(branch) {
     const out = execFileSync(
       "gh",
       ["pr", "list", "--head", branch, "--state", "merged", "--limit", "1", "--json", "mergeCommit"],
-      { cwd: PROJECT_DIR, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000 },
+      { cwd: PROJECT_DIR, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000, env: gitFreeEnv() },
     );
     const found = JSON.parse(out);
     sha = found[0]?.mergeCommit?.oid ?? null;

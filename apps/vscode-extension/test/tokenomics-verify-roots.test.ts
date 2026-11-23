@@ -127,6 +127,21 @@ describe("tokenomics verify.mjs reads the collector's transcript roots", () => {
     expect(r.status, out(r)).toBe(0);
   });
 
+  it("a transcript shortened after collection leaves the comparison, and says so; alone it is exit 2, not a pass", () => {
+    const f = fixture();
+    session(f.homeSlugDir, "s-short", 20);
+    session(f.homeSlugDir, "s-whole", 4);
+    verify(f);
+    session(f.homeSlugDir, "s-short", 10);
+    const r = verify(f);
+    expect(r.status, out(r)).toBe(0);
+    expect(out(r)).toMatch(/1 session\(s\) have more turns stored/);
+    session(f.homeSlugDir, "s-whole", 2);
+    const none = verify(f);
+    expect(none.status, out(none)).toBe(2);
+    expect(out(none)).toContain("no session left to cross-check");
+  });
+
   it("a session only in the legacy root is read as well -> PASS", () => {
     const f = fixture();
     session(f.homeSlugDir, "s-home", 4);
@@ -369,21 +384,22 @@ describe("tokenomics verify.mjs reads the collector's transcript roots", () => {
 
 // The population rule (roots, slug, worktree unwinding) is ONE module that both scripts import; a
 // second spelling of it in either script is exactly the drift this file exists to catch.
-describe("tokenomics roots.mjs is the single population rule", () => {
+describe("tokenomics checkouts.mjs is the single population rule", () => {
   it("collect.mjs and verify.mjs both import it and neither re-spells the rule", () => {
     for (const script of ["collect.mjs", "verify.mjs"]) {
       const src = readFileSync(join(TOK_SRC, script), "utf8");
-      expect(src, script).toMatch(/import \{[^}]*\blocateTranscripts\b[^}]*\} from "\.\/roots\.mjs";/);
+      expect(src, script).toMatch(/import \{[^}]*\blocateTranscripts\b[^}]*\} from "\.\/checkouts\.mjs";/);
       expect(src, script).toMatch(/\blocateTranscripts\(args\)/);
       expect(src, `${script} re-spells the slug rule`).not.toContain("[^A-Za-z0-9]");
-      expect(src, `${script} re-spells the worktree unwind`).not.toContain("/.claude/worktrees/");
+      expect(src, `${script} re-spells the worktree unwind`).not.toMatch(/\.claude\/worktrees|"\.worktrees/);
       expect(src, `${script} re-spells the roots`).not.toMatch(/env\.OCTOBOTS_TOKENOMICS_PROJECTS_DIR|homedir\(/);
     }
   });
 
   it("is installed next to the scripts that import it", () => {
     const f = fixture();
-    expect(existsSync(join(f.tok, "roots.mjs"))).toBe(true);
+    expect(existsSync(join(f.tok, "checkouts.mjs"))).toBe(true);
+    expect(existsSync(join(f.tok, "roots.mjs"))).toBe(true); // for scripts an update kept
   });
 
   it("locateTranscripts: worktree unwinding, slug, root precedence and dedupe", async () => {

@@ -175,4 +175,54 @@ describe("ClaudeTranscriptSource / collect.mjs parity (mission AC4)", () => {
     expect(view(new ClaudeTranscriptSource(w2.project, { homeDir: w2.home, env: {} }).collect())).toEqual(view(theirsRel));
     expect(theirsRel.length).toBeGreaterThan(0);
   });
+
+  it("worktrees in every layout, a nested checkout and a removed worktree: same ids from every checkout", () => {
+    const base = tmp("tok-parity-wt-");
+    const home = join(base, "home");
+    const main = join(base, "proj");
+    const run = (cwd: string, ...a: string[]): void => {
+      const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd, stdio: "ignore", env });
+    };
+    const repo = (dir: string): void => {
+      mkdirSync(dir, { recursive: true });
+      run(dir, "init", "-q");
+      run(dir, "commit", "-q", "--allow-empty", "-m", "seed");
+    };
+    repo(main);
+    const wts = [join(main, ".worktrees", "a"), join(main, ".claude", "worktrees", "b"), join(base, "proj-wt-c")];
+    for (const w of wts) run(main, "worktree", "add", "-q", "--detach", w);
+    const nested = join(main, "nested");
+    const clone = join(main, ".worktrees", "clone");
+    repo(nested);
+    repo(clone);
+    const put = (dir: string, id: string, cwd: string | null = dir): void => {
+      const d = join(home, ".claude", "projects", slugOf(dir));
+      mkdirSync(d, { recursive: true });
+      writeFileSync(join(d, `${id}.jsonl`), JSON.stringify({ ...JSON.parse(turn("feat/w", id)), ...(cwd ? { cwd } : {}) }) + "\n");
+    };
+    put(main, "s-main");
+    wts.forEach((w, i) => put(w, `s-wt${i}`));
+    put(join(main, ".worktrees", "gone"), "s-gone");
+    put(nested, "s-nested");
+    put(clone, "s-clone");
+    put(join(base, "proj-other"), "s-other");
+    put(wts[2]!, "s-collide", join(base, "proj", "wt-c"));
+    put(wts[0]!, "s-nocwd", null);
+    // One session split by a move into a worktree: both parts count, the shared request once.
+    const part = (dir: string, branch: string, ids: string[]): void =>
+      writeFileSync(
+        join(home, ".claude", "projects", slugOf(dir), "s-main.jsonl"),
+        ids.map((id) => JSON.stringify({ ...JSON.parse(turn(branch, id)), cwd: main })).join("\n") + "\n",
+      );
+    part(main, "main", ["q1", "q2", "q3"]);
+    part(wts[0]!, "feat/w", ["q3", "q4", "q5", "q6"]);
+    const want = ["s-gone", "s-main", "s-wt0", "s-wt1", "s-wt2"];
+    for (const dir of [main, ...wts, nested, clone]) {
+      const ours = new ClaudeTranscriptSource(dir, { homeDir: home, env: {} }).collect();
+      expect(view(ours)).toEqual(view(cli(dir, { HOME: home })));
+      if (dir === main) expect(ours.filter((s) => s.sessionId === "s-main").reduce((n, s) => n + s.turns, 0)).toBe(6);
+      expect([...new Set(ours.map((s) => s.sessionId))].sort()).toEqual(dir === nested ? ["s-nested"] : dir === clone ? ["s-clone"] : want);
+    }
+  });
 });

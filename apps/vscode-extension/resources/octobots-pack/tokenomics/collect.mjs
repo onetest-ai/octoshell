@@ -20,14 +20,14 @@
 //   1. explicit: `--projects-dir DIR` or env OCTOBOTS_TOKENOMICS_PROJECTS_DIR
 //   2. `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`
 //   3. legacy repo-local `<main checkout>/.claude/projects` (read in ADDITION)
-// Under each root only THIS project's slug directory is read.
+// Under each root only THIS project's slug directories (main checkout and worktrees) are read.
 //
 // Usage: node .octobots/tokenomics/collect.mjs [--project-dir DIR] [--projects-dir DIR] [--quiet]
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
-import { join, basename } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { locateTranscripts } from "./roots.mjs";
+import { gitFreeEnv, listSessions, locateTranscripts } from "./checkouts.mjs";
 
 const args = process.argv.slice(2);
 // --help prints usage and exits before the script reads or writes anything.
@@ -40,11 +40,12 @@ const log = (...a) => { if (!quiet) console.error(...a); };
 
 // ---------------------------------------------------------------------------
 // Locate the transcripts: roots, slug and worktree unwinding are ONE rule in
-// roots.mjs, shared with verify.mjs. Artifacts are written to the CURRENT
-// checkout (so a worktree stays isolated); transcripts are only ever looked up
-// by the MAIN checkout's slug.
+// checkouts.mjs, shared with verify.mjs. Artifacts are written to the CURRENT
+// checkout (so a worktree stays isolated); transcripts are looked up
+// by the slugs of the MAIN checkout and its worktrees.
 // ---------------------------------------------------------------------------
-const { projectDir: PROJECT_DIR, mainDir: MAIN_DIR, slug: PROJECT_SLUG, roots: ROOTS } = locateTranscripts(args);
+const LOCATED = locateTranscripts(args);
+const { projectDir: PROJECT_DIR, mainDir: MAIN_DIR, slug: PROJECT_SLUG, roots: ROOTS } = LOCATED;
 
 const OUT_DIR = join(PROJECT_DIR, ".octobots", "tokenomics");
 const RAW_DIR = join(OUT_DIR, "raw");
@@ -76,22 +77,22 @@ const TOKEN_KEYS = [
 // failing or timing out leaves old records unresolved instead of pinning them to
 // whatever branch is checked out now.
 // ---------------------------------------------------------------------------
-function gitIn(...a) {
+function gitIn(dir, ...a) {
   try {
-    return execFileSync("git", ["-C", MAIN_DIR, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10000, maxBuffer: 1 << 28 });
+    return execFileSync("git", ["-C", dir, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10000, maxBuffer: 1 << 28, env: gitFreeEnv() });
   } catch {
     return "";
   }
 }
 
 // [{ at: Date, branch }] ascending; `branch` is current from `at` onward.
-let timeline;
-function branchTimeline() {
-  if (timeline) return timeline;
+const timelines = new Map(); // checkout -> timeline; each worktree has its own HEAD and reflog
+function branchTimeline(dir) {
+  if (timelines.has(dir)) return timelines.get(dir);
   const events = [];
   let earliestFrom = null;
   let start = null; // the oldest reflog entry of any kind: where the reflog's coverage begins
-  for (const line of gitIn("reflog", "--date=iso-strict", "--format=%gd|%gs").split("\n")) {
+  for (const line of gitIn(dir, "reflog", "--date=iso-strict", "--format=%gd|%gs").split("\n")) {
     const e = line.match(/^HEAD@\{(.+?)\}\|(.*)$/);
     if (!e) continue;
     const at = new Date(e[1]);
@@ -108,18 +109,18 @@ function branchTimeline() {
   // From the reflog's start until the first checkout, HEAD was on the branch that
   // checkout moved from (or, with no checkout at all, on the current branch).
   // Before the reflog's start nothing is known: no seed, so those records stay "HEAD".
-  const seed = earliestFrom || (start ? gitIn("symbolic-ref", "--short", "HEAD").trim() : "");
+  const seed = earliestFrom || (start ? gitIn(dir, "symbolic-ref", "--short", "HEAD").trim() : "");
   if (seed && start) events.unshift({ at: start, branch: seed });
-  timeline = events;
-  return timeline;
+  timelines.set(dir, events);
+  return events;
 }
 
-function resolveBranch(gitBranch, timestamp) {
-  if (gitBranch !== "HEAD") return gitBranch || "(none)";
+function resolveBranch(gitBranch, timestamp, checkout) {
+  if (gitBranch !== "HEAD" || !checkout) return gitBranch || "(none)";
   const t = timestamp ? new Date(timestamp) : null;
   if (t && !isNaN(t)) {
     let cur = null;
-    for (const e of branchTimeline()) {
+    for (const e of branchTimeline(checkout)) {
       if (e.at <= t) cur = e.branch;
       else break;
     }
@@ -137,7 +138,9 @@ function resolveBranch(gitBranch, timestamp) {
 //   * the branch is resolved PER RECORD, and one long session spans many
 //     branches, so buckets are per-branch, not per-file.
 // ---------------------------------------------------------------------------
-function aggregate(file) {
+// `checkout`: the directory whose reflog covers this session, or null (a removed worktree).
+// `skip`: request ids already counted in another copy; a record without an id cannot be told apart.
+function aggregate(file, checkout, skip) {
   const buckets = new Map(); // branch -> bucket
   const seen = new Set();
   let text;
@@ -156,11 +159,13 @@ function aggregate(file) {
     const msg = d.message;
     if (!msg || typeof msg !== "object") continue;
 
-    const branch = resolveBranch(d.gitBranch, d.timestamp);
+    const branch = resolveBranch(d.gitBranch, d.timestamp, checkout);
     let b = buckets.get(branch);
     if (!b) {
       b = {
         branch,
+        head: 0, // turns whose record said "HEAD": the only ones that can move between branches
+        ids: [],
         turns: 0,
         tools: {},
         by_model: {},
@@ -172,10 +177,13 @@ function aggregate(file) {
     }
 
     const rid = d.requestId;
+    if (skip ? !rid || skip.has(rid) : false) continue;
     if (rid && seen.has(rid)) continue;
     if (rid) seen.add(rid);
 
+    b.ids.push(rid);
     b.turns += 1;
+    if (d.gitBranch === "HEAD") b.head += 1;
     if (d.timestamp) {
       if (!b.started_at || d.timestamp < b.started_at) b.started_at = d.timestamp;
       if (!b.ended_at || d.timestamp > b.ended_at) b.ended_at = d.timestamp;
@@ -213,8 +221,11 @@ function* walkJsonl(root) {
   }
 }
 
+// segment -> its turns recorded as "HEAD". Beside the segments, so nothing of it is written to disk.
+const headTurns = new WeakMap();
+
 function bucketToSegment(bucket, base) {
-  return {
+  const segment = {
     ...base,
     branch: bucket.branch,
     started_at: bucket.started_at,
@@ -224,82 +235,116 @@ function bucketToSegment(bucket, base) {
     tokens_by_model: bucket.by_model,
     tools: bucket.tools,
   };
+  headTurns.set(segment, bucket.head);
+  return segment;
+}
+
+// Two parts of one segment, with no request in common.
+function addSegments(a, b) {
+  const tokens = structuredClone(a.tokens_by_model);
+  for (const [model, m] of Object.entries(b.tokens_by_model)) {
+    const t = (tokens[model] ??= Object.fromEntries(TOKEN_KEYS.map((k) => [k, 0])));
+    for (const k of TOKEN_KEYS) t[k] += m[k];
+  }
+  const tools = { ...a.tools };
+  for (const [k, n] of Object.entries(b.tools)) tools[k] = (tools[k] ?? 0) + n;
+  const times = (k) => [a[k], b[k]].filter(Boolean).sort();
+  const out = {
+    ...a, started_at: times("started_at")[0] ?? null, ended_at: times("ended_at").at(-1) ?? null, turns: a.turns + b.turns,
+    models_used: Object.keys(tokens).sort(), tokens_by_model: tokens, tools,
+  };
+  headTurns.set(out, (headTurns.get(a) ?? 0) + (headTurns.get(b) ?? 0));
+  return out;
 }
 
 // ---------------------------------------------------------------------------
-// Read this project's own slug directory under every transcript root. Other
+// Read this project's slug directories (checkouts.mjs) under every transcript root. Other
 // projects' slugs are never touched. Subdirectories of a session hold its
 // subagent transcripts. The same session can appear in two roots (e.g. a
 // symlinked or copied snapshot): segments dedupe on segment_id, keeping the
 // copy with more turns (the more complete one), earlier root winning ties.
 // ---------------------------------------------------------------------------
 function collect() {
-  const bySegment = new Map();
-  const segments = { push(s) {
-    const prev = bySegment.get(s.segment_id);
-    if (!prev || s.turns > prev.turns) bySegment.set(s.segment_id, s);
+  // A session can be in two slugs, as a copy or split by a move into a worktree. Per thread the fuller
+  // class counts (main winning ties), plus whatever requests only the other one holds.
+  const classes = new Map(); // scope -> { main, wt }, each segment_id -> segment
+  let current = "main";
+  const segments = { push(s, from) {
+    const sc = scopeOf(s.segment_id);
+    if (!classes.has(sc)) classes.set(sc, { main: new Map(), wt: new Map(), ids: { main: new Set(), wt: new Set() }, again: { main: [], wt: [] } });
+    const m = classes.get(sc)[current];
+    for (const id of from.bucket.ids) if (id) classes.get(sc).ids[current].add(id);
+    classes.get(sc).again[current].push(from);
+    const prev = m.get(s.segment_id);
+    if (!prev || s.turns > prev.turns) m.set(s.segment_id, s);
   } };
 
-  let found = 0;
-  for (const root of ROOTS) {
-    const slug = PROJECT_SLUG;
-    const slugDir = join(root, slug);
-    if (!existsSync(slugDir) || !statSync(slugDir).isDirectory()) continue;
-    found++;
+  const sessions = listSessions(LOCATED);
+  for (const { dir: slugDir, slug, sessionId, file: sessionFile, checkout } of sessions) {
+    current = slug === PROJECT_SLUG ? "main" : "wt";
+    // --- main thread (the orchestrator) ---
+    for (const bucket of aggregate(sessionFile, checkout).values()) {
+      if (bucket.turns === 0) continue;
+      const base = (branch) => ({
+        segment_id: `${sessionId}:main:${branch}`,
+        session_id: sessionId,
+        project_slug: slug,
+        kind: "orchestrator",
+        agent_type: null,
+      });
+      segments.push(bucketToSegment(bucket, base(bucket.branch)), { bucket, file: sessionFile, checkout, base });
+    }
 
-    for (const entry of readdirSync(slugDir)) {
-      if (!entry.endsWith(".jsonl")) continue;
-      const sessionId = entry.slice(0, -6);
-      const sessionFile = join(slugDir, entry);
-
-      // --- main thread (the orchestrator) ---
-      for (const bucket of aggregate(sessionFile).values()) {
+    // --- subagents: every *.jsonl under <session>/subagents/, RECURSIVELY ---
+    // Physically separate files are what make the orchestrator-vs-subagent
+    // cost split exact rather than modelled — but only if we find them all.
+    // Plain Task subagents sit directly in `subagents/`; Workflow-tool agents
+    // nest under `subagents/workflows/wf_<id>/`. A flat read misses the
+    // latter, which are the large majority of subagent files, and silently
+    // reports orchestrator_cost_pct as 100%.
+    const subDir = join(slugDir, sessionId, "subagents");
+    if (!existsSync(subDir)) continue;
+    for (const { dir, file } of walkJsonl(subDir)) {
+      const agentId = file.slice(0, -6);
+      let meta = {};
+      const metaPath = join(dir, `${agentId}.meta.json`);
+      if (existsSync(metaPath)) {
+        try { meta = JSON.parse(readFileSync(metaPath, "utf8")); } catch { /* keep {} */ }
+      }
+      // `subagents/workflows/wf_<id>/…` — record which workflow run it belongs to.
+      const workflowId = dir.split("/").find((p) => p.startsWith("wf_")) ?? null;
+      for (const bucket of aggregate(join(dir, file), checkout).values()) {
         if (bucket.turns === 0) continue;
-        segments.push(bucketToSegment(bucket, {
-          segment_id: `${sessionId}:main:${bucket.branch}`,
+        const base = (branch) => ({
+          segment_id: `${sessionId}:${agentId}:${branch}`,
           session_id: sessionId,
           project_slug: slug,
-          kind: "orchestrator",
-          agent_type: null,
-        }));
-      }
-
-      // --- subagents: every *.jsonl under <session>/subagents/, RECURSIVELY ---
-      // Physically separate files are what make the orchestrator-vs-subagent
-      // cost split exact rather than modelled — but only if we find them all.
-      // Plain Task subagents sit directly in `subagents/`; Workflow-tool agents
-      // nest under `subagents/workflows/wf_<id>/`. A flat read misses the
-      // latter, which are the large majority of subagent files, and silently
-      // reports orchestrator_cost_pct as 100%.
-      const subDir = join(slugDir, sessionId, "subagents");
-      if (!existsSync(subDir)) continue;
-      for (const { dir, file } of walkJsonl(subDir)) {
-        const agentId = file.slice(0, -6);
-        let meta = {};
-        const metaPath = join(dir, `${agentId}.meta.json`);
-        if (existsSync(metaPath)) {
-          try { meta = JSON.parse(readFileSync(metaPath, "utf8")); } catch { /* keep {} */ }
-        }
-        // `subagents/workflows/wf_<id>/…` — record which workflow run it belongs to.
-        const workflowId = dir.split("/").find((p) => p.startsWith("wf_")) ?? null;
-        for (const bucket of aggregate(join(dir, file)).values()) {
-          if (bucket.turns === 0) continue;
-          segments.push(bucketToSegment(bucket, {
-            segment_id: `${sessionId}:${agentId}:${bucket.branch}`,
-            session_id: sessionId,
-            project_slug: slug,
-            kind: "subagent",
-            agent_type: meta.agentType ?? null,
-            agent_description: meta.description ?? null,
-            spawn_depth: meta.spawnDepth ?? null,
-            workflow_id: workflowId,
-          }));
-        }
+          kind: "subagent",
+          agent_type: meta.agentType ?? null,
+          agent_description: meta.description ?? null,
+          spawn_depth: meta.spawnDepth ?? null,
+          workflow_id: workflowId,
+        });
+        segments.push(bucketToSegment(bucket, base(bucket.branch)), { bucket, file: join(dir, file), checkout, base });
       }
     }
   }
-  if (!found) log(`tokenomics: no transcripts for slug ${PROJECT_SLUG} under ${ROOTS.join(", ")} — nothing to collect`);
-  return [...bySegment.values()];
+  if (!sessions.length) log(`tokenomics: no transcripts for slug ${PROJECT_SLUG} under ${ROOTS.join(", ")} — nothing to collect`);
+  const size = (m) => [...m.values()].reduce((t, s) => t + s.turns, 0);
+  return [...classes.values()].flatMap((c) => {
+    const [win, lose] = size(c.wt) > size(c.main) ? ["wt", "main"] : ["main", "wt"];
+    const files = new Map(c.again[lose].map((f) => [f.file, f]));
+    for (const { file, checkout, base } of files.values()) {
+      for (const bucket of aggregate(file, checkout, c.ids[win]).values()) {
+        if (bucket.turns === 0) continue;
+        for (const id of bucket.ids) c.ids[win].add(id);
+        const s = bucketToSegment(bucket, base(bucket.branch));
+        const prev = c[win].get(s.segment_id);
+        c[win].set(s.segment_id, prev ? addSegments(prev, s) : s);
+      }
+    }
+    return [...c[win].values()];
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -310,14 +355,17 @@ function collect() {
 // a "HEAD" record's branch RE-KEYS its segment, and a pure merge on id keeps the
 // old `...:HEAD` key beside the new one and counts the same work twice
 // (coach-android's total doubled from $223 to $449 when reflog recovery first
-// ran). The rules, per session+agent that was just re-scanned:
-//   * a stored `...:HEAD` segment is dropped: the re-scan resolved or restated it;
-//   * a fresh `...:HEAD` segment is NOT written when that session+agent already
-//     has resolved segments on disk: they were resolved while the reflog still
-//     covered them, and a re-run after it expired must not swap a known branch
-//     for an unknown one (or count the work twice);
-//   * every other stored segment is kept, so a session whose transcript was
-//     pruned, or survives only as a partial snapshot, loses nothing.
+// ran). Only a turn whose record says "HEAD" can ever move between branches, so those turns are
+// counted while collecting. The rules, per session+agent that was just re-scanned:
+//   * no such turn on disk: every row stands alone, and the larger of stored and fresh wins, so a
+//     shortened or pruned transcript shrinks nothing;
+//   * stored `...:HEAD` rows are dropped when the re-scan holds enough HEAD turns to account for them;
+//   * a stored row that lost turns no more than the HEAD turns explain has MOVED: the re-scan
+//     replaces the rows if it found more turns in all, and at an equal total the branches known
+//     earlier stay (a re-run after the reflog expired must not swap a known branch for HEAD);
+//   * otherwise the transcript was shortened: the stored rows stay, and only rows without a HEAD
+//     turn may still grow or be added - unless the transcript alone still holds more turns.
+// A session that was not re-scanned is untouched.
 // ---------------------------------------------------------------------------
 function scopeOf(id) {
   const p = String(id).split(":");
@@ -337,21 +385,37 @@ function merge(fresh) {
     }
   }
   const before = byId.size;
-  const isHead = (s) => s.branch === "HEAD";
-  const freshIds = new Set(fresh.map((s) => s.segment_id));
-  const freshScopes = new Set(fresh.map((s) => scopeOf(s.segment_id)).filter(Boolean));
-  const resolvedOnDisk = new Set();
-  for (const [id, d] of byId) {
-    const sc = scopeOf(id);
-    if (sc && !isHead(d) && !freshIds.has(id)) resolvedOnDisk.add(sc);
-  }
-  for (const [id, d] of [...byId]) {
-    const sc = scopeOf(id);
-    if (sc && freshScopes.has(sc) && isHead(d) && !freshIds.has(id)) byId.delete(id); // superseded by this re-scan
-  }
-  for (const s of fresh) {
-    if (isHead(s) && resolvedOnDisk.has(scopeOf(s.segment_id))) continue; // keep the branch known earlier
-    byId.set(s.segment_id, s);
+  const group = (list) => {
+    const m = new Map();
+    for (const s of list) { const sc = scopeOf(s.segment_id); m.set(sc, [...(m.get(sc) ?? []), s]); }
+    return m;
+  };
+  const total = (list) => list.reduce((t, s) => t + (s.turns ?? 0), 0);
+  const keepLarger = (s) => { if (s.turns >= (byId.get(s.segment_id)?.turns ?? 0)) byId.set(s.segment_id, s); };
+  const storedBy = group(byId.values());
+  for (const [sc, now] of group(fresh)) {
+    const old = storedBy.get(sc) ?? [];
+    const heads = now.reduce((t, s) => t + (headTurns.get(s) ?? 0), 0);
+    if (heads === 0) { now.forEach(keepLarger); continue; }
+    const freshTurns = new Map(now.map((s) => [s.segment_id, s.turns]));
+    const stale = old.filter((s) => s.branch === "HEAD" && !freshTurns.has(s.segment_id));
+    const superseded = total(stale) <= heads ? stale : [];
+    const missing = old.filter((s) => !superseded.includes(s))
+      .reduce((t, s) => t + Math.max(0, (s.turns ?? 0) - (freshTurns.get(s.segment_id) ?? 0)), 0);
+    if (missing === 0) {
+      for (const s of superseded) byId.delete(s.segment_id);
+      now.forEach(keepLarger);
+    } else if (missing <= heads && total(now) > total(old)) {
+      for (const s of old) byId.delete(s.segment_id);
+      for (const s of now) byId.set(s.segment_id, s);
+    } else if (!(missing <= heads && total(now) === total(old))) {
+      now.filter((s) => !headTurns.get(s)).forEach(keepLarger);
+      const kept = [...byId.values()].filter((s) => scopeOf(s.segment_id) === sc);
+      if (total(kept) < total(now)) { // disk holds more than that: it is the better record
+        for (const s of kept) byId.delete(s.segment_id);
+        for (const s of now) byId.set(s.segment_id, s);
+      }
+    }
   }
   return { records: [...byId.values()].sort((a, b) => a.segment_id.localeCompare(b.segment_id)), before };
 }

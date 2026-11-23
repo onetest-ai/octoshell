@@ -25,7 +25,7 @@
 //
 // Usage: node .octobots/tokenomics/selftest.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, existsSync, rmSync, realpathSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, existsSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +38,10 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log("Usage: node .octobots/tokenomics/selftest.mjs\nRuns synthetic tests in temporary directories; it writes nothing to the project.");
   process.exit(0);
 }
+
+// Git hooks export GIT_DIR, GIT_WORK_TREE and friends. Inherited here they outrank every `cwd`, so the
+// suites' `git init`/`config`/`commit` would hit the REAL repository (core.bare=true, a stray commit).
+for (const k of Object.keys(process.env)) if (k.startsWith("GIT_")) delete process.env[k];
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..");
@@ -79,7 +83,7 @@ const slugOf = (p) => p.replace(/[^A-Za-z0-9]/g, "-");
 // a temp dir and the transcript-root variables are dropped unless a case sets them.
 function isolatedEnv(home, extra = {}) {
   const env = { ...process.env, HOME: home, USERPROFILE: home, ...extra };
-  for (const k of ["CLAUDE_CONFIG_DIR", "OCTOBOTS_TOKENOMICS_PROJECTS_DIR"]) if (!(k in extra)) delete env[k];
+  for (const k of ["CLAUDE_CONFIG_DIR", "OCTOBOTS_TOKENOMICS_PROJECTS_DIR", "OCTOBOTS_TOKENOMICS_CODEX_DIR", "OCTOBOTS_TOKENOMICS_CODEX_REPO", "CODEX_HOME"]) if (!(k in extra)) delete env[k];
   return env;
 }
 
@@ -730,7 +734,7 @@ function runReflogSuite() {
   // collector exiting 0. A re-scanned session is authoritative for itself; a
   // session whose transcript is gone must survive untouched.
   const stale = { ...segs[0], segment_id: `${SESSION}:main:HEAD`, branch: "HEAD", turns: 1 };
-  const staleOther = { ...segs[0], segment_id: `${SESSION}:main:HEAD-stale`, branch: "HEAD", turns: 999 };
+  const staleOther = { ...segs[0], segment_id: `${SESSION}:main:HEAD-stale`, branch: "HEAD", turns: 1 };
   const foreign = { ...segs[0], segment_id: "s0000000-dead-dead-dead-000000000002:main:main", session_id: "s0000000-dead-dead-dead-000000000002", turns: 7 };
   writeFileSync(rawFile, [...segs.filter((s) => s.branch !== "HEAD"), stale, foreign, { ...staleOther, branch: "HEAD" }].map((r) => JSON.stringify(r)).join("\n") + "\n");
   collect();
@@ -759,6 +763,162 @@ function runReflogSuite() {
   for (const d of [root, emptyHome]) rmSync(d, { recursive: true, force: true });
 }
 
+// --- which checkouts belong to the project, and rows that must never shrink ---
+// Real git repositories: a main checkout, worktrees in three layouts, a nested checkout of ANOTHER
+// repository, and an independent clone sitting where a worktree could be.
+function runCheckoutsSuite() {
+  console.log("\ntokenomics selftest — checkouts and stored rows:");
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "tokenomics-selftest-wt-")));
+  const home = join(base, "home");
+  const main = join(base, "proj");
+  const tag = (n) => `[checkouts] ${n}`;
+  const git = (cwd, ...a) => execFileSync("git", ["-c", "user.name=selftest", "-c", "user.email=selftest@example.com", "-c", "init.defaultBranch=main", ...a],
+    { cwd, stdio: ["ignore", "pipe", "ignore"], encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" } });
+  const repo = (dir, origin) => {
+    mkdirSync(dir, { recursive: true });
+    git(dir, "init", "-q");
+    git(dir, "commit", "-q", "--allow-empty", "-m", "seed");
+    git(dir, "remote", "add", "origin", `https://github.com/${origin}.git`);
+  };
+  repo(main, "demo-owner/proj");
+  const dotWt = join(main, ".worktrees", "mt");
+  const claudeWt = join(main, ".claude", "worktrees", "cl");
+  const sibling = join(base, "proj-wt-s1");
+  const gone = join(main, ".worktrees", "gone");
+  for (const w of [dotWt, claudeWt, sibling]) git(main, "worktree", "add", "-q", "--detach", w);
+  const nested = join(main, "nested");
+  const clone = join(main, ".worktrees", "clone");
+  for (const d of [nested, clone]) repo(d, "demo-owner/other");
+
+  const projects = join(home, ".claude", "projects");
+  const put = (cwd, id, n, { branch = "feat/w", slugDir = cwd, recordCwd = cwd } = {}) => {
+    const dir = join(projects, slugOf(slugDir));
+    mkdirSync(dir, { recursive: true });
+    const lines = [];
+    for (let i = 0; i < n; i++) lines.push(JSON.stringify({ ...JSON.parse(turn({ branch, requestId: `${id}-${i}` })), ...(recordCwd ? { cwd: recordCwd } : {}) }));
+    writeFileSync(join(dir, `${id}.jsonl`), lines.join("\n") + "\n");
+  };
+  put(main, "s-main", 3);
+  put(dotWt, "s-dot", 2);
+  put(claudeWt, "s-claude", 2);
+  put(sibling, "s-sibling", 2);
+  put(gone, "s-gone", 1);                                          // worktree since removed
+  const replaced = join(base, "proj-wt-replaced");                 // registered, but another repository now
+  git(main, "worktree", "add", "-q", "--detach", replaced);
+  rmSync(replaced, { recursive: true });
+  repo(replaced, "demo-owner/other");
+  put(replaced, "s-replaced", 9);
+  const twin = join(base.replace(/-wt-([^-]*)$/, "-wt.$1"), "proj");
+  mkdirSync(twin, { recursive: true });
+  put(twin, "s-main-collide", 9, { slugDir: main });   // same slug as main, other directory
+  put(nested, "s-nested", 9);                                      // another repository inside ours
+  put(clone, "s-clone", 9);                                        // another repository under .worktrees
+  put(join(base, "proj-other"), "s-lookalike", 9);                 // a sibling that is not a worktree
+  put(sibling, "s-collide", 9, { recordCwd: join(base, "proj", "wt-s1") }); // same slug, other directory
+  put(dotWt, "s-nocwd", 9, { recordCwd: null });                   // nothing proves where it ran
+  put(dotWt, "s-head", 1, { branch: "HEAD" });                     // main's reflog says nothing about a worktree
+
+  const env = isolatedEnv(home);
+  const sids = (segs) => [...new Set(segs.map((s) => s.session_id))].sort().join();
+  const want = "s-claude,s-dot,s-gone,s-head,s-main,s-sibling";
+  const fromMain = parseSegments(collectRaw(main, env));
+  check(tag("sessions of every worktree of this repository are read, and no other repository's"), sids(fromMain) === want, sids(fromMain));
+  check(tag("a detached worktree's HEAD record does not take the main checkout's branch"), fromMain.find((s) => s.session_id === "s-head")?.branch !== "main", fromMain.find((s) => s.session_id === "s-head")?.branch);
+  for (const [name, d] of [[".worktrees/", dotWt], [".claude/worktrees/", claudeWt], ["sibling", sibling]]) {
+    const segs = parseSegments(collectRaw(d, env));
+    check(tag(`run from a ${name} worktree reads the same sessions as main`), sids(segs) === want, sids(segs));
+  }
+  check(tag("a nested checkout is its own project"), sids(parseSegments(collectRaw(nested, env))) === "s-nested");
+  check(tag("a clone under .worktrees is its own project"), sids(parseSegments(collectRaw(clone, env))) === "s-clone");
+  const sub = join(main, "pkg"); mkdirSync(sub);
+  put(sub, "s-sub", 1);
+  const subWt = join(dotWt, "pkg"); mkdirSync(subWt);
+  check(tag("a workspace that is a subdirectory keeps its own slug"), sids(parseSegments(collectRaw(sub, env))) === "s-sub");
+  check(tag("the same subdirectory in a worktree resolves to main's"), sids(parseSegments(collectRaw(subWt, env))) === "s-sub");
+  const hookEnv = { ...env, GIT_DIR: join(nested, ".git"), GIT_WORK_TREE: nested };
+  check(tag("an inherited GIT_DIR does not change the project"), sids(parseSegments(collectRaw(main, hookEnv))) === want);
+  const noGit = { ...env, PATH: join(base, "no-such-bin") };
+  check(tag("without git: the path rule still finds main from .worktrees/"), sids(parseSegments(collectRaw(dotWt, noGit))).includes("s-main"));
+
+  const a = collectRaw(main, env);
+  check(tag("a second run changes nothing"), collectRaw(main, env, [], true) === a);
+
+  // --- rows never shrink ---
+  const rows = () => parseSegments(collectRaw(main, env, [], true));
+  const sumOf = (segs, id) => segs.filter((s) => s.session_id === id).reduce((n, s) => n + s.turns, 0);
+  put(main, "s-main", 1);
+  check(tag("a shortened transcript does not shrink its row"), sumOf(rows(), "s-main") === 3);
+  put(main, "s-main", 5);
+  check(tag("a transcript that grew updates its row"), sumOf(rows(), "s-main") === 5);
+  rmSync(join(projects, slugOf(main), "s-main.jsonl"));
+  check(tag("a deleted transcript keeps its row"), sumOf(rows(), "s-main") === 5);
+  const rawFile = join(main, ".octobots", "tokenomics", "raw", "segments.jsonl");
+  const seed = (list) => writeFileSync(rawFile, list.map((s) => JSON.stringify(s)).join("\n") + "\n");
+  const tmpl = fromMain.find((s) => s.session_id === "s-main");
+  const row = (branch, turns) => ({ ...tmpl, segment_id: `s-main:main:${branch}`, branch, turns });
+  seed([row("feat/w", 10), row("feat/v", 3)]);
+  writeFileSync(join(projects, slugOf(main), "s-main.jsonl"), [["feat/w", 9], ["feat/u", 6]].flatMap(([b, n]) => Array.from({ length: n }, (_, i) => turn({ branch: b, requestId: `y-${b}-${i}` }))).join("\n") + "\n");
+  check(tag("shortened then grown: every stored branch survives and the new one is added"), sumOf(rows(), "s-main") === 19, String(sumOf(rows(), "s-main")));
+  put(dotWt, "s-copy", 3, { branch: "HEAD" });
+  put(main, "s-copy", 3, { branch: "HEAD", recordCwd: dotWt });
+  check(tag("a session copied under two slugs counts once"), sumOf(rows(), "s-copy") === 3, String(sumOf(rows(), "s-copy")));
+  for (const d of [dotWt, main]) rmSync(join(projects, slugOf(d), "s-copy.jsonl"));
+  put(main, "s-split", 3, { branch: "main" });
+  put(dotWt, "s-split", 10, { branch: "feat/w", recordCwd: main });
+  const splitFile = join(projects, slugOf(dotWt), "s-split.jsonl");
+  writeFileSync(splitFile, readFileSync(splitFile, "utf8").replaceAll('"s-split-', '"moved-'));
+  check(tag("a session split by a move into a worktree keeps both parts"), sumOf(rows(), "s-split") === 13, String(sumOf(rows(), "s-split")));
+  put(main, "s-renamed", 2, { recordCwd: main.replace(/-wt-([^-]*)$/, "-wt.$1").replace("selftest-wt", "selftest.wt") });
+  check(tag("a project renamed to the same slug keeps its sessions"), sumOf(rows(), "s-renamed") === 2);
+  for (const d of [dotWt, main]) rmSync(join(projects, slugOf(d), "s-split.jsonl"));
+  const locked = join(projects, `${slugOf(join(main, ".worktrees"))}-locked`);
+  mkdirSync(locked, { mode: 0o000 });
+  check(tag("an unreadable directory is skipped"), sumOf(rows(), "s-dot") === 2);
+  chmodSync(locked, 0o700);
+  rmSync(locked, { recursive: true, force: true });
+  seed([row("HEAD", 10)]);
+  put(main, "s-main", 3);
+  check(tag("turns on a named branch never replace a stored HEAD row"), sumOf(rows(), "s-main") === 13);
+  seed([row("feat/w", 10)]);
+  const two = ["feat/w", "HEAD"].flatMap((b, k) => [0, 1, 2, 3, 4].map((i) => turn({ branch: b, requestId: `x-${k}-${i}`, ts: "2020-01-01T00:00:00.000Z" })));
+  writeFileSync(join(projects, slugOf(main), "s-main.jsonl"), two.join("\n") + "\n");
+  check(tag("turns that moved to another branch are not counted twice"), sumOf(rows(), "s-main") === 10, String(sumOf(rows(), "s-main")));
+  const steady = collectRaw(main, env, [], true);
+  check(tag("and the result is stable"), collectRaw(main, env, [], true) === steady);
+
+  // --- codex ---
+  const codexDir = join(base, "codex");
+  const at = "2026-07-01T11:00:10.000Z";
+  const roll = (id, cwd, repoUrl, n = 1) => writeRollout(codexDir, { id, ts: "2026-07-01T11:00:00.000Z", cwd, branch: "feat/w", repoUrl,
+    turns: [T(`t-${id}`, at, "gpt-6.1-sol", "high", Array.from({ length: n }, (_, i) => R(`${id}-r${i}`, at, 10, 0, 1, 0)))] });
+  const ours = "git@github.com:demo-owner/proj.git";
+  const other = "https://github.com/demo-owner/other.git";
+  roll("cx-repo", "/elsewhere/proj", ours, 3);
+  roll("cx-nested", nested, other);
+  roll("cx-norepo", main, undefined);
+  roll("cx-norepo-wt", sibling, undefined);
+  roll("cx-norepo-nested", nested, undefined);
+  roll("cx-foreign", "/elsewhere/x", other);
+  const codex = (dir, extra = []) => {
+    execFileSync(process.execPath, [join(HERE, "collect-codex.mjs"), "--project-dir", dir, "--codex-dir", codexDir, "--quiet", ...extra], { stdio: ["ignore", "ignore", "inherit"], env });
+    const raw = readFileSync(join(dir, ".octobots", "tokenomics", "raw", "segments.jsonl"), "utf8");
+    return { raw, ids: parseSegments(raw).filter((s) => s.source === "codex").map((s) => s.thread_id).sort().join(), segs: parseSegments(raw) };
+  };
+  const cxWant = "cx-norepo,cx-norepo-wt,cx-repo";
+  const c1 = codex(main);
+  check(tag("codex: a nested checkout's sessions are not taken by cwd"), c1.ids === cxWant, c1.ids);
+  check(tag("codex: a second run changes nothing"), codex(main).raw === c1.raw);
+  for (const d of [dotWt, sibling]) check(tag(`codex: ${basename(d)} worktree reads the same sessions`), codex(d).ids === cxWant);
+  roll("cx-repo", "/elsewhere/proj", ours, 1);
+  check(tag("codex: a shortened rollout does not shrink its row"), codex(main).segs.find((s) => s.thread_id === "cx-repo")?.turns === 3);
+  git(main, "remote", "remove", "origin");
+  rmSync(rawFile);
+  check(tag("codex: no repo key -> cwd alone decides, still without the nested checkout"), codex(main).ids === "cx-norepo,cx-norepo-wt");
+
+  rmSync(dirname(twin), { recursive: true, force: true });
+  rmSync(base, { recursive: true, force: true });
+}
+
 if (!existsSync(VENDOR_YAML)) {
   console.log(`  WARN vendored js-yaml not found at ${VENDOR_YAML} — the yaml suite cannot run`);
   failures++;
@@ -769,6 +929,7 @@ runRootsSuite();
 runCodexSuite();
 runSuffixSuite();
 runReflogSuite();
+runCheckoutsSuite();
 
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nall checks passed");
 process.exit(failures ? 1 : 0);

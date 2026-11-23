@@ -9,12 +9,12 @@
 // The config-dir check reports where Claude Code writes this project's transcripts, which is the
 // root the tokenomics collector reads: $CLAUDE_CONFIG_DIR/projects/<slug>, else ~/.claude/projects/<slug>
 // (<slug> is the main checkout's absolute path with every non-alphanumeric character as "-"). The
-// default is healthy: the collector reads only this project's own slug directory, so a shared
+// default is healthy: the collector reads only this project's own slugs (its worktrees' too), so a shared
 // ~/.claude does not mix repos. This must be run from a real shell, because CLAUDE_CONFIG_DIR is an
 // environment variable.
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { findLegacyWorkflowFolders, isCampaignDir, NO_LONGER_READ } from "./legacy-workflows.mjs";
 import { fileReconciledFrom, parseSkillMarker } from "./skill-marker.mjs";
@@ -35,9 +35,30 @@ const note = (area, msg) => findings.push({ level: "note", area, msg });
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; } };
 
 // ── 1. Transcript root (CLAUDE_CONFIG_DIR) ──────────────────────────────────────────────────
-// Transcripts live under the MAIN checkout's slug, so a worktree path is unwound first.
-const wtAt = ROOT.indexOf(`${sep}.claude${sep}worktrees${sep}`);
-const MAIN_ROOT = wtAt !== -1 ? ROOT.slice(0, wtAt) : ROOT;
+// Transcripts live under the MAIN checkout's slug, so a worktree is unwound first: through git, else by
+// path. Same rule as tokenomics/checkouts.mjs, which is not installed beside this script.
+function mainRoot() {
+  const WT = /(?:^|[\\/])(?:\.claude[\\/]worktrees|\.worktrees)(?:[\\/]|$)/;
+  const unwind = (dir) => { const m = dir.match(WT); return m && m.index > 0 ? dir.slice(0, m.index) : dir; };
+  const byPath = unwind(ROOT);
+  try {
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+    const git = (...a) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10000, env });
+    const [top, dir, common] = git("rev-parse", "--show-toplevel", "--absolute-git-dir", "--git-common-dir").split("\n");
+    const sub = relative(realpathSync(top), realpathSync(ROOT));
+    if (realpathSync(resolve(ROOT, common)) === realpathSync(dir)) {
+      const tail = sub.match(WT) ? sub.slice(sub.match(WT).index) : "";
+      if (!tail) return ROOT;
+      return ROOT.endsWith(tail) ? ROOT.slice(0, -tail.length).replace(/[\\/]$/, "") : join(top, sub.slice(0, -tail.length));
+    }
+    const first = git("worktree", "list", "--porcelain").split("\n")[0].slice("worktree ".length);
+    if (!existsSync(join(first, ".git"))) return ROOT;
+    const main = join(first, sub);
+    return existsSync(byPath) && existsSync(main) && realpathSync(byPath) === realpathSync(main) ? byPath : main;
+  } catch { /* no git, or not a repository */ }
+  return byPath;
+}
+const MAIN_ROOT = mainRoot();
 const SLUG = MAIN_ROOT.replace(/[^A-Za-z0-9]/g, "-");
 const ccd = process.env.CLAUDE_CONFIG_DIR;
 if (!ccd) {

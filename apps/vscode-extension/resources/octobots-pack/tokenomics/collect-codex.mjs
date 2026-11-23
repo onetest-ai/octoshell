@@ -46,7 +46,7 @@ import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import * as zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
-import { mainCheckoutDir, resolveProjectDir } from "./roots.mjs";
+import { cwdInside, gitFreeEnv, projectCheckouts, resolveProjectDir } from "./checkouts.mjs";
 
 const args = process.argv.slice(2);
 // --help prints usage and exits before the script reads or writes anything.
@@ -58,11 +58,10 @@ const quiet = args.includes("--quiet");
 const log = (...a) => { if (!quiet) console.error(...a); };
 const argOf = (name) => { const i = args.indexOf(name); return i !== -1 ? args[i + 1] : null; };
 
-// The project and its main checkout, by the one rule collect.mjs and verify.mjs use (roots.mjs),
+// The project and its main checkout, by the one rule collect.mjs and verify.mjs use (checkouts.mjs),
 // so a session whose cwd is any worktree of it still matches.
 const PROJECT_DIR = resolveProjectDir(args);
-// roots.mjs unwinds `.claude/worktrees/`; a `.worktrees/` checkout (another common layout) too.
-const MAIN_DIR = mainCheckoutDir(PROJECT_DIR).replace(/\/\.worktrees\/.*$/, "");
+const { mainDir: MAIN_DIR, worktrees: WORKTREES } = projectCheckouts(PROJECT_DIR);
 // A named import of zstdDecompressSync would fail to LOAD on an older Node and so fail the stage.
 const zstdDecompressSync = typeof zlib.zstdDecompressSync === "function" ? zlib.zstdDecompressSync : null;
 let zstSkipped = 0;
@@ -85,16 +84,22 @@ function resolveRepoKey() {
   const explicit = argOf("--repo") ?? process.env.OCTOBOTS_TOKENOMICS_CODEX_REPO;
   if (explicit) return repoKeyOf(explicit);
   try {
-    return repoKeyOf(execFileSync("git", ["remote", "get-url", "origin"], { cwd: PROJECT_DIR, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim());
+    return repoKeyOf(execFileSync("git", ["remote", "get-url", "origin"], { cwd: PROJECT_DIR, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: gitFreeEnv() }).trim());
   } catch {
     return null; // no git / no origin: only the cwd rule applies
   }
 }
 const REPO_KEY = resolveRepoKey();
 
-const inThisRepo = (cwd, repoUrl) =>
-  (REPO_KEY !== null && repoKeyOf(repoUrl) === REPO_KEY) ||
-  (typeof cwd === "string" && (cwd === MAIN_DIR || cwd.startsWith(`${MAIN_DIR}/`)));
+// The repository decides. The cwd is the fallback, for a session that records no repository or a
+// project with no origin: a checkout of ANOTHER repository nested in ours has a cwd inside ours too.
+const inThisRepo = (cwd, repoUrl) => {
+  const key = repoKeyOf(repoUrl);
+  if (REPO_KEY !== null && key !== null) return key === REPO_KEY;
+  // A foreign repository with a vanished cwd: no .git is left to show it was nested.
+  if (key !== null && !(typeof cwd === "string" && existsSync(cwd))) return false;
+  return typeof cwd === "string" && cwdInside(cwd, [MAIN_DIR, ...WORKTREES]);
+};
 
 function* walkRollouts(dir) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -261,7 +266,8 @@ function merge(fresh) {
     }
   }
   const before = byId.size;
-  for (const s of fresh) byId.set(s.segment_id, s);
+  // A rollout shortened since it was collected must not shrink its row.
+  for (const s of fresh) if (!((byId.get(s.segment_id)?.turns ?? 0) > s.turns)) byId.set(s.segment_id, s);
   return { records: [...byId.values()].sort((a, b) => a.segment_id.localeCompare(b.segment_id)), before };
 }
 
