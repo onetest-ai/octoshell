@@ -17,6 +17,9 @@
 // missions, and reported the entire board's cost as unattributed. A board-format
 // bug must fail here, not in a $1.6k report nobody re-reads.
 //
+// A reflog suite covers branch recovery when transcripts record `gitBranch: "HEAD"`,
+// and that a re-keyed segment is not counted twice.
+//
 // A separate roots suite covers where transcripts are read from (slug filter, root
 // precedence, dedupe) with HOME and CLAUDE_CONFIG_DIR isolated per child process.
 //
@@ -435,6 +438,86 @@ function runSuffixSuite() {
   for (const d of [root, emptyHome]) rmSync(d, { recursive: true, force: true });
 }
 
+// --- reflog branch recovery (from coach-android's fork, 2026-08-07) ----------
+// Claude Code builds from mid-2026 stamped `gitBranch: "HEAD"` on EVERY record,
+// even on a named branch (2400 of 2400 records in one project). Every segment
+// then buckets under one meaningless branch, maps to no mission, and the whole
+// campaign reports as unattributed while the collector exits 0. The collector
+// falls back to the reflog, which records which branch HEAD pointed at over
+// time. Current builds record the real branch; the fallback still matters when
+// old transcripts are collected again.
+function runReflogSuite() {
+  console.log(`\ntokenomics selftest — reflog branch recovery:`);
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "tokenomics-selftest-reflog-")));
+  const emptyHome = mkdtempSync(join(tmpdir(), "tokenomics-selftest-home-"));
+  const tag = (name) => `[reflog] ${name}`;
+  const gitEnv = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+  const git = (env, ...a) =>
+    execFileSync("git", a, { cwd: root, stdio: "ignore", env: { ...process.env, ...gitEnv, ...env } });
+
+  // A repo whose reflog says: main until Jan 2, feat/demo-m1-t1 until Jan 3,
+  // main after. Reflog entry times honour GIT_COMMITTER_DATE, so this is exact
+  // rather than wall-clock dependent.
+  git({}, "init", "-q", "-b", "main");
+  git({}, "config", "user.email", "selftest@example.com");
+  git({}, "config", "user.name", "selftest");
+  writeFileSync(join(root, "seed.txt"), "seed\n");
+  git({}, "add", "seed.txt");
+  git({ GIT_COMMITTER_DATE: "2026-01-01T10:00:00+0000", GIT_AUTHOR_DATE: "2026-01-01T10:00:00+0000" }, "commit", "-qm", "seed");
+  git({ GIT_COMMITTER_DATE: "2026-01-02T10:00:00+0000" }, "checkout", "-q", "-b", "feat/demo-m1-t1");
+  git({ GIT_COMMITTER_DATE: "2026-01-03T10:00:00+0000" }, "checkout", "-q", "main");
+
+  // Every record claims "HEAD", as those transcripts did; only the timestamps differ.
+  // One record names its branch: a real name always wins over the reflog.
+  const projects = join(root, ".claude", "projects", slugOf(root));
+  mkdirSync(projects, { recursive: true });
+  writeFileSync(join(projects, `${SESSION}.jsonl`), [
+    turn({ branch: "HEAD", requestId: "rf-1", ts: "2026-01-01T12:00:00.000Z" }), // before any checkout
+    turn({ branch: "HEAD", requestId: "rf-2", ts: "2026-01-02T12:00:00.000Z" }), // feature window
+    turn({ branch: "HEAD", requestId: "rf-3", ts: "2026-01-03T12:00:00.000Z" }), // back on main
+    turn({ branch: "fix/named", requestId: "rf-4", ts: "2026-01-02T13:00:00.000Z" }),
+  ].join("\n") + "\n");
+
+  const tokDir = join(root, ".octobots", "tokenomics");
+  const rawFile = join(tokDir, "raw", "segments.jsonl");
+  const collect = () => execFileSync(process.execPath, [join(HERE, "collect.mjs"), "--project-dir", root, "--quiet"],
+    { stdio: ["ignore", "ignore", "inherit"], env: isolatedEnv(emptyHome) });
+  const read = () => readFileSync(rawFile, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+
+  collect();
+  const segs = read();
+  const branches = new Set(segs.map((s) => s.branch));
+  const got = `got ${JSON.stringify([...branches])}`;
+  check(tag("no segment is left on the literal HEAD"), !branches.has("HEAD"), got);
+  check(tag("feature-branch work recovered from the reflog"), branches.has("feat/demo-m1-t1"), got);
+  check(tag("main work recovered from the reflog"), branches.has("main"), got);
+  check(tag("a real gitBranch wins over the reflog"), branches.has("fix/named"), got);
+  // A record predating every checkout belongs to the branch the repo started on.
+  check(tag("pre-first-checkout work resolves, not dropped"),
+    segs.reduce((n, s) => n + (s.turns ?? 0), 0) === 4,
+    `turns=${segs.map((s) => `${s.branch}:${s.turns}`).join(" ")}`);
+
+  // --- re-keying must not double count ---------------------------------------
+  // `segment_id` embeds the branch, so a change in how a branch is resolved
+  // re-keys a segment, and a merge purely on id keeps the old key AND the new
+  // one: coach-android's total doubled from $223 to $449 this way, with the
+  // collector exiting 0. A re-scanned session is authoritative for itself; a
+  // session whose transcript is gone must survive untouched.
+  const stale = { ...segs[0], segment_id: `${SESSION}:main:HEAD`, branch: "HEAD", turns: 999 };
+  const foreign = { ...segs[0], segment_id: "s0000000-dead-dead-dead-000000000002:main:main", session_id: "s0000000-dead-dead-dead-000000000002", turns: 7 };
+  writeFileSync(rawFile, [...segs, stale, foreign].map((r) => JSON.stringify(r)).join("\n") + "\n");
+  collect();
+  const after = read();
+  const ids = `ids=${after.map((s) => s.segment_id).join(" ")}`;
+  check(tag("re-keyed stale segment is dropped, not double counted"), !after.some((s) => s.segment_id === `${SESSION}:main:HEAD`), ids);
+  check(tag("a session that was NOT re-scanned survives the merge"), after.some((s) => s.segment_id.startsWith("s0000000-dead")), ids);
+  check(tag("turns stay stable across a re-run"),
+    after.filter((s) => s.segment_id.startsWith(SESSION)).reduce((n, s) => n + (s.turns ?? 0), 0) === 4,
+    `turns=${after.map((s) => `${s.branch}:${s.turns}`).join(" ")}`);
+
+  for (const d of [root, emptyHome]) rmSync(d, { recursive: true, force: true });
+}
+
 if (!existsSync(VENDOR_YAML)) {
   console.log(`  WARN vendored js-yaml not found at ${VENDOR_YAML} — the yaml suite cannot run`);
   failures++;
@@ -443,6 +526,7 @@ if (!existsSync(VENDOR_YAML)) {
 for (const format of ["yaml", "md"]) runSuite(format);
 runRootsSuite();
 runSuffixSuite();
+runReflogSuite();
 
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nall checks passed");
 process.exit(failures ? 1 : 0);
