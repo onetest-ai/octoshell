@@ -1,13 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync } from "node:fs";
-import { readRegularText } from "./pack-updates.js";
+import { PACK_UPDATES_DIR, readRegularText, type PendingRecord } from "./pack-updates.js";
 import { join } from "node:path";
 import { brotliDecompressSync } from "node:zlib";
 import { isJudgedPackPath, packFileEntryName, packFileRel, RETIRED_FILES, RETIRED_PACK_PATHS } from "./pack-files.js";
 import { OCTOBOTS_SKILLS, RETIRED_SKILLS } from "./pack-skills.js";
 import { fileReconciledFrom, parseSkillMarker, skillSha256, withoutReconciledFrom } from "./skill-marker.js";
 import { parsePackVersionMarker } from "./pack-version-marker.js";
-import type { PendingRecord } from "./pack-updates.js";
 
 /**
  * Deviation detection and base recovery for pack updates (M7).
@@ -529,7 +528,10 @@ export function shouldPromptOnActivation(
   if (status.upToDate) return false;
   if (!status.upToDateExceptLocal) return true;
   return status.deviations.some((d) => {
-    const pend = pending?.packVersion === packVersion && pending.skills.some((e) => e.skill === d.skill && e.localSha256 === d.sha256);
+    // The entry's folder names the version it was staged for: one whose file could not be read since
+    // keeps its older folder in a record of a newer version.
+    const pend = pending?.packVersion === packVersion && pending.skills.some((e) =>
+      e.skill === d.skill && e.localSha256 === d.sha256 && e.dir.startsWith(`${PACK_UPDATES_DIR}/v${packVersion}/`));
     const kept = pending?.kept.some((k) => k.skill === d.skill && k.packVersion === packVersion && k.sha256 === d.sha256) ?? false;
     return !pend && !kept;
   });

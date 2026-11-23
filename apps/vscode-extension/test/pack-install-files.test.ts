@@ -1,6 +1,6 @@
 // v62: every judged pack file (skill scripts, hooks, the statusline, templates, the tokenomics CLI)
 // is told apart from the pack's own by content, and a changed retired file is a retired deviation.
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -766,5 +766,140 @@ describe("a skill newer than the pack", () => {
     expect(read(join(dir, "DECISIONS.md"))).toBe(log);
     expect(read(join(dir, "local.md"))).toBe(FUTURE);
     expect(read(live(ws, VALIDATE))).toBe(FUTURE);
+  });
+});
+
+describe("an entry that leaves the report and comes back", () => {
+  const MD = "skill/mission-execution/SKILL.md";
+  const OPEN = "- ESCALATED: rule: local a; upstream b; question c?";
+  const FIRST: Record<string, string> = { [VALIDATE]: packText(VALIDATE) + "// one\n", [MD]: packText(MD) + "\none\n" };
+  const SECOND: Record<string, string> = { [VALIDATE]: packText(VALIDATE) + "// two\n", [MD]: packText(MD) + "\ntwo\n" };
+  const entryName = (key: string) => (key === MD ? "mission-execution" : packFileEntryName(key));
+  const folder = (ws: string, key: string, v: number = PACK) => join(ws, ".octobots", "pack-updates", `v${v}`, entryName(key));
+  const install = (ws: string, v: number = PACK) => installPack(PACK_SRC, ws, { store, packVersion: v });
+  const entries = (ws: string) => readPending(ws)!.skills.map((e) => e.skill);
+
+  function staged(key: string): string {
+    const ws = installed();
+    writeFileSync(live(ws, key), FIRST[key]!);
+    install(ws);
+    return ws;
+  }
+  /** Where the open question sits: the agent's log, or only a brief that itself carried it. */
+  function question(dir: string, where: string): void {
+    writeFileSync(join(dir, "merged.md"), "stale merge\n");
+    if (where === "DECISIONS.md") writeFileSync(join(dir, where), `# Decisions\n${OPEN}\n`);
+    else writeFileSync(join(dir, where), `# Reconcile\n\nCarried over from v${PACK - 1}:\n${OPEN}\n\nInputs\n`);
+  }
+  function symlinked(ws: string, key: string): void {
+    const target = join(mkdtempClean("pack-files-out-"), "elsewhere");
+    writeFileSync(target, "// elsewhere\n");
+    rmSync(live(ws, key));
+    symlinkSync(target, live(ws, key));
+  }
+  /** Writes `text` at the path of `key`, in place of whatever is there. */
+  function restore(ws: string, key: string, text: string): void {
+    rmSync(live(ws, key));
+    writeFileSync(live(ws, key), text);
+  }
+  function relabel(ws: string, skill: string, v: number): void {
+    const md = live(ws, `skill/${skill}/SKILL.md`);
+    writeFileSync(md, read(md).replace(/^version:.*$/m, `version: ${v}`));
+  }
+  const ROUTES: Array<[string, string, (ws: string) => void, (ws: string) => void]> = [
+    ["pristine", VALIDATE, (ws) => restore(ws, VALIDATE, packText(VALIDATE)), () => {}],
+    ["pristine", MD, (ws) => restore(ws, MD, packText(MD)), () => {}],
+    ["skipped", VALIDATE, (ws) => symlinked(ws, VALIDATE), () => {}],
+    ["newer", VALIDATE, (ws) => relabel(ws, "mission-planner", PACK + 1), (ws) => relabel(ws, "mission-planner", PACK)],
+    ["newer", MD, (ws) => relabel(ws, "mission-execution", PACK + 1), () => {}],
+  ];
+
+  describe.each(ROUTES)("%s: %s", (route, key, leave, back) => {
+    it.each(["DECISIONS.md", "RECONCILE.md"])("merged.md goes and the question of %s is carried", (where) => {
+      const ws = staged(key);
+      const dir = folder(ws, key);
+      question(dir, where);
+      leave(ws);
+      expect(install(ws).pending).toEqual([]);
+      expect(entries(ws)).toEqual(route === "skipped" ? [entryName(key)] : []);
+      back(ws);
+      restore(ws, key, SECOND[key]!);
+      expect(install(ws).pending).toEqual([entryName(key)]);
+      expect(read(join(dir, "local.md"))).toBe(SECOND[key]);
+      expect(existsSync(join(dir, "merged.md"))).toBe(false);
+      const brief = read(join(dir, "RECONCILE.md"));
+      expect(brief).toContain(`Carried over from v${where === "DECISIONS.md" ? PACK : PACK - 1}:\n${OPEN}\n`);
+      expect(brief.split("Carried over from").length).toBe(2);
+      if (where === "DECISIONS.md") expect(read(join(dir, where))).toContain(OPEN);
+    });
+  });
+
+  it("a kept file re-opened over an old folder carries its question too", () => {
+    const ws = staged(VALIDATE);
+    question(folder(ws, VALIDATE), "DECISIONS.md");
+    installPack(PACK_SRC, ws, { store, localChanges: "keep" });
+    installPack(PACK_SRC, ws, { store, localChanges: "reconcile" });
+    expect(read(join(folder(ws, VALIDATE), "RECONCILE.md"))).toContain(OPEN);
+  });
+
+  it.each([undefined, "reconcile", "overwrite", "keep"] as const)("%s: a skipped file keeps its pending record unchanged, its folder too", (localChanges) => {
+    const ws = staged(VALIDATE);
+    const dir = folder(ws, VALIDATE);
+    question(dir, "DECISIONS.md");
+    const before = readPending(ws);
+    symlinked(ws, VALIDATE);
+    const res = installPack(PACK_SRC, ws, { store, ...(localChanges ? { localChanges } : {}) });
+    expect(res).toMatchObject({ pending: [], kept: [], skipped: [packFileRel(VALIDATE)] });
+    expect(readPending(ws)).toEqual(before);
+    expect(readdirSync(dir).sort()).toEqual(["DECISIONS.md", "RECONCILE.md", "base.md", "local.md", "merged.md", "upstream.md"]);
+    const st = packStatus(ws, PACK, store);
+    expect(shouldPromptOnActivation(st, readPending(ws), PACK)).toBe(false);
+    const list = spawnSync("node", [live(ws, "skill/octobots-doctor/scripts/pack-reconcile.mjs"), "list"], { encoding: "utf8" });
+    expect(list).toMatchObject({ status: 0, stderr: "" });
+    expect(list.stdout).toContain(`folder: .octobots/pack-updates/v${PACK}/${packFileEntryName(VALIDATE)}/`);
+    // Back unchanged at the same version: the same entry, its merge in progress untouched.
+    restore(ws, VALIDATE, FIRST[VALIDATE]!);
+    install(ws);
+    expect(readPending(ws)).toEqual(before);
+    expect(read(join(dir, "merged.md"))).toBe("stale merge\n");
+  });
+
+  it.each([undefined, "reconcile", "overwrite", "keep"] as const)("%s: a skipped file keeps its kept record unchanged", (localChanges) => {
+    const ws = installed();
+    writeFileSync(live(ws, VALIDATE), FIRST[VALIDATE]!);
+    installPack(PACK_SRC, ws, { store, localChanges: "keep" });
+    const before = readPending(ws)!.kept;
+    symlinked(ws, VALIDATE);
+    installPack(PACK_SRC, ws, { store, ...(localChanges ? { localChanges } : {}) });
+    expect(readPending(ws)).toMatchObject({ skills: [], kept: before });
+    restore(ws, VALIDATE, FIRST[VALIDATE]!);
+    expect(install(ws)).toMatchObject({ pending: [], kept: [packFileEntryName(VALIDATE)] });
+  });
+
+  it("skipped across a bump: the older folder stays the entry's, and the next readable install restages from it", () => {
+    const ws = staged(VALIDATE);
+    question(folder(ws, VALIDATE), "DECISIONS.md");
+    install(ws, PACK + 1);
+    writeFileSync(join(folder(ws, VALIDATE, PACK + 1), "merged.md"), "stale merge\n");
+    const older = readPending(ws)!.skills;
+    symlinked(ws, VALIDATE);
+    install(ws, PACK + 2);
+    expect(readPending(ws)).toMatchObject({ packVersion: PACK + 2, skills: older });
+    const list = spawnSync("node", [live(ws, "skill/octobots-doctor/scripts/pack-reconcile.mjs"), "list"], { encoding: "utf8" });
+    expect(list.stdout).toContain(`upstream v${PACK + 1}`);
+
+    restore(ws, VALIDATE, FIRST[VALIDATE]!);
+    // Staged for the older version only: readable again, it is asked about.
+    const { deviations } = detectDeviations(ws, PACK + 2, store, { currentFiles, currentHashes });
+    const status = { installed: true, upToDate: false, upToDateExceptLocal: true, deviations: deviations.filter((d) => d.file === VALIDATE) };
+    expect(status.deviations.length).toBe(1);
+    expect(shouldPromptOnActivation(status, readPending(ws), PACK + 2)).toBe(true);
+    install(ws, PACK + 2);
+    expect(shouldPromptOnActivation(status, readPending(ws), PACK + 2)).toBe(false);
+    const dir = folder(ws, VALIDATE, PACK + 2);
+    expect(read(join(dir, "RECONCILE.md"))).toContain(`Carried over from v${PACK}:\n${OPEN}\n`);
+    expect(readdirSync(dir).sort()).toEqual(["RECONCILE.md", "base.md", "local.md", "upstream.md"]);
+    expect(existsSync(folder(ws, VALIDATE, PACK + 1))).toBe(false);
+    expect(readPending(ws)!.skills).toEqual([expect.objectContaining({ dir: `.octobots/pack-updates/v${PACK + 2}/${packFileEntryName(VALIDATE)}` })]);
   });
 });

@@ -336,7 +336,7 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
           ? recoverFileBase(repoRoot, dev.file, localBytes.get(dev.skill)!, packVersion, store, { gitDeadline })
           : recoverBase(repoRoot, dev.skill, localBytes.get(dev.skill)!, packVersion, store, { gitDeadline }),
         upstream: dev.retired ? null : readFileSync(upstreamOf(dev)),
-        carried: carriedFrom(repoRoot, old, old ? priorVersion(old) : packVersion),
+        carried: carriedFrom(repoRoot, old?.dir ?? dirRel, old ? priorVersion(old) : packVersion),
         ...(old ? { replacedDir: old.dir } : {}),
       });
     }
@@ -360,7 +360,8 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
   const keptPackPaths = new Set<string>();
   for (const d of report.deviations) if (d.file !== undefined && !replaced.has(d.skill)) keptPackPaths.add(d.file);
   for (const packPath of Object.keys(currentFiles)) if (report.reconciled.includes(packFileEntryName(packPath))) keptPackPaths.add(packPath);
-  for (const packPath of [...Object.keys(currentFiles), ...RETIRED_PACK_PATHS]) if (report.skipped.includes(packFileRel(packPath))) keptPackPaths.add(packPath);
+  const skippedPaths = [...Object.keys(currentFiles), ...RETIRED_PACK_PATHS].filter((p) => report.skipped.includes(packFileRel(p)));
+  for (const packPath of skippedPaths) keptPackPaths.add(packPath);
   /** The kept file names directly under a pack directory. */
   const keptIn = (dir: string): Set<string> => new Set([...keptPackPaths].filter((p) => p.startsWith(`${dir}/`)).map((p) => p.slice(dir.length + 1)));
 
@@ -398,13 +399,18 @@ export function installPack(srcRoot: string, repoRoot: string, opts: InstallOpti
       repoRoot, skill: dev.skill, ...(dev.file !== undefined ? { file: dev.file } : {}), packVersion, retired: dev.retired, localVersion: dev.version, localSha256: dev.sha256,
       base: plan.base, upstreamSha256: upstreamShaOf(dev), carried: plan.carried,
       localBytes: localBytes.get(dev.skill)!, upstreamBytes: plan.upstream,
-      ...(plan.replacedDir ? { replacedDir: plan.replacedDir } : {}), restage: priorEntry(dev.skill) !== undefined,
+      ...(plan.replacedDir ? { replacedDir: plan.replacedDir } : {}),
     }));
     staged.push(dev.skill);
   }
+  // A file that cannot be read this time was neither answered nor undone: its record stays unchanged,
+  // an older folder included, and the next install that can read it goes on from there.
+  const skippedNames = new Set(skippedPaths.map(packFileEntryName));
+  skills.push(...(prior?.skills ?? []).filter((e) => skippedNames.has(e.skill)));
+  const keptSkipped = (prior?.kept ?? []).filter((e) => skippedNames.has(e.skill));
   // The entries are kept as they are, packVersion included: the choice was made for that pack
   // version, and the activation prompt asks again for a newer one.
-  kept.push(...remembered.values());
+  kept.push(...remembered.values(), ...keptSkipped);
   if (choice !== "reconcile") {
     for (const dev of report.deviations) {
       // Inputs of the entry (and of this version's folder) go; logs and saved local files stay.

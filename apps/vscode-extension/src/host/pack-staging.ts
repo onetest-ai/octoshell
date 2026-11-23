@@ -111,18 +111,19 @@ export function carriedBlocks(brief: string): CarriedBlock[] {
 }
 
 /**
- * Questions a re-staged entry inherits from the entry it replaces: the open ESCALATED entries of
+ * Questions an entry being staged inherits from `dirRel`, the folder of the entry it replaces or,
+ * when it has none (an entry dropped earlier), its own folder as it is on disk: the open ESCALATED entries of
  * its DECISIONS.md, or, when the agent never ran there, the blocks its RECONCILE.md itself carried.
  */
-export function carriedFrom(repoRoot: string, prior: PendingEntry | undefined, priorVersion: number): CarriedBlock[] {
+export function carriedFrom(repoRoot: string, dirRel: string, version: number): CarriedBlock[] {
   let dir: string | null;
-  try { dir = prior ? stagingPath(repoRoot, prior.dir) : null; } catch { return []; }
+  try { dir = stagingPath(repoRoot, dirRel); } catch { return []; }
   if (!dir) return [];
   const decisions = join(dir, "DECISIONS.md");
   if (lstatOrNull(decisions) !== null) {
     try {
       const lines = openEscalations(readRegularText(decisions));
-      return lines.length > 0 ? [{ version: priorVersion, lines }] : [];
+      return lines.length > 0 ? [{ version, lines }] : [];
     } catch { return []; }
   }
   try { return carriedBlocks(readRegularText(join(dir, "RECONCILE.md"))); } catch { return []; }
@@ -254,17 +255,18 @@ export interface StageInput extends BriefInput {
   upstreamBytes: Buffer | null;
   /** The folder of the entry this one replaces, when it is not this one's folder. */
   replacedDir?: string;
-  /** Delete a stale `merged.md`: the entry is being re-staged. */
-  restage: boolean;
 }
 
 const startsWithFrontmatter = (b: Buffer | null): boolean => b !== null && /^\uFEFF?---\r?\n/.test(b.toString("utf8"));
 
-/** Writes one skill's staging folder and returns its pending entry. */
+/**
+ * Writes one skill's staging folder and returns its pending entry. A merged.md in it is always stale
+ * (it was made from other inputs, possibly for an entry dropped since) and is deleted.
+ */
 export function stageEntry(s: StageInput): PendingEntry {
   const dirRel = stagingDirRel(s.packVersion, s.skill);
   const dir = stagingPath(s.repoRoot, dirRel, true)!;
-  if (s.restage) rmSync(join(dir, "merged.md"), { force: true });
+  rmSync(join(dir, "merged.md"), { force: true });
   writeIfChanged(join(dir, "local.md"), s.localBytes);
   if (s.base) writeIfChanged(join(dir, "base.md"), s.base.body); else rmSync(join(dir, "base.md"), { force: true });
   if (s.upstreamBytes) writeIfChanged(join(dir, "upstream.md"), s.upstreamBytes); else rmSync(join(dir, "upstream.md"), { force: true });
