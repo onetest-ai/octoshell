@@ -50,3 +50,14 @@ export function parseSkillMarker(text: string): SkillMarker {
   const lead = label.match(/^(\d+)/);
   return { label, n: lead ? Number(lead[1]) : null, kind: "label", reconciledFrom, sha256 };
 }
+
+/**
+ * The `octobots-reconciled-from: <sha256>` marker of a reconciled pack FILE other than a SKILL.md
+ * (a tokenomics script): the first line holding it, in whatever comment syntax the file uses
+ * (`// ...`, `# ...`, `<!-- ... -->`). Lower-cased; null when absent. A file has no frontmatter, so
+ * the marker alone says what it was reconciled against.
+ */
+export function fileReconciledFrom(text: string): string | null {
+  const m = normalise(text).match(/octobots-reconciled-from:[ \t]*([0-9a-fA-F]{64})(?![0-9a-fA-F])/);
+  return m ? m[1]!.toLowerCase() : null;
+}

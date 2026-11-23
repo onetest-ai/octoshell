@@ -238,7 +238,7 @@ describe("pack-reconcile.mjs workspace resolution and source", () => {
     const imports = full.split("\n").filter((l) => /^import .* from "\.\.\/\.\.\//.test(l));
     expect(imports).toEqual([
       'import * as io from "../../mission-planner/scripts/pending-io.mjs";',
-      'import { parseSkillMarker, skillSha256 } from "../../mission-planner/scripts/skill-marker.mjs";',
+      'import { fileReconciledFrom, parseSkillMarker, skillSha256 } from "../../mission-planner/scripts/skill-marker.mjs";',
     ]);
     const src = full.split("\n").filter((l) => !/^import /.test(l)).join("\n");
     for (const s of [...OCTOBOTS_SKILLS, ...RETIRED_SKILLS.filter((r) => r !== "octobots")]) expect(src, s).not.toContain(s);

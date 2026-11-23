@@ -129,6 +129,8 @@ export function carriedFrom(repoRoot: string, prior: PendingEntry | undefined, p
 
 export interface BriefInput {
   skill: string;
+  /** A tokenomics file's name (`collect.mjs`); absent for a skill. */
+  file?: string;
   packVersion: number;
   retired: boolean;
   localVersion: string;
@@ -140,6 +142,7 @@ export interface BriefInput {
 
 /** The brief an agent reads first. Deterministic: the same inputs give the same bytes. */
 export function renderBrief(b: BriefInput): string {
+  if (b.file !== undefined) return renderFileBrief(b, b.file);
   const baseLine = b.base === null
     ? "none; the merge is two-way (local against upstream)"
     : `v${b.base.version}, sha256 ${b.base.sha256}, source ${b.base.source}${b.base.source === "closest" ? " (approximate: the stored body closest to the local file)" : ""}`;
@@ -174,6 +177,36 @@ export function renderBrief(b: BriefInput): string {
       "",
     );
   }
+  return out.join("\n");
+}
+
+/** The brief for a tokenomics file: the same merge, a different live target and marker. */
+function renderFileBrief(b: BriefInput, file: string): string {
+  const live = `.octobots/tokenomics/${file}`;
+  const baseLine = b.base === null
+    ? "none; the merge is two-way (local against upstream)"
+    : `v${b.base.version}, sha256 ${b.base.sha256}, source ${b.base.source}${b.base.source === "closest" ? " (approximate: the stored body closest to the local file)" : ""}`;
+  const out = [
+    `# Reconcile ${live} (pack v${b.packVersion})`,
+    "",
+    `- File: ${live} (pending entry ${b.skill})`,
+    `- Local: ${b.localVersion === "unversioned" ? "no pack version marker" : `pack version marker ${b.localVersion}`} (sha256 ${b.localSha256})`,
+    `- Base: ${baseLine}`,
+    `- Upstream: pack v${b.packVersion} (sha256 ${b.upstreamSha256})`,
+    "",
+  ];
+  for (const c of b.carried) out.push(`Carried over from v${c.version}:`, ...c.lines, "");
+  out.push(
+    "Inputs in this folder: local.md" + (b.base ? ", base.md" : "") + ", upstream.md. Each holds the file's text unchanged;",
+    "the .md name is only the staging convention.",
+    "",
+    `The installer kept your ${live} and installed the rest of the pack. Run the octobots-doctor skill;`,
+    "do not edit the live file by hand.",
+    "",
+    "Merge per change (local only: keep; upstream only: take; both the same: take; both different: conflict).",
+    "Write merged.md and DECISIONS.md here; escalate any policy conflict to the user.",
+    "",
+  );
   return out.join("\n");
 }
 

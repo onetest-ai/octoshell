@@ -46,12 +46,12 @@ export function tokenomicsStatus(repoRoot: string, version: number): TokenomicsS
 /**
  * Install the CLI into `<repoRoot>/.octobots/tokenomics/`.
  *
- * Only the files the pack ships are written, so collected artifacts already in that directory
+ * Only the files the pack ships are written, except those in `keep`, so collected artifacts already in that directory
  * (`worklog.jsonl`, `raw/segments.jsonl`, `runs.json`, `report.html`) survive an upgrade untouched.
  * Those are the measurements themselves — agent transcripts are pruned outside the repo, so a
  * clobbered artifact is unrecoverable, not merely stale.
  */
-export function installTokenomics(srcRoot: string, repoRoot: string): number {
+export function installTokenomics(srcRoot: string, repoRoot: string, keep: ReadonlySet<string> = new Set()): number {
   const from = join(srcRoot, "tokenomics");
   if (!existsSync(from)) return 0;
   const to = join(repoRoot, ".octobots", "tokenomics");
@@ -62,6 +62,8 @@ export function installTokenomics(srcRoot: string, repoRoot: string): number {
     if (!entry.isFile()) continue;
     const target = join(to, entry.name);
     if (PRESERVED.has(entry.name) && existsSync(target)) continue;
+    // A file the workspace changed locally (see `installPack`): kept, and staged for reconcile there.
+    if (keep.has(entry.name) && existsSync(target)) continue;
     const f = join(from, entry.name);
     if (!statSync(f).isFile()) continue;
     copyFileSync(f, target);

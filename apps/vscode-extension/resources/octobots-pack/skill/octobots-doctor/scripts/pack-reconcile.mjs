@@ -14,18 +14,21 @@
 //     and holds no `<!-- ESCALATED: ... -->` placeholder line (merged.md's stand-in for an unanswered
 //     rule; a mention of the form inside other text, e.g. in backticks, is not one);
 //   - for a retired skill (`retired` in the entry): .claude/skills/<skill> is gone. A copy the user
-//     kept lives on under another directory name.
+//     kept lives on under another directory name;
+//   - for a tokenomics file (an entry named `tokenomics-<slug>`, e.g. tokenomics-collect-mjs for
+//     .octobots/tokenomics/collect.mjs): the live file holds a comment line
+//     `octobots-reconciled-from: <sha256 of upstream.md>` and no `ESCALATED:` placeholder comment line.
 // A skill with no entry exits 0 and changes nothing. Exit codes: 0 done / listed, 2 usage, 3 refused.
 //
 // The workspace is the one this script is installed in (<root>/.claude/skills/<skill>/scripts/), or
 // --root <dir>; never the current directory. Dependency-free. Its logic names no skill: which skill is
 // retired comes from its pending entry. The shared pack modules are imported from their one fixed
 // home (a fixed path, never a search of .claude/skills, so no other skill's code is ever loaded).
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as io from "../../mission-planner/scripts/pending-io.mjs";
-import { parseSkillMarker, skillSha256 } from "../../mission-planner/scripts/skill-marker.mjs";
+import { fileReconciledFrom, parseSkillMarker, skillSha256 } from "../../mission-planner/scripts/skill-marker.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SKILLS_DIR = resolve(HERE, "..", "..");
@@ -67,6 +70,17 @@ const pending = io.readPending(ROOT);
 if (pending.state === "malformed") refuse(`${io.MALFORMED_PENDING_NOTE}; ${io.MALFORMED_PENDING_FIX}`);
 const record = pending.state === "ok" ? pending.record : null;
 
+// A tokenomics entry's live file: the one in .octobots/tokenomics whose slug is the entry's name
+// (the installer's naming rule, `tokenomicsEntryName` in the extension's pack-skills.ts).
+const TOKENOMICS_PREFIX = "tokenomics-";
+const slugOf = (file) => TOKENOMICS_PREFIX + file.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+function tokenomicsFileOf(name) {
+  if (!name.startsWith(TOKENOMICS_PREFIX)) return null;
+  let names = [];
+  try { names = readdirSync(join(ROOT, ".octobots", "tokenomics")); } catch { /* none installed */ }
+  return names.find((f) => slugOf(f) === name) ?? null;
+}
+
 const versionOf = (e) => Number(e.dir.match(/\/v(\d+)\//)[1]); // isStagingDir guarantees the shape
 const upstreamPath = (e) => join(ROOT, ...e.dir.split("/"), "upstream.md");
 
@@ -80,7 +94,13 @@ if (cmd === "list") {
     const base = e.base ? `base v${e.base.version} (${e.base.source})` : "no base (two-way)";
     console.log(`${e.skill}: local ${e.localVersion}, ${base}, ${e.retired ? "retired: upstream deleted it" : `upstream v${versionOf(e)}`}`);
     console.log(`  folder: ${e.dir}/`);
-    if (!e.retired) {
+    const file = tokenomicsFileOf(e.skill);
+    if (file !== null) {
+      let from = "upstream.md is missing";
+      try { from = `octobots-reconciled-from: ${skillSha256(io.readRegularFile(upstreamPath(e)))}`; } catch { /* reported as missing */ }
+      console.log(`  file: .octobots/tokenomics/${file}`);
+      console.log(`  marker: a comment line holding ${from}`);
+    } else if (!e.retired) {
       let from = "upstream.md is missing";
       try { from = `reconciled-from: ${skillSha256(io.readRegularFile(upstreamPath(e)))}`; } catch { /* reported as missing */ }
       console.log(`  marker: version: ${versionOf(e)}+local; ${from}`);
@@ -107,7 +127,18 @@ const open = readOrRefuse(decisionsFile, `${e.dir}/DECISIONS.md`).split(/\r?\n/)
 if (open.length) refuse(`${e.dir}/DECISIONS.md has ${open.length} open escalation(s); ask the user and record the answer as \`- RESOLVED (user, <YYYY-MM-DD>): ...\`:\n${open.map((l) => `  ${l}`).join("\n")}`);
 
 const liveDir = join(ROOT, ".claude", "skills", skill);
-if (e.retired) {
+const tokFile = tokenomicsFileOf(skill);
+if (skill.startsWith(TOKENOMICS_PREFIX) && !e.retired) {
+  if (tokFile === null) refuse(`no file in .octobots/tokenomics/ matches ${skill}: install merged.md there under the file's own name first`);
+  const rel = `.octobots/tokenomics/${tokFile}`;
+  if (!existsSync(upstreamPath(e))) refuse(`${e.dir}/upstream.md is missing, so octobots-reconciled-from cannot be checked`);
+  const liveText = readOrRefuse(join(ROOT, ".octobots", "tokenomics", tokFile), rel);
+  const want = skillSha256(readOrRefuse(upstreamPath(e), `${e.dir}/upstream.md`));
+  const from = fileReconciledFrom(liveText);
+  if (from !== want) refuse(`${rel} reads octobots-reconciled-from: ${from ?? "(none)"}; it must hold a comment line octobots-reconciled-from: ${want} (the sha256 of ${e.dir}/upstream.md)`);
+  const placeholders = liveText.split(/\r?\n/).filter((l) => /^\s*(\/\/|#|<!--)\s*ESCALATED:/.test(l)).map((l) => l.trim());
+  if (placeholders.length) refuse(`${rel} still holds ${placeholders.length} \`ESCALATED:\` placeholder line(s); every escalated rule needs the user's answer applied before the merge is installed:\n${placeholders.map((l) => `  ${l}`).join("\n")}`);
+} else if (e.retired) {
   if (existsSync(liveDir)) refuse(`.claude/skills/${skill} still exists: this skill is retired, so it must be deleted or moved to a directory name of the user's choosing first`);
 } else {
   const n = versionOf(e);

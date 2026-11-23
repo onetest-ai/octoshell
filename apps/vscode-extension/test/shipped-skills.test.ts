@@ -121,8 +121,9 @@ describe("resources/shipped-skills.json.br (committed store)", () => {
     expect(Object.keys(store.bodies).sort()).toEqual([...store.order].sort());
   });
 
-  it("stays within the 100 KB budget", () => {
-    expect(readFileSync(STORE_PATH).length).toBeLessThanOrEqual(100 * 1024);
+  it("stays within the 160 KB budget", () => {
+    // 100 KB held the skills alone; the tokenomics CLI history (#191) adds about 50 KB.
+    expect(readFileSync(STORE_PATH).length).toBeLessThanOrEqual(160 * 1024);
   });
 });
 

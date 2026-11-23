@@ -137,9 +137,29 @@ was, a pack skill (a skill the pack ships, or one any RECONCILE.md calls retired
 stays retired, and the next install would treat that directory as the retired skill again. If the
 user picks such a name, say so and ask for another.
 
+### A tokenomics file
+
+An entry named `tokenomics-<slug>` (for example `tokenomics-collect-mjs`) is a file of the tokenomics
+CLI, `.octobots/tokenomics/<file>`, that the project changed. RECONCILE.md and `pack-reconcile.mjs
+list` name the file. base.md, local.md and upstream.md hold the file's text as it is, whatever its
+language. Steps 1 and 3 to 10 apply with "rule" meaning one behaviour of the script (a function, a
+flag, a stage, a field of its output), and with these differences:
+
+- In merged.md, the stand-in for an escalated behaviour is one comment line in the file's own
+  syntax: `// ESCALATED: <rule>: awaiting the user's answer, see DECISIONS.md` (`#` in a shell or
+  Python file, `<!-- ... -->` in Markdown).
+- Step 11 instead: add the line `// octobots-reconciled-from: <sha256>` (in the file's comment syntax)
+  near the top of merged.md, below a `#!` line if there is one, with the value exactly as
+  `pack-reconcile.mjs list` prints it under `marker:`. Copy merged.md byte for byte to
+  `.octobots/tokenomics/<file>`, then run `node .octobots/tokenomics/selftest.mjs`. If it fails, fix
+  merged.md and copy again. Then run `pack-reconcile.mjs done <entry>`.
+- A project's data never goes into the merge: runs.json, worklog.jsonl and raw/ are not pack files,
+  and prices.json and prices.local.json are never staged.
+
 ### What you may write
 
 Write nothing outside `.claude/skills/<skill>/`, its staging folder and `.octobots/doctor-acks.json`
+(for a tokenomics entry, `.octobots/tokenomics/<file>` in place of the skill's directory)
 (a retired skill's directory may also move to the new name the user chose, as above). Never CLAUDE.md, AGENTS.md
 (except the `## Test lanes` section, §9, with the user's OK), another skill, `.octobots/campaigns/` or pending.json.
 
