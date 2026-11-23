@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BoardModel, createCampaign, createMission, createTask, createBug } from "@octoshell/board";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
@@ -82,6 +82,17 @@ describe("validate.js", () => {
 
   it("exits 2 when the entity file is missing", () => {
     expect(run("validate.js", [join(boardRoot, "nope.yaml")], projectDir).code).toBe(2);
+  });
+
+  it("an unparseable entity is INVALID with a parse problem, not a stack trace", () => {
+    const c = createCampaign(boardRoot, { name: "C" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Mission", acceptanceCriteria: "- [ ] a" });
+    const file = join(boardRoot, m.folderPath, "mission.yaml");
+    writeFileSync(file, "name: [unclosed\n");
+    const r = run("validate.js", [join(boardRoot, m.folderPath)], projectDir);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("not parseable as YAML");
+    expect(r.out).not.toContain("    at ");
   });
 });
 

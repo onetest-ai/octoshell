@@ -28,7 +28,13 @@ const problems = [];
 
 // Entity (<kind>.yaml) validation.
 const format = path.endsWith(".yaml") ? "yaml" : "md";
-const fields = readEntity(path, format);
+let fields;
+try {
+  fields = readEntity(path, format);
+} catch (err) {
+  problems.push(`not parseable as ${format.toUpperCase()} — ${err.message.split("\n")[0]}`);
+  report();
+}
 
 // Name present + descriptive (not a placeholder like "T1" / "M3.2" / "Task 3").
 if (!fields.name) {
@@ -91,6 +97,7 @@ function legacyWorkflowWarnings() {
  * only: they never change the exit code. Mirrors packages/board/src/validate.ts `missionTestsWarnings`.
  */
 function testsWarnings() {
+  if (!fields) return [];
   const dir = dirname(path);
   const base = boardRootOf(dir);
   const forMission = (campaignDir, missionFields) =>
