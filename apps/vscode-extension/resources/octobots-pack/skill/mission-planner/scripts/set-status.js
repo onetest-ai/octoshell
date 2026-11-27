@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
 import { dumpEntity, mapBoardStatus, readEntity, resolveEntityFile, resolveStatusTarget } from "./entity-io.mjs";
+import { atRestWarning, doneProblems, HEADINGS } from "./completion-guard.mjs";
 import { planReviewStatus } from "./plan-review.mjs";
 import { worklogFile, worklogProjectDir } from "./worklog-path.mjs";
 
@@ -17,7 +18,13 @@ import { worklogFile, worklogProjectDir } from "./worklog-path.mjs";
 // A mission moves INTO executing (`active`, `in progress` and `running` map to it) only when a
 // BA + tech-lead plan review is recorded in its notes or its campaign's notes (plan-review.mjs).
 // Exit 3 = refused for that reason. `--force=<reason>` (any argv position) overrides and records
-// `## Plan review overridden (<date>)` in the mission notes. No other move is gated.
+// `## Plan review overridden (<date>)` in the mission notes.
+//
+// A mission moves to `done` only when its tasks are finished, its acceptance criteria are ticked, its
+// test cases passed, and the latest `## Gate checks` and `## Completion gate` records are green and
+// current (completion-guard.mjs). Exit 3 = refused, naming the scripts to run. The same `--force=<reason>`
+// overrides and records `## Completion gate overridden (<ISO>)` with the failed checks. A mission that
+// is already done is left alone (with a warning on stderr when no green record exists). No other move is gated.
 const rawArgs = process.argv.slice(2);
 let forceReason = null;
 const positional = [];
@@ -41,6 +48,7 @@ const title = (rawTitle ?? "").trim();
 const state = stateParts.join(" ").trim();
 if (!arg || !title || !state) {
   console.error('usage: set-status.js <parent-dir|entity.yaml> "<entity title>" <state> [--force=<reason>]');
+  console.error("  a mission moves to done only when the completion gate is recorded green and current (--force=<reason> overrides)");
   console.error("  state: draft | active | executing | awaiting approval | done | failed | cancelled");
   process.exit(2);
 }
@@ -69,6 +77,10 @@ if (from === mapped) {
   // from a real transition.
   console.log(`set status of "${title}" to ${mapped} (already)`);
   console.log(`octobots: status ${match.kind} ${JSON.stringify(title)} unchanged (${mapped})`);
+  if (match.kind === "mission" && mapped === "done") {
+    const warning = atRestWarning(fields);
+    if (warning) console.error(`warning: ${warning}`);
+  }
   process.exit(0);
 }
 if (match.kind === "mission" && mapped === "executing") {
@@ -97,6 +109,18 @@ if (match.kind === "mission" && mapped === "executing") {
     const old = fields.notes ?? "";
     fields.notes = old ? `${old}${old.endsWith("\n") ? "\n" : "\n\n"}${note}` : note;
     console.log(`plan review overridden with --force; recorded in the notes of "${title}"`);
+  }
+}
+if (match.kind === "mission" && mapped === "done") {
+  const problems = doneProblems({ missionDir: match.dir, fields });
+  if (problems.length) {
+    if (forceReason === null) refuseDone(problems);
+    const at = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    const failed = problems.map((p) => `Failed: ${p.check}: ${p.message}`).join("\n");
+    const note = `## ${HEADINGS.override} (${at})\n${forceReason}\n${failed}`;
+    const old = fields.notes ?? "";
+    fields.notes = old ? `${old}${old.endsWith("\n") ? "\n" : "\n\n"}${note}` : note;
+    console.log(`completion guard overridden with --force; recorded in the notes of "${title}"`);
   }
 }
 fields.status = mapped;
@@ -167,6 +191,17 @@ function refuse(candidates, campaignError) {
     "--- end of record template ---",
     "To start without one, re-run with --force=<reason>; the reason is recorded in the mission notes.",
   );
+  console.error(lines.join("\n"));
+  process.exit(3);
+}
+
+/** Print why the mission may not be marked done, and which scripts to run (never a record template), then exit 3. */
+function refuseDone(problems) {
+  const lines = [`set-status: refusing to mark "${title}" done:`];
+  for (const p of problems) lines.push(`  ${p.check}: ${p.message}`);
+  const nexts = [...new Set(problems.map((p) => p.next).filter(Boolean))];
+  if (nexts.length) lines.push("Next:", ...nexts.map((n) => `  ${n}`));
+  lines.push("To override: --force=<reason> (recorded in the mission notes)");
   console.error(lines.join("\n"));
   process.exit(3);
 }

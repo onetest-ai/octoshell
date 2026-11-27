@@ -358,7 +358,7 @@ describe("set-status.js guards", () => {
     const c = createCampaign(boardRoot, { name: "Camp" });
     createMission(boardRoot, c.id, { title: "M1 - Auth" });
     const dir = join(boardRoot, c.folderPath);
-    const out = runScript("set-status.js", [dir, "M1 - Auth", "done"], projectDir);
+    const out = runScript("set-status.js", [dir, "M1 - Auth", "done", "--force=guard is covered elsewhere"], projectDir);
     expect(out).toContain('octobots: status mission "M1 - Auth" draft -> done\n');
   });
 
@@ -366,7 +366,7 @@ describe("set-status.js guards", () => {
     const c = createCampaign(boardRoot, { name: "Camp" });
     const m = createMission(boardRoot, c.id, { title: "M1 - Auth" });
     const dir = join(boardRoot, c.folderPath);
-    runScript("set-status.js", [dir, "M1 - Auth", "done"], projectDir);
+    runScript("set-status.js", [dir, "M1 - Auth", "done", "--force=guard is covered elsewhere"], projectDir);
     const file = join(boardRoot, m.folderPath, "mission.yaml");
     const before = readFileSync(file);
     const mtime = statSync(file).mtimeMs;
@@ -383,7 +383,7 @@ describe("set-status.js guards", () => {
     const file = join(boardRoot, m.folderPath, "mission.yaml");
     writeFileSync(file, readFileSync(file, "utf8").replace(/^status:.*$/m, "status: awaiting approval"), "utf8");
     expect(board().getMission(m.id)?.status).toBe("awaitingApproval"); // a legitimate on-disk value
-    const out = runScript("set-status.js", [join(boardRoot, c.folderPath), "M1 - Auth", "done"], projectDir);
+    const out = runScript("set-status.js", [join(boardRoot, c.folderPath), "M1 - Auth", "done", "--force=guard is covered elsewhere"], projectDir);
     expect(out).toContain('octobots: status mission "M1 - Auth" awaitingApproval -> done\n');
   });
 
@@ -1227,7 +1227,7 @@ describe("set-status.js done on a mission with tests-pairing warnings", () => {
   it("succeeds on a mission with no tests README, and the mission is done afterwards", () => {
     const c = synthBoard(boardRoot, [{ title: "M1 - Auth", acs: 2 }]);
     expect(warnings(c.missionDirs.m1!)).toHaveLength(1);
-    const out = runScript("set-status.js", [c.campaignDir, "M1 - Auth", "done"], projectDir);
+    const out = runScript("set-status.js", [c.campaignDir, "M1 - Auth", "done", "--force=guard is covered elsewhere"], projectDir);
     expect(out).toContain('octobots: status mission "M1 - Auth" draft -> done');
     const m = board().listMissions(board().listCampaigns()[0]!.id)[0]!;
     expect(m.status).toBe("done");
@@ -1501,7 +1501,8 @@ describe("set-status.js plan-review gate (M5 AC1)", () => {
     });
 
     for (const from of ["draft", "awaitingApproval", "executing", "failed", "done", "cancelled"]) {
-      for (const to of [["draft"], ["awaiting", "approval"], ["done"], ["failed"], ["cancelled"]]) {
+      // `done` is not here: a mission's done move has its own guard ("set-status.js mission done guard").
+      for (const to of [["draft"], ["awaiting", "approval"], ["failed"], ["cancelled"]]) {
         it(`${from} -> ${to.join(" ")} succeeds with no review and a quiet stderr`, () => {
           const f = fixture({ status: from });
           const r = run([f.dir, "M1 - Auth", ...to]);
@@ -1633,7 +1634,7 @@ describe("set-status.js plan-review gate (M5 AC1)", () => {
       expect(notesOf(legacy.missionFile)).toBeUndefined();
 
       const plain = fixture();
-      expect(run([plain.dir, "M1 - Auth", "done", "--force=why"]).status).toBe(0);
+      expect(run([plain.dir, "M1 - Auth", "cancelled", "--force=why"]).status).toBe(0);
       expect(notesOf(plain.missionFile)).toBeUndefined();
     });
   });
@@ -2119,5 +2120,107 @@ describe("set-test-status.js — writing a test case's status and last_run", () 
       expect(sts([q, "--migrate", "blocked"]).status).toBe(0);
       expect(b.listTestCases(camp).find((t) => t.id === "TC-002")).toMatchObject({ status: "blocked", mission: "M1", covers: ["M1-AC2", "M1-AC5"] });
     });
+  });
+});
+
+// Pack v65: set-status.js refuses a mission `done` until the tasks, criteria, Gate checks record and
+// Completion gate record all hold; `--force=<reason>` overrides and records why.
+describe("set-status.js mission done guard", () => {
+  const git = (...args: string[]): string => execFileSync("git", args, { cwd: projectDir, encoding: "utf8" }).trim();
+  const isoNow = (): string => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+
+  interface Fx { dir: string; missionDir: string; missionFile: string; taskFile: string }
+  /** A campaign + `M1 - Auth` + one task in a real, committed git repo. */
+  function fixture(opts: { status?: string; ticked?: boolean; taskDone?: boolean } = {}): Fx {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Auth", acceptanceCriteria: `- [${opts.ticked ? "x" : " "}] ships` });
+    const t = createTask(boardRoot, m.id, { name: "T1.1 - JWT", acceptanceCriteria: "- [x] works" });
+    const missionDir = join(boardRoot, m.folderPath);
+    const missionFile = join(missionDir, "mission.yaml");
+    const taskFile = join(boardRoot, t.folderPath, "task.yaml");
+    seed(missionFile, "mission", { status: (opts.status ?? "executing") as EntityFields["status"] });
+    if (opts.taskDone) seed(taskFile, "task", { status: "done" });
+    writeFileSync(join(projectDir, "code.txt"), "x\n");
+    git("init", "-q");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "T");
+    git("add", "-A");
+    git("commit", "-q", "-m", "init");
+    return { dir: join(boardRoot, c.folderPath), missionDir, missionFile, taskFile };
+  }
+  const recordsText = (commit: string): string =>
+    [
+      `## Gate checks (${isoNow()})`, "Verdict: green", `Commit: ${commit}`, "Lane: none, no coverage lane in AGENTS.md § Test lanes", "Exit: skipped", "Parked: 0 unsigned",
+      "",
+      `## Completion gate (${isoNow()})`, "Verdict: green", `Commit: ${commit}`, "QA: 1/1 criteria passed", "Review: stillOpen=0",
+    ].join("\n");
+  const notesOf = (file: string): string => loadEntity(readFileSync(file, "utf8")).notes ?? "";
+  const statusOf = (file: string): string | undefined => loadEntity(readFileSync(file, "utf8")).status;
+  function run(args: string[], script = join(SCRIPTS, "set-status.js")): { status: number; stdout: string; stderr: string } {
+    const r = spawnSync("node", [script, ...args], { cwd: projectDir, encoding: "utf8" });
+    return { status: r.status ?? -1, stdout: r.stdout, stderr: r.stderr };
+  }
+
+  it("refuses with every problem listed and exit 3, writing nothing", () => {
+    const f = fixture();
+    const before = readFileSync(f.missionFile);
+    const r = run([f.dir, "M1 - Auth", "done"]);
+    expect(r.status).toBe(3);
+    expect(r.stderr).toContain('set-status: refusing to mark "M1 - Auth" done:');
+    for (const s of ["tasks:", "criteria:", "gate-checks:", "completion-gate:", "Next:", "--force=<reason>"]) expect(r.stderr).toContain(s);
+    expect(r.stderr).not.toContain("Verdict: green");
+    expect(r.stdout).not.toContain("octobots: status");
+    expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+  });
+
+  it("allows done when everything holds", () => {
+    const f = fixture({ ticked: true, taskDone: true });
+    seed(f.missionFile, "mission", { notes: recordsText(git("rev-parse", "HEAD")) });
+    const r = run([f.dir, "M1 - Auth", "done"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('octobots: status mission "M1 - Auth" executing -> done');
+    expect(statusOf(f.missionFile)).toBe("done");
+  });
+
+  it("--force records the override with the failed checks", () => {
+    const f = fixture();
+    const r = run([f.dir, "M1 - Auth", "done", "--force=shipping by hand"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('completion guard overridden with --force; recorded in the notes of "M1 - Auth"');
+    expect(r.stdout).toContain('octobots: status mission "M1 - Auth" executing -> done');
+    const notes = notesOf(f.missionFile);
+    expect(notes).toMatch(/^## Completion gate overridden \(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\)$/m);
+    expect(notes).toContain("shipping by hand");
+    expect(notes).toContain("Failed: tasks");
+    expect(statusOf(f.missionFile)).toBe("done");
+  });
+
+  it("already done: exit 0, unchanged, and a presence warning when no record exists", () => {
+    const f = fixture({ status: "done" });
+    const before = readFileSync(f.missionFile);
+    const r = run([f.dir, "M1 - Auth", "done"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("unchanged (done)");
+    expect(r.stderr).toContain("warning:");
+    expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+  });
+
+  it("a task or bug done is not guarded", () => {
+    const f = fixture();
+    const r = run([join(f.missionDir), "T1.1 - JWT", "done"]);
+    expect(r.status).toBe(0);
+    expect(statusOf(f.taskFile)).toBe("done");
+  });
+
+  it("next lines name the workspace's installed scripts", () => {
+    const f = fixture();
+    const installed = join(projectDir, ".claude", "skills", "mission-planner", "scripts");
+    mkdirSync(dirname(installed), { recursive: true });
+    cpSync(SCRIPTS, installed, { recursive: true });
+    // The workspace copy counts as installed once it holds gate-checks.mjs.
+    if (!existsSync(join(installed, "gate-checks.mjs"))) writeFileSync(join(installed, "gate-checks.mjs"), "// stub\n");
+    const r = run([f.dir, "M1 - Auth", "done"]);
+    expect(r.status).toBe(3);
+    expect(r.stderr).toContain(join(installed, "gate-checks.mjs"));
   });
 });

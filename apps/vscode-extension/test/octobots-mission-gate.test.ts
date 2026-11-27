@@ -157,7 +157,7 @@ describe("mission-gate.mjs", () => {
     it("resolves a relative <parent-dir> against the payload's cwd, the way the shell did", () => {
       const b = makeStatusBoard("octo-gate-");
       const rel = b.campaignDir.slice(b.repo.length + 1);
-      const cmd = `node "${SET_STATUS}" "${rel}" "M1 - Venue ingest" done`;
+      const cmd = `node "${SET_STATUS}" "${rel}" "M1 - Venue ingest" done --force=fixture`;
       expect(directiveOf(pipe(b.repo, runAndPost(b.repo, cmd)))).toContain("M1 - Venue ingest");
     });
 
@@ -296,7 +296,7 @@ describe("mission-gate.mjs", () => {
       const b = makeStatusBoard("octo-gate-");
       const title = `M2 - a; b && say "hi" it's`;
       createMissionNamed(b, title);
-      const cmd = `node "${SET_STATUS}" "${b.campaignDir}" 'M2 - a; b && say "hi" it'"'"'s' done`;
+      const cmd = `node "${SET_STATUS}" "${b.campaignDir}" 'M2 - a; b && say "hi" it'"'"'s' done --force=fixture`;
       expect(directiveOf(pipe(b.repo, runAndPost(b.repo, cmd)))).toContain(title);
     });
 

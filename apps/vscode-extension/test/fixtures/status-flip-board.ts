@@ -64,7 +64,10 @@ export function createBugNamed(b: StatusBoard, title: string, on: "mission" | "c
 
 /** The Bash command an agent would run, e.g. `node …/set-status.js "<dir>" "M1 - …" done`. */
 export function setStatusCommand(parentDir: string, title: string, state: string, suffix = ""): string {
-  return `node "${SET_STATUS}" "${parentDir}" "${title}" ${state}${suffix}`;
+  // A mission `done` is guarded (completion-guard.mjs); these fixtures have no gate records, so a done
+  // move carries --force. It is harmless for a task, a bug or an already-done mission.
+  const force = state === "done" ? " --force=fixture" : "";
+  return `node "${SET_STATUS}" "${parentDir}" "${title}" ${state}${force}${suffix}`;
 }
 
 /** The PostToolUse JSON Claude Code pipes into a hook for that Bash command (no tool_response). */
