@@ -140,7 +140,8 @@ dispatches the addressee with them, and then hands the answers back in a follow-
    phase 1: a Gate checks record stays current only while the code it checked is unchanged. Then
    record the outcome from the repo root:
    `node .claude/skills/mission-planner/scripts/gate-record.mjs <mission-dir> --verdict <green|red|pending-human> --qa <n>/<m> --still-open <k> [--note "<text>"]...`
-   - `--qa <n>/<m>`: Sage passed n of the mission's m acceptance criteria, black-box.
+   - `--qa <n>/<m>`: n of the mission's m acceptance criteria passed: those Sage passed black-box,
+     plus any a person has checked (see `pending-human` below).
    - `--still-open <k>`: the number of blocking findings still in Rio's `stillOpen` after the fix
      round. Leftovers filed as board bugs are non-blocking by this gate's rule, so they do not count.
    - `--verdict green` only when phases 1-3 are green. The script refuses green unless n = m = the
@@ -148,8 +149,10 @@ dispatches the addressee with them, and then hands the answers back in a follow-
      gate.
    - `--verdict pending-human` when a criterion needs a person to check it (a manual or visual check
      the agents cannot make). Move the mission to `awaiting approval` and tell the user what to
-     check. When the person has checked, record again with `--verdict green` and
-     `--note "human check: <who>, <what was checked>"`. The latest record wins.
+     check. When the person has checked, record again with `--verdict green --qa <m>/<m>` (the
+     person's check counts) and `--note "human check: <who>, <what was checked>"`. The latest record
+     wins. Then continue: run phase 4 if it has not run yet, then phase 5 (tick the criteria, then
+     mark the mission `done`). The mission does not stay in `awaiting approval`.
    - `--note` (repeatable) carries the phase results worth keeping, such as the coverage % and the
      Sage verdict per criterion.
    It appends a `## Completion gate (<time>)` record to the mission notes. Exit 3 is a refusal:
