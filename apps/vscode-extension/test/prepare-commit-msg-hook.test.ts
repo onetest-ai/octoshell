@@ -4,6 +4,8 @@ import { chmodSync, existsSync, readFileSync, rmSync, symlinkSync, writeFileSync
 import { join } from "node:path";
 import { gitEnv, hookRepo, trailers } from "./fixtures/hook-repo.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
+import { PACK } from "./fixtures/hook-repo.js";
+import { pathToFileURL } from "node:url";
 
 const warnings = (stderr: string): string[] => stderr.split("\n").filter((l) => /warning/i.test(l));
 
@@ -280,5 +282,49 @@ describe("prepare-commit-msg trailer hook (pack port of solo's M2 hook)", () => 
     const source = readFileSync(join(r.root, ".octobots", "hooks", "prepare-commit-msg.mjs"), "utf8");
     expect(source).toMatch(/attribute\.mjs/);
     expect(source).not.toMatch(/resolveAttribution|loadBoard|runs\.json|segment_attributions/);
+  });
+});
+
+describe("prepare-commit-msg timeouts and shim guards", () => {
+  const shim = async (): Promise<string> => {
+    const mod = await import(/* @vite-ignore */ pathToFileURL(join(PACK, "hooks", "hooks-doctor.mjs")).href);
+    return mod.SHIMS["prepare-commit-msg"];
+  };
+  const runShim = async (cwd: string, root?: string) => {
+    const f = join(mkdtempClean("shim-file-"), "prepare-commit-msg");
+    writeFileSync(f, await shim());
+    chmodSync(f, 0o755);
+    void root;
+    return spawnSync("sh", [f, join(cwd, "msgfile")], { cwd, encoding: "utf8", env: gitEnv() });
+  };
+
+  it("no 2-second timeout is left: git and interpret-trailers use the attribution budget", () => {
+    const src = readFileSync(join(PACK, "hooks", "prepare-commit-msg.mjs"), "utf8");
+    expect(src).not.toMatch(/timeout = 2000/);
+    expect(src).not.toMatch(/timeout: 2000/);
+    expect(src.match(/OCTOBOTS_ATTRIBUTE_TIMEOUT_MS/g)).toHaveLength(1);
+  });
+
+  it("the prepare-commit-msg shim exits 0 silently outside a git repository", async () => {
+    const res = await runShim(mkdtempClean("no-git-"));
+    expect(res.status).toBe(0);
+    expect(res.stderr).toBe("");
+  });
+
+  it("a crashing helper prints exactly one warning line", async () => {
+    const r = hookRepo();
+    writeFileSync(join(r.root, ".octobots", "hooks", "prepare-commit-msg.mjs"), 'throw new Error("boom");\n');
+    const res = await runShim(r.root);
+    expect(res.status).toBe(0);
+    const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: r.root, encoding: "utf8", env: gitEnv() }).trim();
+    expect(res.stderr.trim()).toBe(`prepare-commit-msg: warning: ${root}/.octobots/hooks/prepare-commit-msg.mjs failed, no mission trailer added`);
+  });
+
+  it("a helper's own warning still reaches stderr", async () => {
+    const r = hookRepo();
+    writeFileSync(join(r.root, ".octobots", "hooks", "prepare-commit-msg.mjs"), 'console.error("prepare-commit-msg: warning: x");\n');
+    const res = await runShim(r.root);
+    expect(res.status).toBe(0);
+    expect(res.stderr).toContain("prepare-commit-msg: warning: x");
   });
 });

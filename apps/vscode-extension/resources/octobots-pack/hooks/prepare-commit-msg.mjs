@@ -24,7 +24,11 @@ function warn(reason) {
     `prepare-commit-msg: warning: ${branch}: ${reason}; branches must carry the campaign slug and -m<n> for mission work (see the mission-execution skill, "Branch topology").`,
   );
 }
-const git = (args, timeout = 2000) =>
+// One budget for every step. Attribution loads the whole board (about a second); a loaded machine needs
+// more than a few seconds, and git itself can stall the same way, so none of the calls gets less.
+const limit = Number(process.env.OCTOBOTS_ATTRIBUTE_TIMEOUT_MS);
+const BUDGET_MS = Number.isFinite(limit) && limit > 0 ? limit : 30000;
+const git = (args, timeout = BUDGET_MS) =>
   execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout }).trim();
 
 // Two entry points share this file. prepare-commit-msg runs before the editor; commit-msg (--after-edit)
@@ -119,14 +123,11 @@ try {
       } catch {
         /* Detached HEAD has no branch identity. */
       }
-      // The CLI loads the whole board (about a second); a loaded machine needs more than a few seconds.
-      const limit = Number(process.env.OCTOBOTS_ATTRIBUTE_TIMEOUT_MS);
-      const timeout = Number.isFinite(limit) && limit > 0 ? limit : 30000;
       const result = JSON.parse(
         execFileSync(process.execPath, [join(root, ".octobots/tokenomics/attribute.mjs"), "--branch", branch, "--project-dir", root], {
           encoding: "utf8",
           stdio: ["ignore", "pipe", "ignore"],
-          timeout,
+          timeout: BUDGET_MS,
         }),
       );
       // A line break inside a name would add a line of its own to the message.
@@ -151,7 +152,7 @@ try {
     for (const line of list) {
       execFileSync("git", ["interpret-trailers", "--in-place", "--if-exists", policy, "--trailer", line, file], {
         stdio: ["ignore", "ignore", "ignore"],
-        timeout: 2000,
+        timeout: BUDGET_MS,
       });
     }
   }
