@@ -51,6 +51,8 @@ export const RETIRED_FILES = [
   "skill/mission-planner/scripts/extract-meta.mjs",
   "skill/mission-planner/scripts/workflow-meta.mjs",
   "skill/mission-planner/scripts/vendor/acorn.mjs",
+  // The mission-gate reminder hook was replaced by set-status.js's done guard.
+  "hooks/mission-gate.mjs",
 ] as const;
 
 /** The workspace's own after the first install: kept and reported, never judged or staged. */

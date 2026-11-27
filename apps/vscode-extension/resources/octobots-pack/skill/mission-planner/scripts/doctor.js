@@ -150,7 +150,9 @@ if (existsSync(settingsPath) && settings === null) {
   fail("settings", `.claude/settings.json is not valid JSON — nothing below could be checked`, "fix the JSON by hand");
 }
 const hooks = (settings && settings.hooks) || {};
-const OUR_SCRIPTS = [".octobots/hooks/primer.mjs", ".octobots/hooks/work-log.mjs", ".octobots/hooks/mission-gate.mjs", ".octobots/hooks/dispatch-on-main.mjs"];
+const OUR_SCRIPTS = [".octobots/hooks/primer.mjs", ".octobots/hooks/work-log.mjs", ".octobots/hooks/dispatch-on-main.mjs"];
+const RETIRED_SCRIPTS = [".octobots/hooks/mission-gate.mjs"];
+const retiredFound = new Set();
 const dupes = [];
 let ourHookCount = 0;
 for (const [event, entries] of Object.entries(hooks)) {
@@ -169,6 +171,8 @@ for (const [event, entries] of Object.entries(hooks)) {
         fail("hooks", `malformed ${event} configuration: expected a hook object`, "fix .claude/settings.json");
         continue;
       }
+      const retired = RETIRED_SCRIPTS.find((s) => String(h.command ?? "").includes(s));
+      if (retired) { retiredFound.add(`${event} ${retired}`); continue; }
       const script = OUR_SCRIPTS.find((s) => String(h.command ?? "").includes(s));
       if (!script) continue;
       ourHookCount++;
@@ -186,6 +190,8 @@ if (dupes.length) {
 } else {
   ok("hooks", `${ourHookCount} hook registration(s), no duplicates`);
 }
+
+for (const r of retiredFound) warn("hooks", `${r} is a retired hook, registered but no longer shipped`, "reinstall the pack");
 
 // Warn even for an opt-out: this diagnostic names the adoption step without failing the doctor.
 const dispatchPath = ".octobots/hooks/dispatch-on-main.mjs";

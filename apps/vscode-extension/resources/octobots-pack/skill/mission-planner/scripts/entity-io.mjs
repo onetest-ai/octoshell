@@ -310,7 +310,7 @@ export function childDirs(p) {
  * equals `title` case-insensitively. Returns `{ dir, kind }`, or null when nothing matches.
  *
  * The ONE title-matching rule: set-status.js writes through it and the PostToolUse hooks
- * (mission-gate.mjs, work-log.mjs) verify through it, so a hook can never believe a flip landed on
+ * (work-log.mjs) verifies through it, so a hook can never believe a flip landed on
  * an entity the script did not touch.
  */
 export function resolveStatusTarget(arg, title) {

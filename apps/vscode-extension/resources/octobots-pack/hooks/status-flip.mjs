@@ -1,4 +1,4 @@
-// Shared by the PostToolUse(Bash) hooks mission-gate.mjs and work-log.mjs: recognise the
+// Used by the PostToolUse(Bash) hook work-log.mjs: recognise the
 // `set-status.js <parent-dir|entity.yaml> "<title>" <state>` calls in a Bash command, and confirm
 // that the board now holds the state each call asked for.
 //

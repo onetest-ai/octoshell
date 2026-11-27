@@ -24,7 +24,7 @@ describe("octobots-hooks: primer copy", () => {
     expect(existsSync(join(repo, ".octobots", "hooks", "work-log.mjs"))).toBe(true);
   });
 
-  it("ships status-flip.mjs, the module work-log.mjs and mission-gate.mjs import to confirm a flip", () => {
+  it("ships status-flip.mjs, the module work-log.mjs imports to confirm a flip", () => {
     const repo = freshRepo();
     installPrimer(PACK_SRC, repo);
     expect(existsSync(join(repo, ".octobots", "hooks", "status-flip.mjs"))).toBe(true);
@@ -97,16 +97,29 @@ describe("octobots-hooks: Claude registration", () => {
     expect(ptu.hooks[0].async).toBe(true);
   });
 
-  it("registers the mission gate on PostToolUse, synchronously so it can steer the agent", () => {
+  it("registers no mission gate: PostToolUse holds only the work log", () => {
     const repo = freshRepo();
     registerClaudeHook(repo, 9);
     const s = JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8"));
-    const gate = s.hooks.PostToolUse.find((e: any) => e.hooks[0].command.includes("mission-gate.mjs"));
-    expect(gate).toBeTruthy();
-    expect(gate.matcher).toBe("Bash");
-    // Must NOT be async: it injects a directive the orchestrator has to act on.
-    expect(gate.hooks[0].async).toBe(false);
-    expect(s.hooks.PostToolUse.filter((e: any) => e._octobots === 9)).toHaveLength(2);
+    expect(JSON.stringify(s)).not.toContain("mission-gate");
+    expect(s.hooks.PostToolUse.filter((e: any) => e._octobots === 9)).toHaveLength(1);
+  });
+
+  it("removes an UNMARKED mission-gate entry an older pack registered, keeping a foreign one", () => {
+    const repo = freshRepo();
+    mkdirSync(join(repo, ".claude"), { recursive: true });
+    writeFileSync(join(repo, ".claude", "settings.json"), JSON.stringify({
+      hooks: {
+        PostToolUse: [
+          { matcher: "Bash", hooks: [{ type: "command", command: 'node "${CLAUDE_PROJECT_DIR}/.octobots/hooks/mission-gate.mjs"' }] },
+          { matcher: "Bash", hooks: [{ type: "command", command: "./other-tool/run.sh" }] },
+        ],
+      },
+    }));
+    registerClaudeHook(repo, 9);
+    const s = JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8"));
+    expect(JSON.stringify(s)).not.toContain("mission-gate");
+    expect(s.hooks.PostToolUse.some((e: any) => e.hooks.some((h: any) => h.command === "./other-tool/run.sh"))).toBe(true);
   });
 
   it("reports an install predating PostToolUse as not present, so re-running repairs it", () => {
@@ -164,7 +177,7 @@ describe("octobots-hooks: Claude registration", () => {
   /**
    * The field bug this guards: an entry written before `_octobots` existed carries no marker, so a
    * marker-only filter left it in place and appended a marked twin beside it. Observed on a real
-   * board — primer.mjs twice on SessionStart, work-log.mjs and mission-gate.mjs twice each on
+   * board — primer.mjs twice on SessionStart, work-log.mjs twice on
    * PostToolUse — meaning every Bash tool call paid four hook processes instead of two, and no
    * amount of reinstalling could clear it.
    */
@@ -183,7 +196,6 @@ describe("octobots-hooks: Claude registration", () => {
           ],
           PostToolUse: [
             { matcher: "Bash", hooks: [{ type: "command", command: 'node "${CLAUDE_PROJECT_DIR}/.octobots/hooks/work-log.mjs"' }] },
-            { matcher: "Bash", hooks: [{ type: "command", command: 'node "${CLAUDE_PROJECT_DIR}/.octobots/hooks/mission-gate.mjs"' }] },
           ],
         },
       }, null, 2),
@@ -197,7 +209,7 @@ describe("octobots-hooks: Claude registration", () => {
     expect(primer).toHaveLength(1);
     expect(primer[0]._octobots).toBe(9);
 
-    for (const script of ["work-log.mjs", "mission-gate.mjs"]) {
+    for (const script of ["work-log.mjs"]) {
       const hit = s.hooks.PostToolUse.filter((e: any) =>
         e.hooks.some((h: any) => h.command.includes(script)));
       expect(hit, script).toHaveLength(1);

@@ -29,8 +29,7 @@ function packSrcRoot(context: vscode.ExtensionContext): string {
  * <workspace>/.claude.
  *
  * Hooks get their own question. They are not payload the user can ignore: the session primer runs
- * on every session start, and the work-log and mission-gate hooks run after every Bash tool call —
- * a process per call, and the mission gate is synchronous by design, so it can steer the agent.
+ * on every session start, and the work-log hook runs after every Bash tool call, a process per call.
  * Installing that silently changes how the repo's agents behave, which is the user's call to make,
  * not ours. Asked only when they are not already registered; when they are, the install just
  * refreshes them (and repairs any duplicates an older version left).
@@ -62,7 +61,7 @@ async function installOctobotsPack(context: vscode.ExtensionContext, repoRoot: s
     if (!alreadyHooked) {
       const answer = await vscode.window.showInformationMessage(
         "Octobots: also install the session hooks? They run the primer at session start and a " +
-          "work-log + mission-gate hook after every Bash tool call. The pack works without them.",
+          "work-log hook after every Bash tool call. The pack works without them.",
         { modal: false },
         "Install hooks",
         "Skip hooks",

@@ -43,9 +43,6 @@ export const OCTOBOTS_HOOK_SPECS = [
   // rather than an inference from branch names. Async: nothing downstream waits on it, and it must
   // never delay or fail the tool call.
   { event: "PostToolUse", script: ".octobots/hooks/work-log.mjs", matcher: "Bash", async: true },
-  // The mission gate steers the agent into the blocking completion gate when a mission flips to
-  // `done`. Synchronous by design: it injects a directive the orchestrator must act on first.
-  { event: "PostToolUse", script: ".octobots/hooks/mission-gate.mjs", matcher: "Bash", async: false },
   { event: "PreToolUse", script: ".octobots/hooks/dispatch-on-main.mjs", matcher: "Agent|Task", async: true },
 ] as const satisfies readonly { event: string; script: string; args?: string; matcher: string; async: boolean }[];
 
@@ -104,15 +101,22 @@ function claudeEntries(event: ClaudeEvent, version: number): HookEntry[] {
  * Recognising ours by marker ALONE was a duplication bug: an unmarked entry survived the filter,
  * a marked twin was appended beside it, and every subsequent install re-created the pair. Observed
  * in the field on a real board — primer.mjs registered twice on SessionStart and twice on
- * PreCompact, work-log.mjs and mission-gate.mjs twice each on PostToolUse — so every Bash tool call
+ * PreCompact, work-log.mjs twice on PostToolUse — so every Bash tool call
  * paid four hook processes instead of two, forever, with no way to clear it by reinstalling.
  */
 const OUR_SCRIPTS: readonly string[] = OCTOBOTS_HOOK_SPECS.map((spec) => spec.script);
 
+/**
+ * Hook scripts an older pack registered and this one no longer ships. `isOurs` still recognises
+ * them, so re-registration drops an old unmarked entry instead of leaving it to fail on every call.
+ */
+const RETIRED_HOOK_SCRIPTS: readonly string[] = [".octobots/hooks/mission-gate.mjs"];
+
 /** True when this entry is one of ours — by marker, or by the script its command runs. */
 function isOurs(entry: HookEntry): boolean {
   if (entry._octobots !== undefined) return true;
-  return (entry.hooks ?? []).some((h) => OUR_SCRIPTS.some((s) => (h.command ?? "").includes(s)));
+  const known = [...OUR_SCRIPTS, ...RETIRED_HOOK_SCRIPTS];
+  return (entry.hooks ?? []).some((h) => known.some((s) => (h.command ?? "").includes(s)));
 }
 
 /** Idempotently merge our SessionStart + PostToolUse entries into <repo>/.claude/settings.json. */

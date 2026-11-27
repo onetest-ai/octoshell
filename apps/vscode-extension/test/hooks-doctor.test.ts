@@ -26,12 +26,11 @@ describe("the pack's default required list", () => {
     expect(shipped.installers.octoshell.command).toBe(INSTALLER_COMMAND);
   });
 
-  it("lists the four octoshell entries and nothing else", () => {
+  it("lists the three octoshell entries and nothing else", () => {
     const shipped = JSON.parse(readFileSync(join(PACK, "hooks", "required-hooks.json"), "utf8"));
     expect(shipped.hooks.map((h: { event: string; script: string }) => `${h.event} ${h.script}`)).toEqual([
       "SessionStart .octobots/hooks/primer.mjs",
       "PostToolUse .octobots/hooks/work-log.mjs",
-      "PostToolUse .octobots/hooks/mission-gate.mjs",
       "PreToolUse .octobots/hooks/dispatch-on-main.mjs",
     ]);
   });
@@ -50,21 +49,21 @@ describe("hooks-doctor: settings.json side", () => {
     const r = hookRepo();
     registerClaudeHook(r.root, 59);
     const s = readSettings(r);
-    s.hooks.PostToolUse = s.hooks.PostToolUse.filter((e: { hooks: { command: string }[] }) => !e.hooks[0]!.command.includes("mission-gate.mjs"));
+    s.hooks.PostToolUse = s.hooks.PostToolUse.filter((e: { hooks: { command: string }[] }) => !e.hooks[0]!.command.includes("work-log.mjs"));
     writeFileSync(settingsPath(r), JSON.stringify(s, null, 2));
     const res = doctor(r);
     expect(res.status).toBe(1);
-    expect(res.out).toMatch(/MISSING\s+PostToolUse\s+\.octobots\/hooks\/mission-gate\.mjs/);
+    expect(res.out).toMatch(/MISSING\s+PostToolUse\s+\.octobots\/hooks\/work-log\.mjs/);
     expect(res.out).toContain("owner: octoshell");
     expect(res.out).toContain(INSTALLER_COMMAND);
-    expect(res.out).not.toMatch(/MISSING\s+\w+\s+\.octobots\/hooks\/(primer|work-log|dispatch-on-main)/);
+    expect(res.out).not.toMatch(/MISSING\s+\w+\s+\.octobots\/hooks\/(primer|dispatch-on-main)/);
   });
 
   it("an absent settings.json reports every entry missing, exits 1, and is not created", () => {
     const r = hookRepo();
     const res = doctor(r);
     expect(res.status).toBe(1);
-    expect(res.out.match(/MISSING/g)).toHaveLength(4);
+    expect(res.out.match(/MISSING/g)).toHaveLength(3);
     expect(existsSync(settingsPath(r))).toBe(false);
   });
 

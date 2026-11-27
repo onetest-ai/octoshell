@@ -22,13 +22,6 @@
       "owner": "octoshell"
     },
     {
-      "event": "PostToolUse",
-      "script": ".octobots/hooks/mission-gate.mjs",
-      "matcher": "Bash",
-      "owner": "octoshell",
-      "sync": true
-    },
-    {
       "event": "PreToolUse",
       "script": ".octobots/hooks/dispatch-on-main.mjs",
       "matcher": "Agent|Task",
