@@ -578,6 +578,17 @@ describe("mission done guard (missionDone)", () => {
     expect(missionDone).not.toHaveBeenCalled();
   });
 
+  it("reads missionDone once: a getter that changes mid-call does not break the confirm retry", async () => {
+    const { m, c: base, missionDone } = guarded([{ ok: false, message: "no" }, { ok: true }], true);
+    let reads = 0;
+    const c = Object.defineProperty({ ...base }, "missionDone", {
+      get: () => (reads++ === 0 ? missionDone : undefined),
+    });
+    await dispatch("mission:setStatus", { missionId: m.id, status: "done" }, c as never);
+    expect(reads).toBe(1);
+    expect(missionDone).toHaveBeenCalledTimes(2);
+  });
+
   it("without missionDone the old board.setStatus path is used", async () => {
     const b = makeBoard();
     const camp = b.createCampaign({ name: "C" });

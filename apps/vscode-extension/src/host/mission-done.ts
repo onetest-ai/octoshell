@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { BoardHost } from "./board-host.js";
 import { parsePrimerVersion } from "./octobots-skill.js";
 
@@ -35,11 +35,12 @@ export function missionGuardApplies(workspaceFolderPath: string): boolean {
 export function runMissionDone(opts: MissionDoneOpts, missionId: string, force?: string): Promise<MissionDoneResult> {
   const mission = opts.board.getMission(missionId);
   if (!mission) throw new Error(`mission not found: ${missionId}`);
-  // Target the mission's own entity file: the script then treats the mission as "self", so a
-  // campaign or sibling mission with the same title can never be picked instead.
-  const missionFile = join(opts.board.artifactsRoot, mission.folderPath, "mission.yaml");
-  const args = [opts.scriptPath, missionFile, mission.title, "done", ...(force ? [`--force=${force}`] : [])];
-  return new Promise((resolve, reject) => {
+  // Target the mission's own folder (absolute): the script resolves the folder's own entity ("self")
+  // first, so a campaign or sibling mission with the same title can never be picked instead, and a
+  // legacy mission.md mission resolves as well as a mission.yaml one.
+  const missionDir = resolve(opts.board.artifactsRoot, mission.folderPath);
+  const args = [opts.scriptPath, missionDir, mission.title, "done", ...(force ? [`--force=${force}`] : [])];
+  return new Promise((resolvePromise, reject) => {
     execFile(
       opts.nodePath,
       args,
@@ -47,10 +48,15 @@ export function runMissionDone(opts: MissionDoneOpts, missionId: string, force?:
       (err, stdout, stderr) => {
         const output = `${stdout}${stderr}`;
         if (!err) {
-          opts.board.reconcile();
-          resolve({ ok: true });
+          try {
+            opts.board.reconcile();
+          } catch (e) {
+            reject(e instanceof Error ? e : new Error(String(e)));
+            return;
+          }
+          resolvePromise({ ok: true });
         } else if ((err as { code?: unknown }).code === 3) {
-          resolve({ ok: false, message: output });
+          resolvePromise({ ok: false, message: output });
         } else {
           reject(new Error(output.trim() || err.message));
         }

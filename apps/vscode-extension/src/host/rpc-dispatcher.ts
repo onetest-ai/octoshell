@@ -52,15 +52,17 @@ async function applyStatus(
   id: string,
   status: string,
 ): Promise<{ ok: true; status?: string }> {
-  if (kind === "mission" && status === "done" && c.missionDone) {
-    const first = await c.missionDone(id);
+  // Read once: the context's getter can change between the first run and the confirmed retry.
+  const missionDone = c.missionDone;
+  if (kind === "mission" && status === "done" && missionDone) {
+    const first = await missionDone(id);
     if (first.ok) return { ok: true };
     const confirmed = await c.dialog.confirm(first.message, "Mark done anyway");
     if (!confirmed) {
       const stored = c.board.getMission(id)?.status;
       return stored ? { ok: true, status: stored } : { ok: true };
     }
-    const forced = await c.missionDone(id, DROPDOWN_FORCE_REASON);
+    const forced = await missionDone(id, DROPDOWN_FORCE_REASON);
     if (!forced.ok) throw new RpcError(forced.message);
     return { ok: true };
   }
