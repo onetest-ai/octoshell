@@ -17,6 +17,8 @@ import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { findLegacyWorkflowFolders, isCampaignDir, NO_LONGER_READ } from "./legacy-workflows.mjs";
+import { atRestWarning } from "./completion-guard.mjs";
+import { readEntity } from "./entity-io.mjs";
 import { fileReconciledFrom, parseSkillMarker } from "./skill-marker.mjs";
 import { parseTestLanes } from "./lanes.mjs";
 import { readPending, readRegularFile, MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX } from "./pending-io.mjs";
@@ -257,6 +259,17 @@ else {
     warn("board",
       `${leftovers.length} leftover workflows/ folder(s), ${NO_LONGER_READ}: ${leftovers.join(", ")}`,
       "nothing to do — they are ignored and harmless, so you can leave them; to tidy up, move them aside by hand (the doctor never changes them)");
+  }
+  // A done mission with no Completion gate record at all (presence only; an unreadable mission.yaml is skipped).
+  for (const c of readdirSync(campaigns, { withFileTypes: true }).filter((e) => e.isDirectory())) {
+    const missions = join(campaigns, c.name, "missions");
+    if (!existsSync(missions)) continue;
+    for (const m of readdirSync(missions, { withFileTypes: true }).filter((e) => e.isDirectory())) {
+      let fields;
+      try { fields = readEntity(join(missions, m.name, "mission.yaml"), "yaml"); } catch { continue; }
+      const w = atRestWarning(fields);
+      if (w) warn("board", w, "run the mission-completion-gate skill, or record why with set-status.js --force");
+    }
   }
 }
 

@@ -4,6 +4,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { boardRootOf, findLegacyWorkflowFolders, isCampaignDir, legacyWorkflowsWarning } from "./legacy-workflows.mjs";
 import { acIdsOf, legacyTcNote, missionToken, missionTestsFindings, readTestsText, tcProblems } from "./tc-io.mjs";
 import { readPending, workspaceRootOf, MALFORMED_PENDING_NOTE } from "./pending-io.mjs";
+import { atRestWarning } from "./completion-guard.mjs";
 import { readEntity, resolveEntityFile, KIND_KEYS, KNOWN_KEYS } from "./entity-io.mjs";
 
 const arg = process.argv[2];
@@ -170,8 +171,15 @@ function packReconcileWarnings() {
   return pending.record.skills.map((s) => `warning: pack reconcile pending: ${s.skill} (v${pending.record.packVersion})`);
 }
 
+/** Non-fatal: a done mission with no green Completion gate record (completion-guard.mjs). Presence only; the TS twin in validate.ts is deferred. */
+function gateWarnings() {
+  if (kind !== "mission" || !fields) return [];
+  const w = atRestWarning(fields);
+  return w ? [`warning: ${w}`] : [];
+}
+
 function report() {
-  const warnings = [...legacyWorkflowWarnings(), ...testsWarnings(), ...packReconcileWarnings()];
+  const warnings = [...legacyWorkflowWarnings(), ...testsWarnings(), ...gateWarnings(), ...packReconcileWarnings()];
   if (problems.length) {
     console.error(`INVALID ${path}:`);
     for (const p of problems) console.error(`  - ${p}`);

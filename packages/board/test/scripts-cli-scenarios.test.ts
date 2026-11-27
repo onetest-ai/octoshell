@@ -2224,3 +2224,69 @@ describe("set-status.js mission done guard", () => {
     expect(r.stderr).toContain(join(installed, "gate-checks.mjs"));
   });
 });
+
+describe("at-rest warning: a done mission with no green Completion gate record", () => {
+  const GREEN = [
+    "## Completion gate (2026-11-27T10:00:00Z)",
+    "Verdict: green",
+    `Commit: ${"a".repeat(40)}`,
+    "QA: 1/1 criteria passed",
+    "Review: stillOpen=0",
+  ].join("\n");
+
+  function doneMission(notes: string): { yaml: string; name: string } {
+    const c = createCampaign(boardRoot, { name: "Camp" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Ship it", acceptanceCriteria: "- [ ] it works" });
+    const yaml = join(boardRoot, m.folderPath, "mission.yaml");
+    seed(yaml, "mission", { status: "done", notes });
+    return { yaml, name: "M1 - Ship it" };
+  }
+  function doctorFindings(): { level: string; area: string; msg: string; fix?: string }[] {
+    const home = mkdtempSync(join(tmpdir(), "doctor-home-"));
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
+    delete env.CLAUDE_CONFIG_DIR;
+    try {
+      let out: string;
+      try {
+        out = execFileSync("node", [join(SCRIPTS, "doctor.js"), "--root", projectDir, "--json"], { encoding: "utf8", env });
+      } catch (err: unknown) {
+        out = (err as { stdout?: string }).stdout ?? "";
+      }
+      return JSON.parse(out).findings;
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }
+  const gateWarn = (f: { level: string; area: string; msg: string }[]) => f.filter((x) => x.area === "board" && x.level === "warn" && /Completion gate/.test(x.msg));
+
+  it("validate.js warns, exit 0, when there is no record", () => {
+    const { yaml } = doneMission("");
+    const r = spawnSync("node", [join(SCRIPTS, "validate.js"), yaml], { encoding: "utf8" });
+    expect(r.status).toBe(0);
+    expect(r.stdout.split("\n").some((l) => l.startsWith("warning: ") && /Completion gate/.test(l))).toBe(true);
+  });
+
+  it("validate.js is silent about it with a green record", () => {
+    const { yaml } = doneMission(GREEN);
+    const r = spawnSync("node", [join(SCRIPTS, "validate.js"), yaml], { encoding: "utf8" });
+    expect(r.status).toBe(0);
+    expect(r.stdout).not.toMatch(/Completion gate/);
+  });
+
+  it("doctor.js --json has a board warn naming the mission and the fix", () => {
+    const { name } = doneMission("");
+    const w = gateWarn(doctorFindings());
+    expect(w).toHaveLength(1);
+    expect(w[0]!.msg).toContain(name);
+    expect((w[0] as { fix?: string }).fix).toBe("run the mission-completion-gate skill, or record why with set-status.js --force");
+  });
+
+  it("doctor.js has no such finding with a green record, and skips an unreadable mission.yaml", () => {
+    const { yaml } = doneMission(GREEN);
+    writeFileSync(yaml.replace("mission.yaml", "stray-ok.txt"), "x");
+    const c2 = createCampaign(boardRoot, { name: "Other" });
+    const m2 = createMission(boardRoot, c2.id, { title: "M2 - Broken", acceptanceCriteria: "- [ ] x" });
+    writeFileSync(join(boardRoot, m2.folderPath, "mission.yaml"), "name: [unclosed\n  : :\n");
+    expect(gateWarn(doctorFindings())).toHaveLength(0);
+  });
+});

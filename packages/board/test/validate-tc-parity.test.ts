@@ -2,6 +2,8 @@
  * The TC warnings of mission M6 AC2/AC7: validate.js (the pack, tc-io.mjs) and validateBoard (tc-io.ts) say
  * the same thing about a malformed or legacy test case, with `.octobots/`-relative paths. A synthetic board
  * pins the exact text; real boards (tracked files plus OCTOBOTS_BOARD_COPIES) are compared as sets.
+ * Only TC lines are compared (isTc): validate.js also warns about a done mission with no Completion gate
+ * record; its TS twin in validate.ts is deferred by the spec, so that warning stays out of this comparison.
  */
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
