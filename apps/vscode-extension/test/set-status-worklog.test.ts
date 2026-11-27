@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { SET_STATUS, installPlannerScripts, makeStatusBoard, postToolUseWithOutput } from "./fixtures/status-flip-board.js";
+import { SET_STATUS, createBugNamed, createMissionNamed, createTaskNamed, installPlannerScripts, makeStatusBoard, postToolUseWithOutput } from "./fixtures/status-flip-board.js";
 import { mkdirSync } from "node:fs";
 
 const WORK_LOG = join(__dirname, "..", "resources", "octobots-pack", "hooks", "work-log.mjs");
@@ -91,6 +91,54 @@ describe("set-status.js writes the work log line itself", () => {
   });
 });
 
+describe("a bug is never logged as the task or mission its title names", () => {
+  // Bugs are often titled after where they were found ("T2.10 review nits", "M2 gate review nits").
+  // Closing one must not log that task or mission done on the branch the sweep runs on.
+  it("set-status.js writes no line for a mission bug titled like a task", () => {
+    const b = makeStatusBoard("ss-worklog-bug-");
+    createBugNamed(b, "T1.1 review nits");
+    for (const state of ["active", "done"]) {
+      const r = sh(b.repo, `node "${SET_STATUS}" "${b.missionDir}" "T1.1 review nits" ${state}`, "sess-bug");
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain("octobots: status bug");
+    }
+    expect(lines(b.repo)).toHaveLength(0);
+  });
+
+  it("set-status.js writes no line for a campaign bug titled like a mission", () => {
+    const b = makeStatusBoard("ss-worklog-bug-");
+    createBugNamed(b, "M1 gate review nits", "campaign");
+    const r = sh(b.repo, `node "${SET_STATUS}" "${b.campaignDir}" "M1 gate review nits" done`, "sess-bug");
+    expect(r.status, r.stderr).toBe(0);
+    expect(lines(b.repo)).toHaveLength(0);
+  });
+
+  it("the hook writes no line for those bug flips either (set-status.js ran without a session id)", () => {
+    const b = makeStatusBoard("ss-worklog-bug-");
+    createBugNamed(b, "T1.1 review nits");
+    createBugNamed(b, "M1 gate review nits", "campaign");
+    const command =
+      `node "${SET_STATUS}" "${b.missionDir}" "T1.1 review nits" done && ` +
+      `node "${SET_STATUS}" "${b.campaignDir}" "M1 gate review nits" done`;
+    const r = sh(b.repo, command);
+    expect(r.status, r.stderr).toBe(0);
+    hook(b.repo, postToolUseWithOutput(b.repo, command, r.stdout, "sess-bug-hook"));
+    expect(lines(b.repo)).toHaveLength(0);
+  });
+
+  it("the hook still logs the real task in a chain that also closes a bug titled after it", () => {
+    const b = makeStatusBoard("ss-worklog-bug-");
+    createBugNamed(b, "T1.1 review nits");
+    const command =
+      `node "${SET_STATUS}" "${b.missionDir}" "T1.1 review nits" done && ` +
+      `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" done`;
+    const r = sh(b.repo, command);
+    expect(r.status, r.stderr).toBe(0);
+    hook(b.repo, postToolUseWithOutput(b.repo, command, r.stdout, "sess-bug-hook"));
+    expect(lines(b.repo).map((l) => `${l.task}:${l.state}`)).toEqual(["T1.1:done"]);
+  });
+});
+
 describe("one work-log file per flip, wherever the board lives", () => {
   it("a flip on a worktree board with CLAUDE_PROJECT_DIR elsewhere writes one line in one file (the session's project dir)", () => {
     const b = makeStatusBoard("ss-worklog-wt-");
@@ -110,5 +158,46 @@ describe("one work-log file per flip, wherever the board lives", () => {
     expect(lines(project)).toHaveLength(1);
     expect(lines(project)[0]).toMatchObject({ session_id: "sess-wt", task: "T1.1", state: "active" });
     expect(existsSync(LOG(b.repo))).toBe(false);
+  });
+});
+
+describe("letter ids", () => {
+  const flipBoth = (b: ReturnType<typeof makeStatusBoard>, session?: string) => {
+    createMissionNamed(b, "M6b - Letter mission");
+    createTaskNamed(b, "T6b.1 - Letter task");
+    const command =
+      `node "${SET_STATUS}" "${b.campaignDir}" "M6b - Letter mission" active --force=letter-test && ` +
+      `node "${SET_STATUS}" "${b.missionDir}" "T6b.1 - Letter task" active`;
+    return { command, r: sh(b.repo, command, session) };
+  };
+
+  it("set-status.js logs mission M6b and task T6b.1 with their letter", () => {
+    const b = makeStatusBoard("ss-worklog-letter-");
+    const { r } = flipBoth(b, "s-letter");
+    expect(r.status, r.stderr).toBe(0);
+    expect(lines(b.repo)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ mission: "M6b", state: "active" }), expect.objectContaining({ task: "T6b.1", state: "active" })]),
+    );
+  });
+
+  it("the hook logs them too (no session in the script's env)", () => {
+    const b = makeStatusBoard("ss-worklog-letter-");
+    const { command, r } = flipBoth(b);
+    expect(r.status, r.stderr).toBe(0);
+    expect(lines(b.repo)).toHaveLength(0);
+    hook(b.repo, postToolUseWithOutput(b.repo, command, r.stdout, "s-letter"));
+    expect(lines(b.repo)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ mission: "M6b", state: "active" }), expect.objectContaining({ task: "T6b.1", state: "active" })]),
+    );
+  });
+
+  it("M60 and M6c2 never log as M6", () => {
+    const b = makeStatusBoard("ss-worklog-letter-");
+    createMissionNamed(b, "M60 - Sixty");
+    createMissionNamed(b, "M6c2 odd");
+    expect(sh(b.repo, `node "${SET_STATUS}" "${b.campaignDir}" "M60 - Sixty" active --force=letter-test`, "s-letter").status).toBe(0);
+    expect(lines(b.repo)).toEqual([expect.objectContaining({ mission: "M60" })]);
+    expect(sh(b.repo, `node "${SET_STATUS}" "${b.campaignDir}" "M6c2 odd" active --force=letter-test`, "s-letter").status).toBe(0);
+    expect(lines(b.repo)).toHaveLength(1);
   });
 });

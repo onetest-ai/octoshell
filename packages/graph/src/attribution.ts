@@ -161,7 +161,7 @@ function filesChangedBy(repoRoot: string, sha: string): ChangedFiles | null {
  * id, a FOLDER PATH
  * (`folder:campaigns/octograph-…/missions/m4-…/tasks/t4-2-…`), while the
  * pack's `hooks/work-log.mjs` records the short id it pulls off the
- * `set-status.js` title with `/^(T\d+\.\d+)\b/` and nothing else — it never
+ * `set-status.js` title with `/^(T\d+[a-z]?\.\d+)(?![A-Za-z0-9])/` and nothing else — it never
  * sees a folder id. Comparing `WorklogEntry.task` to `BoardTask.id` compares
  * two id namespaces that can never be equal: measured on this repo
  * (2026-08-11), 52 board tasks against 18 worklog entries produced ZERO
@@ -172,7 +172,7 @@ function filesChangedBy(repoRoot: string, sha: string): ChangedFiles | null {
  * cannot import this — the same necessary duplication `entity-io.mjs`
  * carries for the board schema. Change one and change the other.
  */
-const SHORT_ID = /^(T\d+\.\d+)\b/;
+const SHORT_ID = /^(T\d+[a-z]?\.\d+)(?![A-Za-z0-9])/;
 
 /**
  * Emits one line of non-fatal diagnostic text — by default to the real

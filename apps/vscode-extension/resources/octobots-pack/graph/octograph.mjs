@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// octobots-pack-version: 63
+// octobots-pack-version: 64
 
 // src/cli.ts
 import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -4951,7 +4951,7 @@ function filesChangedBy(repoRoot, sha) {
     return null;
   }
 }
-var SHORT_ID = /^(T\d+\.\d+)\b/;
+var SHORT_ID = /^(T\d+[a-z]?\.\d+)(?![A-Za-z0-9])/;
 var defaultWarn = (message) => {
   process.stderr.write(message);
 };

@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { makeStatusBoard, postToolUse, postToolUseWithOutput, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
+import { hooksWithOldStatusFlip, makeStatusBoard, postToolUse, postToolUseWithOutput, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
 
 const WORK_LOG = join(__dirname, "..", "resources", "octobots-pack", "hooks", "work-log.mjs");
 const LOG = (repo: string) => join(repo, ".octobots", "tokenomics", "worklog.jsonl");
@@ -27,6 +27,20 @@ function entries(repo: string): Record<string, unknown>[] {
 }
 
 describe("work-log.mjs", () => {
+  it("warns once and records nothing when status-flip.mjs is older than the hook (no kind)", () => {
+    const b = makeStatusBoard("octo-worklog-");
+    const hook = join(hooksWithOldStatusFlip(), "work-log.mjs");
+    const res = spawnSync("node", [hook], {
+      cwd: b.repo,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: b.repo },
+      input: JSON.stringify(runAndPost(b.repo, setStatusCommand(b.missionDir, "T1.1 - Parse ids", "active"))),
+      encoding: "utf8",
+    });
+    expect(res.status).toBe(0);
+    expect(res.stderr.trim()).toBe("work-log: warning: status-flip.mjs is older than this hook; reinstall the Octobots pack");
+    expect(entries(b.repo)).toEqual([]);
+  });
+
   it("records a task status flip as session -> task", () => {
     const b = makeStatusBoard("octo-worklog-");
     run(b.repo, runAndPost(b.repo, setStatusCommand(b.missionDir, "T1.1 - Parse ids", "active")));

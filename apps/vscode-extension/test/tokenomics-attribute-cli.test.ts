@@ -25,3 +25,37 @@ it.each(["missing board", "missing YAML parser"])("attribute exits nonzero with 
   expect(r.stderr).toMatch(/^attribute: /);
   expect(r.stderr).toMatch(failure === "missing board" ? /campaigns/ : /YAML parser/);
 });
+
+function badTaskBoard(): string {
+  const dir = mkdtempClean("attribute-notasks-");
+  cpSync(join(pack, "tokenomics"), join(dir, "cli"), { recursive: true });
+  const vendor = join(dir, ".claude/skills/mission-planner/scripts/vendor");
+  mkdirSync(vendor, { recursive: true });
+  cpSync(join(pack, "skill/mission-planner/scripts/vendor/js-yaml.mjs"), join(vendor, "js-yaml.mjs"));
+  const campaign = join(dir, ".octobots/campaigns/demo");
+  const task = join(campaign, "missions/m1-work/tasks/t1-1-x");
+  mkdirSync(task, { recursive: true });
+  writeFileSync(join(campaign, "campaign.yaml"), "name: Demo\n");
+  writeFileSync(join(campaign, "missions/m1-work/mission.yaml"), "name: M1 - Work\n");
+  writeFileSync(join(task, "task.yaml"), "name: [unclosed\n");
+  return dir;
+}
+
+it("without --session, attribute ignores an unparseable task.yaml", () => {
+  const dir = badTaskBoard();
+  const r = spawnSync(process.execPath, [join(dir, "cli/attribute.mjs"), "--branch", "feat/demo-m1", "--project-dir", dir], {
+    encoding: "utf8", cwd: pack,
+  });
+  expect.soft(r.status).toBe(0);
+  expect(JSON.parse(r.stdout)).toMatchObject({ kind: "mission", campaign: "demo", mission: "M1" });
+});
+
+it("with --session, the task files are still read (an unparseable one is reported)", () => {
+  const dir = badTaskBoard();
+  const r = spawnSync(process.execPath, [join(dir, "cli/attribute.mjs"), "--branch", "feat/demo-m1", "--session", "s1", "--project-dir", dir], {
+    encoding: "utf8", cwd: pack,
+  });
+  expect(r.status).not.toBe(0);
+  expect(r.stderr.trim().split("\n")).toHaveLength(1);
+  expect(r.stderr).toMatch(/^attribute: /);
+});

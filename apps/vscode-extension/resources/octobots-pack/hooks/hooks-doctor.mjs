@@ -12,7 +12,7 @@
 //     for a shared launcher, its first positional argument), never by the command string or a checkout
 //     path, and, when an entry names a matcher, by that matcher.
 // (b) the git side: core.hooksPath is set, and the two shims (prepare-commit-msg, commit-msg) exist
-//     there, hold the pack's shim text (trailing whitespace aside), and are executable both on disk and,
+//     there, hold the pack's shim text (trailing whitespace aside; an older pack shim is reported as an update note, not a problem), and are executable both on disk and,
 //     when tracked, in the git index. A repo commits the shims once; the pack never writes them.
 //
 // Exit: 0 all wired, 1 something missing, 2 a settings or list file is unreadable.
@@ -25,6 +25,37 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PACK_SCRIPT = ".octobots/hooks/prepare-commit-msg.mjs";
 
 /**
+ * The shim texts packs v59-v63 printed, verbatim. A repo that committed one still works; the doctor
+ * reports it as older and prints the current text instead of calling it a problem.
+ */
+export const LEGACY_SHIMS = {
+  "prepare-commit-msg": [
+    [
+      "#!/bin/sh",
+      "# Attribution is advisory: a missing runtime or pack script must not block Git.",
+      'command -v node >/dev/null || { echo "prepare-commit-msg: warning: node not found, no mission trailer added" >&2; exit 0; }',
+      `helper="$(git rev-parse --show-toplevel)/${PACK_SCRIPT}"`,
+      '[ -f "$helper" ] || { echo "prepare-commit-msg: warning: $helper not found, no mission trailer added" >&2; exit 0; }',
+      'node "$helper" "$@"',
+      "exit 0",
+      "",
+    ].join("\n"),
+  ],
+  "commit-msg": [
+    [
+      "#!/bin/sh",
+      "# Adds the mission trailer that prepare-commit-msg deferred until the editor closed. Advisory: never blocks.",
+      "command -v node >/dev/null || exit 0",
+      `helper="$(git rev-parse --show-toplevel)/${PACK_SCRIPT}"`,
+      '[ -f "$helper" ] || exit 0',
+      'node "$helper" --after-edit "$@"',
+      "exit 0",
+      "",
+    ].join("\n"),
+  ],
+};
+
+/**
  * The two shims a repo commits at <core.hooksPath>/, mode 100755. Guarded like solo's M2 shims:
  * attribution is advisory, so a missing node or a missing pack script (a fresh worktree, or a repo that
  * commits the shim before the pack reaches it) prints one warning line and exits 0, never a stack trace.
@@ -34,9 +65,11 @@ export const SHIMS = {
     "#!/bin/sh",
     "# Attribution is advisory: a missing runtime or pack script must not block Git.",
     'command -v node >/dev/null || { echo "prepare-commit-msg: warning: node not found, no mission trailer added" >&2; exit 0; }',
-    `helper="$(git rev-parse --show-toplevel)/${PACK_SCRIPT}"`,
+    'root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0',
+    `helper="$root/${PACK_SCRIPT}"`,
     '[ -f "$helper" ] || { echo "prepare-commit-msg: warning: $helper not found, no mission trailer added" >&2; exit 0; }',
-    'node "$helper" "$@"',
+    'out="$(node "$helper" "$@" 2>&1 >/dev/null)" || { echo "prepare-commit-msg: warning: $helper failed, no mission trailer added" >&2; exit 0; }',
+    '[ -z "$out" ] || printf \'%s\\n\' "$out" >&2',
     "exit 0",
     "",
   ].join("\n"),
@@ -44,9 +77,11 @@ export const SHIMS = {
     "#!/bin/sh",
     "# Adds the mission trailer that prepare-commit-msg deferred until the editor closed. Advisory: never blocks.",
     "command -v node >/dev/null || exit 0",
-    `helper="$(git rev-parse --show-toplevel)/${PACK_SCRIPT}"`,
+    'root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0',
+    `helper="$root/${PACK_SCRIPT}"`,
     '[ -f "$helper" ] || exit 0',
-    'node "$helper" --after-edit "$@"',
+    'out="$(node "$helper" --after-edit "$@" 2>&1 >/dev/null)" || exit 0',
+    '[ -z "$out" ] || printf \'%s\\n\' "$out" >&2',
     "exit 0",
     "",
   ].join("\n"),
@@ -175,6 +210,8 @@ function printShims(dirRel, names) {
 const normalShim = (text) => text.split("\n").map((l) => l.replace(/[ \t]+$/, "")).join("\n").trimEnd();
 const differsFromShim = (text, name) => text.includes("\r") || normalShim(text) !== normalShim(SHIMS[name]);
 
+const isLegacyShim = (text, name) => !text.includes("\r") && LEGACY_SHIMS[name].some((l) => normalShim(l) === normalShim(text));
+
 /** The git side. Returns the number of problems found; prints each with its fix. */
 function checkGit(root) {
   const top = gitOut(root, "rev-parse", "--show-toplevel") ?? root;
@@ -216,6 +253,12 @@ function checkGit(root) {
       missingShims.push(name);
       continue;
     }
+    // An older pack shim still works, so it is a note, not a problem; the mode checks below still apply to it.
+    const legacy = isLegacyShim(text, name);
+    if (legacy) {
+      console.log(`  update   git          ${dirRel}/${name} is an older pack shim; replace it with:`);
+      printShims(dirRel, [name]);
+    }
     if (!text.includes(PACK_SCRIPT)) {
       bad(`shim ${dirRel}/${name} does not run ${PACK_SCRIPT}`);
       missingShims.push(name);
@@ -223,7 +266,7 @@ function checkGit(root) {
       // The two shims share one script; the entry point is the --after-edit flag (commit-msg only).
       bad(`shim ${dirRel}/${name} ${name === "commit-msg" ? "does not pass" : "must not pass"} --after-edit to ${PACK_SCRIPT}`);
       missingShims.push(name);
-    } else if (differsFromShim(text, name)) {
+    } else if (!legacy && differsFromShim(text, name)) {
       bad(`shim ${dirRel}/${name} differs from the pack shim`);
       missingShims.push(name);
     } else if ((statSync(file).mode & 0o111) === 0) {
@@ -234,7 +277,7 @@ function checkGit(root) {
       const fixPath = realDir === dir ? `${dirRel}/${name}` : join(realDir, name);
       bad(`shim ${dirRel}/${name} is committed without the executable bit`);
       console.log(`           fix: git add --chmod=+x ${fixPath} && chmod +x ${fixPath}`);
-    } else console.log(`  ok       git          ${dirRel}/${name}`);
+    } else if (!legacy) console.log(`  ok       git          ${dirRel}/${name}`);
   }
   if (missingShims.length) {
     console.log(`           fix: git config core.hooksPath ${dirRel}   (already set; the shims below go there)`);

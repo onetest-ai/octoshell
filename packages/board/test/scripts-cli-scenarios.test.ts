@@ -1681,6 +1681,29 @@ describe("set-status.js plan-review gate (M5 AC1)", () => {
       expect(r.status).toBe(0);
       expect(r.stderr).toBe("");
     });
+
+    it("names the mission record that allowed the start", () => {
+      const f = fixture({ missionNotes: STRICT });
+      const r = run([f.dir, "M1 - Auth", "active"]);
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain('plan review: "## Plan review (Alex + Rio, 2026-10-05)" in the mission notes');
+      expect(r.stdout).not.toContain("covers every mission");
+    });
+
+    it("names a campaign record and says it covers every mission", () => {
+      const f = fixture({ campaignNotes: STRICT });
+      const r = run([f.dir, "M1 - Auth", "active"]);
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("in the campaign notes (a campaign record covers every mission in the campaign)");
+    });
+
+    it("a legacy record keeps its warning and adds the line", () => {
+      const f = fixture({ campaignNotes: LEGACY });
+      const r = run([f.dir, "M1 - Auth", "active"]);
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain('warning: legacy plan review "## Plan review (Alex + Rio, 2026-10-02)" (campaign notes)');
+      expect(r.stdout).toContain("in the campaign notes (a campaign record covers every mission in the campaign)");
+    });
   });
 });
 

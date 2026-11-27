@@ -74,8 +74,8 @@ The pack ships `.octobots/hooks/prepare-commit-msg.mjs`. It asks the attribution
 `Octobots-Mission: <campaign>/<M>` or `Octobots-Campaign: <campaign>` trailer, never a duplicate. It
 never blocks a commit. An unattributed branch, or a CLI that exits non-zero, gets exactly one warning
 that names the branch and points to the mission-execution skill. `OCTOBOTS_CODEX_MODEL` adds a
-`Co-Authored-By: Codex (<model>)` line. `OCTOBOTS_ATTRIBUTE_TIMEOUT_MS` raises the CLI time limit
-(default 30000).
+`Co-Authored-By: Codex (<model>)` line. `OCTOBOTS_ATTRIBUTE_TIMEOUT_MS` sets the time limit (default 30000) for every git, attribution and
+`git interpret-trailers` call. The limit applies to each call, not to the total.
 
 The pack writes nothing under the repo's hooks directory. Each repo commits two shims once, at
 `<core.hooksPath>/prepare-commit-msg` and `<core.hooksPath>/commit-msg`, mode 100755:
@@ -84,9 +84,11 @@ The pack writes nothing under the repo's hooks directory. Each repo commits two 
 #!/bin/sh
 # Attribution is advisory: a missing runtime or pack script must not block Git.
 command -v node >/dev/null || { echo "prepare-commit-msg: warning: node not found, no mission trailer added" >&2; exit 0; }
-helper="$(git rev-parse --show-toplevel)/.octobots/hooks/prepare-commit-msg.mjs"
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+helper="$root/.octobots/hooks/prepare-commit-msg.mjs"
 [ -f "$helper" ] || { echo "prepare-commit-msg: warning: $helper not found, no mission trailer added" >&2; exit 0; }
-node "$helper" "$@"
+out="$(node "$helper" "$@" 2>&1 >/dev/null)" || { echo "prepare-commit-msg: warning: $helper failed, no mission trailer added" >&2; exit 0; }
+[ -z "$out" ] || printf '%s\n' "$out" >&2
 exit 0
 ```
 
@@ -94,14 +96,18 @@ exit 0
 #!/bin/sh
 # Adds the mission trailer that prepare-commit-msg deferred until the editor closed. Advisory: never blocks.
 command -v node >/dev/null || exit 0
-helper="$(git rev-parse --show-toplevel)/.octobots/hooks/prepare-commit-msg.mjs"
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+helper="$root/.octobots/hooks/prepare-commit-msg.mjs"
 [ -f "$helper" ] || exit 0
-node "$helper" --after-edit "$@"
+out="$(node "$helper" --after-edit "$@" 2>&1 >/dev/null)" || exit 0
+[ -z "$out" ] || printf '%s\n' "$out" >&2
 exit 0
 ```
 
 Both shims are guarded: a missing `node` or a missing pack script prints one warning line (from
-`prepare-commit-msg` only) and exits 0, so a fresh worktree or a repo that commits the shims before the
+`prepare-commit-msg` only) and exits 0. Outside a git repository both exit 0 silently. If the helper
+fails, `prepare-commit-msg` prints the `helper failed, no mission trailer added` warning and exits 0
+(`commit-msg` exits 0 silently). A line the helper itself writes to stderr is passed through. A fresh worktree, or a repo that commits the shims before the
 pack arrives never sees a stack trace. `commit-msg` adds the trailer after the editor closes and only when content was written, so an empty
 message still aborts the commit.
 

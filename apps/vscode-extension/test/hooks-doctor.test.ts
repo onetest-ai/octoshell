@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { registerClaudeHook, OCTOBOTS_HOOK_SPECS, octoshellRequiredHooks } from "../src/host/octobots-hooks.js";
 import { COMMIT_SHIM, PACK, PREPARE_SHIM, gitEnv, hookRepo, snapshotDir, type HookRepo } from "./fixtures/hook-repo.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
@@ -242,6 +243,28 @@ describe("hooks-doctor: git side", () => {
         return { r, file: join(r.root, ".githooks", name) };
       };
       const differs = `shim .githooks/${name} differs from the pack shim`;
+
+      it("a v59-v63 shim is an older pack shim: an update line, not a problem", async () => {
+        const mod = await import(/* @vite-ignore */ pathToFileURL(join(PACK, "hooks", "hooks-doctor.mjs")).href);
+        const { r, file } = ready();
+        writeFileSync(file, mod.LEGACY_SHIMS[name][0]);
+        const res = doctor(r);
+        expect(res.status, res.out).toBe(0);
+        expect(res.out).toContain(`  update   git          .githooks/${name} is an older pack shim`);
+        expect(res.out).not.toContain("differs from the pack shim");
+        expect(res.out).not.toContain(`  ok       git          .githooks/${name}`);
+      });
+
+      it("an older pack shim that is not executable still reports both the update line and the mode problem", async () => {
+        const mod = await import(/* @vite-ignore */ pathToFileURL(join(PACK, "hooks", "hooks-doctor.mjs")).href);
+        const { r, file } = ready();
+        writeFileSync(file, mod.LEGACY_SHIMS[name][0]);
+        chmodSync(file, 0o644);
+        const res = doctor(r);
+        expect(res.status).toBe(1);
+        expect(res.out).toContain(`  update   git          .githooks/${name} is an older pack shim`);
+        expect(res.out).toContain(`shim .githooks/${name} is not executable`);
+      });
 
       it("a CRLF copy differs, and the shim text is printed", () => {
         const { r, file } = ready();

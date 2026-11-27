@@ -42,18 +42,25 @@ if ((evt.tool_name ?? evt.toolName) !== "Bash") process.exit(0);
 const command = (evt.tool_input ?? evt.toolInput ?? {})?.command;
 if (typeof command !== "string" || !command.includes("set-status.js")) process.exit(0);
 
-// Every `… done` call on a MISSION in the command. Mission ids are `M<n>`; task ids are `T<m>.<n>`.
+// Every `… done` call on a MISSION in the command. The entity's resolved kind (below) decides, not its title, so any mission id (`M<n>`, `M6b`) gates.
 // Only missions gate. A chain such as `set-status.js <m> "T1.3 - …" done && set-status.js <c> "M1 -
 // …" done` must still gate M1, so all calls are considered, not just the first.
 const candidates = parseSetStatusAll(command).filter(
-  (c) => c.state === "done" && /^M\d+\b/.test(c.title) && !/^T\d+\.\d+\b/.test(c.title),
+  (c) => c.state === "done",
 );
 if (candidates.length === 0) process.exit(0);
 
 // Did the board really change? set-status.js prints a transition line only when the status moved;
 // the YAML must agree (`; echo` can make a failed set-status exit 0, and an `echo` can forge the line).
 // Re-running `done` on a done mission prints `unchanged`, so it does not re-fire the gate.
-const titles = (await confirmedTransitions(candidates, evt, projectDir)).map((c) => c.title);
+// Only an entity that IS a mission gates: a bug titled "M2 gate review nits" is a bug.
+const confirmed = await confirmedTransitions(candidates, evt, projectDir);
+// An older local status-flip.mjs returns no `kind`; acting on a title would credit the wrong entity, so act on nothing.
+if (confirmed.some((c) => c.kind === undefined)) {
+  console.error("mission-gate: warning: status-flip.mjs is older than this hook; reinstall the Octobots pack");
+  process.exit(0);
+}
+const titles = confirmed.filter((c) => c.kind === "mission").map((c) => c.title);
 if (titles.length === 0) process.exit(0);
 const named = titles.map((t) => `"${t}"`).join(", ");
 

@@ -88,6 +88,7 @@ if (match.kind === "mission" && mapped === "executing") {
     if (review.legacy) {
       console.error(`warning: legacy plan review "${review.heading}" (${review.where} notes) has no Reviewers:/Verdict: lines; accepted`);
     }
+    console.log(`plan review: "${review.heading}" in the ${review.where} notes${review.where === "campaign" ? " (a campaign record covers every mission in the campaign)" : ""}`);
   } else if (forceReason === null) {
     refuse(review.candidates, campaignError);
   } else {
@@ -118,8 +119,10 @@ function recordWorklog() {
     const session = process.env.CLAUDE_CODE_SESSION_ID;
     const requested = state.toLowerCase();
     if (!session || !["active", "done"].includes(requested)) return;
-    const taskId = title.match(/^(T\d+\.\d+)\b/)?.[1] ?? null;
-    const missionId = taskId ? null : (title.match(/^(M\d+)\b/)?.[1] ?? null);
+    // Only a task or a mission is logged, and the id is read for that kind only: a bug titled
+    // "T2.10 review nits" or "M2 gate review nits" is a bug, not that task or mission.
+    const taskId = match.kind === "task" ? (title.match(/^(T\d+[a-z]?\.\d+)(?![A-Za-z0-9])/)?.[1] ?? null) : null;
+    const missionId = match.kind === "mission" ? (title.match(/^(M\d+[a-z]?)(?![A-Za-z0-9])/)?.[1] ?? null) : null;
     if (!taskId && !missionId) return;
     // The file is the session's project dir's, the same rule the work-log hook uses (worklog-path.mjs).
     // It self-gates on `.octobots/` there, like the hook. The branch is the board's own checkout's.
