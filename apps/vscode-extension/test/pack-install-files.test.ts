@@ -409,6 +409,15 @@ describe("installPack: a changed pack file is kept and staged", () => {
 });
 
 describe("installPack: retired files", () => {
+  it("deletes the retired mission-gate hook an older pack installed", () => {
+    const ws = installed();
+    const key = "hooks/mission-gate.mjs";
+    const hash = Object.values(store.versions).flatMap((v) => v[key] ?? [])[0]!;
+    mk(live(ws, key), store.bodies[hash]!);
+    expect(installPack(PACK_SRC, ws, { store }).pending).toEqual([]);
+    expect(existsSync(live(ws, key))).toBe(false);
+  });
+
   it("a changed retired file is kept and staged as retired; an unchanged one is deleted", () => {
     const ws = installed();
     mk(live(ws, SET_STEP), "// local\n");

@@ -165,13 +165,29 @@ describe("doctor", () => {
         SessionStart: [{ hooks: [{ type: "command", command: ".octobots/hooks/primer.mjs" }] }],
         PostToolUse: [
           { hooks: [{ type: "command", command: ".octobots/hooks/work-log.mjs" }] },
-          { hooks: [{ type: "command", command: ".octobots/hooks/mission-gate.mjs" }] },
         ],
       },
     }));
     const { out } = doctor(repo, { CLAUDE_CONFIG_DIR: join(repo, ".claude") });
     const f = JSON.parse(out).findings.find((x: any) => x.area === "hooks");
     expect(f.level).toBe("ok");
+  });
+
+  it("reports a still-registered mission-gate hook as retired, and says nothing when it is gone", () => {
+    const repo = mkdtempClean("octo-doc-");
+    mkdirSync(join(repo, ".claude"), { recursive: true });
+    const write = (post: unknown[]) => writeFileSync(join(repo, ".claude", "settings.json"), JSON.stringify({ hooks: { PostToolUse: post } }));
+    write([
+      { hooks: [{ type: "command", command: ".octobots/hooks/work-log.mjs" }] },
+      { hooks: [{ type: "command", command: ".octobots/hooks/mission-gate.mjs" }] },
+    ]);
+    const withGate = JSON.parse(doctor(repo, { CLAUDE_CONFIG_DIR: join(repo, ".claude") }).out).findings.filter((x: any) => JSON.stringify(x).includes("mission-gate"));
+    expect(withGate).toHaveLength(1);
+    expect(withGate[0].msg).toContain("retired");
+    expect(withGate[0].fix).toBe("reinstall the pack");
+    write([{ hooks: [{ type: "command", command: ".octobots/hooks/work-log.mjs" }] }]);
+    const without = JSON.parse(doctor(repo, { CLAUDE_CONFIG_DIR: join(repo, ".claude") }).out).findings.filter((x: any) => JSON.stringify(x).includes("mission-gate"));
+    expect(without).toHaveLength(0);
   });
 
   it("flags a status line registered by absolute path", () => {

@@ -1,34 +1,37 @@
 ---
 name: mission-completion-gate
-description: Use when an Octobots mission is marked `done` (the mission-gate PostToolUse hook fires this) — the blocking, agent-driven completion gate that must pass green before a mission is truly complete. The orchestrator dispatches sub-agents (never the Workflow tool) for the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, then merges/completes only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 64
+description: Use when an Octobots mission's tasks have merged and it is about to be marked done — set-status.js (and the status dropdown) refuses done until this gate's Gate checks and Completion gate records are green and current; also use when that refusal names this gate. The blocking, agent-driven completion gate. The orchestrator dispatches sub-agents (never the Workflow tool) for the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, records the results with gate-checks.mjs and gate-record.mjs, then ticks the criteria and marks the mission done only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
+version: 65
 ---
 
 # mission-completion-gate
 
-The **blocking** gate that runs when a mission flips to `done`. The project's mechanical gate
+The **blocking** gate that runs before a mission is marked `done`. The project's mechanical gate
 (linters, type-checks, test suites, new-code coverage) is necessary but **not
 sufficient** — this gate adds the agent pipeline a git hook can't: black-box QA
 against acceptance criteria and a critical whole-branch review. A mission is not
 done until this gate is green.
 
-> Triggered automatically by `.octobots/hooks/mission-gate.mjs` (PostToolUse on
-> `set-status.js … done` for an `M<n>` mission). You can also run it by hand
-> before marking a mission done.
+> **Gate first, then done.** Run this gate when the mission's last task has merged, before you mark
+> the mission `done`. The order is: tasks merged → this gate (phases 1-4) → tick the criteria and
+> mark the mission `done` (phase 5) → the mission PR.
 >
-> Note the layering (see mission-planner, *Setting status on a mission*): flipping a mission `done`
-> with `set-status.js` does **not** drive the app's displayed mission status — that comes from the
-> run lifecycle — but it **does** fire this hook. Flipping the mission `done` is therefore the
-> intended way to launch this gate, not a no-op; don't skip it thinking the marker is "ignored".
->
-> The hook fires only on a **real transition** to `done`: re-running `set-status.js … done` on a
-> mission that is already `done` prints `unchanged` and launches nothing. To recover a gate that was
-> skipped, run this skill by hand, or flip the mission to `executing` and then `done` again.
+> Marking a mission `done` is guarded (see mission-planner, *Setting status on a mission*).
+> `set-status.js <campaign-dir> "<M<n> - name>" done`, and the extension's status dropdown, refuse
+> until every task of the mission is `done` or `cancelled`, every mission criterion is ticked, every
+> test case in `tests/m<n>/` is `status: pass`, and the latest `## Gate checks` and
+> `## Completion gate` records are green and current. This gate writes those two records with
+> scripts: `gate-checks.mjs` at the end of phase 1, and `gate-record.mjs` at the end of phase 3.
+> Never write record text by hand. "Current" means the record's commit exists and no code outside
+> the board (`.octobots/`) has changed since it, committed or not. A refusal names each failing check
+> and the next step to take.
 
 ## Hard rules (non-negotiable)
 
 - **Blocking.** If any phase fails, the mission is NOT done. Fix, re-verify, and
-  only then leave it `done`. Never rationalize skipping the gate.
+  only then mark it `done`. Never rationalize skipping the gate, and never pass `--force` to
+  `set-status.js` to get past a red one: the override is the user's decision, recorded with its
+  reason in the mission notes.
 - **QA is black-box.** Sage (`qa-engineer`) verifies against the **acceptance
   criteria + spec only** — Sage is **never** handed the diff or the source, and
   **never reads the implementation**. Sage communicates with **Alex** (`ba`, to
@@ -103,6 +106,27 @@ dispatches the addressee with them, and then hands the answers back in a follow-
    Where octograph is installed, `impact --diff`'s `tests that historically move with this` section
    feeds this question directly. A suggested test that the coverage run never exercised is worth a
    look before calling coverage sufficient.
+   **Phase 1 ends with the recorded checks.** When the developer's verdict is green, commit its
+   fixes, then run this from the repo root in the main loop, in the foreground with a Bash
+   `timeout: 600000`: `node .claude/skills/mission-planner/scripts/gate-checks.mjs <mission-dir>`.
+   It runs the coverage lane from `AGENTS.md § Test lanes` and the parked-test scan, then appends a
+   `## Gate checks (<time>)` record to the mission notes. Exit 0 is green. Exit 1 is red: phase 1 is
+   not green, so fix and run it again. Exit 3 is a refusal: either there are uncommitted tracked
+   changes outside `.octobots/` (commit the mission's own changes first, because a record taken on
+   uncommitted code can never be current; see *Changes that are not the mission's* below), or the
+   mission is not in a git repository. Outside git the guard cannot check any record, and you may not
+   use `--force` yourself: stop and ask the user. Only their override gets past it:
+   `set-status.js <campaign-dir> "<M<n> - name>" done --force=<reason>`, or the status dropdown's
+   "Mark done anyway". Without a coverage lane it warns and records only the parked-test scan. If the
+   coverage lane runs longer than 10 minutes, ask the person to run the same command in a terminal.
+   **Changes that are not the mission's.** The exit-3 list can hold tracked changes the mission did
+   not make: the user's own edits, or a pack upgrade that touched tracked `.claude/` files. Never
+   commit those into the mission branch. Ask the user what to do with them, or set them aside with a
+   uniquely tagged stash: `git stash push -u -m "<unique-tag>"`, capture its SHA at once from
+   `git stash list --format='%H %gs'`, and restore it with `git stash apply <sha>`, never a bare
+   `git stash pop` (the stash stack is shared with other worktrees and sessions). Keep them stashed
+   through the recorded checks, `gate-record.mjs` and `set-status.js … done`, then restore them and
+   drop that entry, found again by its tag. Restored before done, they make both records stale again.
 2. **QA, black-box (Sage)**: dispatch `qa-engineer` (`model: sonnet`). Its input is **only** the
    mission's acceptance criteria and the BA spec. **Never** pass it the diff, file paths, or source.
    For each criterion, Sage records pass or fail with observable evidence (behaviour, endpoints,
@@ -122,21 +146,53 @@ dispatches the addressee with them, and then hands the answers back in a follow-
    **Block on `stillOpen` only.** If `fixed` is non-empty, re-dispatch Sage on **only the affected
    criteria**, still black-box: a fix changed the code after Sage signed off.
    Allow one review round and one fix round. Residue beyond that is filed as board bugs with an owner.
+   **Phase 3 ends with the recorded result.** Once Rio's verdict is in and Sage has re-verified any
+   fixed criteria, commit every fix. If phase 3 changed code, run `gate-checks.mjs` again as in
+   phase 1: a Gate checks record stays current only while the code it checked is unchanged. Then
+   record the outcome from the repo root:
+   `node .claude/skills/mission-planner/scripts/gate-record.mjs <mission-dir> --verdict <green|red|pending-human> --qa <n>/<m> --still-open <k> [--note "<text>"]...`
+   - `--qa <n>/<m>`: n of the mission's m acceptance criteria passed: those Sage passed black-box,
+     plus any a person has checked (see `pending-human` below).
+   - `--still-open <k>`: the number of blocking findings still in Rio's `stillOpen` after the fix
+     round. Leftovers filed as board bugs are non-blocking by this gate's rule, so they do not count.
+   - `--verdict green` only when phases 1-3 are green. The script refuses green unless n = m = the
+     mission's criterion count and k = 0, and names the number that is off. Use `red` for a blocked
+     gate.
+   - `--verdict pending-human` when a criterion needs a person to check it (a manual or visual check
+     the agents cannot make). Move the mission to `awaiting approval` and tell the user what to
+     check. When the person has checked, record again with `--verdict green --qa <m>/<m>` (the
+     person's check counts) and `--note "human check: <who>, <what was checked>"`. The latest record
+     wins. Then continue: run phase 4 if it has not run yet, then phase 5 (tick the criteria, then
+     mark the mission `done`). The mission does not stay in `awaiting approval`.
+   - `--note` (repeatable) carries the phase results worth keeping, such as the coverage % and the
+     Sage verdict per criterion.
+   It appends a `## Completion gate (<time>)` record to the mission notes. Exit 3 is a refusal:
+   uncommitted tracked changes outside `.octobots/` (commit the mission's own changes first, and set
+   aside any that are not the mission's as phase 1 says), no git repository (stop and ask the user,
+   as phase 1 says), or a green verdict whose numbers do not match.
 4. **Tokenomics capture (non-blocking)**: dispatch a general-purpose agent (`model: sonnet`), or run
    it in the main loop, since it is two commands with no judgment involved:
    `node .octobots/tokenomics/run.mjs` and `node .octobots/tokenomics/backfill-worklog-sha.mjs`.
    Report this mission's `runs.json` row and whether its authored sizing is present. Commit the
    refreshed `.octobots/tokenomics/` artifacts. See § *Tokenomics capture* below. **Never blocks.**
-5. **Merge / complete**: only when phases 1–3 are all green. Only phase 5 ticks the mission's criteria: check off the mission-level
-   acceptance criteria on the board and leave the mission `done`. **Post the gate results** (suites
+   It runs after the Completion gate record and before the mission is marked `done`. Its commit
+   touches only `.octobots/`, so it leaves both records current.
+5. **Merge / complete**: only when phases 1–3 are all green and both records are green. Only phase 5 ticks the mission's criteria: tick
+   each mission-level acceptance criterion with
+   `node .claude/skills/mission-planner/scripts/set-criterion.js <mission-dir> check <n>`, then mark
+   the mission done with
+   `node .claude/skills/mission-planner/scripts/set-status.js <campaign-dir> "<M<n> - name>" done`.
+   If it refuses (exit 3), it names each failing check and the next step: take that step and try
+   again. **Post the gate results** (suites
    and coverage %, the black-box QA verdict per criterion with its backing record, the review
    outcome) wherever the project mirrors its missions: a GitHub issue, a Jira ticket, or the
    mission's own `description` field if there is no external tracker. Each gate run appends its
    outcome, so the mission carries its verification history. See `mission-planner`
-   (§ *External systems*).
+   (§ *External systems*). Only after the mission is `done` does its feature branch open the
+   mission PR (see `mission-execution`, § *The mission gate*).
 
 When any phase is blocked, relay the findings, have the right dev fix them, and re-run from the
-blocked phase. Do not leave the mission `done` on a red gate.
+blocked phase. Do not mark the mission `done` on a red gate; `set-status.js` refuses it anyway.
 
 **Exit rule: at most two gate fix rounds.** Count them across phases. Stop patching early when a
 re-run finds a blocker in code a gate fix itself wrote, in the same class as an earlier blocker.
@@ -146,8 +202,10 @@ In either case:
    disputed fact, plus the invariants the fix must keep.
 2. The restructured diff gets the full gate again, from the first blocked phase. It counts as round
    1 again, once.
-3. If that still fails, stop. Leave the mission out of `done`, record the open blockers in the
-   mission `notes`, and hand them to the user. Do not run another fix round.
+3. If that still fails, stop. Do not mark the mission `done`. Record the outcome with
+   `node .claude/skills/mission-planner/scripts/gate-record.mjs <mission-dir> --verdict red --qa <n>/<m> --still-open <k> --note "<blocker>"`
+   (one `--note` per open blocker; `--qa` and `--still-open` are required, with the counts as
+   phase 3 defines them), and hand the blockers to the user. Do not run another fix round.
 
 Gate fix loops on one defect class have run for hours in production, and rounds after the second
 found no new bugs.
@@ -175,9 +233,10 @@ it on a fresh tree and is not satisfied by an earlier RUN file alone.
 - **The last task writes `## QA verification` into the task and mission `notes`** through `entity-io.mjs`
   (`loadEntity`/`dumpEntity`, never raw appended text): the verdict, the RUN file, per criterion the
   pre-existing record and the observed value, and every TC that is not `pass` with its reason. The
-  gate writes its own `## Completion gate (<date>): GREEN|RED` section into the mission `notes` (its
-  phase results and the Sage verdict per criterion); that section refers to the last task's
-  `## QA verification` block instead of repeating it, so the heading is never duplicated.
+  gate writes its own `## Completion gate (<time>)` record into the mission `notes` with
+  `gate-record.mjs` (its verdict, the QA and review counts, and `--note` lines for the phase results
+  and the Sage verdict per criterion); that record refers to the last task's `## QA verification`
+  block instead of repeating it, so the heading is never duplicated.
 - **Tick exactly the criteria that have evidence.** A ticked criterion with no matching line in
   `## QA verification` is a defect; a criterion with a BLOCKED or UNREACHABLE case behind it stays
   unticked. The last task does not tick mission criteria: it ticks its own task's and records which

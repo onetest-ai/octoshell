@@ -17,6 +17,8 @@ import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { findLegacyWorkflowFolders, isCampaignDir, NO_LONGER_READ } from "./legacy-workflows.mjs";
+import { atRestWarning } from "./completion-guard.mjs";
+import { readEntity } from "./entity-io.mjs";
 import { fileReconciledFrom, parseSkillMarker } from "./skill-marker.mjs";
 import { parseTestLanes } from "./lanes.mjs";
 import { readPending, readRegularFile, MALFORMED_PENDING_NOTE, MALFORMED_PENDING_FIX } from "./pending-io.mjs";
@@ -148,7 +150,9 @@ if (existsSync(settingsPath) && settings === null) {
   fail("settings", `.claude/settings.json is not valid JSON — nothing below could be checked`, "fix the JSON by hand");
 }
 const hooks = (settings && settings.hooks) || {};
-const OUR_SCRIPTS = [".octobots/hooks/primer.mjs", ".octobots/hooks/work-log.mjs", ".octobots/hooks/mission-gate.mjs", ".octobots/hooks/dispatch-on-main.mjs"];
+const OUR_SCRIPTS = [".octobots/hooks/primer.mjs", ".octobots/hooks/work-log.mjs", ".octobots/hooks/dispatch-on-main.mjs"];
+const RETIRED_SCRIPTS = [".octobots/hooks/mission-gate.mjs"];
+const retiredFound = new Set();
 const dupes = [];
 let ourHookCount = 0;
 for (const [event, entries] of Object.entries(hooks)) {
@@ -167,6 +171,8 @@ for (const [event, entries] of Object.entries(hooks)) {
         fail("hooks", `malformed ${event} configuration: expected a hook object`, "fix .claude/settings.json");
         continue;
       }
+      const retired = RETIRED_SCRIPTS.find((s) => String(h.command ?? "").includes(s));
+      if (retired) { retiredFound.add(`${event} ${retired}`); continue; }
       const script = OUR_SCRIPTS.find((s) => String(h.command ?? "").includes(s));
       if (!script) continue;
       ourHookCount++;
@@ -184,6 +190,8 @@ if (dupes.length) {
 } else {
   ok("hooks", `${ourHookCount} hook registration(s), no duplicates`);
 }
+
+for (const r of retiredFound) warn("hooks", `${r} is a retired hook, registered but no longer shipped`, "reinstall the pack");
 
 // Warn even for an opt-out: this diagnostic names the adoption step without failing the doctor.
 const dispatchPath = ".octobots/hooks/dispatch-on-main.mjs";
@@ -257,6 +265,17 @@ else {
     warn("board",
       `${leftovers.length} leftover workflows/ folder(s), ${NO_LONGER_READ}: ${leftovers.join(", ")}`,
       "nothing to do — they are ignored and harmless, so you can leave them; to tidy up, move them aside by hand (the doctor never changes them)");
+  }
+  // A done mission with no Completion gate record at all (presence only; an unreadable mission.yaml is skipped).
+  for (const c of readdirSync(campaigns, { withFileTypes: true }).filter((e) => e.isDirectory())) {
+    const missions = join(campaigns, c.name, "missions");
+    if (!existsSync(missions)) continue;
+    for (const m of readdirSync(missions, { withFileTypes: true }).filter((e) => e.isDirectory())) {
+      let fields;
+      try { fields = readEntity(join(missions, m.name, "mission.yaml"), "yaml"); } catch { continue; }
+      const w = atRestWarning(fields);
+      if (w) warn("board", w, "run the mission-completion-gate skill, or record why with set-status.js --force");
+    }
   }
 }
 

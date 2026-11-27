@@ -34,7 +34,7 @@ describe("set-status.js writes the work log line itself", () => {
 
   it("logs a mission flip as session -> mission", () => {
     const b = makeStatusBoard("ss-worklog-");
-    const r = sh(b.repo, `P='${b.campaignDir}'; node "${SET_STATUS}" "$P" "M1 - Venue ingest" done`, "sess-m");
+    const r = sh(b.repo, `P='${b.campaignDir}'; node "${SET_STATUS}" "$P" "M1 - Venue ingest" done --force=test`, "sess-m");
     expect(r.status, r.stderr).toBe(0);
     expect(lines(b.repo)[0]).toMatchObject({ session_id: "sess-m", mission: "M1", state: "done" });
   });

@@ -33,7 +33,7 @@ function freshCopy(opts: { shims: boolean }): string {
 }
 
 describe("install-pack.mjs --hooks", () => {
-  it("registers exactly the four octoshell entries in a copy with no settings.json, and the doctor then exits 0", () => {
+  it("registers exactly the three octoshell entries in a copy with no settings.json, and the doctor then exits 0", () => {
     const ws = freshCopy({ shims: true });
     expect(existsSync(join(ws, ".claude", "settings.json"))).toBe(false);
     const report = install(ws, "--hooks");
@@ -44,7 +44,6 @@ describe("install-pack.mjs --hooks", () => {
       .flatMap(([event, entries]) => entries.flatMap((e) => e.hooks.map((h) => `${event} ${/\.octobots\/hooks\/([\w-]+\.mjs)/.exec(h.command)?.[1]}`)))
       .sort();
     expect(registered).toEqual([
-      "PostToolUse mission-gate.mjs",
       "PostToolUse work-log.mjs",
       "PreToolUse dispatch-on-main.mjs",
       "SessionStart primer.mjs",

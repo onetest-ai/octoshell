@@ -1,7 +1,7 @@
 ---
 name: octobots-doctor
-description: Use when the session context says "Octobots health: run the octobots-doctor skill", when .octobots/pack-updates/pending.json lists a pending pack reconcile (a pack skill or another pack file this workspace changed locally, staged by a pack update), or when doctor.js or validate.js report a pack or board health finding (pack reconcile pending, leftover workflows/ folders, CLAUDE_CONFIG_DIR, tests-pairing warnings), or when set-status.js warns about a legacy plan-review record, or when doctor.js reports a `lanes` finding or the session context says AGENTS.md declares no test lanes, in a repo with an .octobots/ directory. Not for planning or recording board work (that is mission-planner) and not for building a planned task (that is mission-execution).
-version: 64
+description: Use when the session context says "Octobots health: run the octobots-doctor skill", when .octobots/pack-updates/pending.json lists a pending pack reconcile (a pack skill or another pack file this workspace changed locally, staged by a pack update), or when doctor.js or validate.js report a pack or board health finding (pack reconcile pending, leftover workflows/ folders, CLAUDE_CONFIG_DIR, tests-pairing warnings), or when set-status.js warns about a legacy plan-review record, or when doctor.js reports a `lanes` finding or the session context says AGENTS.md declares no test lanes, or when doctor.js or validate.js warn about a done mission with no green Completion gate record or doctor.js about a retired hook, in a repo with an .octobots/ directory. Not for planning or recording board work (that is mission-planner) and not for building a planned task (that is mission-execution).
+version: 65
 ---
 
 # octobots-doctor
@@ -21,7 +21,7 @@ node .claude/skills/octobots-doctor/scripts/pack-reconcile.mjs list
 ```
 
 Act on their findings: `pack reconcile pending` (§2-§3), leftover `workflows/` folders (§4), the
-`config-dir` finding (§5), the `lanes` finding (§9), validate.js's tests-pairing warnings (§7) and set-status.js's legacy plan-review warnings (§8). Skip a finding that
+`config-dir` finding (§5), the `lanes` finding (§9), validate.js's tests-pairing warnings (§7), set-status.js's legacy plan-review warnings (§8), the done-without-gate-record warning (§10) and the retired-hook warning (§11). Skip a finding that
 `.octobots/doctor-acks.json` already acknowledges (§6).
 
 ## 2. Pending pack reconciles
@@ -88,7 +88,7 @@ For each named folder `.octobots/pack-updates/v<N>/<skill>/`:
    UPSTREAM-CANDIDATES.md.
 10. If any `- ESCALATED:` entry is open, stop work on this skill: the whole live SKILL.md stays
     untouched (no line, no non-conflicting change, no marker) until every escalation of this skill
-    is answered. Do not run done. Ask in your reply (§10).
+    is answered. Do not run done. Ask in your reply (§12).
 11. Otherwise install. In merged.md's frontmatter replace the `version:` line with
     `version: <N>+local` and add the line `reconciled-from: <sha256>` below it, both values exactly
     as `pack-reconcile.mjs list` prints them for this skill under `marker:`. Before copying, check
@@ -290,7 +290,27 @@ command, tell the user and write that lane only with the command they name. Neve
 of AGENTS.md or CLAUDE.md. When the user declines, record the `lanes` entry in
 `.octobots/doctor-acks.json` (§6); doctor.js still lists the finding, but the primer stops naming it.
 
-## 10. Your reply
+## 10. A done mission with no Completion gate record
+
+`doctor.js` and `validate.js` warn `mission "<title>" is done but has no green Completion gate record`
+when a done mission's notes hold no green `## Completion gate (...)` record, no legacy
+`## Completion gate (...): GREEN` heading and no `## Completion gate overridden (...)` record. Tell
+the user and let them choose. Either run the `mission-completion-gate` skill on the mission, so the
+gate writes its records; or, when the mission was closed before the gate existed (or closed by hand
+on purpose), record why with
+`node .claude/skills/mission-planner/scripts/set-status.js <campaign-dir> "<title>" done --force=<reason>`.
+The status stays done; the script records `## Completion gate overridden (...)` in the notes, and the
+warning stops. The user decides which, and the reason is theirs: never pass `--force` on your own
+judgment, and never write a record into the notes by hand.
+
+## 11. A retired hook
+
+`doctor.js` warns `<event> <hook script> is a retired hook, registered but no longer shipped` when
+`.claude/settings.json` still registers a hook script the pack no longer ships. The fix
+is to reinstall the pack (the *Octobots: Install Octobots Pack* command), which removes the retired
+registration. Do not edit `.claude/settings.json` by hand.
+
+## 12. Your reply
 
 End your reply with this block, filled in:
 

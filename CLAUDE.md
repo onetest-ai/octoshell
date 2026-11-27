@@ -116,8 +116,8 @@ the `scripts/` that edit boards), `mission-execution` (driving a planned task to
 PR), `mission-completion-gate` (the blocking mission-level gate), `knowledge-explorer` (reading what
 the repo already knows, enriched by octograph when installed) and `octobots-doctor` (acting on pack
 and board health findings, chiefly a pending pack reconcile). It also contains the session hooks
-under `hooks/` (the session hooks `primer.mjs`, `work-log.mjs` and `mission-gate.mjs`, plus
-`status-flip.mjs`, a helper module the last two import), the optional
+under `hooks/` (the session hooks `primer.mjs` and `work-log.mjs`, plus
+`status-flip.mjs`, a helper module `work-log.mjs` imports), the optional
 `statusline/`, the `tokenomics/` scripts that collect and price transcripts at the mission gate, and
 the bundled `graph/octograph.mjs`.
 
@@ -167,6 +167,13 @@ project; they are restated because they are what an agent gets wrong without the
   record (`Reviewers: ba (...), tech-lead (...)` and `Verdict: approved` or `Verdict: approved with nits`) sits in its notes or its
   campaign's. `set-status.js` and the status dropdown refuse otherwise; the override is
   `--force=<reason>` or the dropdown's confirm.
+- **Mission done guard:** gate first, then done. A mission moves to `done` only when its tasks are
+  done or cancelled, its criteria are ticked, its test cases pass, and the latest `## Gate checks`
+  (`gate-checks.mjs`) and `## Completion gate` (`gate-record.mjs`) records in its notes are green and
+  current (their commit exists and no code outside `.octobots/` changed since). Run the
+  `mission-completion-gate` skill to get there; never write a record by hand. `set-status.js` and the
+  status dropdown refuse otherwise; the override is `--force=<reason>` or the dropdown's "Mark done
+  anyway", recorded as `## Completion gate overridden (...)`.
 - **Test lanes and parked tests:** the fast and coverage commands are declared in `AGENTS.md`
   § Test lanes. `node apps/vscode-extension/resources/octobots-pack/skill/mission-execution/scripts/scan-parked.js`
   must exit 0: a skipped, todo or xfailed test is a parked defect unless the user signs it off in

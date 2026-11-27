@@ -1,6 +1,6 @@
 import { OCTOBOTS_PACK_VERSION } from "../src/host/octobots-skill.js";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
@@ -587,16 +587,16 @@ describe("M4 B2: mission-execution and the gate tell one story about the last-ta
   });
   it("3. mission criteria are ticked only by gate phase 5; the last task ticks its own and records evidence", () => {
     expect(exec).not.toMatch(/the mission's acceptance criteria are checked off:/);
-    expect(exec).toMatch(/`done` once the last task is green \(the gate then ticks the mission's criteria in phase 5\)/);
+    expect(exec).toMatch(/`done` once the gate is green \(the gate ticks the mission's criteria in phase 5, then marks it `done`\)/);
     expect(exec).toMatch(/Tick exactly the criteria that have evidence: the task's own\. Do not tick the mission's; record which mission criteria have evidence in the `## QA verification` block, and the gate ticks them in phase 5/);
     expect(gate).toMatch(/Only phase 5 ticks the mission's criteria/);
     expect(gate).toMatch(/The last task does not tick mission criteria/);
   });
   it("4. the last task writes ## QA verification; the gate writes its own dated section that references it", () => {
-    expect(gate).toMatch(/The gate writes its own `## Completion gate \(<date>\): GREEN\|RED` section into the mission `notes`/);
+    expect(gate).toMatch(/The gate writes its own `## Completion gate \(<time>\)` record into the mission `notes` with `gate-record\.mjs`/);
     expect(gate).toMatch(/refers to the last task's `## QA verification` block instead of repeating it/);
     expect(gate).not.toMatch(/the gate writes the mission's\)/);
-    expect(exec).toMatch(/gate writes its own `## Completion gate \(<date>\)` section/);
+    expect(exec).toMatch(/gate writes its own `## Completion gate \(<ISO time>\)` record with `gate-record\.mjs`/);
   });
 });
 
@@ -848,5 +848,25 @@ describe("T5.5: mission-completion-gate phase 1 calls scan-parked.js (M5 AC6, AC
   it("the script it names ships in the pack, and the verdict carries the scan result", () => {
     expect(existsSync(join(PACK_SRC, "skill", "mission-execution", "scripts", "scan-parked.js"))).toBe(true);
     expect(phase1).toMatch(/"parked":/);
+  });
+});
+
+describe("pack v65: the mission done guard in the skills", () => {
+  it("the gate skill runs before done and names its record scripts", () => {
+    const gate = skill("mission-completion-gate");
+    expect(gate).toContain("gate-checks.mjs");
+    expect(gate).toContain("gate-record.mjs");
+    const description = /^description: (.*)$/m.exec(gate)?.[1] ?? "";
+    expect(description.length).toBeGreaterThan(0);
+    expect(description).not.toMatch(/hook/i);
+    // `\brevert\b`: "revert the mission"-style recovery language. Unrelated words ("a bad task is
+    // reverted", "a later commit reverts the difference") are about git, not the gate.
+    for (const name of readdirSync(join(PACK_SRC, "skill"))) {
+      const file = join(PACK_SRC, "skill", name, "SKILL.md");
+      if (!existsSync(file)) continue;
+      const text = readFileSync(file, "utf8");
+      expect(text, `${name}/SKILL.md names the retired hook`).not.toContain("mission-gate.mjs");
+      expect(text, `${name}/SKILL.md says revert`).not.toMatch(/\brevert\b/i);
+    }
   });
 });
