@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createBug, createCampaign, createMission, createTask } from "@octoshell/board";
 import { mkdtempClean } from "./tmpdir.js";
@@ -87,4 +87,19 @@ export function runAndPost(repo: string, command: string): Record<string, unknow
     ...postToolUse(repo, command),
     tool_response: { stdout: r.stdout, stderr: r.stderr, interrupted: false, isImage: false },
   };
+}
+
+/**
+ * A copy of the pack's hooks directory whose status-flip.mjs is "older": confirmedTransitions returns
+ * its calls without `kind`, like a workspace that kept a local copy from before the hooks relied on it.
+ */
+export function hooksWithOldStatusFlip(): string {
+  const dir = join(mkdtempClean("octo-old-flip-"), "hooks");
+  cpSync(join(__dirname, "..", "..", "resources", "octobots-pack", "hooks"), dir, { recursive: true });
+  const file = join(dir, "status-flip.mjs");
+  const src = readFileSync(file, "utf8");
+  const old = src.replace("out.push({ ...call, kind });", "out.push({ ...call });");
+  if (old === src) throw new Error("status-flip.mjs no longer has the kind push this fixture strips");
+  writeFileSync(file, old);
+  return dir;
 }

@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { SET_STATUS, createBugNamed, createMissionNamed, makeStatusBoard, postToolUse, postToolUseWithOutput, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
+import { SET_STATUS, createBugNamed, createMissionNamed, hooksWithOldStatusFlip, makeStatusBoard, postToolUse, postToolUseWithOutput, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
 
 const GATE = join(__dirname, "..", "resources", "octobots-pack", "hooks", "mission-gate.mjs");
 
@@ -20,6 +20,28 @@ function pipe(repo: string, payload: unknown): string {
 const directiveOf = (out: string): string => JSON.parse(out).hookSpecificOutput.additionalContext as string;
 
 describe("mission-gate.mjs", () => {
+  it("gates a mission whose title carries no M id (the hook acts on kind alone)", () => {
+    const b = makeStatusBoard("octo-gate-");
+    createMissionNamed(b, "Venue ingest");
+    const ctx = directiveOf(pipe(b.repo, runAndPost(b.repo, setStatusCommand(b.campaignDir, "Venue ingest", "done"))));
+    expect(ctx).toMatch(/MISSION-COMPLETION GATE/);
+    expect(ctx).toContain('"Venue ingest"');
+  });
+
+  it("warns once and acts on nothing when status-flip.mjs is older than the hook (no kind)", () => {
+    const b = makeStatusBoard("octo-gate-");
+    const hook = join(hooksWithOldStatusFlip(), "mission-gate.mjs");
+    const res = spawnSync("node", [hook], {
+      cwd: b.repo,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: b.repo },
+      input: JSON.stringify(runAndPost(b.repo, setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done"))),
+      encoding: "utf8",
+    });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(res.stderr.trim()).toBe("mission-gate: warning: status-flip.mjs is older than this hook; reinstall the Octobots pack");
+  });
+
   it("gates a mission with a letter id (M6b)", () => {
     const b = makeStatusBoard("octo-gate-");
     createMissionNamed(b, "M6b - Letter mission");

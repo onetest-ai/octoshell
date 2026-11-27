@@ -2,9 +2,8 @@ import { describe, it, expect } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { gitEnv, hookRepo, trailers } from "./fixtures/hook-repo.js";
+import { PACK, gitEnv, hookRepo, trailers } from "./fixtures/hook-repo.js";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { PACK } from "./fixtures/hook-repo.js";
 import { pathToFileURL } from "node:url";
 
 const warnings = (stderr: string): string[] => stderr.split("\n").filter((l) => /warning/i.test(l));
@@ -286,15 +285,14 @@ describe("prepare-commit-msg trailer hook (pack port of solo's M2 hook)", () => 
 });
 
 describe("prepare-commit-msg timeouts and shim guards", () => {
-  const shim = async (): Promise<string> => {
+  const shim = async (name = "prepare-commit-msg"): Promise<string> => {
     const mod = await import(/* @vite-ignore */ pathToFileURL(join(PACK, "hooks", "hooks-doctor.mjs")).href);
-    return mod.SHIMS["prepare-commit-msg"];
+    return mod.SHIMS[name];
   };
-  const runShim = async (cwd: string, root?: string) => {
-    const f = join(mkdtempClean("shim-file-"), "prepare-commit-msg");
-    writeFileSync(f, await shim());
+  const runShim = async (cwd: string, name = "prepare-commit-msg") => {
+    const f = join(mkdtempClean("shim-file-"), name);
+    writeFileSync(f, await shim(name));
     chmodSync(f, 0o755);
-    void root;
     return spawnSync("sh", [f, join(cwd, "msgfile")], { cwd, encoding: "utf8", env: gitEnv() });
   };
 
@@ -326,5 +324,27 @@ describe("prepare-commit-msg timeouts and shim guards", () => {
     const res = await runShim(r.root);
     expect(res.status).toBe(0);
     expect(res.stderr).toContain("prepare-commit-msg: warning: x");
+  });
+
+  it("the commit-msg shim exits 0 silently outside a git repository", async () => {
+    const res = await runShim(mkdtempClean("no-git-"), "commit-msg");
+    expect(res.status).toBe(0);
+    expect(res.stderr).toBe("");
+  });
+
+  it("with a crashing helper the commit-msg shim exits 0 and prints nothing (its design: only prepare-commit-msg warns)", async () => {
+    const r = hookRepo();
+    writeFileSync(join(r.root, ".octobots", "hooks", "prepare-commit-msg.mjs"), 'throw new Error("boom");\n');
+    const res = await runShim(r.root, "commit-msg");
+    expect(res.status).toBe(0);
+    expect(res.stderr).toBe("");
+  });
+
+  it("a helper's own warning reaches stderr through the commit-msg shim", async () => {
+    const r = hookRepo();
+    writeFileSync(join(r.root, ".octobots", "hooks", "prepare-commit-msg.mjs"), 'console.error("prepare-commit-msg: warning: y");\n');
+    const res = await runShim(r.root, "commit-msg");
+    expect(res.status).toBe(0);
+    expect(res.stderr).toContain("prepare-commit-msg: warning: y");
   });
 });

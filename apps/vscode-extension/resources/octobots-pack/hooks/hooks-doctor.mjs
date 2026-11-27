@@ -12,7 +12,7 @@
 //     for a shared launcher, its first positional argument), never by the command string or a checkout
 //     path, and, when an entry names a matcher, by that matcher.
 // (b) the git side: core.hooksPath is set, and the two shims (prepare-commit-msg, commit-msg) exist
-//     there, hold the pack's shim text (trailing whitespace aside), and are executable both on disk and,
+//     there, hold the pack's shim text (trailing whitespace aside; an older pack shim is reported as an update note, not a problem), and are executable both on disk and,
 //     when tracked, in the git index. A repo commits the shims once; the pack never writes them.
 //
 // Exit: 0 all wired, 1 something missing, 2 a settings or list file is unreadable.
@@ -277,7 +277,7 @@ function checkGit(root) {
       const fixPath = realDir === dir ? `${dirRel}/${name}` : join(realDir, name);
       bad(`shim ${dirRel}/${name} is committed without the executable bit`);
       console.log(`           fix: git add --chmod=+x ${fixPath} && chmod +x ${fixPath}`);
-    } else console.log(`  ok       git          ${dirRel}/${name}`);
+    } else if (!legacy) console.log(`  ok       git          ${dirRel}/${name}`);
   }
   if (missingShims.length) {
     console.log(`           fix: git config core.hooksPath ${dirRel}   (already set; the shims below go there)`);

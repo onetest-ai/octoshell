@@ -81,7 +81,13 @@ const candidates = parseSetStatusAll(command).filter(
 // active; echo` exits 0 but writes nothing; re-running `done` prints `unchanged`; a refused start
 // prints nothing. Logging any of those would attribute this session to work it never did.
 const flips = [];
-for (const c of await confirmedTransitions(candidates, evt, projectDir)) {
+const confirmed = await confirmedTransitions(candidates, evt, projectDir);
+// An older local status-flip.mjs returns no `kind`; acting on a title would credit the wrong entity, so act on nothing.
+if (confirmed.some((c) => c.kind === undefined)) {
+  console.error("work-log: warning: status-flip.mjs is older than this hook; reinstall the Octobots pack");
+  process.exit(0);
+}
+for (const c of confirmed) {
   const taskId = c.kind === "task" ? (c.title.match(TASK_ID)?.[1] ?? null) : null;
   const missionId = c.kind === "mission" ? (c.title.match(MISSION_ID)?.[1] ?? null) : null;
   if (taskId) flips.push({ task: taskId, state: c.state });

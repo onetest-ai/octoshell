@@ -24,8 +24,8 @@ function warn(reason) {
     `prepare-commit-msg: warning: ${branch}: ${reason}; branches must carry the campaign slug and -m<n> for mission work (see the mission-execution skill, "Branch topology").`,
   );
 }
-// One budget for every step. Attribution loads the whole board (about a second); a loaded machine needs
-// more than a few seconds, and git itself can stall the same way, so none of the calls gets less.
+// The same limit for every call. Attribution loads the whole board (about a second); a loaded machine needs
+// more than a few seconds, and git itself can stall the same way, so no call gets less.
 const limit = Number(process.env.OCTOBOTS_ATTRIBUTE_TIMEOUT_MS);
 const BUDGET_MS = Number.isFinite(limit) && limit > 0 ? limit : 30000;
 const git = (args, timeout = BUDGET_MS) =>

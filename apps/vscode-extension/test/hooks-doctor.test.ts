@@ -252,6 +252,7 @@ describe("hooks-doctor: git side", () => {
         expect(res.status, res.out).toBe(0);
         expect(res.out).toContain(`  update   git          .githooks/${name} is an older pack shim`);
         expect(res.out).not.toContain("differs from the pack shim");
+        expect(res.out).not.toContain(`  ok       git          .githooks/${name}`);
       });
 
       it("an older pack shim that is not executable still reports both the update line and the mode problem", async () => {

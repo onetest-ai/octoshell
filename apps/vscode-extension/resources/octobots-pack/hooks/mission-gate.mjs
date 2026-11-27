@@ -54,7 +54,13 @@ if (candidates.length === 0) process.exit(0);
 // the YAML must agree (`; echo` can make a failed set-status exit 0, and an `echo` can forge the line).
 // Re-running `done` on a done mission prints `unchanged`, so it does not re-fire the gate.
 // Only an entity that IS a mission gates: a bug titled "M2 gate review nits" is a bug.
-const titles = (await confirmedTransitions(candidates, evt, projectDir)).filter((c) => c.kind === "mission").map((c) => c.title);
+const confirmed = await confirmedTransitions(candidates, evt, projectDir);
+// An older local status-flip.mjs returns no `kind`; acting on a title would credit the wrong entity, so act on nothing.
+if (confirmed.some((c) => c.kind === undefined)) {
+  console.error("mission-gate: warning: status-flip.mjs is older than this hook; reinstall the Octobots pack");
+  process.exit(0);
+}
+const titles = confirmed.filter((c) => c.kind === "mission").map((c) => c.title);
 if (titles.length === 0) process.exit(0);
 const named = titles.map((t) => `"${t}"`).join(", ");
 
