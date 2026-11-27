@@ -4951,7 +4951,7 @@ function filesChangedBy(repoRoot, sha) {
     return null;
   }
 }
-var SHORT_ID = /^(T\d+\.\d+)\b/;
+var SHORT_ID = /^(T\d+[a-z]?\.\d+)(?![A-Za-z0-9])/;
 var defaultWarn = (message) => {
   process.stderr.write(message);
 };

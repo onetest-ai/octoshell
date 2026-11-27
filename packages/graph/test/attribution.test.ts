@@ -132,6 +132,23 @@ describe("attribute", () => {
     ]);
   });
 
+  /** work-log.mjs records a lettered id such as `T6b.1` verbatim; the join must accept it. */
+  it("joins a lettered short id (T6b.1) that work-log.mjs records", () => {
+    const { root, octobotsDir, git } = repoWithBoardAndGit();
+    commit(root, git, { "README.md": "seed\n" });
+    const sha = commit(root, git, { "src/auth.ts": "export {}\n" });
+
+    const campaign = createCampaign(octobotsDir, { name: "Q3" });
+    const mission = createMission(octobotsDir, campaign.id, { title: "M6 - Auth" });
+    const task = createTask(octobotsDir, mission.id, { name: "T6b.1 - JWT" });
+    const board = requireBoard(root);
+
+    const log = [entry({ task: "T6b.1", branch: "feat/x-t6b", mergedSha: sha })];
+    expect(attribute(root, board, log)).toEqual([
+      { task: task.id, files: ["src/auth.ts"], deletedFiles: [], mode: "provenance" },
+    ]);
+  });
+
   /**
    * A short id is unique within a campaign and nowhere else — this repo's
    * board shares 14 of them across campaigns. Attributing one campaign's
