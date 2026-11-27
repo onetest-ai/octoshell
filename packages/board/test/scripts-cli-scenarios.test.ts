@@ -2218,7 +2218,7 @@ describe("set-status.js mission done guard", () => {
     mkdirSync(dirname(installed), { recursive: true });
     cpSync(SCRIPTS, installed, { recursive: true });
     // The workspace copy counts as installed once it holds gate-checks.mjs.
-    if (!existsSync(join(installed, "gate-checks.mjs"))) writeFileSync(join(installed, "gate-checks.mjs"), "// stub\n");
+    expect(existsSync(join(installed, "gate-checks.mjs"))).toBe(true);
     const r = run([f.dir, "M1 - Auth", "done"]);
     expect(r.status).toBe(3);
     expect(r.stderr).toContain(join(installed, "gate-checks.mjs"));

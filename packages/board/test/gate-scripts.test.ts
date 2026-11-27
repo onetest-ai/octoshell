@@ -148,3 +148,102 @@ describe("gate-record.mjs", () => {
     expect(r.code).toBe(3);
   });
 });
+
+describe("gate-checks.mjs", () => {
+  /** A repo with a committed AGENTS.md (the lanes text given) and a mission; HEAD is clean. */
+  function setup(lanes: string | null): { repo: string; dir: string } {
+    const repo = initRepo();
+    if (lanes !== null) writeFileSync(join(repo, "AGENTS.md"), `# Agents\n\n## Test lanes\n\n- fast: \`true\`\n${lanes}\n`);
+    const dir = makeMission(repo, 1);
+    commitAll(repo);
+    return { repo, dir };
+  }
+  const record = (dir: string) => guard.latestRecord(notesOf(dir), "Gate checks");
+
+  it("writes a green record for a passing lane", () => {
+    const { repo, dir } = setup('- coverage: `node -e "process.exit(0)"`');
+    const head = git(repo, "rev-parse", "HEAD").trim();
+    const r = run("gate-checks.mjs", [dir]);
+    expect(r.code).toBe(0);
+    const rec = record(dir);
+    expect(rec?.fields.verdict).toBe("green");
+    expect(rec?.fields.commit).toBe(head);
+    expect(rec?.lines).toContain("Exit: 0");
+    expect(rec?.lines).toContain("Parked: 0 unsigned");
+    expect(rec?.lines).toContain('Lane: coverage `node -e "process.exit(0)"`');
+  });
+
+  it("accepts the mission.yaml path", () => {
+    const { dir } = setup('- coverage: `true`');
+    expect(run("gate-checks.mjs", [join(dir, "mission.yaml")]).code).toBe(0);
+  });
+
+  it("records red for a failing lane", () => {
+    const { dir } = setup('- coverage: `node -e "process.exit(4)"`');
+    expect(run("gate-checks.mjs", [dir]).code).toBe(1);
+    const rec = record(dir);
+    expect(rec?.fields.verdict).toBe("red");
+    expect(rec?.lines).toContain("Exit: 4");
+  });
+
+  it.each([
+    ["no coverage line", ""],
+    ["a placeholder command", "- coverage: `pnpm --filter <pkg> coverage`"],
+  ])("warns and skips the lane with %s", (_n, lane) => {
+    const { dir } = setup(lane);
+    const r = run("gate-checks.mjs", [dir]);
+    expect(r.code).toBe(0);
+    expect(r.err).toContain("warning");
+    const rec = record(dir);
+    expect(rec?.fields.verdict).toBe("green");
+    expect(rec?.lines).toContain("Lane: none, no coverage lane in AGENTS.md § Test lanes");
+    expect(rec?.lines).toContain("Exit: skipped");
+  });
+
+  it("skips the lane when AGENTS.md is missing", () => {
+    const { dir } = setup(null);
+    const r = run("gate-checks.mjs", [dir]);
+    expect(r.code).toBe(0);
+    expect(r.err).toContain("warning");
+  });
+
+  it("is red when a committed test is parked", () => {
+    const repo = initRepo();
+    writeFileSync(join(repo, "x.test.ts"), 'it.skip("a", () => {});\n');
+    const dir = makeMission(repo, 1);
+    commitAll(repo);
+    const r = run("gate-checks.mjs", [dir]);
+    expect(r.code).toBe(1);
+    const rec = record(dir);
+    expect(rec?.fields.verdict).toBe("red");
+    expect(rec?.lines).toContain("Parked: 1 unsigned");
+  });
+
+  it("is red with a Note when the lane commits new code", () => {
+    const { dir } = setup(`- coverage: \`sh -c 'echo x > new.txt && git add new.txt && git -c core.hooksPath=/dev/null -c user.email=t@e.com -c user.name=T commit -q -m n'\``);
+    const r = run("gate-checks.mjs", [dir]);
+    expect(r.code).toBe(1);
+    const rec = record(dir);
+    expect(rec?.fields.verdict).toBe("red");
+    expect(rec?.lines).toContain("Note: the code changed during the run");
+  });
+
+  it("refuses on a dirty tracked file and writes nothing", () => {
+    const { repo, dir } = setup('- coverage: `true`');
+    writeFileSync(join(repo, "src.txt"), "two\n");
+    const r = run("gate-checks.mjs", [dir]);
+    expect(r.code).toBe(3);
+    expect(r.err).toContain("commit or stash");
+    expect(notesOf(dir)).not.toContain("Gate checks");
+  });
+
+  it("refuses outside a git repository", () => {
+    const dir = makeMission(join(tmp, "plain"), 1);
+    expect(run("gate-checks.mjs", [dir]).code).toBe(3);
+  });
+
+  it("exits 2 without a path or on a missing one", () => {
+    expect(run("gate-checks.mjs", []).code).toBe(2);
+    expect(run("gate-checks.mjs", [join(tmp, "nope")]).code).toBe(2);
+  });
+});
