@@ -64,15 +64,15 @@ if (typeof command !== "string" || !command.includes("set-status.js")) process.e
 const sessionId = evt.session_id ?? evt.sessionId ?? null;
 if (!sessionId) process.exit(0);
 
-// Tasks (`T<m>.<n>`) and missions (`M<n>`). Task links are what branch
+// Tasks (`T<m>.<n>`) and missions (`M<n>`), each id with an optional letter (`M6b`, `T6b.1`). Task links are what branch
 // inference gets wrong most often; mission links make the session -> mission
 // join a recorded fact too, rather than depending on branch naming. Every call
 // in a chained command counts (`… "T1.3 - …" done && … "M1 - …" done`). The id comes from the title,
 // but only for an entity that IS a task or a mission (the resolver's kind, below): a bug titled
 // "T2.10 review nits" or "M2 gate review nits" is neither, and logging it would credit this session
 // and branch with someone else's task or mission.
-const TASK_ID = /^(T\d+\.\d+)\b/;
-const MISSION_ID = /^(M\d+)\b/;
+const TASK_ID = /^(T\d+[a-z]?\.\d+)(?![A-Za-z0-9])/;
+const MISSION_ID = /^(M\d+[a-z]?)(?![A-Za-z0-9])/;
 const candidates = parseSetStatusAll(command).filter(
   (call) => ["active", "done"].includes(call.state) && (TASK_ID.test(call.title) || MISSION_ID.test(call.title)),
 );

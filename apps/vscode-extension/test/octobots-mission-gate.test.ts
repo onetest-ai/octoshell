@@ -20,6 +20,13 @@ function pipe(repo: string, payload: unknown): string {
 const directiveOf = (out: string): string => JSON.parse(out).hookSpecificOutput.additionalContext as string;
 
 describe("mission-gate.mjs", () => {
+  it("gates a mission with a letter id (M6b)", () => {
+    const b = makeStatusBoard("octo-gate-");
+    createMissionNamed(b, "M6b - Letter mission");
+    const ctx = directiveOf(pipe(b.repo, runAndPost(b.repo, setStatusCommand(b.campaignDir, "M6b - Letter mission", "done"))));
+    expect(ctx).toContain("M6b - Letter mission");
+  });
+
   it("injects the blocking gate directive when a MISSION really flips to done", () => {
     const b = makeStatusBoard("octo-gate-");
     const out = pipe(b.repo, runAndPost(b.repo, setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done")));

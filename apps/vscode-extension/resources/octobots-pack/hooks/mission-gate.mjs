@@ -42,11 +42,11 @@ if ((evt.tool_name ?? evt.toolName) !== "Bash") process.exit(0);
 const command = (evt.tool_input ?? evt.toolInput ?? {})?.command;
 if (typeof command !== "string" || !command.includes("set-status.js")) process.exit(0);
 
-// Every `… done` call on a MISSION in the command. Mission ids are `M<n>`; task ids are `T<m>.<n>`.
+// Every `… done` call on a MISSION in the command. The entity's resolved kind (below) decides, not its title, so any mission id (`M<n>`, `M6b`) gates.
 // Only missions gate. A chain such as `set-status.js <m> "T1.3 - …" done && set-status.js <c> "M1 -
 // …" done` must still gate M1, so all calls are considered, not just the first.
 const candidates = parseSetStatusAll(command).filter(
-  (c) => c.state === "done" && /^M\d+\b/.test(c.title) && !/^T\d+\.\d+\b/.test(c.title),
+  (c) => c.state === "done",
 );
 if (candidates.length === 0) process.exit(0);
 

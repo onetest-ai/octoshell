@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { SET_STATUS, createBugNamed, installPlannerScripts, makeStatusBoard, postToolUseWithOutput } from "./fixtures/status-flip-board.js";
+import { SET_STATUS, createBugNamed, createMissionNamed, createTaskNamed, installPlannerScripts, makeStatusBoard, postToolUseWithOutput } from "./fixtures/status-flip-board.js";
 import { mkdirSync } from "node:fs";
 
 const WORK_LOG = join(__dirname, "..", "resources", "octobots-pack", "hooks", "work-log.mjs");
@@ -158,5 +158,46 @@ describe("one work-log file per flip, wherever the board lives", () => {
     expect(lines(project)).toHaveLength(1);
     expect(lines(project)[0]).toMatchObject({ session_id: "sess-wt", task: "T1.1", state: "active" });
     expect(existsSync(LOG(b.repo))).toBe(false);
+  });
+});
+
+describe("letter ids", () => {
+  const flipBoth = (b: ReturnType<typeof makeStatusBoard>, session?: string) => {
+    createMissionNamed(b, "M6b - Letter mission");
+    createTaskNamed(b, "T6b.1 - Letter task");
+    const command =
+      `node "${SET_STATUS}" "${b.campaignDir}" "M6b - Letter mission" active --force=letter-test && ` +
+      `node "${SET_STATUS}" "${b.missionDir}" "T6b.1 - Letter task" active`;
+    return { command, r: sh(b.repo, command, session) };
+  };
+
+  it("set-status.js logs mission M6b and task T6b.1 with their letter", () => {
+    const b = makeStatusBoard("ss-worklog-letter-");
+    const { r } = flipBoth(b, "s-letter");
+    expect(r.status, r.stderr).toBe(0);
+    expect(lines(b.repo)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ mission: "M6b", state: "active" }), expect.objectContaining({ task: "T6b.1", state: "active" })]),
+    );
+  });
+
+  it("the hook logs them too (no session in the script's env)", () => {
+    const b = makeStatusBoard("ss-worklog-letter-");
+    const { command, r } = flipBoth(b);
+    expect(r.status, r.stderr).toBe(0);
+    expect(lines(b.repo)).toHaveLength(0);
+    hook(b.repo, postToolUseWithOutput(b.repo, command, r.stdout, "s-letter"));
+    expect(lines(b.repo)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ mission: "M6b", state: "active" }), expect.objectContaining({ task: "T6b.1", state: "active" })]),
+    );
+  });
+
+  it("M60 and M6c2 never log as M6", () => {
+    const b = makeStatusBoard("ss-worklog-letter-");
+    createMissionNamed(b, "M60 - Sixty");
+    createMissionNamed(b, "M6c2 odd");
+    expect(sh(b.repo, `node "${SET_STATUS}" "${b.campaignDir}" "M60 - Sixty" active --force=letter-test`, "s-letter").status).toBe(0);
+    expect(lines(b.repo)).toEqual([expect.objectContaining({ mission: "M60" })]);
+    expect(sh(b.repo, `node "${SET_STATUS}" "${b.campaignDir}" "M6c2 odd" active --force=letter-test`, "s-letter").status).toBe(0);
+    expect(lines(b.repo)).toHaveLength(1);
   });
 });

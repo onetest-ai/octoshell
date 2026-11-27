@@ -48,6 +48,11 @@ export function createMissionNamed(b: StatusBoard, title: string): void {
   createMission(join(b.repo, ".octobots"), b.campaignId, { title, acceptanceCriteria: "- [ ] a" });
 }
 
+/** Add a task with an arbitrary name under the board's mission. */
+export function createTaskNamed(b: StatusBoard, title: string): void {
+  createTask(join(b.repo, ".octobots"), b.missionId, { name: title, acceptanceCriteria: "- [ ] b" });
+}
+
 /**
  * Add a bug with an arbitrary title under the mission (`on: "mission"`, the default) or the campaign.
  * Bugs are often titled after the task or mission they were found in ("T1.1 review nits"), which is
