@@ -88,6 +88,7 @@ if (match.kind === "mission" && mapped === "executing") {
     if (review.legacy) {
       console.error(`warning: legacy plan review "${review.heading}" (${review.where} notes) has no Reviewers:/Verdict: lines; accepted`);
     }
+    console.log(`plan review: "${review.heading}" in the ${review.where} notes${review.where === "campaign" ? " (a campaign record covers every mission in the campaign)" : ""}`);
   } else if (forceReason === null) {
     refuse(review.candidates, campaignError);
   } else {
