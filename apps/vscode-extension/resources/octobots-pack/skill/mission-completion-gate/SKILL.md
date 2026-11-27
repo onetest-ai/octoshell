@@ -1,7 +1,7 @@
 ---
 name: mission-completion-gate
 description: Use when an Octobots mission's tasks have merged and it is about to be marked done — set-status.js (and the status dropdown) refuses done until this gate's Gate checks and Completion gate records are green and current; also use when that refusal names this gate. The blocking, agent-driven completion gate. The orchestrator dispatches sub-agents (never the Workflow tool) for the tests+coverage pipeline, a black-box QA pass against acceptance criteria, and a critical tech-lead review that challenges the devs, records the results with gate-checks.mjs and gate-record.mjs, then ticks the criteria and marks the mission done only on green. Not for a single task (tasks gate inside mission-execution); this is the mission-level gate.
-version: 64
+version: 65
 ---
 
 # mission-completion-gate
