@@ -254,6 +254,17 @@ describe("hooks-doctor: git side", () => {
         expect(res.out).not.toContain("differs from the pack shim");
       });
 
+      it("an older pack shim that is not executable still reports both the update line and the mode problem", async () => {
+        const mod = await import(/* @vite-ignore */ pathToFileURL(join(PACK, "hooks", "hooks-doctor.mjs")).href);
+        const { r, file } = ready();
+        writeFileSync(file, mod.LEGACY_SHIMS[name][0]);
+        chmodSync(file, 0o644);
+        const res = doctor(r);
+        expect(res.status).toBe(1);
+        expect(res.out).toContain(`  update   git          .githooks/${name} is an older pack shim`);
+        expect(res.out).toContain(`shim .githooks/${name} is not executable`);
+      });
+
       it("a CRLF copy differs, and the shim text is printed", () => {
         const { r, file } = ready();
         writeFileSync(file, shim.replace(/\n/g, "\r\n"));

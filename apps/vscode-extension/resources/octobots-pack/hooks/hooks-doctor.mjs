@@ -253,6 +253,12 @@ function checkGit(root) {
       missingShims.push(name);
       continue;
     }
+    // An older pack shim still works, so it is a note, not a problem; the mode checks below still apply to it.
+    const legacy = isLegacyShim(text, name);
+    if (legacy) {
+      console.log(`  update   git          ${dirRel}/${name} is an older pack shim; replace it with:`);
+      printShims(dirRel, [name]);
+    }
     if (!text.includes(PACK_SCRIPT)) {
       bad(`shim ${dirRel}/${name} does not run ${PACK_SCRIPT}`);
       missingShims.push(name);
@@ -260,10 +266,7 @@ function checkGit(root) {
       // The two shims share one script; the entry point is the --after-edit flag (commit-msg only).
       bad(`shim ${dirRel}/${name} ${name === "commit-msg" ? "does not pass" : "must not pass"} --after-edit to ${PACK_SCRIPT}`);
       missingShims.push(name);
-    } else if (isLegacyShim(text, name)) {
-      console.log(`  update   git          ${dirRel}/${name} is an older pack shim; replace it with:`);
-      printShims(dirRel, [name]);
-    } else if (differsFromShim(text, name)) {
+    } else if (!legacy && differsFromShim(text, name)) {
       bad(`shim ${dirRel}/${name} differs from the pack shim`);
       missingShims.push(name);
     } else if ((statSync(file).mode & 0o111) === 0) {
