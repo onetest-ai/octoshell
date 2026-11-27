@@ -112,10 +112,21 @@ dispatches the addressee with them, and then hands the answers back in a follow-
    It runs the coverage lane from `AGENTS.md § Test lanes` and the parked-test scan, then appends a
    `## Gate checks (<time>)` record to the mission notes. Exit 0 is green. Exit 1 is red: phase 1 is
    not green, so fix and run it again. Exit 3 is a refusal: either there are uncommitted tracked
-   changes outside `.octobots/` (commit them first, because a record taken on uncommitted code can
-   never be current), or the mission is not in a git repository. Without a coverage lane it warns and
-   records only the parked-test scan. If the coverage lane runs longer than 10 minutes, ask the person
-   to run the same command in a terminal.
+   changes outside `.octobots/` (commit the mission's own changes first, because a record taken on
+   uncommitted code can never be current; see *Changes that are not the mission's* below), or the
+   mission is not in a git repository. Outside git the guard cannot check any record, and you may not
+   use `--force` yourself: stop and ask the user. Only their override gets past it:
+   `set-status.js <campaign-dir> "<M<n> - name>" done --force=<reason>`, or the status dropdown's
+   "Mark done anyway". Without a coverage lane it warns and records only the parked-test scan. If the
+   coverage lane runs longer than 10 minutes, ask the person to run the same command in a terminal.
+   **Changes that are not the mission's.** The exit-3 list can hold tracked changes the mission did
+   not make: the user's own edits, or a pack upgrade that touched tracked `.claude/` files. Never
+   commit those into the mission branch. Ask the user what to do with them, or set them aside with a
+   uniquely tagged stash: `git stash push -u -m "<unique-tag>"`, capture its SHA at once from
+   `git stash list --format='%H %gs'`, and restore it with `git stash apply <sha>`, never a bare
+   `git stash pop` (the stash stack is shared with other worktrees and sessions). Keep them stashed
+   through the recorded checks, `gate-record.mjs` and `set-status.js … done`, then restore them and
+   drop that entry, found again by its tag. Restored before done, they make both records stale again.
 2. **QA, black-box (Sage)**: dispatch `qa-engineer` (`model: sonnet`). Its input is **only** the
    mission's acceptance criteria and the BA spec. **Never** pass it the diff, file paths, or source.
    For each criterion, Sage records pass or fail with observable evidence (behaviour, endpoints,
@@ -156,8 +167,9 @@ dispatches the addressee with them, and then hands the answers back in a follow-
    - `--note` (repeatable) carries the phase results worth keeping, such as the coverage % and the
      Sage verdict per criterion.
    It appends a `## Completion gate (<time>)` record to the mission notes. Exit 3 is a refusal:
-   uncommitted tracked changes outside `.octobots/` (commit first), no git repository, or a green
-   verdict whose numbers do not match.
+   uncommitted tracked changes outside `.octobots/` (commit the mission's own changes first, and set
+   aside any that are not the mission's as phase 1 says), no git repository (stop and ask the user,
+   as phase 1 says), or a green verdict whose numbers do not match.
 4. **Tokenomics capture (non-blocking)**: dispatch a general-purpose agent (`model: sonnet`), or run
    it in the main loop, since it is two commands with no judgment involved:
    `node .octobots/tokenomics/run.mjs` and `node .octobots/tokenomics/backfill-worklog-sha.mjs`.
@@ -191,8 +203,9 @@ In either case:
 2. The restructured diff gets the full gate again, from the first blocked phase. It counts as round
    1 again, once.
 3. If that still fails, stop. Do not mark the mission `done`. Record the outcome with
-   `gate-record.mjs --verdict red` and one `--note` per open blocker, and hand the blockers to the
-   user. Do not run another fix round.
+   `node .claude/skills/mission-planner/scripts/gate-record.mjs <mission-dir> --verdict red --qa <n>/<m> --still-open <k> --note "<blocker>"`
+   (one `--note` per open blocker; `--qa` and `--still-open` are required, with the counts as
+   phase 3 defines them), and hand the blockers to the user. Do not run another fix round.
 
 Gate fix loops on one defect class have run for hours in production, and rounds after the second
 found no new bugs.

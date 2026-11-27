@@ -268,7 +268,7 @@ cases*; this task and gate phase 2 apply the same ones, and they must stay in st
 - Could not drive the browser or log in is BLOCKED, not a pass.
 - A manual execution (F5 or a human) is noted as manual in the RUN file.
 - Name the pre-existing record per criterion; a criterion proved only on QA-created data is not passed.
-- Write `## QA verification` into the task and mission `notes` through `entity-io.mjs`. The gate writes its own `## Completion gate (<date>)` section, never a second `## QA verification`.
+- Write `## QA verification` into the task and mission `notes` through `entity-io.mjs`. The gate writes its own `## Completion gate (<ISO time>)` record with `gate-record.mjs`, never a second `## QA verification`.
 - Tick exactly the criteria that have evidence: the task's own. Do not tick the mission's; record which mission criteria have evidence in the `## QA verification` block, and the gate ticks them in phase 5.
 - Call `set-test-status.js` for every TC run, installed at `.claude/skills/mission-planner/scripts/set-test-status.js`:
   PASS -> `pass`, FAIL -> `fail`, BLOCKED and UNREACHABLE -> `blocked` (the reason in the RUN file). It writes the

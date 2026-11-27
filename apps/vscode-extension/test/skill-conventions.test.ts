@@ -596,7 +596,7 @@ describe("M4 B2: mission-execution and the gate tell one story about the last-ta
     expect(gate).toMatch(/The gate writes its own `## Completion gate \(<time>\)` record into the mission `notes` with `gate-record\.mjs`/);
     expect(gate).toMatch(/refers to the last task's `## QA verification` block instead of repeating it/);
     expect(gate).not.toMatch(/the gate writes the mission's\)/);
-    expect(exec).toMatch(/gate writes its own `## Completion gate \(<date>\)` section/);
+    expect(exec).toMatch(/gate writes its own `## Completion gate \(<ISO time>\)` record with `gate-record\.mjs`/);
   });
 });
 
