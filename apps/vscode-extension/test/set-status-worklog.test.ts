@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { SET_STATUS, installPlannerScripts, makeStatusBoard, postToolUseWithOutput } from "./fixtures/status-flip-board.js";
+import { SET_STATUS, createBugNamed, installPlannerScripts, makeStatusBoard, postToolUseWithOutput } from "./fixtures/status-flip-board.js";
 import { mkdirSync } from "node:fs";
 
 const WORK_LOG = join(__dirname, "..", "resources", "octobots-pack", "hooks", "work-log.mjs");
@@ -88,6 +88,54 @@ describe("set-status.js writes the work log line itself", () => {
     const go = (state: string) => sh(b.repo, `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" ${state}`, "s1");
     go("active"); go("done"); go("active");
     expect(lines(b.repo).map((l) => l.state)).toEqual(["active", "done", "active"]);
+  });
+});
+
+describe("a bug is never logged as the task or mission its title names", () => {
+  // Bugs are often titled after where they were found ("T2.10 review nits", "M2 gate review nits").
+  // Closing one must not log that task or mission done on the branch the sweep runs on.
+  it("set-status.js writes no line for a mission bug titled like a task", () => {
+    const b = makeStatusBoard("ss-worklog-bug-");
+    createBugNamed(b, "T1.1 review nits");
+    for (const state of ["active", "done"]) {
+      const r = sh(b.repo, `node "${SET_STATUS}" "${b.missionDir}" "T1.1 review nits" ${state}`, "sess-bug");
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain("octobots: status bug");
+    }
+    expect(lines(b.repo)).toHaveLength(0);
+  });
+
+  it("set-status.js writes no line for a campaign bug titled like a mission", () => {
+    const b = makeStatusBoard("ss-worklog-bug-");
+    createBugNamed(b, "M1 gate review nits", "campaign");
+    const r = sh(b.repo, `node "${SET_STATUS}" "${b.campaignDir}" "M1 gate review nits" done`, "sess-bug");
+    expect(r.status, r.stderr).toBe(0);
+    expect(lines(b.repo)).toHaveLength(0);
+  });
+
+  it("the hook writes no line for those bug flips either (set-status.js ran without a session id)", () => {
+    const b = makeStatusBoard("ss-worklog-bug-");
+    createBugNamed(b, "T1.1 review nits");
+    createBugNamed(b, "M1 gate review nits", "campaign");
+    const command =
+      `node "${SET_STATUS}" "${b.missionDir}" "T1.1 review nits" done && ` +
+      `node "${SET_STATUS}" "${b.campaignDir}" "M1 gate review nits" done`;
+    const r = sh(b.repo, command);
+    expect(r.status, r.stderr).toBe(0);
+    hook(b.repo, postToolUseWithOutput(b.repo, command, r.stdout, "sess-bug-hook"));
+    expect(lines(b.repo)).toHaveLength(0);
+  });
+
+  it("the hook still logs the real task in a chain that also closes a bug titled after it", () => {
+    const b = makeStatusBoard("ss-worklog-bug-");
+    createBugNamed(b, "T1.1 review nits");
+    const command =
+      `node "${SET_STATUS}" "${b.missionDir}" "T1.1 review nits" done && ` +
+      `node "${SET_STATUS}" "${b.missionDir}" "T1.1 - Parse ids" done`;
+    const r = sh(b.repo, command);
+    expect(r.status, r.stderr).toBe(0);
+    hook(b.repo, postToolUseWithOutput(b.repo, command, r.stdout, "sess-bug-hook"));
+    expect(lines(b.repo).map((l) => `${l.task}:${l.state}`)).toEqual(["T1.1:done"]);
   });
 });
 

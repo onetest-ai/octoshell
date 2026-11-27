@@ -118,8 +118,10 @@ function recordWorklog() {
     const session = process.env.CLAUDE_CODE_SESSION_ID;
     const requested = state.toLowerCase();
     if (!session || !["active", "done"].includes(requested)) return;
-    const taskId = title.match(/^(T\d+\.\d+)\b/)?.[1] ?? null;
-    const missionId = taskId ? null : (title.match(/^(M\d+)\b/)?.[1] ?? null);
+    // Only a task or a mission is logged, and the id is read for that kind only: a bug titled
+    // "T2.10 review nits" or "M2 gate review nits" is a bug, not that task or mission.
+    const taskId = match.kind === "task" ? (title.match(/^(T\d+\.\d+)\b/)?.[1] ?? null) : null;
+    const missionId = match.kind === "mission" ? (title.match(/^(M\d+)\b/)?.[1] ?? null) : null;
     if (!taskId && !missionId) return;
     // The file is the session's project dir's, the same rule the work-log hook uses (worklog-path.mjs).
     // It self-gates on `.octobots/` there, like the hook. The branch is the board's own checkout's.

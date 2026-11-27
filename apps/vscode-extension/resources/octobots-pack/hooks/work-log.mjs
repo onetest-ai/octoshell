@@ -67,22 +67,26 @@ if (!sessionId) process.exit(0);
 // Tasks (`T<m>.<n>`) and missions (`M<n>`). Task links are what branch
 // inference gets wrong most often; mission links make the session -> mission
 // join a recorded fact too, rather than depending on branch naming. Every call
-// in a chained command counts (`… "T1.3 - …" done && … "M1 - …" done`).
-const candidates = [];
-for (const call of parseSetStatusAll(command)) {
-  const taskId = call.title.match(/^(T\d+\.\d+)\b/)?.[1] ?? null;
-  const missionId = taskId ? null : (call.title.match(/^(M\d+)\b/)?.[1] ?? null);
-  if (!taskId && !missionId) continue;
-  if (!["active", "done"].includes(call.state)) continue;
-  candidates.push({ ...call, taskId, missionId });
-}
+// in a chained command counts (`… "T1.3 - …" done && … "M1 - …" done`). The id comes from the title,
+// but only for an entity that IS a task or a mission (the resolver's kind, below): a bug titled
+// "T2.10 review nits" or "M2 gate review nits" is neither, and logging it would credit this session
+// and branch with someone else's task or mission.
+const TASK_ID = /^(T\d+\.\d+)\b/;
+const MISSION_ID = /^(M\d+)\b/;
+const candidates = parseSetStatusAll(command).filter(
+  (call) => ["active", "done"].includes(call.state) && (TASK_ID.test(call.title) || MISSION_ID.test(call.title)),
+);
 // Log only a flip that really happened: set-status.js printed a transition line (the status moved and
 // the file was written) and the target's YAML holds the requested status. `… "M9 - no such mission"
 // active; echo` exits 0 but writes nothing; re-running `done` prints `unchanged`; a refused start
 // prints nothing. Logging any of those would attribute this session to work it never did.
-const flips = (await confirmedTransitions(candidates, evt, projectDir)).map((c) =>
-  c.taskId ? { task: c.taskId, state: c.state } : { mission: c.missionId, state: c.state },
-);
+const flips = [];
+for (const c of await confirmedTransitions(candidates, evt, projectDir)) {
+  const taskId = c.kind === "task" ? (c.title.match(TASK_ID)?.[1] ?? null) : null;
+  const missionId = c.kind === "mission" ? (c.title.match(MISSION_ID)?.[1] ?? null) : null;
+  if (taskId) flips.push({ task: taskId, state: c.state });
+  else if (missionId) flips.push({ mission: missionId, state: c.state });
+}
 if (flips.length === 0) process.exit(0);
 
 const worklogModule = join(projectDir, WORKLOG_PATH);

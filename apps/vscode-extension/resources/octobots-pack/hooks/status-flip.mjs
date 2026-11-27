@@ -154,10 +154,14 @@ export function responseStdout(evt) {
 
 /**
  * The `set-status.js` calls in `evt`'s command that REALLY transitioned an entity: set-status.js
- * printed a transition line whose title and target state match the parsed call (each printed line
- * accounts for one call), AND the entity's YAML now holds that state. The line proves the before-state
- * differed and the write happened; the YAML check stops an `echo` of the line from standing in for it.
- * No tool_response means no proof, so nothing is returned (fail closed).
+ * printed a transition line whose kind, title and target state match the parsed call (each printed
+ * line accounts for one call), AND the entity's YAML now holds that state. The line proves the
+ * before-state differed and the write happened; the YAML check stops an `echo` of the line from
+ * standing in for it. No tool_response means no proof, so nothing is returned (fail closed).
+ *
+ * Each call comes back with `kind` (campaign | mission | task | bug), the kind of the entity the
+ * resolver found, so a caller acts on what the entity IS, never on what its title looks like: a bug
+ * titled "T2.10 review nits" or "M2 gate review nits" is a bug.
  */
 export async function confirmedTransitions(calls, evt, projectDir) {
   const stdout = responseStdout(evt);
@@ -169,11 +173,12 @@ export async function confirmedTransitions(calls, evt, projectDir) {
   for (const call of calls) {
     const wanted = await mappedState(call.state, projectDir);
     if (!wanted) continue;
-    const at = lines.findIndex((l) => l.title === call.title && l.to === wanted);
+    const kind = await kindIfStatusNow(call, cwd, projectDir);
+    if (!kind) continue;
+    const at = lines.findIndex((l) => l.kind === kind && l.title === call.title && l.to === wanted);
     if (at === -1) continue;
-    if (!(await statusNowEquals(call, cwd, projectDir))) continue;
     lines.splice(at, 1); // one printed transition authorises one call
-    out.push(call);
+    out.push({ ...call, kind });
   }
   return out;
 }
@@ -194,18 +199,26 @@ async function mappedState(state, projectDir) {
  * `projectDir` is the project root whose installed pack supplies the resolver.
  */
 export async function statusNowEquals(parsed, cwd, projectDir) {
+  return (await kindIfStatusNow(parsed, cwd, projectDir)) !== null;
+}
+
+/**
+ * The kind of the entity set-status.js resolves for `parsed` when it now has the status `parsed.state`
+ * maps to, else null (also when anything fails).
+ */
+async function kindIfStatusNow(parsed, cwd, projectDir) {
   try {
     const helper = join(resolve(projectDir), ENTITY_IO);
-    if (!existsSync(helper)) return false;
+    if (!existsSync(helper)) return null;
     const io = await import(pathToFileURL(helper).href);
     const wanted = io.mapBoardStatus(parsed.state);
     const parent = resolve(cwd, parsed.parent);
-    if (!wanted || !existsSync(parent)) return false;
+    if (!wanted || !existsSync(parent)) return null;
     const target = io.resolveStatusTarget(parent, parsed.title);
-    if (!target) return false;
+    if (!target) return null;
     const entity = io.resolveEntityFile(target.dir, [target.kind]);
-    return !!entity && io.readEntity(entity.file, entity.format).status === wanted;
+    return entity && io.readEntity(entity.file, entity.format).status === wanted ? target.kind : null;
   } catch {
-    return false;
+    return null;
   }
 }

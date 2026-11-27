@@ -53,7 +53,8 @@ if (candidates.length === 0) process.exit(0);
 // Did the board really change? set-status.js prints a transition line only when the status moved;
 // the YAML must agree (`; echo` can make a failed set-status exit 0, and an `echo` can forge the line).
 // Re-running `done` on a done mission prints `unchanged`, so it does not re-fire the gate.
-const titles = (await confirmedTransitions(candidates, evt, projectDir)).map((c) => c.title);
+// Only an entity that IS a mission gates: a bug titled "M2 gate review nits" is a bug.
+const titles = (await confirmedTransitions(candidates, evt, projectDir)).filter((c) => c.kind === "mission").map((c) => c.title);
 if (titles.length === 0) process.exit(0);
 const named = titles.map((t) => `"${t}"`).join(", ");
 

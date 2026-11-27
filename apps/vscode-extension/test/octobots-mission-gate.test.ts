@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempClean } from "./fixtures/tmpdir.js";
-import { SET_STATUS, createMissionNamed, makeStatusBoard, postToolUse, postToolUseWithOutput, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
+import { SET_STATUS, createBugNamed, createMissionNamed, makeStatusBoard, postToolUse, postToolUseWithOutput, runAndPost, setStatusCommand } from "./fixtures/status-flip-board.js";
 
 const GATE = join(__dirname, "..", "resources", "octobots-pack", "hooks", "mission-gate.mjs");
 
@@ -73,6 +73,21 @@ describe("mission-gate.mjs", () => {
   it("stays silent for a TASK — tasks gate inside mission-execution", () => {
     const b = makeStatusBoard("octo-gate-");
     expect(pipe(b.repo, runAndPost(b.repo, setStatusCommand(b.missionDir, "T1.1 - Parse ids", "done")))).toBe("");
+  });
+
+  it("stays silent for a BUG titled like a mission (\"M1 gate review nits\")", () => {
+    const b = makeStatusBoard("octo-gate-");
+    createBugNamed(b, "M1 gate review nits", "campaign");
+    expect(pipe(b.repo, runAndPost(b.repo, setStatusCommand(b.campaignDir, "M1 gate review nits", "done")))).toBe("");
+  });
+
+  it("in a chain that closes a bug titled like a mission and the mission itself, names only the mission", () => {
+    const b = makeStatusBoard("octo-gate-");
+    createBugNamed(b, "M1 gate review nits", "campaign");
+    const cmd = `${setStatusCommand(b.campaignDir, "M1 gate review nits", "done")} && ${setStatusCommand(b.campaignDir, "M1 - Venue ingest", "done")}`;
+    const ctx = directiveOf(pipe(b.repo, runAndPost(b.repo, cmd)));
+    expect(ctx).toContain('"M1 - Venue ingest" was just marked');
+    expect(ctx).not.toContain("review nits");
   });
 
   it("stays silent for a mission moving to any state other than done", () => {

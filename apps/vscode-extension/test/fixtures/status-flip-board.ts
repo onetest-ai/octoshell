@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { createCampaign, createMission, createTask } from "@octoshell/board";
+import { createBug, createCampaign, createMission, createTask } from "@octoshell/board";
 import { mkdtempClean } from "./tmpdir.js";
 
 /** The real script the hooks watch. Hooks must resolve its target exactly the way it does. */
@@ -14,6 +14,8 @@ export interface StatusBoard {
   campaignId: string;
   /** Absolute campaign dir: the `<parent-dir>` for a mission flip. */
   campaignDir: string;
+  /** The mission's board id. */
+  missionId: string;
   /** Absolute mission dir (title "M1 - Venue ingest"): the `<parent-dir>` for a task flip. */
   missionDir: string;
 }
@@ -38,12 +40,21 @@ export function makeStatusBoard(prefix: string, opts: { install?: boolean } = {}
   const c = createCampaign(boardRoot, { name: "C" });
   const m = createMission(boardRoot, c.id, { title: "M1 - Venue ingest", acceptanceCriteria: "- [ ] a" });
   createTask(boardRoot, m.id, { name: "T1.1 - Parse ids", acceptanceCriteria: "- [ ] b" });
-  return { repo, campaignId: c.id, campaignDir: join(boardRoot, c.folderPath), missionDir: join(boardRoot, m.folderPath) };
+  return { repo, campaignId: c.id, campaignDir: join(boardRoot, c.folderPath), missionId: m.id, missionDir: join(boardRoot, m.folderPath) };
 }
 
 /** Add a mission with an arbitrary title (quotes, `;`, `&&`) to the board's campaign. */
 export function createMissionNamed(b: StatusBoard, title: string): void {
   createMission(join(b.repo, ".octobots"), b.campaignId, { title, acceptanceCriteria: "- [ ] a" });
+}
+
+/**
+ * Add a bug with an arbitrary title under the mission (`on: "mission"`, the default) or the campaign.
+ * Bugs are often titled after the task or mission they were found in ("T1.1 review nits"), which is
+ * exactly what the hooks must not mistake for that task or mission.
+ */
+export function createBugNamed(b: StatusBoard, title: string, on: "mission" | "campaign" = "mission"): void {
+  createBug(join(b.repo, ".octobots"), on === "campaign" ? { campaignId: b.campaignId } : { missionId: b.missionId }, { title });
 }
 
 /** The Bash command an agent would run, e.g. `node …/set-status.js "<dir>" "M1 - …" done`. */
