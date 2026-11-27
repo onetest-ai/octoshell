@@ -105,7 +105,7 @@ for each task in board order:            # strictly sequential: one tree, one br
   [2] Review   Agent(tech-lead,  model: opus)    remediates blocking findings in place
   [3] QA+land  Agent(qa-engineer, model: sonnet) re-verifies, checks off ACs, flips status, merges
   stop the mission on any BLOCKED verdict; do not dispatch the next task onto a broken base
-all tasks merged → set-status.js … "M<n> - name" done → mission-completion-gate (see below)
+all tasks merged → mission-completion-gate → set-status.js … "M<n> - name" done → mission PR (see below)
 ```
 
 ### Dispatch rules (each one exists because the workflow version broke it)
@@ -241,7 +241,7 @@ that verifies is the agent that lands, and it saw the reviewer's fixes as part o
 > finding nothing staged will reach for `git add -A`, which is the one thing this loop forbids
 > absolutely. Where the board **is** tracked, commit those edits alongside the task's work.
 
-**Capture tokenomics (non-blocking).** Once the mission is green and flipped `done`, collect the
+**Capture tokenomics (non-blocking).** At the mission gate (its phase 4, before the mission is marked `done`), collect the
 run's cost/effort record — `node .octobots/tokenomics/run.mjs` (the CLI ships with the pack), or
 the *Octobots: Export Tokenomics Report* command — and commit the refreshed
 `.octobots/tokenomics/` artifacts. **This is the last moment the data exists:** agent transcripts
@@ -497,9 +497,11 @@ separate, blocking, once-per-mission step:
 
 > **Static gates between tasks, ONE dynamic gate per mission** (the last Mission QA task runs the suite live once before it; the gate re-runs it).
 
-When the last task's PR has merged, flip the mission `done` with `set-status.js`. That fires
-`.octobots/hooks/mission-gate.mjs` (PostToolUse; it triggers on `M<n>` ids and deliberately ignores
-`T<m>.<n>` task flips), which blocks and hands you the **`mission-completion-gate`** skill. Run it.
+When the last task's PR has merged, run the **`mission-completion-gate`** skill. Do not try to
+mark the mission `done` first: `set-status.js … done` on a mission is guarded, and refuses (exit 3)
+until the mission's tasks are finished, its criteria are ticked, its test cases pass, and the gate's
+`## Gate checks` and `## Completion gate` records are green and current. The gate writes those
+records with its scripts, then ticks the criteria and marks the mission `done` in its phase 5.
 It adds what a per-task loop structurally cannot:
 
 - **Black-box QA against the MISSION's criteria** — Sage never sees the diff or the source, and
@@ -517,7 +519,7 @@ It adds what a per-task loop structurally cannot:
   coherence — invisible to a review scoped to one task's diff.
 
 **Only then does the mission feature branch PR into `main`** — that PR is the per-mission PR, and it
-is opened after the gate is green, never before. **Do not end a mission run when the last task has
+is opened after the gate is green and the mission is `done`, never before. **Do not end a mission run when the last task has
 merged** — that is the middle of the job, not the end of it.
 
 ## Non-negotiable principles
@@ -554,14 +556,14 @@ merged** — that is the middle of the job, not the end of it.
   looks parallel (two tasks on unrelated files) is still ordered: the tree, the branch and the board
   are shared, and the ordering costs a few minutes where a corrupted tree costs the mission.
 - **Flip the MISSION status, not just task statuses.** Mark the mission `active` before starting its
-  first task, and `done` once the last task is green (the gate then ticks the mission's criteria in phase 5): `set-status.js <campaign>/missions/<mission> "<M<n> - name>" active|done`. This is
-  not bookkeeping. A mission that is never flipped is never gated — and `.octobots/hooks/work-log.mjs`
-  records the session → mission link that cost and effort attribution rely on. Flipping only task
-  statuses silently skips both.
+  first task, and `done` once the gate is green (the gate ticks the mission's criteria in phase 5, then marks it `done`): `set-status.js <campaign>/missions/<mission> "<M<n> - name>" active|done`. This is
+  not bookkeeping. A mission that is never marked `done` never shows as finished, and
+  `.octobots/hooks/work-log.mjs` records the session → mission link that cost and effort attribution
+  rely on. Flipping only task statuses silently skips both.
 - **Board writes belong to the task that earns them.** The task's own **PR/merge step** checks off that
   task's acceptance criteria and flips its `status`, committing the `.octobots/` change on the
   task branch alongside the work it describes. Mission-level flips (mission `active` at the start, `done` at the end) are the
-  orchestrator's, made on the mission branch **before the first task** and **after the last task lands**.
+  orchestrator's, made on the mission branch **before the first task** and **after the gate is green**.
   Never let a task write board state for a *different* task, with one exception: the last Mission QA task writes `## QA verification` into the mission `notes`.
 - **Acceptance-criteria-driven.** Every task carries ≥1 checkable criterion (set at plan time); the
   QA + land phase checks them off; the live E2E re-verifies the mission-level criteria.
