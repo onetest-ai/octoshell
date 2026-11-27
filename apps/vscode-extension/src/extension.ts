@@ -1,3 +1,4 @@
+import { missionGuardApplies, runMissionDone } from "./host/mission-done.js";
 import { join, basename } from "node:path";
 import * as vscode from "vscode";
 import { openBoard } from "./host/board-host.js";
@@ -172,6 +173,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const picks = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false });
         return picks?.[0]?.fsPath ?? null;
       },
+    },
+    // A getter, so it is evaluated per access: installing the pack mid-session enables the guard
+    // without a reload, and a workspace whose pack predates it keeps the plain board write.
+    get missionDone() {
+      if (!missionGuardApplies(fsPath)) return undefined;
+      return (missionId: string, force?: string) =>
+        runMissionDone(
+          {
+            board,
+            workspaceFolderPath: fsPath,
+            scriptPath: context.asAbsolutePath("resources/octobots-pack/skill/mission-planner/scripts/set-status.js"),
+            nodePath: process.execPath,
+            env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+          },
+          missionId,
+          force,
+        );
     },
     editor: {
       openReadonly: async (content: string, language?: string) => {

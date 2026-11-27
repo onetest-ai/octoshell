@@ -530,3 +530,60 @@ describe("tests:get and tests:setStatus routes", () => {
     expect(readFileSync(file, "utf8")).toBe(text);
   });
 });
+
+describe("mission done guard (missionDone)", () => {
+  const REASON = "confirmed in the extension's status dropdown";
+  function guarded(results: Array<{ ok: true } | { ok: false; message: string }>, confirmAnswer: boolean) {
+    const b = makeBoard();
+    const camp = b.createCampaign({ name: "C" });
+    const m = b.createMission({ title: "M", campaignId: camp.id });
+    const missionDone = vi.fn(async (_id: string, _force?: string) => results.shift()!);
+    const setStatus = vi.spyOn(b, "setStatus");
+    const confirm = vi.fn(async () => confirmAnswer);
+    const c = { ...ctx(b, confirm), missionDone };
+    return { b, m, c, missionDone, setStatus, confirm };
+  }
+
+  it("mission done with ok calls missionDone once and never board.setStatus", async () => {
+    const { m, c, missionDone, setStatus } = guarded([{ ok: true }], false);
+    await dispatch("mission:setStatus", { missionId: m.id, status: "done" }, c as never);
+    expect(missionDone).toHaveBeenCalledTimes(1);
+    expect(setStatus).not.toHaveBeenCalled();
+  });
+
+  it("refusal then confirm retries with the dropdown force reason", async () => {
+    const { m, c, missionDone, confirm } = guarded([{ ok: false, message: "no" }, { ok: true }], true);
+    await dispatch("mission:setStatus", { missionId: m.id, status: "done" }, c as never);
+    expect(confirm).toHaveBeenCalledWith("no", "Mark done anyway");
+    expect(missionDone).toHaveBeenCalledTimes(2);
+    expect(missionDone.mock.calls[1]?.[1]).toBe(REASON);
+  });
+
+  it("refusal then cancel returns the stored status and calls missionDone once", async () => {
+    const { m, c, missionDone, b } = guarded([{ ok: false, message: "no" }], false);
+    const res = await dispatch("mission:setStatus", { missionId: m.id, status: "done" }, c as never);
+    expect(res).toEqual({ ok: true, status: b.getMission(m.id)?.status });
+    expect(missionDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("a second refusal after confirm throws RpcError", async () => {
+    const { m, c } = guarded([{ ok: false, message: "no" }, { ok: false, message: "still no" }], true);
+    await expect(dispatch("mission:setStatus", { missionId: m.id, status: "done" }, c as never)).rejects.toThrow("still no");
+  });
+
+  it("task done never calls missionDone", async () => {
+    const { b, m, c, missionDone } = guarded([], false);
+    const t = b.createTask({ missionId: m.id, name: "T" });
+    await dispatch("task:setStatus", { taskId: t.id, status: "done" }, c as never).catch(() => {});
+    expect(missionDone).not.toHaveBeenCalled();
+  });
+
+  it("without missionDone the old board.setStatus path is used", async () => {
+    const b = makeBoard();
+    const camp = b.createCampaign({ name: "C" });
+    const m = b.createMission({ title: "M", campaignId: camp.id });
+    const setStatus = vi.spyOn(b, "setStatus");
+    await dispatch("mission:setStatus", { missionId: m.id, status: "done" }, ctx(b) as never).catch(() => {});
+    expect(setStatus).toHaveBeenCalled();
+  });
+});

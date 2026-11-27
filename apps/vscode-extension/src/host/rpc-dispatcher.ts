@@ -23,6 +23,11 @@ export interface DispatchCtx {
     openReadonly: (content: string, language?: string) => Promise<void>;
     openFile: (absPath: string) => Promise<void>;
   };
+  /**
+   * Marks a mission done through the pack's guarded set-status.js. Optional: absent when the
+   * workspace's pack predates the guard, in which case the plain board write is used.
+   */
+  missionDone?: (missionId: string, force?: string) => Promise<{ ok: true } | { ok: false; message: string }>;
 }
 
 type RpcHandler<M extends RpcMethod> = (
@@ -47,6 +52,18 @@ async function applyStatus(
   id: string,
   status: string,
 ): Promise<{ ok: true; status?: string }> {
+  if (kind === "mission" && status === "done" && c.missionDone) {
+    const first = await c.missionDone(id);
+    if (first.ok) return { ok: true };
+    const confirmed = await c.dialog.confirm(first.message, "Mark done anyway");
+    if (!confirmed) {
+      const stored = c.board.getMission(id)?.status;
+      return stored ? { ok: true, status: stored } : { ok: true };
+    }
+    const forced = await c.missionDone(id, DROPDOWN_FORCE_REASON);
+    if (!forced.ok) throw new RpcError(forced.message);
+    return { ok: true };
+  }
   const res = c.board.setStatus(kind, id, status);
   if (res.ok) return { ok: true };
   const confirmed = await c.dialog.confirm(res.message, "Start without a review");
