@@ -17,10 +17,11 @@ try {
   if (!values.branch)
     throw new Error("Usage: attribute --branch <b> [--session <id>] [--project-dir <dir>]");
   const root = values["project-dir"];
-  const board = await loadBoard(root, (message) => { throw new Error(message); }, { strict: true });
+  const board = await loadBoard(root, (message) => { throw new Error(message); }, { strict: true, tasks: Boolean(values.session) });
   const workLog = new Map();
   const file = join(root, ".octobots/tokenomics/worklog.jsonl");
-  if (existsSync(file))
+  // The work log is keyed by session, so without one it cannot match anything.
+  if (values.session && existsSync(file))
     for (const line of readFileSync(file, "utf8").split("\n")) {
       try {
         const e = JSON.parse(line);

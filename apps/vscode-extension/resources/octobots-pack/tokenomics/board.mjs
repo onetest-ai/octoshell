@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export async function loadBoard(projectDir = process.cwd(), log = console.error, { strict = false } = {}) {
+export async function loadBoard(projectDir = process.cwd(), log = console.error, { strict = false, tasks: withTasks = true } = {}) {
   const PROJECT_DIR = projectDir;
   const CAMPAIGNS_DIR = join(projectDir, ".octobots/campaigns");
   if (strict && !existsSync(CAMPAIGNS_DIR)) throw new Error("missing .octobots/campaigns");
@@ -99,6 +99,7 @@ export async function loadBoard(projectDir = process.cwd(), log = console.error,
   function loadTasks(missionPath, END) {
     const est = new Map();
     const tasks = [];
+    if (!withTasks) return { tasks, est };
     const tasksDir = join(missionPath, "tasks");
     if (!existsSync(tasksDir)) return { tasks, est };
 
