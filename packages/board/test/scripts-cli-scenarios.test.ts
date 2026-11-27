@@ -2205,6 +2205,37 @@ describe("set-status.js mission done guard", () => {
     expect(readFileSync(f.missionFile).equals(before)).toBe(true);
   });
 
+  it("already done with no record: --force records the at-rest override, status unchanged, and the warning is gone", () => {
+    const f = fixture({ status: "done" });
+    const r = run([f.dir, "M1 - Auth", "done", "--force=closed before the gate existed"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('octobots: status mission "M1 - Auth" unchanged (done)');
+    expect(r.stdout).not.toContain("->");
+    expect(r.stdout).toContain('completion gate override recorded in the notes of "M1 - Auth"');
+    expect(r.stderr).not.toContain("warning:");
+    const notes = notesOf(f.missionFile);
+    expect(notes).toMatch(/^## Completion gate overridden \(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\)\nclosed before the gate existed\nFailed: at rest: no green Completion gate record$/m);
+    expect(statusOf(f.missionFile)).toBe("done");
+
+    const before = readFileSync(f.missionFile);
+    const again = run([f.dir, "M1 - Auth", "done"]);
+    expect(again.status).toBe(0);
+    expect(again.stdout).toContain("unchanged (done)");
+    expect(again.stderr).not.toContain("warning:");
+    expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+  });
+
+  it("already done with a green record: --force writes nothing", () => {
+    const f = fixture({ status: "done", ticked: true, taskDone: true });
+    seed(f.missionFile, "mission", { notes: recordsText(git("rev-parse", "HEAD")) });
+    const before = readFileSync(f.missionFile);
+    const r = run([f.dir, "M1 - Auth", "done", "--force=no need"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("unchanged (done)");
+    expect(r.stdout).not.toContain("override recorded");
+    expect(readFileSync(f.missionFile).equals(before)).toBe(true);
+  });
+
   it("a task or bug done is not guarded", () => {
     const f = fixture();
     const r = run([join(f.missionDir), "T1.1 - JWT", "done"]);

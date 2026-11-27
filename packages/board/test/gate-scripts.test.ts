@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, realpathSync } from "nod
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createCampaign, createMission } from "../src/index.js";
+import { createCampaign, createMission, setCriterion } from "../src/index.js";
 
 const SCRIPTS = resolve(
   __dirname,
@@ -229,6 +229,17 @@ describe("gate-checks.mjs", () => {
     expect(rec?.lines).toContain("Note: the code changed during the run");
   });
 
+  it("runs the parked-test scan with its own node, not the one on PATH", () => {
+    const { dir } = setup('- coverage: `true`');
+    // No node on this PATH (git and sh stay reachable in /usr/bin and /bin).
+    const r = spawnSync(process.execPath, [join(SCRIPTS, "gate-checks.mjs"), dir], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: "/usr/bin:/bin" },
+    });
+    expect(r.status).toBe(0);
+    expect(record(dir)?.lines).toContain("Parked: 0 unsigned");
+  });
+
   it("refuses on a dirty tracked file and writes nothing", () => {
     const { repo, dir } = setup('- coverage: `true`');
     writeFileSync(join(repo, "src.txt"), "two\n");
@@ -246,5 +257,28 @@ describe("gate-checks.mjs", () => {
   it("exits 2 without a path or on a missing one", () => {
     expect(run("gate-checks.mjs", []).code).toBe(2);
     expect(run("gate-checks.mjs", [join(tmp, "nope")]).code).toBe(2);
+  });
+});
+
+describe("a board not named .octobots (add-campaign.js --root board)", () => {
+  it("gate-checks is green, gate-record writes, and set-status done then passes", () => {
+    const repo = initRepo();
+    const boardRoot = join(repo, "board");
+    mkdirSync(boardRoot, { recursive: true });
+    const c = createCampaign(boardRoot, { name: "Q4" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Guard", acceptanceCriteria: "- [ ] criterion 1" });
+    setCriterion(boardRoot, "mission", m.id, 1, true);
+    const dir = join(boardRoot, m.folderPath);
+    commitAll(repo);
+    const checks = run("gate-checks.mjs", [dir]);
+    expect(checks.code).toBe(0);
+    const rec = run("gate-record.mjs", [dir, "--verdict", "green", "--qa", "1/1", "--still-open", "0"]);
+    expect(rec.err).not.toContain("refusing");
+    expect(rec.code).toBe(0);
+    const done = run("set-status.js", [dir, "M1 - Guard", "done"]);
+    expect(done.err).toBe("");
+    expect(done.code).toBe(0);
+    expect(done.out).toContain('octobots: status mission "M1 - Guard"');
+    expect(done.out).toContain("-> done");
   });
 });

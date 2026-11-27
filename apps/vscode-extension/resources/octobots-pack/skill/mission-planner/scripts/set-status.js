@@ -24,7 +24,8 @@ import { worklogFile, worklogProjectDir } from "./worklog-path.mjs";
 // test cases passed, and the latest `## Gate checks` and `## Completion gate` records are green and
 // current (completion-guard.mjs). Exit 3 = refused, naming the scripts to run. The same `--force=<reason>`
 // overrides and records `## Completion gate overridden (<ISO>)` with the failed checks. A mission that
-// is already done is left alone (with a warning on stderr when no green record exists). No other move is gated.
+// is already done is left alone (with a warning on stderr when no green record exists); with --force
+// and no green record, the override is recorded in its notes and the status stays done. No other move is gated.
 const rawArgs = process.argv.slice(2);
 let forceReason = null;
 const positional = [];
@@ -73,14 +74,25 @@ const fields = readEntity(resolved.file, resolved.format);
 // printed `from` never contains a space the hooks' parser would have to guess around.
 const from = mapBoardStatus(fields.status ?? "") ?? "draft";
 if (from === mapped) {
-  // Already there: write nothing (same bytes). The PostToolUse hooks read this line to tell a re-run
-  // from a real transition.
+  // Already there: write nothing (same bytes), except one case below. The PostToolUse hooks read the
+  // `unchanged` line to tell a re-run from a real transition.
   console.log(`set status of "${title}" to ${mapped} (already)`);
-  console.log(`octobots: status ${match.kind} ${JSON.stringify(title)} unchanged (${mapped})`);
   if (match.kind === "mission" && mapped === "done") {
     const warning = atRestWarning(fields);
-    if (warning) console.error(`warning: ${warning}`);
+    if (warning && forceReason !== null) {
+      // A mission closed with no green Completion gate record (say, before the gate existed): record
+      // why, as the at-rest warning asks. The status stays done; only the notes change.
+      const at = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+      const note = `## ${HEADINGS.override} (${at})\n${forceReason}\nFailed: at rest: no green Completion gate record`;
+      const old = fields.notes ?? "";
+      fields.notes = old ? `${old}${old.endsWith("\n") ? "\n" : "\n\n"}${note}` : note;
+      writeFileSync(join(match.dir, `${match.kind}.yaml`), dumpEntity(match.kind, fields), "utf8");
+      console.log(`completion gate override recorded in the notes of "${title}" (status unchanged)`);
+    } else if (warning) {
+      console.error(`warning: ${warning}`);
+    }
   }
+  console.log(`octobots: status ${match.kind} ${JSON.stringify(title)} unchanged (${mapped})`);
   process.exit(0);
 }
 if (match.kind === "mission" && mapped === "executing") {

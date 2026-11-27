@@ -6,7 +6,7 @@
 // `## <heading> (<ISO-8601 UTC>)` and ends at the next column-0 `## ` line or the end of the notes.
 // Among several records under one heading, the latest timestamp wins; on a tie, the lower one wins.
 // A record is current when its Commit exists and the working tree matches it outside the board
-// (`git diff --quiet <commit> -- . ':(exclude)<board>'`). Any git error means not current.
+// (`git diff --quiet <commit> -- . ':(exclude,literal)<board>'`). Any git error means not current.
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
@@ -84,18 +84,27 @@ export function repoRootOf(dir) {
   }
 }
 
-/** The board folder (the nearest ancestor of `missionDir` named `.octobots`), relative to `repoRoot`, `/`-separated. */
+/**
+ * The board folder, relative to `repoRoot`, `/`-separated: the nearest ancestor of `missionDir` named
+ * `.octobots`, else (a board made with `add-campaign.js --root <dir>`) the folder the mission path's
+ * shape names, since a mission lives at `<board>/campaigns/<campaign>/missions/<mission>`.
+ */
 export function boardRelPath(repoRoot, missionDir) {
-  let d = real(missionDir);
+  const start = real(missionDir);
+  let d = start;
   while (basename(d) !== ".octobots") {
     const up = dirname(d);
-    if (up === d) return ".octobots";
+    if (up === d) {
+      d = resolve(start, "..", "..", "..", "..");
+      break;
+    }
     d = up;
   }
   return relative(real(repoRoot), d).split(sep).join("/") || ".";
 }
 
-const boardPathspec = (repoRoot, missionDir) => `:(exclude)${boardRelPath(repoRoot, missionDir)}`;
+// `literal`: a board folder whose name holds `*`, `?` or `[` must exclude only itself.
+const boardPathspec = (repoRoot, missionDir) => `:(exclude,literal)${boardRelPath(repoRoot, missionDir)}`;
 
 /** The tracked changes outside the board, as `git status --porcelain` lines. Throws on a git error. */
 export function trackedChanges(repoRoot, missionDir) {
@@ -174,13 +183,22 @@ function unpassedTests(campaignDir, name) {
   return out;
 }
 
+/** Why a record is not current: uncommitted tracked changes outside the board, or a commit since. */
+function staleReason(repoRoot, missionDir) {
+  let dirty = false;
+  try { dirty = trackedChanges(repoRoot, missionDir).length > 0; } catch { /* a git error: say the code changed */ }
+  return dirty
+    ? "there are uncommitted tracked changes outside the board (commit the mission's own changes; set aside any that are not the mission's)"
+    : "the code changed since its commit";
+}
+
 /** Why the latest Gate checks record does not allow done, or null when it does. */
 function gateChecksIssue(notes, repoRoot, missionDir) {
   const r = latestRecord(notes, HEADINGS.gate);
   if (!r) return "no Gate checks record in the mission notes";
   if (r.fields.verdict !== "green") return `the latest Gate checks record (${r.at}) is ${r.fields.verdict || "missing its Verdict"}, not green`;
   if (!isCurrent(repoRoot, r.fields.commit, missionDir)) {
-    return `the latest Gate checks record (${r.at}) is not current: the code changed since its commit`;
+    return `the latest Gate checks record (${r.at}) is not current: ${staleReason(repoRoot, missionDir)}`;
   }
   return null;
 }
@@ -200,7 +218,7 @@ function completionIssue(notes, repoRoot, missionDir, criteriaCount) {
   const review = /^stillOpen=(\d+)$/.exec(r.fields.review ?? "");
   if (!review) issues.push("it has no Review: stillOpen=<k> line");
   else if (Number(review[1]) !== 0) issues.push(`its Review line reads stillOpen=${review[1]}`);
-  if (!isCurrent(repoRoot, r.fields.commit, missionDir)) issues.push("it is not current: the code changed since its commit");
+  if (!isCurrent(repoRoot, r.fields.commit, missionDir)) issues.push(`it is not current: ${staleReason(repoRoot, missionDir)}`);
   return issues.length ? `the latest Completion gate record (${r.at}): ${issues.join("; ")}` : null;
 }
 

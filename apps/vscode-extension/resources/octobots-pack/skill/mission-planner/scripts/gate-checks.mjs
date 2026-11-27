@@ -66,7 +66,7 @@ if (command === null) {
 // The parked-test scan, from the sibling mission-execution skill.
 const scan = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "mission-execution", "scripts", "scan-parked.js");
 let parked = "error";
-const s = spawnSync("node", [scan, "--json", "--root", repoRoot], { encoding: "utf8" });
+const s = spawnSync(process.execPath, [scan, "--json", "--root", repoRoot], { encoding: "utf8" });
 if (s.status === 0 || s.status === 1) {
   try {
     const unsigned = JSON.parse(s.stdout).unsigned;

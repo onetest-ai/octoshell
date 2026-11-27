@@ -236,6 +236,42 @@ describe("git helpers", () => {
     expect(guard.trackedChanges(repo, b.missionDir)).toEqual([]);
   });
 
+  it("a board not named .octobots (add-campaign.js --root board): the board is derived from the mission path", () => {
+    const repo = initRepo();
+    const boardRoot = join(repo, "board");
+    mkdirSync(boardRoot, { recursive: true });
+    const c = createCampaign(boardRoot, { name: "Q4" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Guard", acceptanceCriteria: "- [ ] it works" });
+    const missionDir = join(boardRoot, m.folderPath);
+    const head = commitAll(repo);
+    expect(guard.boardRelPath(repo, missionDir)).toBe("board");
+    updateBrief(boardRoot, "mission", m.id, { notes: "changed" });
+    expect(git(repo, "status", "--porcelain")).toContain("mission.yaml");
+    expect(guard.isCurrent(repo, head, missionDir)).toBe(true);
+    expect(guard.trackedChanges(repo, missionDir)).toEqual([]);
+    writeFileSync(join(repo, "src.txt"), "two\n");
+    expect(guard.isCurrent(repo, head, missionDir)).toBe(false);
+    expect(guard.trackedChanges(repo, missionDir)).toEqual([" M src.txt"]);
+  });
+
+  it("the board is excluded literally: a board named b* does not hide code changes in bx/", () => {
+    const repo = initRepo();
+    const boardRoot = join(repo, "b*");
+    mkdirSync(boardRoot, { recursive: true });
+    const c = createCampaign(boardRoot, { name: "Q4" });
+    const m = createMission(boardRoot, c.id, { title: "M1 - Guard", acceptanceCriteria: "- [ ] it works" });
+    const missionDir = join(boardRoot, m.folderPath);
+    mkdirSync(join(repo, "bx"));
+    writeFileSync(join(repo, "bx", "code.txt"), "one\n");
+    const head = commitAll(repo);
+    expect(guard.boardRelPath(repo, missionDir)).toBe("b*");
+    updateBrief(boardRoot, "mission", m.id, { notes: "changed" });
+    expect(guard.isCurrent(repo, head, missionDir)).toBe(true);
+    writeFileSync(join(repo, "bx", "code.txt"), "two\n");
+    expect(guard.isCurrent(repo, head, missionDir)).toBe(false);
+    expect(guard.trackedChanges(repo, missionDir)).toEqual([" M bx/code.txt"]);
+  });
+
   it("scriptsDir prefers the workspace's installed scripts when they hold gate-checks.mjs", () => {
     const repo = initRepo();
     expect(guard.scriptsDir(repo)).toBe(SCRIPTS);
@@ -320,6 +356,16 @@ describe("doneProblems", () => {
     const ps = guard.doneProblems({ missionDir: b.missionDir, fields: fieldsOf(b) });
     expect(checks(ps)).toEqual(["gate-checks", "completion-gate"]);
     expect(ps[0]?.message).toContain("not current");
+    // Uncommitted tracked changes are named as such, not as a new commit.
+    expect(ps[0]?.message).toContain("uncommitted tracked changes outside the board");
+    expect(ps[1]?.message).toContain("uncommitted tracked changes outside the board");
+
+    // Committed: the code changed since the record's commit.
+    commitAll(repo);
+    const committed = guard.doneProblems({ missionDir: b.missionDir, fields: fieldsOf(b) });
+    expect(checks(committed)).toEqual(["gate-checks", "completion-gate"]);
+    expect(committed[0]?.message).toContain("the code changed since its commit");
+    expect(committed[0]?.message).not.toContain("uncommitted");
   });
 
   it("a mission with no M<n> token or no TC folder passes the tests check; an unreadable task is unfinished", () => {
