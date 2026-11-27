@@ -35,10 +35,10 @@ export function missionGuardApplies(workspaceFolderPath: string): boolean {
 export function runMissionDone(opts: MissionDoneOpts, missionId: string, force?: string): Promise<MissionDoneResult> {
   const mission = opts.board.getMission(missionId);
   if (!mission) throw new Error(`mission not found: ${missionId}`);
-  const campaign = opts.board.getCampaign(mission.campaignId);
-  if (!campaign) throw new Error(`campaign not found: ${mission.campaignId}`);
-  const campaignDir = join(opts.board.artifactsRoot, campaign.folderPath);
-  const args = [opts.scriptPath, campaignDir, mission.title, "done", ...(force ? [`--force=${force}`] : [])];
+  // Target the mission's own entity file: the script then treats the mission as "self", so a
+  // campaign or sibling mission with the same title can never be picked instead.
+  const missionFile = join(opts.board.artifactsRoot, mission.folderPath, "mission.yaml");
+  const args = [opts.scriptPath, missionFile, mission.title, "done", ...(force ? [`--force=${force}`] : [])];
   return new Promise((resolve, reject) => {
     execFile(
       opts.nodePath,

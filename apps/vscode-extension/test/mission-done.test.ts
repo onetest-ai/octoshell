@@ -39,6 +39,34 @@ describe("runMissionDone", () => {
   });
 });
 
+describe("runMissionDone with a campaign named like the mission", () => {
+  it("guards the mission, never the same-titled campaign", async () => {
+    const repoRoot = mkdtempClean("mission-done-same-");
+    const git = (...a: string[]) => execFileSync("git", a, { cwd: repoRoot, stdio: "ignore" });
+    git("init", "-q");
+    git("config", "user.email", "t@t.t");
+    git("config", "user.name", "t");
+    const board = new BoardHost(join(repoRoot, ".octobots"));
+    const camp = board.createCampaign({ name: "Mish" });
+    const mission = board.createMission({ title: "Mish", campaignId: camp.id });
+    git("add", "-A");
+    git("commit", "-qm", "init", "--allow-empty");
+    const campStatus = board.getCampaign(camp.id)?.status;
+    const opts = { board, workspaceFolderPath: repoRoot, scriptPath, nodePath: process.execPath, env: process.env };
+
+    const refused = await runMissionDone(opts, mission.id);
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.message).toContain("refusing to mark");
+    board.reconcile();
+    expect(board.getCampaign(camp.id)?.status).toBe(campStatus);
+    expect(board.getMission(mission.id)?.status).not.toBe("done");
+
+    expect(await runMissionDone(opts, mission.id, "test force")).toEqual({ ok: true });
+    expect(board.getMission(mission.id)?.status).toBe("done");
+    expect(board.getCampaign(camp.id)?.status).toBe(campStatus);
+  });
+});
+
 describe("missionGuardApplies", () => {
   function primer(ws: string, v: number) {
     mkdirSync(join(ws, ".octobots", "hooks"), { recursive: true });
